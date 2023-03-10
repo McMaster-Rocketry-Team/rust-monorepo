@@ -43,7 +43,6 @@ pub struct NMEA {
     pub satellites_visible: Option<u8>,
 }
 
-// implement format
 impl core::fmt::Display for NMEA {
     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
         write!(f, "NMEA {{ latitude: {:?}, longitude: {:?}, utc: {:?}, satellites_visible: {:?} }}", self.latitude, self.longitude, self.utc, self.satellites_visible)
