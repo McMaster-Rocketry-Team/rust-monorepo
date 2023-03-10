@@ -27,6 +27,6 @@ pub fn parse_gll(fields: Vec<&str, 41>) -> Result<NMEAMessage, ()> {
         talker,
         latitude: lat,
         longitude: lon,
-        utc: parse_time(fields[5]).unwrap(),
+        utc: parse_time(fields[6]).unwrap(),
     })
 }

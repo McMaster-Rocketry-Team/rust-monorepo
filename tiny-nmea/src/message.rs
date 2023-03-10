@@ -1,6 +1,6 @@
 use heapless::String;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Time {
     pub hour: u8,
     pub minute: u8,
