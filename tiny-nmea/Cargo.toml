@@ -1,6 +1,7 @@
 [package]
 authors = ["Pegasis <me@pegasis.site>", "Kaitlyn Kenwell <redrield@gmail.com>"]
 name = "tiny-nmea"
+description = "A tiny NMEA parser for embedded systems. Works with `#[no_std]` and doesn't require heap allocation. and doesn't require heap allocation"
 repository = "https://github.com/McMaster-Rocketry-Team/rust-monorepo"
 license = "MIT OR Apache-2.0"
 version = "0.1.0"
