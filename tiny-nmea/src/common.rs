@@ -12,10 +12,10 @@ macro_rules! substring {
 }
 
 pub fn parse_time(str: &str) -> Result<Time, ()> {
-    let hour = substring!(str, 0, 2).parse::<u8>().unwrap();
-    let minute = substring!(str, 2, 2).parse::<u8>().unwrap();
-    let second = substring!(str, 4, 2).parse::<u8>().unwrap();
-    let millisecond = substring!(str, 7, 2).parse::<u8>().unwrap();
+    let hour = substring!(str, 0, 2).parse::<u8>().map_err(|_| ())?;
+    let minute = substring!(str, 2, 2).parse::<u8>().map_err(|_| ())?;
+    let second = substring!(str, 4, 2).parse::<u8>().map_err(|_| ())?;
+    let millisecond = substring!(str, 7, 2).parse::<u8>().map_err(|_| ())?;
     Ok(Time {
         hour,
         minute,
