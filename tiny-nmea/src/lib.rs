@@ -1,7 +1,5 @@
 #![cfg_attr(not(test), no_std)]
 
-extern crate alloc;
-
 mod message;
 mod gll;
 mod common;
@@ -45,6 +43,13 @@ pub struct NMEA {
     pub satellites_visible: Option<u8>,
 }
 
+// implement format
+impl core::fmt::Display for NMEA {
+    fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+        write!(f, "NMEA {{ latitude: {:?}, longitude: {:?}, utc: {:?}, satellites_visible: {:?} }}", self.latitude, self.longitude, self.utc, self.satellites_visible)
+    }
+}
+
 impl NMEA {
     pub fn new() -> Self {
         NMEA {
@@ -79,6 +84,7 @@ impl NMEA {
 
 #[cfg(test)]
 mod tests {
+    extern crate alloc;
     use alloc::format;
     use super::*;
 
