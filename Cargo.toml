@@ -1,5 +1,6 @@
 [workspace]
 
 members = [
-    "tiny-nmea"
+    "tiny-nmea",
+    "firmware-common"
 ]
