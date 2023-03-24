@@ -1,5 +1,3 @@
-use defmt::info;
-
 pub trait SpiFlash {
     // size in bytes
     fn size(&self) -> u32;

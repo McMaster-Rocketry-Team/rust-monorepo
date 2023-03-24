@@ -10,7 +10,7 @@ pub mod driver;
 mod storage;
 mod avionics;
 
-pub async fn init<F: SpiFlash>(mut flash: F) {
-    let storage = AvionicsStorage::new(flash).await;
+pub async fn init<F: SpiFlash>(flash: F) {
+    AvionicsStorage::new(flash).await;
     info!("Avionics storage initialized");
 }

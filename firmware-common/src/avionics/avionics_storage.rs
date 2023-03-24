@@ -1,15 +1,14 @@
 use crate::deserialize_safe;
 use crate::driver::flash::{SpiFlash, WriteBuffer};
-use crate::storage::StorageMeta;
+use crate::storage::{StorageMeta, STORAGE_META_ADDRESS};
 use bytecheck::CheckBytes;
 use defmt::*;
 use rkyv::ser::{serializers::BufferSerializer, Serializer};
 use rkyv::{AlignedBytes, Archive, Deserialize, Serialize};
 
 const AVIONICS_STORAGE_VERSION: u32 = 0;
-const AVIONICS_META_ADDRESS: u32 = 256;
 
-#[derive(Archive, Deserialize, Serialize, PartialEq, Clone, defmt::Format)]
+#[derive(Archive, Deserialize, Serialize, Clone, defmt::Format)]
 #[archive_attr(derive(CheckBytes))]
 pub struct AvionicsStorageMeta {
     storage_version: u32,
@@ -52,10 +51,9 @@ impl<F: SpiFlash> AvionicsStorage<F> {
     }
 
     async fn try_read_meta(flash: &mut F) -> Option<(StorageMeta, AvionicsStorageMeta)> {
-        let mut buffer = flash.read_256_bytes(0).await;
+        let mut buffer = flash.read_256_bytes(STORAGE_META_ADDRESS).await;
 
         let length = buffer.read_u32() as usize;
-        info!("Storage meta length: {:?}", length);
         let storage_meta = deserialize_safe!(StorageMeta, buffer.read_slice(length));
 
         buffer.align_4_bytes();
@@ -73,7 +71,7 @@ impl<F: SpiFlash> AvionicsStorage<F> {
     }
 
     pub async fn write_meta(&mut self) {
-        self.flash.erase_sector_4kb(0).await;
+        self.flash.erase_sector_4kb(STORAGE_META_ADDRESS).await;
 
         let mut write_buffer = WriteBuffer::new();
 
