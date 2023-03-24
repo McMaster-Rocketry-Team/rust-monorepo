@@ -8,14 +8,14 @@ pub enum StorageMode {
     GCM,
 }
 
-const STORAGE_VERSION: u32 = 0;
+pub const STORAGE_VERSION: u32 = 1;
 pub const STORAGE_META_ADDRESS: u32 = 0;
 
 #[derive(Archive, Deserialize, Serialize, Clone, defmt::Format)]
 #[archive_attr(derive(CheckBytes))]
 pub struct StorageMeta {
-    storage_mode: StorageMode,
-    storage_version: u32,
+    pub storage_mode: StorageMode,
+    pub storage_version: u32,
 }
 
 impl Default for StorageMeta {
@@ -30,9 +30,10 @@ impl Default for StorageMeta {
 #[macro_export]
 macro_rules! deserialize_safe {
     ($type:ident, $buffer:expr) => {{
-        use rkyv::{check_archived_root, Infallible};
+        use rkyv::{check_archived_root, Infallible, Deserialize};
         use heapless::String;
         use core::fmt::Write;
+        use defmt::*;
 
         let buffer = $buffer;
         let result: Option<$type> = match check_archived_root::<$type>(buffer) {
@@ -51,3 +52,4 @@ macro_rules! deserialize_safe {
         result
     }};
 }
+

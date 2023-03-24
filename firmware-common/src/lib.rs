@@ -7,8 +7,9 @@ use driver::flash::SpiFlash;
 use avionics::avionics_storage::AvionicsStorage;
 
 pub mod driver;
-mod storage;
+mod common;
 mod avionics;
+mod gcm;
 
 pub async fn init<F: SpiFlash>(flash: F) {
     AvionicsStorage::new(flash).await;

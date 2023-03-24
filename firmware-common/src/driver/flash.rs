@@ -1,7 +1,7 @@
 pub trait SpiFlash {
     // size in bytes
     fn size(&self) -> u32;
-    
+
     async fn erase_sector_4kb(&mut self, address: u32);
     async fn erase_block_64kb(&mut self, address: u32);
 
@@ -18,7 +18,7 @@ pub trait SpiFlash {
     // The write buffer must be 261 bytes long, where the last 256 bytes are the data to write
     async fn write_page<'b>(&mut self, address: u32, write_buffer: &'b mut WriteBuffer);
 
-    // returns a buffer of 264 bytes, 
+    // returns a buffer of 264 bytes,
     // where the first 3 bytes are the padding for 4-byte aligmnent (required by rkyv)
     // The following 5 bytes are the command and the address
     // the last 256 bytes are the data
@@ -50,6 +50,9 @@ impl ReadBuffer {
     }
 
     pub fn read_u32(&mut self) -> u32 {
+        if 4 > self.buffer.len() - self.offset {
+            return 0;
+        }
         let value = u32::from_be_bytes(
             self.buffer[self.offset..(self.offset + 4)]
                 .try_into()
@@ -60,6 +63,9 @@ impl ReadBuffer {
     }
 
     pub fn read_slice(&mut self, length: usize) -> &[u8] {
+        if length > self.buffer.len() - self.offset {
+            return &[];
+        }
         let slice = &self.buffer[self.offset..(self.offset + length)];
         self.offset += length;
         slice
@@ -90,6 +96,9 @@ impl WriteBuffer {
     }
 
     pub fn extend_from_slice(&mut self, slice: &[u8]) {
+        if self.offset + slice.len() > self.buffer.len() {
+            return;
+        }
         self.buffer[self.offset..(self.offset + slice.len())].copy_from_slice(slice);
         self.offset += slice.len();
     }

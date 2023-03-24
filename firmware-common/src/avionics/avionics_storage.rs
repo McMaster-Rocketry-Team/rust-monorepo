@@ -1,23 +1,23 @@
 use crate::deserialize_safe;
 use crate::driver::flash::{SpiFlash, WriteBuffer};
-use crate::storage::{StorageMeta, STORAGE_META_ADDRESS};
+use crate::common::storage_meta::{StorageMeta, STORAGE_META_ADDRESS};
 use bytecheck::CheckBytes;
 use defmt::*;
 use rkyv::ser::{serializers::BufferSerializer, Serializer};
 use rkyv::{AlignedBytes, Archive, Deserialize, Serialize};
 
-const AVIONICS_STORAGE_VERSION: u32 = 0;
-
 #[derive(Archive, Deserialize, Serialize, Clone, defmt::Format)]
 #[archive_attr(derive(CheckBytes))]
 pub struct AvionicsStorageMeta {
-    storage_version: u32,
+    name: [u8; 64],
+    flight_recording_addresses: [u32; 20],
 }
 
 impl Default for AvionicsStorageMeta {
     fn default() -> Self {
         Self {
-            storage_version: AVIONICS_STORAGE_VERSION,
+            flight_recording_addresses: [0; 20],
+            name: [0; 64],
         }
     }
 }
