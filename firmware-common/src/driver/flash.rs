@@ -2,62 +2,58 @@ pub trait SpiFlash {
     // size in bytes
     fn size(&self) -> u32;
 
-    async fn erase_sector_4kb(&mut self, address: u32);
-    async fn erase_block_32kb(&mut self, address: u32);
-    async fn erase_block_64kb(&mut self, address: u32);
+    async fn erase_sector_4kib(&mut self, address: u32);
+    async fn erase_block_32kib(&mut self, address: u32);
+    async fn erase_block_64kib(&mut self, address: u32);
 
-    // maximum read length is 4 kb
-    // size of the buffer must be at least 5 bytes larger than read_length
-    async fn read_4kb<'b>(
+    // read arbitary length, N must be larger or equal to read_length
+    async fn read<'b, const N: usize>(
         &mut self,
         address: u32,
         read_length: usize,
-        read_buffer: &'b mut [u8],
-    ) -> &'b [u8];
-
-    // read arbitary length, read_buffer must be larger or equal to read_length
-    async fn read<'b>(
-        &mut self,
-        address: u32,
-        read_length: usize,
-        read_buffer: &'b mut [u8],
-    ) -> &'b [u8];
+        read_buffer: &'b mut ReadBuffer<N, 5>,
+    ) where
+        [u8; N + 5]: Sized;
 
     // Write a full page of 256 bytes, the last byte of the address is ignored
     // The write buffer must be 261 bytes long, where the last 256 bytes are the data to write
     async fn write_page<'b>(&mut self, address: u32, write_buffer: &'b mut WriteBuffer);
-
-    // returns a buffer of 264 bytes,
-    // where the first 3 bytes are the padding for 4-byte aligmnent (required by rkyv)
-    // The following 5 bytes are the command and the address
-    // the last 256 bytes are the data
-    async fn read_256_bytes(&mut self, address: u32) -> ReadBuffer {
-        let mut buffer = [0u8; 264];
-        self.read_4kb(address, 256, &mut buffer[3..]).await;
-        ReadBuffer::new(buffer)
-    }
-
-    // returns a buffer of 4104 bytes,
-    // where the first 3 bytes are the padding for 4-byte aligmnent (required by rkyv)
-    // The following 5 bytes are the command and the address
-    // the last 4096 bytes are the data
-    async fn read_sector_4kb(&mut self, address: u32) -> [u8; 4104] {
-        let mut buffer = [0u8; 4104];
-        self.read_4kb(address, 4096, &mut buffer[3..]).await;
-        buffer
-    }
-
-    
 }
 
-pub struct ReadBuffer {
-    buffer: [u8; 264],
+pub struct ReadBuffer<const N: usize, const START_OFFSET: usize>
+where
+    [u8; N + START_OFFSET]: Sized,
+{
+    buffer: [u8; N + START_OFFSET],
     offset: usize,
 }
 
-impl ReadBuffer {
-    pub fn new(buffer: [u8; 264]) -> Self {
-        Self { buffer, offset: 8 }
+impl<const N: usize, const START_OFFSET: usize> ReadBuffer<N, START_OFFSET>
+where
+    [u8; N + START_OFFSET]: Sized,
+{
+    pub fn new() -> Self {
+        Self {
+            buffer: [0u8; N + START_OFFSET],
+            offset: START_OFFSET,
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        N
+    }
+
+    pub fn reset(&mut self) {
+        self.offset = START_OFFSET;
+    }
+
+    pub fn read_u8(&mut self) -> u8 {
+        if 1 > self.buffer.len() - self.offset {
+            return 0;
+        }
+        let value = self.buffer[self.offset];
+        self.offset += 1;
+        value
     }
 
     pub fn read_u32(&mut self) -> u32 {
@@ -86,6 +82,10 @@ impl ReadBuffer {
         while self.offset % 4 != 0 {
             self.offset += 1;
         }
+    }
+
+    pub fn as_mut_slice(&mut self) -> &mut [u8; N + START_OFFSET] {
+        &mut self.buffer
     }
 }
 
