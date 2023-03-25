@@ -3,10 +3,19 @@ pub trait SpiFlash {
     fn size(&self) -> u32;
 
     async fn erase_sector_4kb(&mut self, address: u32);
+    async fn erase_block_32kb(&mut self, address: u32);
     async fn erase_block_64kb(&mut self, address: u32);
 
-    // maximum read length is 256 bytes
+    // maximum read length is 4 kb
     // size of the buffer must be at least 5 bytes larger than read_length
+    async fn read_4kb<'b>(
+        &mut self,
+        address: u32,
+        read_length: usize,
+        read_buffer: &'b mut [u8],
+    ) -> &'b [u8];
+
+    // read arbitary length, read_buffer must be larger or equal to read_length
     async fn read<'b>(
         &mut self,
         address: u32,
@@ -24,7 +33,7 @@ pub trait SpiFlash {
     // the last 256 bytes are the data
     async fn read_256_bytes(&mut self, address: u32) -> ReadBuffer {
         let mut buffer = [0u8; 264];
-        self.read(address, 256, &mut buffer[3..]).await;
+        self.read_4kb(address, 256, &mut buffer[3..]).await;
         ReadBuffer::new(buffer)
     }
 
@@ -34,9 +43,11 @@ pub trait SpiFlash {
     // the last 4096 bytes are the data
     async fn read_sector_4kb(&mut self, address: u32) -> [u8; 4104] {
         let mut buffer = [0u8; 4104];
-        self.read(address, 4096, &mut buffer[3..]).await;
+        self.read_4kb(address, 4096, &mut buffer[3..]).await;
         buffer
     }
+
+    
 }
 
 pub struct ReadBuffer {
