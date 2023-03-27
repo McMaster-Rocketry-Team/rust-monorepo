@@ -21,45 +21,47 @@ pub trait SpiFlash {
     // The write buffer must be at least 261 bytes long, where the last 256 bytes are the data to write
     async fn write_256b<'b>(&mut self, address: u32, write_buffer: &'b mut [u8]);
 
-    // read arbitary length, N must be larger or equal to read_length
+    // read arbitary length, N must be larger or equal to read_length + 5
     async fn read<'b, 'c, const N: usize>(
         &mut self,
         address: u32,
         read_length: usize,
-        read_buffer: &'b mut ReadBuffer<'c, N, 5>,
-    ) where
-        [u8; N + 5]: Sized,
-    {
-        let read_buffer = read_buffer.as_mut_slice();
-        let mut bytes_read = 0;
-        while bytes_read < read_length {
-            let length = if read_length - bytes_read > 4096 {
-                4096
-            } else {
-                read_length - bytes_read
-            };
-            info!("reading {}/{} bytes", bytes_read, read_length);
-            self.read_4kib(
-                address + bytes_read as u32,
-                length,
-                &mut read_buffer[bytes_read..],
-            )
-            .await;
-            bytes_read += length;
-        }
+        read_buffer: &'b mut ReadBuffer<'c, N>,
+    ) {
+        // info!("hello");
+        // let read_buffer = read_buffer.as_mut_slice();
+        // info!(
+        //     "read read_buffer: {}, {}",
+        //     read_buffer.len(),
+        //     &read_buffer[0..10]
+        // );
+        // let mut bytes_read = 0;
+        // while bytes_read < read_length {
+        //     let length = if read_length - bytes_read > 4096 {
+        //         4096
+        //     } else {
+        //         read_length - bytes_read
+        //     };
+        //     info!("reading {}/{} bytes", bytes_read, read_length);
+        //     // self.read_4kib(
+        //     //     address + bytes_read as u32,
+        //     //     length,
+        //     //     &mut read_buffer[bytes_read..],
+        //     // )
+        //     // .await;
+        //     bytes_read += length;
+        // }
     }
 
     // write arbitary length (must be a multiple of 256 bytes)
     // address must be 256-byte-aligned
-    // N must be larger or equal to read_length
+    // N must be larger or equal to read_length + 5
     async fn write<'b, 'c, const N: usize>(
         &mut self,
         address: u32,
         write_length: usize,
-        write_buffer: &'b mut WriteBuffer<'c, N, 5>,
-    ) where
-        [u8; N + 5]: Sized,
-    {
+        write_buffer: &'b mut WriteBuffer<'c, N>,
+    ) {
         let write_buffer = write_buffer.as_mut_slice();
         let mut bytes_written = 0;
         while bytes_written < write_length {
@@ -72,25 +74,22 @@ pub trait SpiFlash {
             self.write_256b(
                 address + bytes_written as u32,
                 &mut write_buffer[bytes_written..],
-            ).await;
+            )
+            .await;
             bytes_written += length;
         }
     }
 }
 
-pub struct ReadBuffer<'a, const N: usize, const START_OFFSET: usize>
-where
-    [u8; N + START_OFFSET]: Sized,
-{
-    buffer: &'a mut [u8; N + START_OFFSET],
+const START_OFFSET: usize = 5;
+
+pub struct ReadBuffer<'a, const N: usize> {
+    buffer: &'a mut [u8; N],
     offset: usize,
 }
 
-impl<'a, const N: usize, const START_OFFSET: usize> ReadBuffer<'a, N, START_OFFSET>
-where
-    [u8; N + START_OFFSET]: Sized,
-{
-    pub fn new(buffer: &'a mut [u8; N + START_OFFSET]) -> Self {
+impl<'a, const N: usize> ReadBuffer<'a, N> {
+    pub fn new(buffer: &'a mut [u8; N]) -> Self {
         Self {
             buffer,
             offset: START_OFFSET,
@@ -98,7 +97,7 @@ where
     }
 
     pub fn len(&self) -> usize {
-        N
+        N - START_OFFSET
     }
 
     pub fn reset(&mut self) {
@@ -159,39 +158,34 @@ where
         &self.buffer[START_OFFSET..]
     }
 
-    pub fn as_mut_slice(&mut self) -> &mut [u8; N + START_OFFSET] {
-        &mut self.buffer
+    pub fn as_mut_slice(&mut self) -> &mut [u8] {
+        self.buffer
     }
 }
 
 #[macro_export]
 macro_rules! new_read_buffer {
-    ($name: ident, $length:expr, $start:expr) => {
-        let mut $name = [0u8; $length + $start];
-        let mut $name: ReadBuffer<{ $length }, $start> = ReadBuffer::new(&mut $name);
-    };
     ($name: ident, $length:expr) => {
-        new_read_buffer!($name, $length, 5);
+        let mut $name: [u8; {$length + 5}] = [0u8; $length + 5];
+        let mut $name: ReadBuffer<{$length + 5}> = ReadBuffer::new(&mut $name);
     };
 }
 
-pub struct WriteBuffer<'a, const N: usize, const START_OFFSET: usize>
-where
-    [u8; N + START_OFFSET]: Sized,
-{
-    buffer: &'a mut [u8; N + START_OFFSET],
+pub struct WriteBuffer<'a, const N: usize> {
+    buffer: &'a mut [u8; N],
     offset: usize,
 }
 
-impl<'a, const N: usize, const START_OFFSET: usize> WriteBuffer<'a, N, START_OFFSET>
-where
-    [u8; N + START_OFFSET]: Sized,
-{
-    pub fn new(buffer: &'a mut [u8; N + START_OFFSET]) -> Self {
+impl<'a, const N: usize> WriteBuffer<'a, N> {
+    pub fn new(buffer: &'a mut [u8; N]) -> Self {
         Self {
             buffer,
             offset: START_OFFSET,
         }
+    }
+
+    pub fn len(&self) -> usize {
+        N - START_OFFSET
     }
 
     pub fn reset(&mut self) {
@@ -211,6 +205,10 @@ where
         self.offset += 1;
     }
 
+    pub fn extend_from_u16(&mut self, value: u16) {
+        self.extend_from_slice(&value.to_be_bytes());
+    }
+
     pub fn extend_from_u32(&mut self, value: u32) {
         self.extend_from_slice(&value.to_be_bytes());
     }
@@ -225,18 +223,19 @@ where
         }
     }
 
-    pub fn as_mut_slice(&mut self) -> &mut [u8; N + START_OFFSET] {
-        &mut self.buffer
+    pub fn as_slice_without_start(&mut self) -> &[u8] {
+        &self.buffer[START_OFFSET..]
+    }
+
+    pub fn as_mut_slice(&mut self) -> &mut [u8] {
+        self.buffer
     }
 }
 
 #[macro_export]
 macro_rules! new_write_buffer {
-    ($name: ident, $length:expr, $start:expr) => {
-        let mut $name = [0u8; $length + $start];
-        let mut $name: WriteBuffer<{ $length }, $start> = WriteBuffer::new(&mut $name);
-    };
     ($name: ident, $length:expr) => {
-        new_write_buffer!($name, $length, 5);
+        let mut $name: [u8; {$length + 5}] = [0u8; $length + 5];
+        let mut $name: WriteBuffer<{$length + 5}> = WriteBuffer::new(&mut $name);
     };
 }

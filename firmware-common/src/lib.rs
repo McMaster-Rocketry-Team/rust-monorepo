@@ -4,15 +4,18 @@
 #![feature(generic_const_exprs)]
 
 use defmt::*;
-use driver::flash::SpiFlash;
-use avionics::avionics_storage::AvionicsStorage;
+use driver::{crc::Crc, flash::SpiFlash};
 
-pub mod driver;
-mod common;
+use crate::common::vlfs::VLFS;
+
 mod avionics;
+mod common;
+pub mod driver;
 mod gcm;
 
-pub async fn init<F: SpiFlash>(flash: F) {
-    AvionicsStorage::new(flash).await;
-    info!("Avionics storage initialized");
+pub async fn init<F: SpiFlash, C: Crc>(flash: F, crc: C) {
+    let mut fs = VLFS::new(flash, crc);
+    info!("Initializing VLFS");
+    fs.init().await;
+    info!("VLFS initialized");
 }
