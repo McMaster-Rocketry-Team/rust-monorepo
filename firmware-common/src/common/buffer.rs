@@ -1,3 +1,5 @@
+use crate::driver::crc::Crc;
+
 pub struct WriteBuffer<'a, const N: usize> {
     buffer: &'a mut [u8; N],
     offset: usize,
@@ -46,6 +48,10 @@ impl<'a, const N: usize> WriteBuffer<'a, N> {
         self.extend_from_slice(&value.to_be_bytes());
     }
 
+    pub fn extend_from_u64(&mut self, value: u64) {
+        self.extend_from_slice(&value.to_be_bytes());
+    }
+
     pub fn replace_u32(&mut self, value: u32, i: usize) {
         self.buffer[i..(i + 4)].copy_from_slice(&value.to_be_bytes());
     }
@@ -56,7 +62,18 @@ impl<'a, const N: usize> WriteBuffer<'a, N> {
         }
     }
 
-    pub fn as_slice_without_start(&mut self) -> &[u8] {
+    pub fn calculate_crc<C: Crc>(&self, crc: &mut C)->u32 {
+        crc.reset();
+        let slice = self.as_slice_without_start();
+        for i in 0..(self.len() / 4) {
+            crc.feed(u32::from_be_bytes(
+                slice[(i * 4)..((i + 1) * 4)].try_into().unwrap(),
+            ));
+        }
+        crc.read()
+    }
+
+    pub fn as_slice_without_start(&self) -> &[u8] {
         &self.buffer[START_OFFSET..self.offset]
     }
 

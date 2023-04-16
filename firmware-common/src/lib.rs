@@ -14,9 +14,9 @@ mod gcm;
 pub async fn init<T: Timer, F: SpiFlash, C: Crc, I: IMU>(timer: T, flash: F, crc: C, mut imu: I) {
     let mut fs = VLFS::new(flash, crc);
     fs.init().await;
-    loop {
-        let reading = imu.read().await;
-        info!("imu: {}", reading);
-        timer.sleep(10).await;
-    }
+    // loop {
+    //     let reading = imu.read().await;
+    //     info!("imu: {}", reading);
+    //     timer.sleep(10).await;
+    // }
 }

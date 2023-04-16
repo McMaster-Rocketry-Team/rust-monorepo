@@ -24,12 +24,7 @@ pub trait SpiFlash {
     async fn write_256b<'b>(&mut self, address: u32, write_buffer: &'b mut [u8]);
 
     // read arbitary length, length of read_buffer must be larger or equal to read_length + 5
-    async fn read<'b, 'c>(
-        &mut self,
-        address: u32,
-        read_length: usize,
-        read_buffer: &'b mut [u8],
-    ) {
+    async fn read<'b, 'c>(&mut self, address: u32, read_length: usize, read_buffer: &'b mut [u8]) {
         let mut bytes_read = 0;
         while bytes_read < read_length {
             let length = if read_length - bytes_read > 4096 {
@@ -127,7 +122,7 @@ where
             }
         }
 
-        & self.buffer[5..(length + 5)]
+        &self.buffer[5..(length + 5)]
     }
 
     fn reset_crc(&mut self) {
@@ -150,6 +145,10 @@ pub trait IOReader {
 
     async fn read_u32(&mut self) -> u32 {
         u32::from_be_bytes(self.read_slice(4).await.try_into().unwrap())
+    }
+
+    async fn read_u64(&mut self) -> u64 {
+        u64::from_be_bytes(self.read_slice(8).await.try_into().unwrap())
     }
 
     async fn read_slice(&mut self, length: usize) -> &[u8];

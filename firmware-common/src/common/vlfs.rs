@@ -4,24 +4,31 @@ use crate::driver::{crc::Crc, flash::SpiFlash};
 use crate::new_write_buffer;
 use bitvec::prelude::*;
 use defmt::*;
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::channel::Channel;
 use heapless::Vec;
 
+const VLFS_VERSION: u32 = 1;
 const SECTORS_COUNT: usize = 65536;
-const MAX_FILES: usize = 256; // can be as large as 2728, however that breaks the 256kb stack for some reason
+const MAX_FILES: usize = 512; // can be as large as 2728
 const TABLE_COUNT: usize = 4;
 const FREE_SECTORS_ARRAY_SIZE: usize = 2048; // SECTORS_COUNT / 32
-const ALLOC_TABLE_READ_LENGTH: usize = 3088; // 16 + MAX_FILES * 12
+const MAX_ALLOC_TABLE_LENGTH: usize = 3088; // 16 + MAX_FILES * 12
+const MAX_OPENED_FILES: usize = 10;
+const WRITING_QUEUE_SIZE: usize = 4;
 
-pub struct FileEntry {
-    pub metadata: [u8; 10],
-    pub first_sector_index: u16,
+#[derive(Debug, Clone)]
+struct FileEntry {
+    file_id: u64,
+    file_type: u16,
+    first_sector_index: u16,
 }
 
 // serialized size must fit in half a block (32kib)
-pub struct AllocationTable {
-    pub sequence_number: u32,
-    pub file_count: u32,
-    pub file_entries: Vec<FileEntry, MAX_FILES>,
+struct AllocationTable {
+    sequence_number: u32,
+    file_count: u32,
+    file_entries: Vec<FileEntry, MAX_FILES>,
 }
 
 impl Default for AllocationTable {
@@ -34,19 +41,31 @@ impl Default for AllocationTable {
     }
 }
 
-const VLFS_VERSION: u32 = 1;
+#[derive(Debug)]
+struct OpenedFile {
+    current_sector_index: u16,
+    file_entry: FileEntry, // FIXME use reference
+}
+
+type FileDescriptor = usize;
+
+pub struct WritingQueueEntry {
+    pub fd: FileDescriptor,
+    pub data: [u8; 5 + 4096],
+}
 
 pub struct VLFS<F, C>
 where
     F: SpiFlash,
     C: Crc,
 {
-    pub version: u32,
-    pub allocation_table: AllocationTable,
-    pub allocation_table_index: usize, // which half block is the allocation table in
-    pub free_sectors: BitArray<[u32; FREE_SECTORS_ARRAY_SIZE], Lsb0>,
-    pub flash: F,
-    pub crc: C,
+    allocation_table: AllocationTable,
+    allocation_table_index: usize, // which half block is the allocation table in
+    free_sectors: BitArray<[u32; FREE_SECTORS_ARRAY_SIZE], Lsb0>,
+    flash: F,
+    crc: C,
+    opened_files: Vec<Option<OpenedFile>, MAX_OPENED_FILES>,
+    writing_queue: Channel<CriticalSectionRawMutex, WritingQueueEntry, WRITING_QUEUE_SIZE>,
 }
 
 impl<F, C> VLFS<F, C>
@@ -55,13 +74,18 @@ where
     C: Crc,
 {
     pub fn new(flash: F, crc: C) -> Self {
+        let mut opened_files = Vec::<Option<OpenedFile>, MAX_OPENED_FILES>::new();
+        for _ in 0..MAX_OPENED_FILES {
+            opened_files.push(None).unwrap();
+        }
         Self {
-            version: VLFS_VERSION,
             allocation_table: AllocationTable::default(),
             allocation_table_index: TABLE_COUNT - 1,
             free_sectors: BitArray::<_, Lsb0>::new([0u32; FREE_SECTORS_ARRAY_SIZE]),
             flash,
             crc,
+            opened_files: Vec::new(),
+            writing_queue: Channel::new(),
         }
     }
 
@@ -76,6 +100,39 @@ where
             self.write_allocation_table().await;
         }
         info!("VLFS initialized");
+    }
+
+    pub async fn open(&mut self, file_id: u64) -> Option<FileDescriptor> {
+        let file_descriptor = self.next_avaliable_file_descriptor()?;
+        for file_entry in &self.allocation_table.file_entries {
+            if file_entry.file_id == file_id {
+                let opened_file = OpenedFile {
+                    current_sector_index: file_entry.first_sector_index,
+                    file_entry: file_entry.clone(),
+                };
+                self.opened_files[file_descriptor].replace(opened_file);
+                return Some(file_descriptor);
+            }
+        }
+
+        None
+    }
+
+    pub async fn write_file(&mut self, data: WritingQueueEntry){
+        self.writing_queue.send(data).await;
+    }
+
+    pub async fn run(&self){
+
+    }
+
+    fn next_avaliable_file_descriptor(&self) -> Option<FileDescriptor> {
+        for fd in 0..MAX_OPENED_FILES {
+            if self.opened_files[fd].is_none() {
+                return Some(fd);
+            }
+        }
+        None
     }
 
     async fn read_allocation_table(&mut self) -> bool {
@@ -105,12 +162,13 @@ where
             }
             let mut files: Vec<FileEntry, MAX_FILES> = Vec::<FileEntry, MAX_FILES>::new();
             for _ in 0..file_count {
-                let metadata = reader.read_slice(10).await;
-                let metadata: [u8; 10] = metadata.try_into().unwrap();
+                let file_id = reader.read_u64().await;
+                let file_type = reader.read_u16().await;
                 let first_sector_index = reader.read_u16().await;
                 files
                     .push(FileEntry {
-                        metadata,
+                        file_id,
+                        file_type,
                         first_sector_index,
                     })
                     .ok()
@@ -145,30 +203,18 @@ where
     async fn write_allocation_table(&mut self) {
         self.allocation_table_index = (self.allocation_table_index + 1) % TABLE_COUNT;
         self.allocation_table.sequence_number += 1;
-        new_write_buffer!(write_buffer, ALLOC_TABLE_READ_LENGTH);
+        new_write_buffer!(write_buffer, MAX_ALLOC_TABLE_LENGTH);
 
         write_buffer.extend_from_u32(VLFS_VERSION);
         write_buffer.extend_from_u32(self.allocation_table.sequence_number);
         write_buffer.extend_from_u32(self.allocation_table.file_count);
         for file in &self.allocation_table.file_entries {
-            write_buffer.extend_from_slice(&file.metadata);
+            write_buffer.extend_from_u64(file.file_id);
+            write_buffer.extend_from_u16(file.file_type);
             write_buffer.extend_from_u16(file.first_sector_index);
         }
 
-        self.crc.reset();
-        for i in 0..(write_buffer.len() / 4) {
-            info!(
-                "feed word: {=[?]}",
-                write_buffer.as_slice_without_start()[(i * 4)..((i + 1) * 4)]
-            );
-            self.crc.feed(u32::from_be_bytes(
-                write_buffer.as_slice_without_start()[(i * 4)..((i + 1) * 4)]
-                    .try_into()
-                    .unwrap(),
-            ));
-        }
-        let crc = self.crc.read();
-        info!("CRC: {}", crc);
+        let crc = write_buffer.calculate_crc(&mut self.crc);
         write_buffer.extend_from_u32(crc);
 
         info!(
