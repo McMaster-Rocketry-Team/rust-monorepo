@@ -17,6 +17,6 @@ pub async fn init<T: Timer, F: SpiFlash, C: Crc, I: IMU>(timer: T, flash: F, crc
     loop {
         let reading = imu.read().await;
         info!("imu: {}", reading);
-        timer.sleep(500).await;
+        timer.sleep(10).await;
     }
 }
