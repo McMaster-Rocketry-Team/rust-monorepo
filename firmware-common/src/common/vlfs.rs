@@ -82,7 +82,7 @@ where
         let mut found_valid_table = false;
 
         for i in 0..TABLE_COUNT {
-            info!("Reading allocation table #{}", i);
+            info!("Reading allocation table #{}", i + 1);
 
             let mut reader = SpiReader::new(
                 (i * 32 * 1024).try_into().unwrap(),
