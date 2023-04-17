@@ -12,9 +12,10 @@ bitvec = { version = "1.0.1", default-features = false }
 bytecheck = { version = "0.6.9", default-features = false}
 defmt = "0.3"
 heapless = { version = "0.7.5", default-features = false}
-micromath = { version = "2.0.0", default-features = false, features = ["vector"]}
 rkyv = { version = "0.7.39", default-features = false, features = [
     "validation",
     "size_32",
     "alloc"
 ] }
+nalgebra = { version = "0.32.2", default-features = false }
+ahrs = { version = "0.6.0", default-features = false }
