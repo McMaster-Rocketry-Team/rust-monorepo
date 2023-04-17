@@ -2,7 +2,7 @@
 #![feature(async_fn_in_trait)]
 
 use defmt::info;
-use driver::{crc::Crc, flash::SpiFlash, imu::IMU, timer::Timer};
+use driver::{adc::ADC, crc::Crc, flash::SpiFlash, imu::IMU, pyro::PyroChannel, timer::Timer, arming::HardwareArming};
 
 use crate::common::vlfs::VLFS;
 
@@ -11,12 +11,41 @@ mod common;
 pub mod driver;
 mod gcm;
 
-pub async fn init<T: Timer, F: SpiFlash, C: Crc, I: IMU>(timer: T, flash: F, crc: C, mut imu: I) {
+pub async fn init<
+    T: Timer,
+    F: SpiFlash,
+    C: Crc,
+    I: IMU,
+    V: ADC,
+    A: ADC,
+    P1: PyroChannel,
+    P2: PyroChannel,
+    P3: PyroChannel,
+    ARM: HardwareArming,
+>(
+    timer: T,
+    flash: F,
+    crc: C,
+    mut imu: I,
+    mut batt_voltmeter: V,
+    mut batt_ammeter: A,
+    mut pyro1: P1,
+    mut pyro2: P2,
+    mut pyro3: P3,
+    mut arming_switch: ARM,
+) {
     let mut fs = VLFS::new(flash, crc);
     fs.init().await;
-    // loop {
-    //     let reading = imu.read().await;
-    //     info!("imu: {}", reading);
-    //     timer.sleep(10).await;
-    // }
+    loop {
+        // let reading = imu.read().await;
+        // info!("imu: {}", reading);
+        // info!(
+        //     "battery: {}V, {}A",
+        //     batt_voltmeter.read().await,
+        //     batt_ammeter.read().await
+        // );
+        info!("arming: {}", arming_switch.read_arming().await);
+        info!("pyro1 cont: {}", pyro1.read_continuity().await);
+        timer.sleep(500).await;
+    }
 }
