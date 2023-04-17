@@ -2,7 +2,10 @@
 #![feature(async_fn_in_trait)]
 
 use defmt::info;
-use driver::{adc::ADC, crc::Crc, flash::SpiFlash, imu::IMU, pyro::PyroChannel, timer::Timer, arming::HardwareArming};
+use driver::{
+    adc::ADC, arming::HardwareArming, crc::Crc, flash::SpiFlash, imu::IMU, pyro::PyroChannel,
+    timer::Timer,
+};
 
 use crate::common::vlfs::VLFS;
 
@@ -22,6 +25,7 @@ pub async fn init<
     P2: PyroChannel,
     P3: PyroChannel,
     ARM: HardwareArming,
+    USB: driver::usb::USB,
 >(
     timer: T,
     flash: F,
@@ -33,9 +37,11 @@ pub async fn init<
     mut pyro2: P2,
     mut pyro3: P3,
     mut arming_switch: ARM,
+    mut usb: USB,
 ) {
     let mut fs = VLFS::new(flash, crc);
     fs.init().await;
+    let mut usb_buffer = [0u8; 64];
     loop {
         // let reading = imu.read().await;
         // info!("imu: {}", reading);
@@ -44,8 +50,12 @@ pub async fn init<
         //     batt_voltmeter.read().await,
         //     batt_ammeter.read().await
         // );
-        info!("arming: {}", arming_switch.read_arming().await);
-        info!("pyro1 cont: {}", pyro1.read_continuity().await);
-        timer.sleep(500).await;
+        // info!("arming: {}", arming_switch.read_arming().await);
+        // info!("pyro1 cont: {}", pyro1.read_continuity().await);
+        // timer.sleep(500).await;
+        let len = usb.read_packet(&mut usb_buffer).await;
+        if let Ok(len) = len {
+            info!("usb: {}", &usb_buffer[0..len]);
+        }
     }
 }
