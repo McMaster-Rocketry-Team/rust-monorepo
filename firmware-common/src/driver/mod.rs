@@ -6,3 +6,4 @@ pub mod adc;
 pub mod pyro;
 pub mod arming;
 pub mod usb;
+pub mod meg;
