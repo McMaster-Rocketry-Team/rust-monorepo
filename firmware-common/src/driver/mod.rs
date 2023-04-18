@@ -8,3 +8,4 @@ pub mod arming;
 pub mod usb;
 pub mod meg;
 pub mod buzzer;
+pub mod lora;
