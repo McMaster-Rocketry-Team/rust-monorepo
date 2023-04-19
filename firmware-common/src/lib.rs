@@ -1,6 +1,7 @@
 #![cfg_attr(not(test), no_std)]
 #![feature(async_fn_in_trait)]
 
+use common::console::console::Console;
 use defmt::info;
 use driver::{
     adc::ADC, arming::HardwareArming, buzzer::Buzzer, crc::Crc, flash::SpiFlash, imu::IMU,
@@ -45,27 +46,29 @@ pub async fn init<
 ) {
     let mut fs = VLFS::new(flash, crc);
     fs.init().await;
-    let mut usb_buffer = [0u8; 64];
+    // let mut usb_buffer = [0u8; 64];
+    timer.sleep(2000).await;
+    let mut console = Console::new(usb);
+    console.run().await.unwrap();
 
-
-    meg.reset(false).await.unwrap();
-    loop {
-        // let reading = imu.read().await;
-        // info!("imu: {}", reading);
-        // info!(
-        //     "battery: {}V, {}A",
-        //     batt_voltmeter.read().await,
-        //     batt_ammeter.read().await
-        // );
-        // info!("arming: {}", arming_switch.read_arming().await);
-        // info!("pyro1 cont: {}", pyro1.read_continuity().await);
-        // buzzer.set_enable(true).await;
-        // timer.sleep(500).await;
-        info!("meg: {}", meg.read().await);
-        timer.sleep(500).await;
-        // let len = usb.read_packet(&mut usb_buffer).await;
-        // if let Ok(len) = len {
-        //     info!("usb: {}", &usb_buffer[0..len]);
-        // }
-    }
+    // meg.reset(false).await.unwrap();
+    // loop {
+    // let reading = imu.read().await;
+    // info!("imu: {}", reading);
+    // info!(
+    //     "battery: {}V, {}A",
+    //     batt_voltmeter.read().await,
+    //     batt_ammeter.read().await
+    // );
+    // info!("arming: {}", arming_switch.read_arming().await);
+    // info!("pyro1 cont: {}", pyro1.read_continuity().await);
+    // buzzer.set_enable(true).await;
+    // timer.sleep(500).await;
+    // info!("meg: {}", meg.read().await);
+    // timer.sleep(500).await;
+    // let len = usb.read_packet(&mut usb_buffer).await;
+    // if let Ok(len) = len {
+    //     info!("usb: {}", &usb_buffer[0..len]);
+    // }
+    // }
 }

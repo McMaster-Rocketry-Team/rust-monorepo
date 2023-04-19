@@ -9,3 +9,4 @@ pub mod usb;
 pub mod meg;
 pub mod buzzer;
 pub mod lora;
+pub mod serial;
