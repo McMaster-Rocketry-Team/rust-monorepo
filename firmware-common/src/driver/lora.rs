@@ -29,18 +29,17 @@ pub struct RfConfig {
     pub bandwidth: Bandwidth,
     pub spreading_factor: SpreadingFactor,
     pub coding_rate: CodingRate,
+    pub iq_inverted: bool,
 }
 
 #[derive(Copy, Clone)]
 pub struct TxConfig {
     pub power: i8,
-    pub iq_inverted: bool,
     pub rf: RfConfig,
 }
 
 #[derive(Copy, Clone)]
 pub struct RxConfig {
-    pub iq_inverted: bool,
     pub rf: RfConfig,
 }
 
@@ -53,11 +52,12 @@ pub struct RxQuality {
 pub trait LoRa {
     async fn sleep(&mut self) -> Result<(), ()>;
     async fn reset(&mut self) -> Result<(), ()>;
+    fn min_power(&self) -> i8;
     fn max_power(&self) -> i8;
 
-    async fn set_rx_config(&mut self, rx_config: &RxConfig) -> Result<(), ()>;
-    async fn set_tx_config(&mut self, tx_config: &TxConfig) -> Result<(), ()>;
+    async fn set_rx_config(&mut self, rx_config: RxConfig) -> Result<(), ()>;
+    async fn set_tx_config(&mut self, tx_config: TxConfig) -> Result<(), ()>;
 
     async fn tx(&mut self, data: &[u8]) -> Result<(), ()>;
-    async fn rx(&mut self, buffer: &mut [u8]) -> Result<(usize, RxQuality), ()>;
+    async fn rx(&mut self, buffer: &mut [u8], timeout_ms: u32) -> Result<(usize, RxQuality), ()>;
 }

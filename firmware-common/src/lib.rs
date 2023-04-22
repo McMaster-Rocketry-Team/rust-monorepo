@@ -5,7 +5,7 @@ use common::console::console::Console;
 use defmt::info;
 use driver::{
     adc::ADC, arming::HardwareArming, buzzer::Buzzer, crc::Crc, flash::SpiFlash, imu::IMU,
-    meg::Megnetometer, pyro::PyroChannel, timer::Timer,
+    meg::Megnetometer, pyro::PyroChannel, timer::Timer, lora::LoRa,
 };
 
 use crate::common::vlfs::VLFS;
@@ -29,6 +29,7 @@ pub async fn init<
     USB: driver::usb::USB,
     B: Buzzer,
     M: Megnetometer,
+    L: LoRa,
 >(
     timer: T,
     flash: F,
@@ -43,11 +44,12 @@ pub async fn init<
     mut usb: USB,
     mut buzzer: B,
     mut meg: M,
+    mut lora: L,
 ) {
     let mut fs = VLFS::new(flash, crc);
     fs.init().await;
-    // let mut usb_buffer = [0u8; 64];
-    timer.sleep(2000).await;
+    let mut usb_buffer = [0u8; 64];
+    // timer.sleep(2000).await;
     let mut console = Console::new(usb);
     console.run().await.unwrap();
 
@@ -71,4 +73,29 @@ pub async fn init<
     //     info!("usb: {}", &usb_buffer[0..len]);
     // }
     // }
+
+    // count down 5s, log every 1s
+    // for i in 0..5 {
+    //     info!(
+    //         "arming: {}  chan 3 cont: {}",
+    //         arming_switch.read_arming().await,
+    //         pyro3.read_continuity().await
+    //     );
+    //     info!(
+    //         "voltage: {}  current: {}",
+    //         batt_voltmeter.read().await,
+    //         batt_ammeter.read().await
+    //     );
+    //     info!("countdown: {}", 5 - i);
+    //     timer.sleep(1000).await;
+    // }
+
+    info!("fire!");
+    // pyro3.set_enable(true);
+    loop {
+        pyro3.set_enable(true);
+        timer.sleep(2).await;
+        pyro3.set_enable(false);
+        timer.sleep(2).await;
+    }
 }
