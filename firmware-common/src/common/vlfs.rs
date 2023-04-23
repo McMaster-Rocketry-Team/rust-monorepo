@@ -9,10 +9,10 @@ use embassy_sync::channel::Channel;
 use embassy_sync::mutex::Mutex;
 use heapless::Vec;
 
-const VLFS_VERSION: u32 = 4;
+const VLFS_VERSION: u32 = 5;
 const SECTORS_COUNT: usize = 65536;
 const SECTOR_SIZE: usize = 4096;
-const MAX_FILES: usize = 256; // can be as large as 2728
+const MAX_FILES: usize = 20; // can be as large as 2728
 const TABLE_COUNT: usize = 4;
 const FREE_SECTORS_ARRAY_SIZE: usize = 2048; // SECTORS_COUNT / 32
 const MAX_ALLOC_TABLE_LENGTH: usize = 3088; // 16 + MAX_FILES * 12
@@ -119,7 +119,12 @@ where
                 self.allocation_table.file_entries.len()
             );
             let used_sectors = self.read_free_sectors().await;
-            info!("{} out of {} sectors used", used_sectors, self.flash.get_mut().size()/SECTOR_SIZE as u32 - (TABLE_COUNT * 32 * 1024 / SECTOR_SIZE) as u32);
+            info!(
+                "{} out of {} sectors used",
+                used_sectors,
+                self.flash.get_mut().size() / SECTOR_SIZE as u32
+                    - (TABLE_COUNT * 32 * 1024 / SECTOR_SIZE) as u32
+            );
         } else {
             info!("No valid allocation table found, creating new one");
             self.write_allocation_table().await;
@@ -308,6 +313,75 @@ where
         self.writing_queue.send(data).await;
     }
 
+    pub async fn read_file<'a>(
+        &mut self,
+        fd: FileDescriptor,
+        buffer: &'a mut [u8],
+    ) -> Option<&'a [u8]> {
+        if let Some(opened_file) = &mut self.opened_files[fd] {
+            let mut bytes_read: usize = 0;
+            let flash = self.flash.get_mut();
+            let mut current_sector_index = opened_file.file_entry.first_sector_index;
+            while let Some(sector_index) = current_sector_index {
+                let sector_address = sector_index as u32 * SECTOR_SIZE as u32;
+                let buffer = &mut buffer[bytes_read..];
+                flash.read(sector_address, 8, buffer).await;
+                let data_length_in_sector = Self::find_most_common(
+                    u16::from_be_bytes((&buffer[5..7]).try_into().unwrap()),
+                    u16::from_be_bytes((&buffer[7..9]).try_into().unwrap()),
+                    u16::from_be_bytes((&buffer[9..11]).try_into().unwrap()),
+                    u16::from_be_bytes((&buffer[11..13]).try_into().unwrap()),
+                )
+                .unwrap();
+                let data_length_in_sector_padded = (data_length_in_sector + 3) & !3;
+
+                flash
+                    .read(
+                        sector_address + 8,
+                        data_length_in_sector_padded as usize + 4,
+                        buffer,
+                    )
+                    .await;
+                let crc_actual = self
+                    .crc
+                    .calculate(&buffer[5..(data_length_in_sector_padded as usize + 5)]);
+                let crc_expected = u32::from_be_bytes(
+                    (&buffer[(data_length_in_sector_padded as usize + 5)
+                        ..(data_length_in_sector_padded as usize + 9)])
+                        .try_into()
+                        .unwrap(),
+                );
+                if crc_actual != crc_expected {
+                    warn!(
+                        "CRC mismatch: expected {}, got {}",
+                        crc_expected, crc_actual
+                    );
+                    return None;
+                }
+
+                // read next sector index
+                let buffer = &mut buffer[data_length_in_sector as usize..];
+                flash.read(sector_address + 4096 - 256, 8, buffer).await;
+                let a = u16::from_be_bytes((&buffer[5..7]).try_into().unwrap());
+                let b = u16::from_be_bytes((&buffer[7..9]).try_into().unwrap());
+                let c = u16::from_be_bytes((&buffer[9..11]).try_into().unwrap());
+                let d = u16::from_be_bytes((&buffer[11..13]).try_into().unwrap());
+                let next_sector_index = Self::find_most_common(a, b, c, d).unwrap();
+                current_sector_index = if next_sector_index == 0xFFFF {
+                    None
+                } else {
+                    Some(next_sector_index)
+                };
+
+                bytes_read += data_length_in_sector as usize;
+            }
+
+            return Some(&buffer[5..(5 + bytes_read)]);
+        }
+
+        None
+    }
+
     pub async fn flush(&mut self) {
         loop {
             let data = self.writing_queue.receiver().try_recv();
@@ -337,6 +411,7 @@ where
                 } else {
                     for file_entry in &mut self.allocation_table.file_entries {
                         if file_entry.file_id == opened_file.file_entry.file_id {
+                            opened_file.file_entry.first_sector_index = Some(new_sector_index);
                             file_entry.first_sector_index = Some(new_sector_index);
                             break;
                         }
@@ -425,7 +500,10 @@ where
             reader.reset_crc();
             let version = reader.read_u32().await;
             if version != VLFS_VERSION {
-                warn!("Version mismatch for allocation table #{}", i);
+                warn!(
+                    "Version mismatch for allocation table #{}, expected: {}, actual: {}",
+                    i, VLFS_VERSION, version
+                );
                 continue;
             }
 

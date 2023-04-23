@@ -106,6 +106,11 @@ impl<I: Timer, T: Serial, F: SpiFlash, C: Crc, P: PyroChannel> Console<I, T, F, 
                 entry.data_length = write_buffer.len() as u16;
                 self.vlfs.write_file(entry).await;
                 self.serial.writeln(b"Added to queue").await?;
+            } else if command[0] == "fs.read" {
+                let fd = usize::from_str_radix(command[1], 16).unwrap();
+                let mut buffer = [0u8; 64];
+                let result = self.vlfs.read_file(fd, &mut buffer).await.unwrap();
+                self.serial.writeln(result).await?;
             } else if command[0] == "sys.reset" {
                 // cortex_m::peripheral::SCB::sys_reset();
             } else if command[0] == "f" {

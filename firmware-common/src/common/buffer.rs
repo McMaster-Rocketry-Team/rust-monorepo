@@ -57,11 +57,13 @@ impl<'a, const N: usize> WriteBuffer<'a, N> {
     }
 
     pub fn replace_u16(&mut self, i: usize, value: u16) {
-        self.buffer[(self.start_offset + i)..(self.start_offset + i + 2)].copy_from_slice(&value.to_be_bytes());
+        self.buffer[(self.start_offset + i)..(self.start_offset + i + 2)]
+            .copy_from_slice(&value.to_be_bytes());
     }
 
     pub fn replace_u32(&mut self, i: usize, value: u32) {
-        self.buffer[(self.start_offset + i)..(self.start_offset + i + 4)].copy_from_slice(&value.to_be_bytes());
+        self.buffer[(self.start_offset + i)..(self.start_offset + i + 4)]
+            .copy_from_slice(&value.to_be_bytes());
     }
 
     pub fn align_4_bytes(&mut self) {
@@ -70,15 +72,8 @@ impl<'a, const N: usize> WriteBuffer<'a, N> {
         }
     }
 
-    pub fn calculate_crc<C: Crc>(&self, crc: &mut C)->u32 {
-        crc.reset();
-        let slice = self.as_slice_without_start();
-        for i in 0..(self.len() / 4) {
-            crc.feed(u32::from_be_bytes(
-                slice[(i * 4)..((i + 1) * 4)].try_into().unwrap(),
-            ));
-        }
-        crc.read()
+    pub fn calculate_crc<C: Crc>(&self, crc: &mut C) -> u32 {
+        crc.calculate(self.as_slice_without_start())
     }
 
     pub fn as_slice_without_start(&self) -> &[u8] {
@@ -97,6 +92,7 @@ macro_rules! new_write_buffer {
     };
     ($name: ident, $length: expr, $start_offset: expr) => {
         let mut $name: [u8; { $length + $start_offset }] = [0u8; $length + $start_offset];
-        let mut $name: WriteBuffer<{ $length + $start_offset }> = WriteBuffer::new(&mut $name, $start_offset);
+        let mut $name: WriteBuffer<{ $length + $start_offset }> =
+            WriteBuffer::new(&mut $name, $start_offset);
     };
 }
