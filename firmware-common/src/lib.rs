@@ -1,5 +1,6 @@
 #![cfg_attr(not(test), no_std)]
 #![feature(async_fn_in_trait)]
+#![feature(let_chains)]
 
 use common::console::console::Console;
 use defmt::info;

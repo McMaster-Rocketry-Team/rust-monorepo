@@ -59,19 +59,20 @@ impl<I: Timer, T: Serial, F: SpiFlash, C: Crc, P: PyroChannel> Console<I, T, F, 
                 continue;
             }
             if command[0] == "fs.ls" {
-                let files = self.vlfs.list_files().await;
+                let (file_count, files_iter) = self.vlfs.list_files().await;
                 self.serial
-                    .writeln(heapless_format_bytes!(64, "{} files:", files.len()))
+                    .writeln(heapless_format_bytes!(64, "{} files:", file_count))
                     .await?;
-                for file in files {
-                    let size = self.vlfs.get_file_size(file.file_id).await.unwrap();
+                for file in files_iter {
+                    let (size, sectors) = self.vlfs.get_file_size(file.file_id).await.unwrap();
                     self.serial
                         .writeln(heapless_format_bytes!(
                             64,
-                            "ID: {:#18X}  type: {:#6X}  size: {}",
+                            "ID: {:#18X}  type: {:#6X}  size: {}  sectors: {}",
                             file.file_id,
                             file.file_type,
                             size,
+                            sectors,
                         ))
                         .await?;
                 }

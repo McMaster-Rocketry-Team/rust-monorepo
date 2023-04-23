@@ -6,6 +6,7 @@ use bitvec::prelude::*;
 use defmt::*;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
+use embassy_sync::mutex::Mutex;
 use heapless::Vec;
 
 const VLFS_VERSION: u32 = 4;
@@ -58,6 +59,7 @@ pub struct WritingQueueEntry {
     pub fd: FileDescriptor,
     pub data: [u8; 5 + SECTOR_SIZE - 256],
     pub data_length: u16,
+    pub overwrite_sector: bool,
 }
 
 impl WritingQueueEntry {
@@ -66,6 +68,7 @@ impl WritingQueueEntry {
             fd,
             data: [0xFFu8; 5 + SECTOR_SIZE - 256],
             data_length: 0,
+            overwrite_sector: false,
         }
     }
 }
@@ -78,7 +81,7 @@ where
     allocation_table: AllocationTable,
     allocation_table_index: usize, // which half block is the allocation table in
     free_sectors: BitArray<[u32; FREE_SECTORS_ARRAY_SIZE], Lsb0>,
-    flash: F,
+    flash: Mutex<CriticalSectionRawMutex, F>,
     crc: C,
     opened_files: Vec<Option<OpenedFile>, MAX_OPENED_FILES>,
     writing_queue: Channel<CriticalSectionRawMutex, WritingQueueEntry, WRITING_QUEUE_SIZE>,
@@ -102,7 +105,7 @@ where
             allocation_table: AllocationTable::default(),
             allocation_table_index: TABLE_COUNT - 1,
             free_sectors,
-            flash,
+            flash: Mutex::new(flash),
             crc,
             opened_files,
             writing_queue: Channel::new(),
@@ -115,6 +118,8 @@ where
                 "Found valid allocation table, file count: {}",
                 self.allocation_table.file_entries.len()
             );
+            let used_sectors = self.read_free_sectors().await;
+            info!("{} out of {} sectors used", used_sectors, self.flash.get_mut().size()/SECTOR_SIZE as u32 - (TABLE_COUNT * 32 * 1024 / SECTOR_SIZE) as u32);
         } else {
             info!("No valid allocation table found, creating new one");
             self.write_allocation_table().await;
@@ -122,19 +127,49 @@ where
         info!("VLFS initialized");
     }
 
-    pub async fn list_files(&mut self) -> Vec<LsFileEntry, MAX_FILES> {
-        let mut result = Vec::<LsFileEntry, MAX_FILES>::new();
-
+    // returns amount of used sectors
+    async fn read_free_sectors(&mut self) -> usize {
+        let mut used_sectors: usize = 0;
+        let free_sectors = self.free_sectors.as_mut_bitslice();
         for file_entry in &self.allocation_table.file_entries {
-            result
-                .push(LsFileEntry {
-                    file_id: file_entry.file_id,
-                    file_type: file_entry.file_type,
-                })
-                .unwrap();
+            let mut current_sector_index = file_entry.first_sector_index;
+            while let Some(sector_index) = current_sector_index {
+                free_sectors.set(sector_index as usize, true);
+                used_sectors += 1;
+
+                let mut buffer = [0u8; 5 + 8];
+                let sector_address = sector_index as u32 * SECTOR_SIZE as u32;
+                self.flash
+                    .get_mut()
+                    .read(sector_address + 4096 - 256, 8, &mut buffer)
+                    .await;
+                let a = u16::from_be_bytes((&buffer[5..7]).try_into().unwrap());
+                let b = u16::from_be_bytes((&buffer[7..9]).try_into().unwrap());
+                let c = u16::from_be_bytes((&buffer[9..11]).try_into().unwrap());
+                let d = u16::from_be_bytes((&buffer[11..13]).try_into().unwrap());
+                let next_sector_index = Self::find_most_common(a, b, c, d).unwrap();
+                current_sector_index = if next_sector_index == 0xFFFF {
+                    None
+                } else {
+                    Some(next_sector_index)
+                };
+            }
         }
 
-        result
+        used_sectors
+    }
+
+    pub async fn list_files(&self) -> (usize, impl Iterator<Item = LsFileEntry> + '_) {
+        let file_count = self.allocation_table.file_entries.len();
+        let iter = self
+            .allocation_table
+            .file_entries
+            .iter()
+            .map(|file_entry| LsFileEntry {
+                file_id: file_entry.file_id,
+                file_type: file_entry.file_type,
+            });
+        (file_count, iter)
     }
 
     pub async fn create_file(&mut self, file_id: u64, file_type: u16) -> Result<(), ()> {
@@ -197,16 +232,18 @@ where
         None
     }
 
-    pub async fn get_file_size(&mut self, file_id: u64) -> Option<usize> {
+    pub async fn get_file_size(&self, file_id: u64) -> Option<(usize, usize)> {
         if let Some(file_entry) = self.find_file_entry(file_id) {
             let mut size: usize = 0;
+            let mut sectors: usize = 0;
             let mut current_sector_index = file_entry.first_sector_index;
             let mut buffer = [0u8; 5 + 8];
             while let Some(sector_index) = current_sector_index {
                 let sector_address = sector_index as u32 * SECTOR_SIZE as u32;
 
                 // read data length
-                self.flash.read(sector_address, 8, &mut buffer).await;
+                let mut flash = self.flash.lock().await;
+                flash.read(sector_address, 8, &mut buffer).await;
                 let a = u16::from_be_bytes((&buffer[5..7]).try_into().unwrap());
                 let b = u16::from_be_bytes((&buffer[7..9]).try_into().unwrap());
                 let c = u16::from_be_bytes((&buffer[9..11]).try_into().unwrap());
@@ -214,7 +251,7 @@ where
                 size += Self::find_most_common(a, b, c, d).unwrap() as usize;
 
                 // read next sector index
-                self.flash
+                flash
                     .read(sector_address + 4096 - 256, 8, &mut buffer)
                     .await;
                 let a = u16::from_be_bytes((&buffer[5..7]).try_into().unwrap());
@@ -227,16 +264,17 @@ where
                 } else {
                     Some(next_sector_index)
                 };
+                sectors += 1;
             }
 
-            return Some(size);
+            return Some((size, sectors));
         }
 
         None
     }
 
-    fn find_file_entry(&mut self, file_id: u64) -> Option<&mut FileEntry> {
-        for file_entry in &mut self.allocation_table.file_entries {
+    fn find_file_entry(&self, file_id: u64) -> Option<&FileEntry> {
+        for file_entry in &self.allocation_table.file_entries {
             if file_entry.file_id == file_id {
                 return Some(file_entry);
             }
@@ -273,14 +311,14 @@ where
     pub async fn flush(&mut self) {
         loop {
             let data = self.writing_queue.receiver().try_recv();
-            let mut data = if data.is_err() {
+            let mut entry = if data.is_err() {
                 return;
             } else {
                 data.unwrap()
             };
             let new_sector_index = self.find_avaliable_sector().unwrap(); // FIXME handle error
 
-            if let Some(opened_file) = &mut self.opened_files[data.fd] {
+            if let Some(opened_file) = &mut self.opened_files[entry.fd] {
                 // save the new sector index to the end of the last sector
                 let was_empty = if let Some(last_sector_index) = opened_file.current_sector_index {
                     let last_sector_next_sector_address =
@@ -291,6 +329,8 @@ where
                     write_buffer.extend_from_u16(new_sector_index);
                     write_buffer.extend_from_u16(new_sector_index);
                     self.flash
+                        .lock()
+                        .await
                         .write_256b(last_sector_next_sector_address, write_buffer.as_mut_slice())
                         .await;
                     false
@@ -305,42 +345,48 @@ where
                 };
 
                 // write the data to new sector
-                self.free_sectors
-                    .as_mut_bitslice()
-                    .set(new_sector_index as usize, true);
-                opened_file.current_sector_index = Some(new_sector_index);
-                let new_sector_address = (new_sector_index as usize * SECTOR_SIZE) as u32;
+                let write_sector_address = if entry.overwrite_sector && let Some(current_sector_index) = opened_file.current_sector_index {
+                    (current_sector_index as usize * SECTOR_SIZE) as u32
+                } else {
+                    self.free_sectors
+                        .as_mut_bitslice()
+                        .set(new_sector_index as usize, true);
+                    opened_file.current_sector_index = Some(new_sector_index);
+                    (new_sector_index as usize * SECTOR_SIZE) as u32
+                };
 
                 if was_empty {
                     self.write_allocation_table().await;
                 }
 
                 // erase old data
-                self.flash.erase_sector_4kib(new_sector_address).await;
+                let mut flash = self.flash.lock().await;
+                flash.erase_sector_4kib(write_sector_address).await;
 
                 // put crc to the buffer
                 {
-                    let mut write_buffer = WriteBuffer::new(&mut data.data, 5 + 8);
-                    write_buffer.set_offset(data.data_length as usize);
+                    let mut write_buffer = WriteBuffer::new(&mut entry.data, 5 + 8);
+                    write_buffer.set_offset(entry.data_length as usize);
+                    write_buffer.align_4_bytes();
                     let crc = write_buffer.calculate_crc(&mut self.crc);
                     write_buffer.extend_from_u32(crc);
                 }
 
                 // put length of the data to the buffer
                 {
-                    let mut write_buffer = WriteBuffer::new(&mut data.data, 5);
-                    write_buffer.extend_from_u16(data.data_length);
-                    write_buffer.extend_from_u16(data.data_length);
-                    write_buffer.extend_from_u16(data.data_length);
-                    write_buffer.extend_from_u16(data.data_length);
+                    let mut write_buffer = WriteBuffer::new(&mut entry.data, 5);
+                    write_buffer.extend_from_u16(entry.data_length);
+                    write_buffer.extend_from_u16(entry.data_length);
+                    write_buffer.extend_from_u16(entry.data_length);
+                    write_buffer.extend_from_u16(entry.data_length);
                 }
 
                 // write buffer to flash
-                self.flash
+                flash
                     .write(
-                        new_sector_address,
-                        (8 + data.data_length + 4) as usize,
-                        &mut data.data,
+                        write_sector_address,
+                        (8 + entry.data_length + 4) as usize,
+                        &mut entry.data,
                     )
                     .await;
             }
@@ -372,11 +418,9 @@ where
         for i in 0..TABLE_COUNT {
             info!("Reading allocation table #{}", i + 1);
 
-            let mut reader = SpiReader::new(
-                (i * 32 * 1024).try_into().unwrap(),
-                &mut self.flash,
-                &mut self.crc,
-            );
+            let flash = self.flash.get_mut();
+            let mut reader =
+                SpiReader::new((i * 32 * 1024).try_into().unwrap(), flash, &mut self.crc);
 
             reader.reset_crc();
             let version = reader.read_u32().await;
@@ -460,10 +504,11 @@ where
             write_buffer.as_slice_without_start()
         );
 
-        self.flash
+        let flash = self.flash.get_mut();
+        flash
             .erase_block_32kib((self.allocation_table_index * 32 * 1024) as u32)
             .await;
-        self.flash
+        flash
             .write(
                 (self.allocation_table_index * 32 * 1024) as u32,
                 write_buffer.len(),

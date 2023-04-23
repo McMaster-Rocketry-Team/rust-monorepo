@@ -65,8 +65,8 @@ impl<'a, const N: usize> WriteBuffer<'a, N> {
     }
 
     pub fn align_4_bytes(&mut self) {
-        while (self.offset - 5) % 4 != 0 {
-            self.offset += 1;
+        while (self.offset - self.start_offset) % 4 != 0 {
+            self.extend_from_u8(0xFF);
         }
     }
 
