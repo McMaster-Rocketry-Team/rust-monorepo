@@ -10,12 +10,12 @@ use embassy_sync::mutex::Mutex;
 use heapless::Vec;
 
 const VLFS_VERSION: u32 = 5;
-const SECTORS_COUNT: usize = 65536;
+const SECTORS_COUNT: usize = 16384; // for 512M-bit flash (W25Q512JV)
 const SECTOR_SIZE: usize = 4096;
-const MAX_FILES: usize = 20; // can be as large as 2728
+const MAX_FILES: usize = 256; // can be as large as 2728
 const TABLE_COUNT: usize = 4;
-const FREE_SECTORS_ARRAY_SIZE: usize = 2048; // SECTORS_COUNT / 32
-const MAX_ALLOC_TABLE_LENGTH: usize = 3088; // 16 + MAX_FILES * 12
+const FREE_SECTORS_ARRAY_SIZE: usize = SECTORS_COUNT / 32;
+const MAX_ALLOC_TABLE_LENGTH: usize = 16 + MAX_FILES * 12;
 const MAX_OPENED_FILES: usize = 10;
 const WRITING_QUEUE_SIZE: usize = 4;
 
