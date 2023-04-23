@@ -5,7 +5,7 @@ use common::console::console::Console;
 use defmt::info;
 use driver::{
     adc::ADC, arming::HardwareArming, buzzer::Buzzer, crc::Crc, flash::SpiFlash, imu::IMU,
-    meg::Megnetometer, pyro::PyroChannel, timer::Timer, lora::LoRa,
+    lora::LoRa, meg::Megnetometer, pyro::PyroChannel, rng::RNG, timer::Timer,
 };
 
 use crate::common::vlfs::VLFS;
@@ -14,6 +14,7 @@ mod avionics;
 mod common;
 pub mod driver;
 mod gcm;
+mod utils;
 
 pub async fn init<
     T: Timer,
@@ -29,7 +30,8 @@ pub async fn init<
     USB: driver::usb::USB,
     B: Buzzer,
     M: Megnetometer,
-    L: LoRa,
+    // L: LoRa,
+    R: RNG,
 >(
     timer: T,
     flash: F,
@@ -44,13 +46,14 @@ pub async fn init<
     mut usb: USB,
     mut buzzer: B,
     mut meg: M,
-    mut lora: L,
+    // mut lora: L,
+    mut rng: R,
 ) {
     let mut fs = VLFS::new(flash, crc);
     fs.init().await;
-    let mut usb_buffer = [0u8; 64];
+    // let mut usb_buffer = [0u8; 64];
     // timer.sleep(2000).await;
-    let mut console = Console::new(usb);
+    let mut console = Console::new(timer, usb, fs, pyro3);
     console.run().await.unwrap();
 
     // meg.reset(false).await.unwrap();
@@ -88,14 +91,12 @@ pub async fn init<
     //     );
     //     info!("countdown: {}", 5 - i);
     //     timer.sleep(1000).await;
-    // }
+    //
 
-    info!("fire!");
-    // pyro3.set_enable(true);
-    loop {
-        pyro3.set_enable(true);
-        timer.sleep(2).await;
-        pyro3.set_enable(false);
-        timer.sleep(2).await;
-    }
+    // loop {
+    //     pyro3.set_enable(true).await;
+    //     timer.sleep(1).await;
+    //     pyro3.set_enable(false).await;
+    //     timer.sleep(15).await;
+    // }
 }

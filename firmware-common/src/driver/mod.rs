@@ -10,3 +10,4 @@ pub mod meg;
 pub mod buzzer;
 pub mod lora;
 pub mod serial;
+pub mod rng;

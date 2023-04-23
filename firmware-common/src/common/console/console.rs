@@ -1,17 +1,30 @@
+use crate::{
+    common::{
+        buffer::WriteBuffer,
+        vlfs::{WritingQueueEntry, VLFS},
+    },
+    driver::{crc::Crc, flash::SpiFlash, pyro::PyroChannel, serial::Serial, timer::Timer},
+    heapless_format_bytes,
+};
 use defmt::info;
 use heapless::String;
+use heapless::Vec;
 
-use crate::driver::serial::Serial;
-
-use super::programs::{hello::Hello, program::ConsoleProgram};
-
-pub struct Console<T: Serial> {
+pub struct Console<I: Timer, T: Serial, F: SpiFlash, C: Crc, P: PyroChannel> {
+    timer: I,
     serial: T,
+    vlfs: VLFS<F, C>,
+    pyro: P,
 }
 
-impl<T: Serial> Console<T> {
-    pub fn new(serial: T) -> Self {
-        Self { serial }
+impl<I: Timer, T: Serial, F: SpiFlash, C: Crc, P: PyroChannel> Console<I, T, F, C, P> {
+    pub fn new(timer: I, serial: T, vlfs: VLFS<F, C>, pyro: P) -> Self {
+        Self {
+            timer,
+            serial,
+            vlfs,
+            pyro,
+        }
     }
 
     async fn read_command(&mut self) -> Result<String<64>, ()> {
@@ -38,18 +51,69 @@ impl<T: Serial> Console<T> {
     }
 
     pub async fn run(&mut self) -> Result<(), ()> {
-        self.serial
-            .write(b"Welcome to Void Lake Fusion 3 Console!\r\n")
-            .await?;
-        let hello_program = Hello::<T>::new();
-
         loop {
             let command = self.read_command().await?;
             let command = command.as_str();
-            if command == hello_program.name() {
-                hello_program.start(&mut self.serial).await?;
+            let command = command.split_ascii_whitespace().collect::<Vec<&str, 10>>();
+            if command.len() == 0 {
+                continue;
+            }
+            if command[0] == "fs.ls" {
+                let files = self.vlfs.list_files().await;
+                self.serial
+                    .writeln(heapless_format_bytes!(64, "{} files:", files.len()))
+                    .await?;
+                for file in files {
+                    let size = self.vlfs.get_file_size(file.file_id).await.unwrap();
+                    self.serial
+                        .writeln(heapless_format_bytes!(
+                            64,
+                            "ID: {:#18X}  type: {:#6X}  size: {}",
+                            file.file_id,
+                            file.file_type,
+                            size,
+                        ))
+                        .await?;
+                }
+            } else if command[0] == "fs.touch" {
+                let id = u64::from_str_radix(command[1], 16).unwrap();
+                let typ = u16::from_str_radix(command[2], 16).unwrap();
+                self.vlfs.create_file(id, typ).await.unwrap();
+                self.serial.writeln(b"File created").await?;
+            } else if command[0] == "fs.rm" {
+                let id = u64::from_str_radix(command[1], 16).unwrap();
+                let result = self.vlfs.remove_file(id).await;
+                if result.is_err() {
+                    self.serial.writeln(b"File is in use").await?;
+                } else {
+                    self.serial.writeln(b"File removed").await?;
+                }
+            } else if command[0] == "fs.flush" {
+                self.vlfs.flush().await;
+                self.serial.writeln(b"Flushed").await?;
+            } else if command[0] == "fs.open" {
+                let id = u64::from_str_radix(command[1], 16).unwrap();
+                let fd = self.vlfs.open_file(id).await.unwrap();
+                self.serial
+                    .writeln(heapless_format_bytes!(32, "File Descriptor: {:#X}", fd))
+                    .await?;
+            } else if command[0] == "fs.write" {
+                let fd = usize::from_str_radix(command[1], 16).unwrap();
+                let mut entry = WritingQueueEntry::new(fd);
+                let mut write_buffer = WriteBuffer::new(&mut entry.data, 5 + 8);
+                write_buffer.extend_from_slice(command[2].as_bytes());
+                entry.data_length = write_buffer.len() as u16;
+                self.vlfs.write_file(entry).await;
+                self.serial.writeln(b"Added to queue").await?;
+            } else if command[0] == "sys.reset" {
+                // cortex_m::peripheral::SCB::sys_reset();
+            } else if command[0] == "f" {
+                self.pyro.set_enable(true).await;
+                self.timer.sleep(100).await;
+                self.pyro.set_enable(false).await;
+                self.serial.writeln(b"Pyro fired!").await?;
             } else {
-                self.serial.write(b"Unknown command!\r\n").await?;
+                self.serial.writeln(b"Unknown command!").await?;
             }
         }
     }
