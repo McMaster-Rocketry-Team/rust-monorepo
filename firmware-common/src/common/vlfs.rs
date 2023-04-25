@@ -89,10 +89,11 @@ where
     C: Crc,
 {
     allocation_table: RwLock<CriticalSectionRawMutex, AllocationTableWrapper, 10>,
-    free_sectors: BitArray<[u32; FREE_SECTORS_ARRAY_SIZE], Lsb0>,
+    free_sectors:
+        RwLock<CriticalSectionRawMutex, BitArray<[u32; FREE_SECTORS_ARRAY_SIZE], Lsb0>, 10>,
     flash: Mutex<CriticalSectionRawMutex, F>,
     crc: Mutex<CriticalSectionRawMutex, C>,
-    opened_files: Vec<Option<OpenedFile>, MAX_OPENED_FILES>,
+    opened_files: RwLock<CriticalSectionRawMutex, Vec<Option<OpenedFile>, MAX_OPENED_FILES>, 10>,
     writing_queue: Channel<CriticalSectionRawMutex, WritingQueueEntry, WRITING_QUEUE_SIZE>,
 }
 
@@ -112,10 +113,10 @@ where
         }
         Self {
             allocation_table: RwLock::new(AllocationTableWrapper::default()),
-            free_sectors,
+            free_sectors: RwLock::new(free_sectors),
             flash: Mutex::new(flash),
             crc: Mutex::new(crc),
-            opened_files,
+            opened_files: RwLock::new(opened_files),
             writing_queue: Channel::new(),
         }
     }
@@ -145,7 +146,8 @@ where
     // returns amount of used sectors
     async fn read_free_sectors(&mut self) -> usize {
         let mut used_sectors: usize = 0;
-        let free_sectors = self.free_sectors.as_mut_bitslice();
+        let mut free_sectors = self.free_sectors.write().await;
+        let free_sectors = free_sectors.as_mut_bitslice();
         let at = self.allocation_table.read().await;
         for file_entry in &at.allocation_table.file_entries {
             let mut current_sector_index = file_entry.first_sector_index;
@@ -182,7 +184,7 @@ where
         }
     }
 
-    pub async fn create_file(&mut self, file_id: u64, file_type: u16) -> Result<(), ()> {
+    pub async fn create_file(&self, file_id: u64, file_type: u16) -> Result<(), ()> {
         let mut at = self.allocation_table.write().await;
         for file_entry in &at.allocation_table.file_entries {
             if file_entry.file_id == file_id {
@@ -201,14 +203,16 @@ where
         Ok(())
     }
 
-    pub async fn remove_file(&mut self, file_id: u64) -> Result<(), ()> {
-        for opened_file in &self.opened_files {
+    pub async fn remove_file(&self, file_id: u64) -> Result<(), ()> {
+        let opened_files = self.opened_files.read().await;
+        for opened_file in opened_files.iter() {
             if let Some(opened_file) = opened_file {
                 if opened_file.file_entry.file_id == file_id {
                     return Err(());
                 }
             }
         }
+        drop(opened_files);
 
         let mut at = self.allocation_table.write().await;
         for i in 0..at.allocation_table.file_entries.len() {
@@ -301,23 +305,35 @@ where
         None
     }
 
-    pub async fn open_file(&mut self, file_id: u64) -> Option<FileDescriptor> {
-        for opened_file in &self.opened_files {
+    pub async fn open_file(&self, file_id: u64) -> Option<FileDescriptor> {
+        let mut opened_files = self.opened_files.write().await;
+
+        for opened_file in opened_files.iter() {
             if let Some(opened_file) = opened_file {
                 if opened_file.file_entry.file_id == file_id {
+                    // already opened
                     return None;
                 }
             }
         }
 
-        let file_descriptor = self.find_avaliable_file_descriptor()?;
+        // find avaliable fd
+        let mut file_descriptor: Option<FileDescriptor> = None;
+        for fd in 0..MAX_OPENED_FILES {
+            if opened_files[fd].is_none() {
+                file_descriptor = Some(fd);
+            }
+        }
+        let file_descriptor = file_descriptor?;
+
         let at = self.allocation_table.read().await;
         if let Some(file_entry) = self.find_file_entry(&at.allocation_table, file_id) {
             let opened_file = OpenedFile {
                 current_sector_index: file_entry.first_sector_index,
                 file_entry: file_entry.clone(),
             };
-            self.opened_files[file_descriptor].replace(opened_file);
+
+            opened_files[file_descriptor].replace(opened_file);
             return Some(file_descriptor);
         }
 
@@ -329,14 +345,16 @@ where
     }
 
     pub async fn read_file<'a>(
-        &mut self,
+        &self,
         fd: FileDescriptor,
         buffer: &'a mut [u8],
     ) -> Option<&'a [u8]> {
-        if let Some(opened_file) = &mut self.opened_files[fd] {
+        let mut opened_files = self.opened_files.write().await;
+        if let Some(opened_file) = &mut opened_files[fd] {
             let mut bytes_read: usize = 0;
-            let flash = self.flash.get_mut();
             let mut current_sector_index = opened_file.file_entry.first_sector_index;
+            drop(opened_files);
+            let mut flash = self.flash.lock().await;
             while let Some(sector_index) = current_sector_index {
                 let sector_address = sector_index as u32 * SECTOR_SIZE as u32;
                 let buffer = &mut buffer[bytes_read..];
@@ -399,10 +417,11 @@ where
         None
     }
 
-    async fn flush_single(&mut self, mut entry: WritingQueueEntry) {
-        let new_sector_index = self.find_avaliable_sector().unwrap(); // FIXME handle error
+    async fn flush_single(&self, mut entry: WritingQueueEntry) {
+        let new_sector_index = self.find_avaliable_sector().await.unwrap(); // FIXME handle error
 
-        if let Some(opened_file) = &mut self.opened_files[entry.fd] {
+        let mut opened_files = self.opened_files.write().await;
+        if let Some(opened_file) = &mut opened_files[entry.fd] {
             // save the new sector index to the end of the last sector
             let was_empty = if let Some(last_sector_index) = opened_file.current_sector_index {
                 let last_sector_next_sector_address =
@@ -434,7 +453,8 @@ where
             let write_sector_address = if entry.overwrite_sector && let Some(current_sector_index) = opened_file.current_sector_index {
                 (current_sector_index as usize * SECTOR_SIZE) as u32
             } else {
-                self.free_sectors
+                let mut free_sectors = self.free_sectors.write().await;
+                free_sectors
                     .as_mut_bitslice()
                     .set(new_sector_index as usize, true);
                 opened_file.current_sector_index = Some(new_sector_index);
@@ -493,19 +513,11 @@ where
     }
 
     // TODO optimize
-    fn find_avaliable_sector(&self) -> Option<u16> {
+    async fn find_avaliable_sector(&self) -> Option<u16> {
+        let free_sectors = self.free_sectors.read().await;
         for i in 0..SECTORS_COUNT {
-            if !self.free_sectors[i] {
+            if !free_sectors[i] {
                 return Some(i.try_into().unwrap());
-            }
-        }
-        None
-    }
-
-    fn find_avaliable_file_descriptor(&self) -> Option<FileDescriptor> {
-        for fd in 0..MAX_OPENED_FILES {
-            if self.opened_files[fd].is_none() {
-                return Some(fd);
             }
         }
         None
