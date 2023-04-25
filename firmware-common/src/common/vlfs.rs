@@ -1,5 +1,3 @@
-use core::mem::MaybeUninit;
-
 use crate::common::buffer::WriteBuffer;
 use crate::driver::flash::{IOReader, SpiReader};
 use crate::driver::{crc::Crc, flash::SpiFlash};
@@ -11,6 +9,8 @@ use embassy_sync::channel::Channel;
 use embassy_sync::mutex::Mutex;
 use heapless::Vec;
 
+use super::rwlock::{RwLock, RwLockReadGuard};
+
 const VLFS_VERSION: u32 = 5;
 const SECTORS_COUNT: usize = 16384; // for 512M-bit flash (W25Q512JV)
 const SECTOR_SIZE: usize = 4096;
@@ -20,12 +20,6 @@ const FREE_SECTORS_ARRAY_SIZE: usize = SECTORS_COUNT / 32;
 const MAX_ALLOC_TABLE_LENGTH: usize = 16 + MAX_FILES * 12;
 const MAX_OPENED_FILES: usize = 10;
 const WRITING_QUEUE_SIZE: usize = 4;
-
-#[derive(Debug, Clone)]
-pub struct LsFileEntry {
-    pub file_id: u64,
-    pub file_type: u16,
-}
 
 #[derive(Debug, Clone)]
 struct FileEntry {
@@ -94,7 +88,7 @@ where
     F: SpiFlash,
     C: Crc,
 {
-    allocation_table: Mutex<CriticalSectionRawMutex, AllocationTableWrapper>,
+    allocation_table: RwLock<CriticalSectionRawMutex, AllocationTableWrapper, 10>,
     free_sectors: BitArray<[u32; FREE_SECTORS_ARRAY_SIZE], Lsb0>,
     flash: Mutex<CriticalSectionRawMutex, F>,
     crc: Mutex<CriticalSectionRawMutex, C>,
@@ -109,13 +103,15 @@ where
 {
     pub fn new(flash: F, crc: C) -> Self {
         let mut opened_files = Vec::<Option<OpenedFile>, MAX_OPENED_FILES>::new();
-        opened_files.fill_with(|| None);
+        for _ in 0..MAX_OPENED_FILES {
+            opened_files.push(None).unwrap();
+        }
         let mut free_sectors = BitArray::<_, Lsb0>::new([0u32; FREE_SECTORS_ARRAY_SIZE]);
         for i in 0..(TABLE_COUNT * 32 * 1024 / SECTOR_SIZE) {
             free_sectors.set(i, true);
         }
         Self {
-            allocation_table: Mutex::new(AllocationTableWrapper::default()),
+            allocation_table: RwLock::new(AllocationTableWrapper::default()),
             free_sectors,
             flash: Mutex::new(flash),
             crc: Mutex::new(crc),
@@ -126,7 +122,7 @@ where
 
     pub async fn init(&mut self) {
         if self.read_allocation_table().await {
-            let at = self.allocation_table.lock().await;
+            let at = self.allocation_table.read().await;
             info!(
                 "Found valid allocation table, file count: {}",
                 at.allocation_table.file_entries.len()
@@ -150,7 +146,7 @@ where
     async fn read_free_sectors(&mut self) -> usize {
         let mut used_sectors: usize = 0;
         let free_sectors = self.free_sectors.as_mut_bitslice();
-        let at = self.allocation_table.lock().await;
+        let at = self.allocation_table.read().await;
         for file_entry in &at.allocation_table.file_entries {
             let mut current_sector_index = file_entry.first_sector_index;
             while let Some(sector_index) = current_sector_index {
@@ -179,23 +175,15 @@ where
         used_sectors
     }
 
-    // pub async fn list_files(&self) -> (usize, impl Iterator<Item = LsFileEntry> + '_) {
-    //     let at = self.allocation_table.lock().await;
-    //     let file_count = at.allocation_table.file_entries.len();
-    //     let iter = at
-    //         .allocation_table
-    //         .file_entries
-    //         .iter()
-    //         .map(|file_entry| LsFileEntry {
-    //             file_id: file_entry.file_id,
-    //             file_type: file_entry.file_type,
-    //         });
-    //     (file_count, iter);
-    //     defmt::todo!()
-    // }
+    pub async fn files_iter(&self) -> FilesIterator {
+        FilesIterator {
+            i: 0,
+            at: self.allocation_table.read().await,
+        }
+    }
 
     pub async fn create_file(&mut self, file_id: u64, file_type: u16) -> Result<(), ()> {
-        let mut at = self.allocation_table.lock().await;
+        let mut at = self.allocation_table.write().await;
         for file_entry in &at.allocation_table.file_entries {
             if file_entry.file_id == file_id {
                 return Err(());
@@ -208,6 +196,7 @@ where
             first_sector_index: None,
         };
         at.allocation_table.file_entries.push(file_entry).unwrap(); // TODO error handling
+        drop(at);
         self.write_allocation_table().await;
         Ok(())
     }
@@ -221,13 +210,14 @@ where
             }
         }
 
-        let mut at = self.allocation_table.lock().await;
+        let mut at = self.allocation_table.write().await;
         for i in 0..at.allocation_table.file_entries.len() {
             if at.allocation_table.file_entries[i].file_id == file_id {
                 at.allocation_table.file_entries.remove(i);
                 break;
             }
         }
+        drop(at);
         self.write_allocation_table().await;
         // TODO update sectors list
         Ok(())
@@ -257,7 +247,7 @@ where
     }
 
     pub async fn get_file_size(&self, file_id: u64) -> Option<(usize, usize)> {
-        let at = self.allocation_table.lock().await;
+        let at = self.allocation_table.read().await;
         if let Some(file_entry) = self.find_file_entry(&at.allocation_table, file_id) {
             let mut size: usize = 0;
             let mut sectors: usize = 0;
@@ -321,7 +311,7 @@ where
         }
 
         let file_descriptor = self.find_avaliable_file_descriptor()?;
-        let at = self.allocation_table.lock().await;
+        let at = self.allocation_table.read().await;
         if let Some(file_entry) = self.find_file_entry(&at.allocation_table, file_id) {
             let opened_file = OpenedFile {
                 current_sector_index: file_entry.first_sector_index,
@@ -429,7 +419,7 @@ where
                     .await;
                 false
             } else {
-                let mut at = self.allocation_table.lock().await;
+                let mut at = self.allocation_table.write().await;
                 for file_entry in &mut at.allocation_table.file_entries {
                     if file_entry.file_id == opened_file.file_entry.file_id {
                         opened_file.file_entry.first_sector_index = Some(new_sector_index);
@@ -523,7 +513,7 @@ where
 
     async fn read_allocation_table(&mut self) -> bool {
         let mut found_valid_table = false;
-        let mut at = self.allocation_table.get_mut();
+        let mut at = self.allocation_table.write().await;
 
         for i in 0..TABLE_COUNT {
             info!("Reading allocation table #{}", i + 1);
@@ -593,9 +583,13 @@ where
     }
 
     async fn write_allocation_table(&self) {
-        let mut at = self.allocation_table.lock().await;
+        let mut at = self.allocation_table.write().await;
         at.allocation_table_index = (at.allocation_table_index + 1) % TABLE_COUNT;
         at.allocation_table.sequence_number += 1;
+        drop(at);
+
+        let at = self.allocation_table.read().await;
+
         new_write_buffer!(write_buffer, MAX_ALLOC_TABLE_LENGTH);
 
         write_buffer.extend_from_u32(VLFS_VERSION);
@@ -631,6 +625,41 @@ where
                 &mut write_buffer.as_mut_slice(),
             )
             .await;
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct LsFileEntry {
+    pub file_id: u64,
+    pub file_type: u16,
+}
+
+pub struct FilesIterator<'a> {
+    i: usize,
+    at: RwLockReadGuard<'a, CriticalSectionRawMutex, AllocationTableWrapper, 10>,
+}
+
+impl<'a> FilesIterator<'a> {
+    pub fn len(&self) -> usize {
+        self.at.allocation_table.file_entries.len()
+    }
+}
+
+impl<'a> Iterator for FilesIterator<'a> {
+    type Item = LsFileEntry;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let result = self
+            .at
+            .allocation_table
+            .file_entries
+            .get(self.i)
+            .map(|file_entry| LsFileEntry {
+                file_id: file_entry.file_id,
+                file_type: file_entry.file_type,
+            });
+        self.i += 1;
+        result
     }
 }
 

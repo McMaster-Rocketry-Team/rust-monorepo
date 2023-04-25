@@ -19,3 +19,4 @@ rkyv = { version = "0.7.39", default-features = false, features = [
 ] }
 nalgebra = { version = "0.32.2", default-features = false }
 ahrs = { version = "0.6.0", default-features = false }
+futures = { version = "0.3.17", default-features = false, features = ["async-await"] }

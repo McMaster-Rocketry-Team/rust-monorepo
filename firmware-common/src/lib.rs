@@ -2,7 +2,7 @@
 #![feature(async_fn_in_trait)]
 #![feature(let_chains)]
 
-use common::console::console::Console;
+use common::{console::console::Console, rwlock::rwLockTest};
 use defmt::info;
 use driver::{
     adc::ADC, arming::HardwareArming, buzzer::Buzzer, crc::Crc, flash::SpiFlash, imu::IMU,
@@ -54,6 +54,7 @@ pub async fn init<
     fs.init().await;
     // let mut usb_buffer = [0u8; 64];
     // timer.sleep(2000).await;
+
     let mut console = Console::new(timer, usb, fs, pyro3);
     console.run().await.unwrap();
 
