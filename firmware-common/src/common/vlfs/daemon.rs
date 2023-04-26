@@ -1,5 +1,8 @@
-use crate::{driver::{flash::SpiFlash, crc::Crc}, common::io_traits::Writer};
 use super::*;
+use crate::{
+    common::io_traits::Writer,
+    driver::{crc::Crc, flash::SpiFlash},
+};
 
 impl<F, C> VLFS<F, C>
 where
@@ -7,7 +10,7 @@ where
     C: Crc,
 {
     async fn flush_single(&self, mut entry: WritingQueueEntry) {
-        let new_sector_index = self.find_avaliable_sector().await.unwrap(); // FIXME handle error
+        let new_sector_index = self.find_avaliable_sector().unwrap(); // FIXME handle error
 
         let mut opened_files = self.opened_files.write().await;
         if let Some(opened_file) = &mut opened_files[entry.fd] {
@@ -42,10 +45,11 @@ where
             let write_sector_address = if entry.overwrite_sector && let Some(current_sector_index) = opened_file.current_sector_index {
                 (current_sector_index as usize * SECTOR_SIZE) as u32
             } else {
-                let mut free_sectors = self.free_sectors.write().await;
-                free_sectors
-                    .as_mut_bitslice()
-                    .set(new_sector_index as usize, true);
+                self.free_sectors.lock(|free_sectors|{
+                    let mut free_sectors = free_sectors.borrow_mut();
+                    let free_sectors = free_sectors.as_mut_bitslice();
+                    free_sectors.set(new_sector_index as usize, true);
+                });
                 opened_file.current_sector_index = Some(new_sector_index);
                 (new_sector_index as usize * SECTOR_SIZE) as u32
             };

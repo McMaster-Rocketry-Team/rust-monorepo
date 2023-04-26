@@ -1,14 +1,18 @@
+use core::cell::RefCell;
+
 use crate::common::buffer::WriteBuffer;
 use crate::driver::{crc::Crc, flash::SpiFlash};
 use crate::new_write_buffer;
 use bitvec::prelude::*;
 use defmt::*;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::blocking_mutex::Mutex as BlockingMutex;
 use embassy_sync::channel::Channel;
 use embassy_sync::mutex::Mutex;
 use heapless::Vec;
 
 use self::utils::find_most_common_u16_out_of_4;
+use self::writer::PageWritingQueueEntry;
 
 use super::rwlock::{RwLock, RwLockReadGuard};
 
@@ -27,12 +31,14 @@ const FREE_SECTORS_ARRAY_SIZE: usize = SECTORS_COUNT / 32;
 const MAX_ALLOC_TABLE_LENGTH: usize = 16 + MAX_FILES * 12;
 const MAX_OPENED_FILES: usize = 10;
 const WRITING_QUEUE_SIZE: usize = 4;
+const MAX_DATA_LENGTH_PER_SECTOR: usize = SECTOR_SIZE - 256 - 8 - 4;
 
 #[derive(Debug, Clone)]
 struct FileEntry {
     file_id: u64,
     file_type: u16,
     first_sector_index: Option<u16>, // None means the file is empty
+    opened: bool,
 }
 
 // serialized size must fit in half a block (32kib)
@@ -97,11 +103,12 @@ where
 {
     allocation_table: RwLock<CriticalSectionRawMutex, AllocationTableWrapper, 10>,
     free_sectors:
-        RwLock<CriticalSectionRawMutex, BitArray<[u32; FREE_SECTORS_ARRAY_SIZE], Lsb0>, 10>,
+        BlockingMutex<CriticalSectionRawMutex, RefCell<BitArray<[u32; FREE_SECTORS_ARRAY_SIZE], Lsb0>>>,
     flash: Mutex<CriticalSectionRawMutex, F>,
     crc: Mutex<CriticalSectionRawMutex, C>,
     opened_files: RwLock<CriticalSectionRawMutex, Vec<Option<OpenedFile>, MAX_OPENED_FILES>, 10>,
     writing_queue: Channel<CriticalSectionRawMutex, WritingQueueEntry, WRITING_QUEUE_SIZE>,
+    page_writing_queue: Channel<CriticalSectionRawMutex, PageWritingQueueEntry, WRITING_QUEUE_SIZE>,
 }
 
 impl<F, C> VLFS<F, C>
@@ -121,6 +128,7 @@ where
             file_id,
             file_type,
             first_sector_index: None,
+            opened: false,
         };
         at.allocation_table.file_entries.push(file_entry).unwrap(); // TODO error handling
         drop(at);
@@ -289,14 +297,16 @@ where
     }
 
     // TODO optimize
-    async fn find_avaliable_sector(&self) -> Option<u16> {
-        let free_sectors = self.free_sectors.read().await;
-        for i in 0..SECTORS_COUNT {
-            if !free_sectors[i] {
-                return Some(i.try_into().unwrap());
+    fn find_avaliable_sector(&self) -> Option<u16> {
+        self.free_sectors.lock(|free_sectors|{
+            let free_sectors = free_sectors.borrow();
+            for i in 0..SECTORS_COUNT {
+                if !free_sectors[i] {
+                    return Some(i.try_into().unwrap());
+                }
             }
-        }
-        None
+            None
+        })
     }
 
     fn find_file_entry<'a>(
@@ -305,6 +315,19 @@ where
         file_id: u64,
     ) -> Option<&'a FileEntry> {
         for file_entry in &allocation_table.file_entries {
+            if file_entry.file_id == file_id {
+                return Some(file_entry);
+            }
+        }
+        None
+    }
+
+    fn find_file_entry_mut<'a>(
+        &self,
+        allocation_table: &'a mut AllocationTable,
+        file_id: u64,
+    ) -> Option<&'a mut FileEntry> {
+        for file_entry in &mut allocation_table.file_entries {
             if file_entry.file_id == file_id {
                 return Some(file_entry);
             }

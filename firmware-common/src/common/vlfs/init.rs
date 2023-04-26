@@ -1,10 +1,18 @@
-use crate::{driver::{flash::{SpiFlash, SpiReader}, crc::Crc}, common::{rwlock::RwLock, io_traits::{AsyncReader, Writer}}};
-use bitvec::prelude::*;
-use defmt::*;
+use super::{utils::find_most_common_u16_out_of_4, *};
+use crate::{
+    common::{
+        io_traits::{AsyncReader, Writer},
+        rwlock::RwLock,
+    },
+    driver::{
+        crc::Crc,
+        flash::{SpiFlash, SpiReader},
+    },
+};
+use embassy_sync::blocking_mutex::Mutex as BlockingMutex;
 use embassy_sync::channel::Channel;
 use embassy_sync::mutex::Mutex;
 use heapless::Vec;
-use super::{*, utils::find_most_common_u16_out_of_4};
 
 impl<F, C> VLFS<F, C>
 where
@@ -22,11 +30,12 @@ where
         }
         Self {
             allocation_table: RwLock::new(AllocationTableWrapper::default()),
-            free_sectors: RwLock::new(free_sectors),
+            free_sectors: BlockingMutex::new(RefCell::new(free_sectors)),
             flash: Mutex::new(flash),
             crc: Mutex::new(crc),
             opened_files: RwLock::new(opened_files),
             writing_queue: Channel::new(),
+            page_writing_queue: Channel::new(),
         }
     }
 
@@ -55,13 +64,17 @@ where
     // returns amount of used sectors
     async fn read_free_sectors(&mut self) -> usize {
         let mut used_sectors: usize = 0;
-        let mut free_sectors = self.free_sectors.write().await;
-        let free_sectors = free_sectors.as_mut_bitslice();
+
         let at = self.allocation_table.read().await;
         for file_entry in &at.allocation_table.file_entries {
             let mut current_sector_index = file_entry.first_sector_index;
             while let Some(sector_index) = current_sector_index {
-                free_sectors.set(sector_index as usize, true);
+                self.free_sectors.lock(|free_sectors| {
+                    let mut free_sectors = free_sectors.borrow_mut();
+                    let free_sectors = free_sectors.as_mut_bitslice();
+                    free_sectors.set(sector_index as usize, true);
+                });
+
                 used_sectors += 1;
 
                 let mut buffer = [0u8; 5 + 8];
@@ -123,6 +136,7 @@ where
                         } else {
                             Some(first_sector_index)
                         },
+                        opened: false,
                     })
                     .ok()
                     .unwrap();
