@@ -26,6 +26,8 @@ pub mod writer;
 const VLFS_VERSION: u32 = 5;
 const SECTORS_COUNT: usize = 16384; // for 512M-bit flash (W25Q512JV)
 const SECTOR_SIZE: usize = 4096;
+const PAGE_SIZE: usize = 256;
+const PAGES_PER_SECTOR: usize = SECTOR_SIZE / PAGE_SIZE;
 const MAX_FILES: usize = 256; // can be as large as 2728
 const TABLE_COUNT: usize = 4;
 const FREE_SECTORS_ARRAY_SIZE: usize = SECTORS_COUNT / 32;
