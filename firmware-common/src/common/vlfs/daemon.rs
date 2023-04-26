@@ -1,4 +1,4 @@
-use crate::{driver::{flash::SpiFlash, crc::Crc}};
+use crate::{driver::{flash::SpiFlash, crc::Crc}, common::io_traits::Writer};
 use super::*;
 
 impl<F, C> VLFS<F, C>

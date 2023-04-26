@@ -1,5 +1,7 @@
 use crate::driver::crc::Crc;
 
+use super::io_traits::Writer;
+
 pub struct WriteBuffer<'a, const N: usize> {
     buffer: &'a mut [u8; N],
     start_offset: usize,
@@ -39,23 +41,6 @@ impl<'a, const N: usize> WriteBuffer<'a, N> {
         self.offset += slice.len();
     }
 
-    pub fn extend_from_u8(&mut self, value: u8) {
-        self.buffer[self.offset] = value;
-        self.offset += 1;
-    }
-
-    pub fn extend_from_u16(&mut self, value: u16) {
-        self.extend_from_slice(&value.to_be_bytes());
-    }
-
-    pub fn extend_from_u32(&mut self, value: u32) {
-        self.extend_from_slice(&value.to_be_bytes());
-    }
-
-    pub fn extend_from_u64(&mut self, value: u64) {
-        self.extend_from_slice(&value.to_be_bytes());
-    }
-
     pub fn replace_u16(&mut self, i: usize, value: u16) {
         self.buffer[(self.start_offset + i)..(self.start_offset + i + 2)]
             .copy_from_slice(&value.to_be_bytes());
@@ -82,6 +67,22 @@ impl<'a, const N: usize> WriteBuffer<'a, N> {
 
     pub fn as_mut_slice(&mut self) -> &mut [u8] {
         self.buffer
+    }
+}
+
+
+impl<'a, const N: usize> Writer for WriteBuffer<'a, N> {
+    fn extend_from_slice(&mut self, slice: &[u8]) {
+        if self.offset + slice.len() > self.buffer.len() {
+            return;
+        }
+        self.buffer[self.offset..(self.offset + slice.len())].copy_from_slice(slice);
+        self.offset += slice.len();
+    }
+
+    fn extend_from_u8(&mut self, value: u8) {
+        self.buffer[self.offset] = value;
+        self.offset += 1;
     }
 }
 

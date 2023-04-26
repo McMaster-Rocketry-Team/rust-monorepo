@@ -16,6 +16,7 @@ mod daemon;
 mod init;
 mod iter;
 mod utils;
+mod writer;
 
 const VLFS_VERSION: u32 = 5;
 const SECTORS_COUNT: usize = 16384; // for 512M-bit flash (W25Q512JV)

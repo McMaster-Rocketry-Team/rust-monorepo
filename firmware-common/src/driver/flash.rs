@@ -1,5 +1,7 @@
 use defmt::*;
 
+use crate::common::io_traits::AsyncReader;
+
 use super::crc::Crc;
 
 pub trait SpiFlash {
@@ -99,9 +101,17 @@ where
             buffer: [0; 32 + 5],
         }
     }
+
+    pub fn reset_crc(&mut self) {
+        self.crc.reset();
+    }
+
+    pub fn get_crc(&self) -> u32 {
+        self.crc.read()
+    }
 }
 
-impl<'a, F, C> IOReader for SpiReader<'a, F, C>
+impl<'a, F, C> AsyncReader for SpiReader<'a, F, C>
 where
     F: SpiFlash,
     C: Crc,
@@ -124,36 +134,4 @@ where
 
         &self.buffer[5..(length + 5)]
     }
-
-    fn reset_crc(&mut self) {
-        self.crc.reset();
-    }
-
-    fn get_crc(&self) -> u32 {
-        self.crc.read()
-    }
-}
-
-pub trait IOReader {
-    async fn read_u8(&mut self) -> u8 {
-        self.read_slice(1).await[0]
-    }
-
-    async fn read_u16(&mut self) -> u16 {
-        u16::from_be_bytes(self.read_slice(2).await.try_into().unwrap())
-    }
-
-    async fn read_u32(&mut self) -> u32 {
-        u32::from_be_bytes(self.read_slice(4).await.try_into().unwrap())
-    }
-
-    async fn read_u64(&mut self) -> u64 {
-        u64::from_be_bytes(self.read_slice(8).await.try_into().unwrap())
-    }
-
-    async fn read_slice(&mut self, length: usize) -> &[u8];
-
-    fn reset_crc(&mut self);
-
-    fn get_crc(&self) -> u32;
 }

@@ -1,4 +1,4 @@
-use crate::{driver::{flash::{SpiFlash, SpiReader, IOReader}, crc::Crc}, common::rwlock::RwLock};
+use crate::{driver::{flash::{SpiFlash, SpiReader}, crc::Crc}, common::{rwlock::RwLock, io_traits::{AsyncReader, Writer}}};
 use bitvec::prelude::*;
 use defmt::*;
 use embassy_sync::channel::Channel;
