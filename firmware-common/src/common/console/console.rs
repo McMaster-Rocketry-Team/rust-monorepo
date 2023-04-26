@@ -1,7 +1,7 @@
 use crate::{
     common::{
         buffer::WriteBuffer,
-        vlfs::{WritingQueueEntry, VLFS},
+        vlfs::VLFS,
     },
     driver::{crc::Crc, flash::SpiFlash, pyro::PyroChannel, serial::Serial, timer::Timer},
     heapless_format_bytes,
@@ -101,24 +101,24 @@ impl<I: Timer, T: Serial, F: SpiFlash, C: Crc, P: PyroChannel> Console<I, T, F, 
                 self.vlfs.flush().await;
                 self.serial.writeln(b"Flushed").await?;
             } else if command[0] == "fs.open" {
-                let id = u64::from_str_radix(command[1], 16).unwrap();
-                let fd = self.vlfs.open_file(id).await.unwrap();
-                self.serial
-                    .writeln(heapless_format_bytes!(32, "File Descriptor: {:#X}", fd))
-                    .await?;
+                // let id = u64::from_str_radix(command[1], 16).unwrap();
+                // let fd = self.vlfs.open_file(id).await.unwrap();
+                // self.serial
+                //     .writeln(heapless_format_bytes!(32, "File Descriptor: {:#X}", fd))
+                //     .await?;
             } else if command[0] == "fs.write" {
-                let fd = usize::from_str_radix(command[1], 16).unwrap();
-                let mut entry = WritingQueueEntry::new(fd);
-                let mut write_buffer = WriteBuffer::new(&mut entry.data, 5 + 8);
-                write_buffer.extend_from_slice(command[2].as_bytes());
-                entry.data_length = write_buffer.len() as u16;
-                self.vlfs.write_file(entry).await;
-                self.serial.writeln(b"Added to queue").await?;
+                // let fd = usize::from_str_radix(command[1], 16).unwrap();
+                // let mut entry = WritingQueueEntry::new(fd);
+                // let mut write_buffer = WriteBuffer::new(&mut entry.data, 5 + 8);
+                // write_buffer.extend_from_slice(command[2].as_bytes());
+                // entry.data_length = write_buffer.len() as u16;
+                // self.vlfs.write_file(entry).await;
+                // self.serial.writeln(b"Added to queue").await?;
             } else if command[0] == "fs.read" {
-                let fd = usize::from_str_radix(command[1], 16).unwrap();
-                let mut buffer = [0u8; 64];
-                let result = self.vlfs.read_file(fd, &mut buffer).await.unwrap();
-                self.serial.writeln(result).await?;
+                // let fd = usize::from_str_radix(command[1], 16).unwrap();
+                // let mut buffer = [0u8; 64];
+                // let result = self.vlfs.read_file(fd, &mut buffer).await.unwrap();
+                // self.serial.writeln(result).await?;
             } else if command[0] == "sys.reset" {
                 // cortex_m::peripheral::SCB::sys_reset();
             } else if command[0] == "f" {

@@ -20,10 +20,6 @@ where
     C: Crc,
 {
     pub fn new(flash: F, crc: C) -> Self {
-        let mut opened_files = Vec::<Option<OpenedFile>, MAX_OPENED_FILES>::new();
-        for _ in 0..MAX_OPENED_FILES {
-            opened_files.push(None).unwrap();
-        }
         let mut free_sectors = BitArray::<_, Lsb0>::new([0u32; FREE_SECTORS_ARRAY_SIZE]);
         for i in 0..(TABLE_COUNT * 32 * 1024 / SECTOR_SIZE) {
             free_sectors.set(i, true);
@@ -33,9 +29,7 @@ where
             free_sectors: BlockingMutex::new(RefCell::new(free_sectors)),
             flash: Mutex::new(flash),
             crc: Mutex::new(crc),
-            opened_files: RwLock::new(opened_files),
             writing_queue: Channel::new(),
-            page_writing_queue: Channel::new(),
         }
     }
 
