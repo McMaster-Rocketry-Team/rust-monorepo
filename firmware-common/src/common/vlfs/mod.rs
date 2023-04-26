@@ -112,19 +112,39 @@ where
     }
 
     pub async fn remove_file(&self, file_id: u64) -> Result<(), ()> {
+        let mut current_sector_index: Option<u16> = None;
         let mut at = self.allocation_table.write().await;
         for i in 0..at.allocation_table.file_entries.len() {
             if at.allocation_table.file_entries[i].file_id == file_id {
                 if at.allocation_table.file_entries[i].opened {
                     return Err(());
                 }
+                current_sector_index = at.allocation_table.file_entries[i].first_sector_index;
                 at.allocation_table.file_entries.swap_remove(i);
                 break;
             }
         }
         drop(at);
         self.write_allocation_table().await;
-        // TODO update sectors list
+
+        // update sectors list
+        let mut buffer = [0u8; 5 + 8];
+        let mut flash = self.flash.lock().await;
+
+        while let Some(sector_index) = current_sector_index {
+            let address = sector_index as u32 * SECTOR_SIZE as u32;
+            let address = address + SECTOR_SIZE as u32 - 8;
+
+            flash.read(address, 16, &mut buffer).await;
+            let next_sector_index = find_most_common_u16_out_of_4(&buffer[5..13]).unwrap();
+            self.return_sector(sector_index);
+            current_sector_index = if next_sector_index == 0xFFFF {
+                None
+            } else {
+                Some(next_sector_index)
+            };
+        }
+
         Ok(())
     }
 
@@ -134,20 +154,18 @@ where
             let mut size: usize = 0;
             let mut sectors: usize = 0;
             let mut current_sector_index = file_entry.first_sector_index;
-            let mut buffer = [0u8; 5 + 8];
+            let mut buffer = [0u8; 5 + 16];
+            let mut flash = self.flash.lock().await;
+
             while let Some(sector_index) = current_sector_index {
-                let sector_address = sector_index as u32 * SECTOR_SIZE as u32;
+                let address = sector_index as u32 * SECTOR_SIZE as u32;
+                let address = address + SECTOR_SIZE as u32 - 16;
 
-                // read data length
-                let mut flash = self.flash.lock().await;
-                flash.read(sector_address, 8, &mut buffer).await;
+                flash.read(address, 16, &mut buffer).await;
+
                 size += find_most_common_u16_out_of_4(&buffer[5..13]).unwrap() as usize;
+                let next_sector_index = find_most_common_u16_out_of_4(&buffer[13..21]).unwrap();
 
-                // read next sector index
-                flash
-                    .read(sector_address + 4096 - 256, 8, &mut buffer)
-                    .await;
-                let next_sector_index = find_most_common_u16_out_of_4(&buffer[5..13]).unwrap();
                 current_sector_index = if next_sector_index == 0xFFFF {
                     None
                 } else {
