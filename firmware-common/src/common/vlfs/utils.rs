@@ -1,5 +1,3 @@
-use bitvec::macros::internal::funty::Numeric;
-
 pub(super) fn find_most_common_u16_out_of_4(buffer: &[u8]) -> Option<u16> {
     find_most_common(
         u16::from_be_bytes((&buffer[0..2]).try_into().unwrap()),

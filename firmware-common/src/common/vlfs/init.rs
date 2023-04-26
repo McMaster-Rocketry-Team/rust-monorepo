@@ -98,10 +98,11 @@ where
 
             let flash = self.flash.get_mut();
             let crc = self.crc.get_mut();
+            let mut read_buffer = [0u8; 4 + 5];
             let mut reader = SpiReader::new((i * 32 * 1024).try_into().unwrap(), flash, crc);
 
             reader.reset_crc();
-            let version = reader.read_u32().await;
+            let version = reader.read_u32(&mut read_buffer).await;
             if version != VLFS_VERSION {
                 warn!(
                     "Version mismatch for allocation table #{}, expected: {}, actual: {}",
@@ -110,17 +111,17 @@ where
                 continue;
             }
 
-            let sequence_number = reader.read_u32().await;
-            let file_count = reader.read_u32().await;
+            let sequence_number = reader.read_u32(&mut read_buffer).await;
+            let file_count = reader.read_u32(&mut read_buffer).await;
             if file_count > MAX_FILES.try_into().unwrap() {
                 warn!("file_count > MAX_FILES");
                 continue;
             }
             let mut files: Vec<FileEntry, MAX_FILES> = Vec::<FileEntry, MAX_FILES>::new();
             for _ in 0..file_count {
-                let file_id = reader.read_u64().await;
-                let file_type = reader.read_u16().await;
-                let first_sector_index = reader.read_u16().await;
+                let file_id = reader.read_u64(&mut read_buffer).await;
+                let file_type = reader.read_u16(&mut read_buffer).await;
+                let first_sector_index = reader.read_u16(&mut read_buffer).await;
                 files
                     .push(FileEntry {
                         file_id,
@@ -137,7 +138,7 @@ where
             }
 
             let actual_crc = reader.get_crc();
-            let expected_crc = reader.read_u32().await;
+            let expected_crc = reader.read_u32(&mut read_buffer).await;
             if actual_crc == expected_crc {
                 info!("CRC match!");
             } else {

@@ -1,3 +1,5 @@
+use core::fmt;
+
 use crate::common::io_traits::Writer;
 
 use super::utils::CopyFromU16x4;
@@ -24,14 +26,14 @@ where
                 false
             };
 
-            let file_entry_clone = file_entry.clone();
+            let result = Some(FileWriter::new(self, new_file, &file_entry));
             drop(at);
 
             if new_file {
                 self.write_allocation_table().await;
             }
 
-            return Some(FileWriter::new(self, new_file, file_entry_clone));
+            return result;
         }
 
         None
@@ -52,12 +54,27 @@ where
     new_file: bool,
 }
 
+impl<'a, F, C> fmt::Debug for FileWriter<'a, F, C>
+where
+    F: SpiFlash,
+    C: Crc,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("FileWriter")
+            .field("file_id", &self.file_id)
+            .field("new_file", &self.new_file)
+            .field("sector_data_length", &self.sector_data_length)
+            .field("current_sector_index", &self.current_sector_index)
+            .finish()
+    }
+}
+
 impl<'a, F, C> FileWriter<'a, F, C>
 where
     F: SpiFlash,
     C: Crc,
 {
-    fn new(vlfs: &'a VLFS<F, C>, new_file: bool, file_entry: FileEntry) -> Self {
+    fn new(vlfs: &'a VLFS<F, C>, new_file: bool, file_entry: &FileEntry) -> Self {
         FileWriter {
             vlfs,
             buffer: [0xFFu8; 5 + 256],

@@ -56,7 +56,7 @@ pub async fn init<
     // timer.sleep(2000).await;
 
     let mut console = Console::new(timer, usb, fs, pyro3);
-    console.run().await.unwrap();
+    console.run().await;
 
     // meg.reset(false).await.unwrap();
     // loop {

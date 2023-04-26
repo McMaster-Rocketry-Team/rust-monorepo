@@ -82,10 +82,9 @@ where
     crc: &'a mut C,
     crc_buffer: [u8; 4],
     crc_buffer_index: usize,
-    buffer: [u8; 32 + 5], // maximum read length is 32 bytes + 5 bytes for spi instructions
 }
 
-impl<'a, F, C> SpiReader<'a, F, C>
+impl<'a, 'b, F, C> SpiReader<'a, F, C>
 where
     F: SpiFlash,
     C: Crc,
@@ -98,7 +97,6 @@ where
             crc,
             crc_buffer: [0; 4],
             crc_buffer_index: 0,
-            buffer: [0; 32 + 5],
         }
     }
 
@@ -116,15 +114,16 @@ where
     F: SpiFlash,
     C: Crc,
 {
-    async fn read_slice(&mut self, length: usize) -> &[u8] {
+    // maximum read length is the length of buffer - 5 bytes
+    async fn read_slice<'b>(&mut self, buffer: &'b mut [u8], length: usize) -> &'b [u8] {
         self.flash
-            .read_4kib(self.address, length, &mut self.buffer)
+            .read_4kib(self.address, length, buffer)
             .await;
 
         self.address += length as u32;
 
         for i in 5..(length + 5) {
-            self.crc_buffer[self.crc_buffer_index] = self.buffer[i];
+            self.crc_buffer[self.crc_buffer_index] = buffer[i];
             self.crc_buffer_index += 1;
             if self.crc_buffer_index == 4 {
                 self.crc_buffer_index = 0;
@@ -132,6 +131,6 @@ where
             }
         }
 
-        &self.buffer[5..(length + 5)]
+        &buffer[5..(length + 5)]
     }
 }
