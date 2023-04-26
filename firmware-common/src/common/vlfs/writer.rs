@@ -33,10 +33,10 @@ where
 
                     flash.read(next_sector_index_address, 8, &mut buffer).await;
                     let next_sector_index = find_most_common_u16_out_of_4(&buffer[5..]).unwrap();
-                    if new_sector_index == 0xFFFF {
+                    if next_sector_index == 0xFFFF {
                         break;
                     } else {
-                        current_sector_index = new_sector_index;
+                        current_sector_index = next_sector_index;
                     }
                 }
 
