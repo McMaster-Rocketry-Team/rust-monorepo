@@ -1,8 +1,6 @@
-use defmt::*;
+use core::ops::{Deref, DerefMut};
 
-use crate::common::io_traits::AsyncReader;
-
-use super::crc::Crc;
+use embassy_sync::{blocking_mutex::raw::RawMutex, mutex::MutexGuard};
 
 pub trait SpiFlash {
     // size in bytes
@@ -72,65 +70,39 @@ pub trait SpiFlash {
     }
 }
 
-pub struct SpiReader<'a, F, C>
+impl<'a, M, T> SpiFlash for MutexGuard<'a, M, T>
 where
-    F: SpiFlash,
-    C: Crc,
+    M: RawMutex,
+    T: SpiFlash,
 {
-    address: u32,
-    flash: &'a mut F,
-    crc: &'a mut C,
-    crc_buffer: [u8; 4],
-    crc_buffer_index: usize,
-}
-
-impl<'a, 'b, F, C> SpiReader<'a, F, C>
-where
-    F: SpiFlash,
-    C: Crc,
-{
-    pub fn new(start_address: u32, flash: &'a mut F, crc: &'a mut C) -> Self {
-        crc.reset();
-        Self {
-            address: start_address,
-            flash,
-            crc,
-            crc_buffer: [0; 4],
-            crc_buffer_index: 0,
-        }
+    fn size(&self) -> u32 {
+        self.deref().size()
     }
 
-    pub fn reset_crc(&mut self) {
-        self.crc.reset();
+    async fn erase_sector_4kib(&mut self, address: u32) {
+        self.deref_mut().erase_sector_4kib(address).await;
     }
 
-    pub fn get_crc(&self) -> u32 {
-        self.crc.read()
+    async fn erase_block_32kib(&mut self, address: u32) {
+        self.deref_mut().erase_block_32kib(address).await;
     }
-}
 
-impl<'a, F, C> AsyncReader for SpiReader<'a, F, C>
-where
-    F: SpiFlash,
-    C: Crc,
-{
-    // maximum read length is the length of buffer - 5 bytes
-    async fn read_slice<'b>(&mut self, buffer: &'b mut [u8], length: usize) -> &'b [u8] {
-        self.flash
-            .read_4kib(self.address, length, buffer)
-            .await;
+    async fn erase_block_64kib(&mut self, address: u32) {
+        self.deref_mut().erase_block_64kib(address).await;
+    }
 
-        self.address += length as u32;
+    async fn read_4kib<'b>(
+        &mut self,
+        address: u32,
+        read_length: usize,
+        read_buffer: &'b mut [u8],
+    ) -> &'b [u8] {
+        self.deref_mut()
+            .read_4kib(address, read_length, read_buffer)
+            .await
+    }
 
-        for i in 5..(length + 5) {
-            self.crc_buffer[self.crc_buffer_index] = buffer[i];
-            self.crc_buffer_index += 1;
-            if self.crc_buffer_index == 4 {
-                self.crc_buffer_index = 0;
-                self.crc.feed(u32::from_be_bytes(self.crc_buffer));
-            }
-        }
-
-        &buffer[5..(length + 5)]
+    async fn write_256b<'b>(&mut self, address: u32, write_buffer: &'b mut [u8]) {
+        self.deref_mut().write_256b(address, write_buffer).await;
     }
 }

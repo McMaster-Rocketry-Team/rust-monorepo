@@ -187,6 +187,16 @@ where
     }
 
     async fn _flush(&mut self, next_sector_index: u16) {
+        if self.sector_data_length == 0 {
+            self.write_length_and_next_sector_index(next_sector_index);
+            let current_sector_address = (self.current_sector_index as usize * SECTOR_SIZE) as u32;
+            self.send_page_to_queue(
+                current_sector_address + (SECTOR_SIZE - PAGE_SIZE) as u32,
+                None,
+            );
+            return;
+        }
+
         // pad to 4 bytes
         let crc_offset = ((self.buffer_offset - 5) + 3) & !3;
 

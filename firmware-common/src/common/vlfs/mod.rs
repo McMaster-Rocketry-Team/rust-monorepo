@@ -1,8 +1,6 @@
 use core::cell::RefCell;
 
-use crate::common::buffer::WriteBuffer;
 use crate::driver::{crc::Crc, flash::SpiFlash};
-use crate::new_write_buffer;
 use bitvec::prelude::*;
 use defmt::*;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
@@ -23,17 +21,17 @@ pub mod reader;
 mod utils;
 pub mod writer;
 
-const VLFS_VERSION: u32 = 14;
+const VLFS_VERSION: u32 = 15;
 const SECTORS_COUNT: usize = 16384; // for 512M-bit flash (W25Q512JV)
 const SECTOR_SIZE: usize = 4096;
 const PAGE_SIZE: usize = 256;
 const PAGES_PER_SECTOR: usize = SECTOR_SIZE / PAGE_SIZE;
 const MAX_FILES: usize = 256; // can be as large as 2728
 const TABLE_COUNT: usize = 4;
-const FREE_SECTORS_ARRAY_SIZE: usize = SECTORS_COUNT / 32;
-const MAX_ALLOC_TABLE_LENGTH: usize = 16 + MAX_FILES * 12;
+const SECTOR_MAP_ARRAY_SIZE: usize = SECTORS_COUNT / 32;
 const WRITING_QUEUE_SIZE: usize = 4;
 const MAX_SECTOR_DATA_SIZE: usize = 4016;
+const ALLOC_TABLES_SECTORS_USED: usize = TABLE_COUNT * 32 * 1024 / SECTOR_SIZE;
 
 #[derive(Debug, Clone)]
 struct FileEntry {
@@ -72,16 +70,62 @@ impl Default for AllocationTableWrapper {
     }
 }
 
+struct FreeSectors {
+    sector_map: BitArray<[u32; SECTOR_MAP_ARRAY_SIZE], Lsb0>, // false: unused; true: used
+    last_sector_map_i: usize,
+    free_sectors_count: u32,
+}
+
+impl FreeSectors {
+    fn claim_avaliable_sector(&mut self) -> Option<u16> {
+        if self.free_sectors_count == 0 {
+            return None;
+        }
+
+        for i in self.last_sector_map_i..SECTORS_COUNT {
+            if !self.sector_map[i] {
+                self.sector_map.set(i, true);
+                self.free_sectors_count -= 1;
+                self.last_sector_map_i = (i + 1) % SECTORS_COUNT;
+                info!("claim_avaliable_sector {:#X}", i);
+                return Some(i as u16);
+            }
+        }
+        for i in 0..self.last_sector_map_i {
+            if !self.sector_map[i] {
+                self.sector_map.set(i, true);
+                self.free_sectors_count -= 1;
+                self.last_sector_map_i = (i + 1) % SECTORS_COUNT;
+                info!("claim_avaliable_sector {:#X}", i);
+                return Some(i as u16);
+            }
+        }
+
+        defmt::panic!("wtf");
+    }
+
+    fn claim_sector(&mut self, sector_index: u16) {
+        if !self.sector_map[sector_index as usize] {
+            self.free_sectors_count -= 1;
+            self.sector_map.set(sector_index as usize, true);
+        }
+    }
+
+    fn return_sector(&mut self, sector_index: u16) {
+        if self.sector_map[sector_index as usize] {
+            self.free_sectors_count += 1;
+            self.sector_map.set(sector_index as usize, false);
+        }
+    }
+}
+
 pub struct VLFS<F, C>
 where
     F: SpiFlash,
     C: Crc,
 {
     allocation_table: RwLock<CriticalSectionRawMutex, AllocationTableWrapper, 10>,
-    free_sectors: BlockingMutex<
-        CriticalSectionRawMutex,
-        RefCell<BitArray<[u32; FREE_SECTORS_ARRAY_SIZE], Lsb0>>,
-    >,
+    free_sectors: BlockingMutex<CriticalSectionRawMutex, RefCell<FreeSectors>>,
     flash: Mutex<CriticalSectionRawMutex, F>,
     crc: Mutex<CriticalSectionRawMutex, C>,
     writing_queue: Channel<CriticalSectionRawMutex, WritingQueueEntry, WRITING_QUEUE_SIZE>,
@@ -149,6 +193,20 @@ where
         Ok(())
     }
 
+    fn claim_avaliable_sector(&self) -> Option<u16> {
+        self.free_sectors.lock(|free_sectors| {
+            let mut free_sectors = free_sectors.borrow_mut();
+            free_sectors.claim_avaliable_sector()
+        })
+    }
+
+    fn return_sector(&self, sector_index: u16) {
+        self.free_sectors.lock(|free_sectors| {
+            let mut free_sectors = free_sectors.borrow_mut();
+            free_sectors.return_sector(sector_index)
+        });
+    }
+
     pub async fn get_file_size(&self, file_id: u64) -> Option<(usize, usize)> {
         trace!("get file size start");
         let at = self.allocation_table.read().await;
@@ -191,29 +249,6 @@ where
         }
 
         None
-    }
-
-    // TODO optimize
-    fn claim_avaliable_sector(&self) -> Option<u16> {
-        self.free_sectors.lock(|free_sectors| {
-            let mut free_sectors = free_sectors.borrow_mut();
-            for i in 0..SECTORS_COUNT {
-                if !free_sectors[i] {
-                    let slice = free_sectors.as_mut_bitslice();
-                    slice.set(i, true);
-                    info!("claim_avaliable_sector {:#X}", i);
-                    return Some(i.try_into().unwrap());
-                }
-            }
-            None
-        })
-    }
-
-    fn return_sector(&self, sector_index: u16) {
-        self.free_sectors.lock(|free_sectors| {
-            let mut free_sectors = free_sectors.borrow_mut();
-            free_sectors.set(sector_index as usize, false);
-        })
     }
 
     fn find_file_entry<'a>(

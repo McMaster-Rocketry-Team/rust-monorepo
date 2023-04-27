@@ -6,7 +6,6 @@ use crate::{
     driver::{crc::Crc, flash::SpiFlash, pyro::PyroChannel, serial::Serial, timer::Timer},
     heapless_format_bytes,
 };
-use defmt::info;
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 use futures::future::join;
 use heapless::String;

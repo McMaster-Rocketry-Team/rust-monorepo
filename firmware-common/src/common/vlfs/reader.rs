@@ -73,13 +73,7 @@ where
     }
 
     async fn read_next_page(&mut self) -> Result<(), ReadNextPageError> {
-        trace!("read next page");
         if let Some(current_sector_index) = self.current_sector_index {
-            trace!(
-                "current_sector_index: {}  current_page_index: {}",
-                current_sector_index,
-                self.current_page_index
-            );
             let is_last_page = self.current_page_index == 15;
             let mut flash = self.vlfs.flash.lock().await;
             let sector_address = current_sector_index as usize * SECTOR_SIZE;
@@ -92,19 +86,10 @@ where
                     .await;
                 self.sector_data_length =
                     Some(find_most_common_u16_out_of_4(&self.page_buffer[5..]).unwrap());
-                trace!(
-                    "read sector data length result: {}",
-                    self.sector_data_length.unwrap()
-                );
             }
 
             let sector_unread_data_length =
                 self.sector_data_length.unwrap() - self.sector_read_data_length;
-            trace!(
-                "sector_read_data_length: {}  sector_unread_data_length: {}",
-                self.sector_read_data_length,
-                sector_unread_data_length
-            );
 
             if sector_unread_data_length == 0 {
                 let next_sector_index_address = (sector_address + SECTOR_SIZE - 8) as u32;
@@ -128,11 +113,6 @@ where
                 } as u16,
             ) as usize;
             let read_data_length_padded = (read_data_length + 3) & !3;
-            trace!(
-                "read_data_length: {}  padded: {}",
-                read_data_length,
-                read_data_length_padded
-            );
 
             let page_address =
                 (sector_address + self.current_page_index as usize * PAGE_SIZE) as u32;
@@ -156,7 +136,6 @@ where
             let expected_crc = u32::from_be_bytes(expected_crc_buffer.try_into().unwrap());
             let mut crc = self.vlfs.crc.lock().await;
             let actual_crc = crc.calculate(data_buffer_padded);
-            trace!("expected_crc_buffer: {=[u8]}", expected_crc_buffer);
             drop(crc);
 
             if actual_crc != expected_crc {
