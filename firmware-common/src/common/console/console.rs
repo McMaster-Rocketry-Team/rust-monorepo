@@ -69,8 +69,6 @@ impl<I: Timer, T: Serial, F: SpiFlash, C: Crc, P: PyroChannel> Console<I, T, F, 
                     command.push(*byte as char).unwrap();
                     self.write(&[*byte]).await;
                 }
-
-                info!("command: {}", command.as_str());
             }
         }
     }
@@ -110,6 +108,11 @@ impl<I: Timer, T: Serial, F: SpiFlash, C: Crc, P: PyroChannel> Console<I, T, F, 
                     ))
                     .await;
                 }
+            } else if command[0] == "fs.test" {
+                self.vlfs.create_file(0x1, 0x0).await.unwrap();
+                let mut file_writer = self.vlfs.open_file_for_write(0x1).await.unwrap();
+                file_writer.extend_from_slice(b"12345");
+                file_writer.close().await;
             } else if command[0] == "fs.touch" {
                 let id = u64::from_str_radix(command[1], 16).unwrap();
                 let typ = u16::from_str_radix(command[2], 16).unwrap();
@@ -142,9 +145,19 @@ impl<I: Timer, T: Serial, F: SpiFlash, C: Crc, P: PyroChannel> Console<I, T, F, 
                 self.writeln(heapless_format_bytes!(
                     32,
                     "File Descriptor: {:#X}",
-                    opened_write_files.len() - 1
+                    opened_read_files.len() - 1
                 ))
                 .await;
+            } else if command[0] == "fs.close.write" {
+                let fd = usize::from_str_radix(command[1], 16).unwrap();
+                let file_writer = opened_write_files.remove(fd);
+                file_writer.close().await;
+                self.writeln(b"Closed").await;
+            } else if command[0] == "fs.close.read" {
+                let fd = usize::from_str_radix(command[1], 16).unwrap();
+                let file_reader = opened_read_files.remove(fd);
+                file_reader.close().await;
+                self.writeln(b"Closed").await;
             } else if command[0] == "fs.write" {
                 let fd = usize::from_str_radix(command[1], 16).unwrap();
                 let file_writer = opened_write_files.get_mut(fd).unwrap();
@@ -156,10 +169,15 @@ impl<I: Timer, T: Serial, F: SpiFlash, C: Crc, P: PyroChannel> Console<I, T, F, 
                 file_writer.flush().await;
                 self.writeln(b"OK").await;
             } else if command[0] == "fs.read" {
-                // let fd = usize::from_str_radix(command[1], 16).unwrap();
-                // let mut buffer = [0u8; 64];
-                // let result = self.vlfs.read_file(fd, &mut buffer).await.unwrap();
-                // self.serial.writeln(result).await?;
+                let fd = usize::from_str_radix(command[1], 16).unwrap();
+                let mut buffer = [0u8; 64];
+                let file_reader = opened_read_files.get_mut(fd).unwrap();
+                let result = file_reader.read_slice(&mut buffer, 64).await;
+                self.writeln(result).await;
+            } else if command[0] == "fs.rm" {
+                let id = u64::from_str_radix(command[1], 16).unwrap();
+                self.vlfs.remove_file(id).await.unwrap();
+                self.writeln(b"Removed").await;
             } else if command[0] == "sys.reset" {
                 // cortex_m::peripheral::SCB::sys_reset();
             } else if command[0] == "f" {

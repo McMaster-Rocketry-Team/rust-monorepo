@@ -23,7 +23,7 @@ pub mod reader;
 mod utils;
 pub mod writer;
 
-const VLFS_VERSION: u32 = 5;
+const VLFS_VERSION: u32 = 14;
 const SECTORS_COUNT: usize = 16384; // for 512M-bit flash (W25Q512JV)
 const SECTOR_SIZE: usize = 4096;
 const PAGE_SIZE: usize = 256;
@@ -33,6 +33,7 @@ const TABLE_COUNT: usize = 4;
 const FREE_SECTORS_ARRAY_SIZE: usize = SECTORS_COUNT / 32;
 const MAX_ALLOC_TABLE_LENGTH: usize = 16 + MAX_FILES * 12;
 const WRITING_QUEUE_SIZE: usize = 4;
+const MAX_SECTOR_DATA_SIZE: usize = 4016;
 
 #[derive(Debug, Clone)]
 struct FileEntry {
@@ -135,7 +136,7 @@ where
             let address = sector_index as u32 * SECTOR_SIZE as u32;
             let address = address + SECTOR_SIZE as u32 - 8;
 
-            flash.read(address, 16, &mut buffer).await;
+            flash.read(address, 8, &mut buffer).await;
             let next_sector_index = find_most_common_u16_out_of_4(&buffer[5..13]).unwrap();
             self.return_sector(sector_index);
             current_sector_index = if next_sector_index == 0xFFFF {
@@ -149,6 +150,7 @@ where
     }
 
     pub async fn get_file_size(&self, file_id: u64) -> Option<(usize, usize)> {
+        trace!("get file size start");
         let at = self.allocation_table.read().await;
         if let Some(file_entry) = self.find_file_entry(&at.allocation_table, file_id) {
             let mut size: usize = 0;
@@ -158,12 +160,23 @@ where
             let mut flash = self.flash.lock().await;
 
             while let Some(sector_index) = current_sector_index {
+                trace!("at sector {:#X}", sector_index);
                 let address = sector_index as u32 * SECTOR_SIZE as u32;
-                let address = address + SECTOR_SIZE as u32 - 16;
+                let address = address + SECTOR_SIZE as u32 - 8 - 8;
 
                 flash.read(address, 16, &mut buffer).await;
 
-                size += find_most_common_u16_out_of_4(&buffer[5..13]).unwrap() as usize;
+                let sector_data_size =
+                    find_most_common_u16_out_of_4(&buffer[5..13]).unwrap() as usize; // TODO handle error
+                trace!("sector_data_size: {}", sector_data_size);
+                if sector_data_size > MAX_SECTOR_DATA_SIZE {
+                    warn!("sector_data_size > MAX_SECTOR_DATA_SIZE");
+                    sectors += 1;
+                    break;
+                } else {
+                    size += sector_data_size;
+                }
+
                 let next_sector_index = find_most_common_u16_out_of_4(&buffer[13..21]).unwrap();
 
                 current_sector_index = if next_sector_index == 0xFFFF {
@@ -188,6 +201,7 @@ where
                 if !free_sectors[i] {
                     let slice = free_sectors.as_mut_bitslice();
                     slice.set(i, true);
+                    info!("claim_avaliable_sector {:#X}", i);
                     return Some(i.try_into().unwrap());
                 }
             }
@@ -198,8 +212,7 @@ where
     fn return_sector(&self, sector_index: u16) {
         self.free_sectors.lock(|free_sectors| {
             let mut free_sectors = free_sectors.borrow_mut();
-            let slice = free_sectors.as_mut_bitslice();
-            slice.set(sector_index as usize, false);
+            free_sectors.set(sector_index as usize, false);
         })
     }
 

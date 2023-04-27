@@ -63,21 +63,22 @@ where
         for file_entry in &at.allocation_table.file_entries {
             let mut current_sector_index = file_entry.first_sector_index;
             while let Some(sector_index) = current_sector_index {
+                trace!("at sector {:#X}", sector_index);
                 self.free_sectors.lock(|free_sectors| {
                     let mut free_sectors = free_sectors.borrow_mut();
-                    let free_sectors = free_sectors.as_mut_bitslice();
                     free_sectors.set(sector_index as usize, true);
                 });
 
                 used_sectors += 1;
 
                 let mut buffer = [0u8; 5 + 8];
-                let sector_address = sector_index as u32 * SECTOR_SIZE as u32;
+                let next_sector_index_address = (sector_index as usize * SECTOR_SIZE + SECTOR_SIZE - 8) as u32;
                 self.flash
                     .get_mut()
-                    .read(sector_address + 4096 - 256, 8, &mut buffer)
+                    .read(next_sector_index_address, 8, &mut buffer)
                     .await;
                 let next_sector_index = find_most_common_u16_out_of_4(&buffer[5..13]).unwrap();
+                trace!("next_sector_inndex: {}", next_sector_index);
                 current_sector_index = if next_sector_index == 0xFFFF {
                     None
                 } else {
@@ -98,7 +99,7 @@ where
 
             let flash = self.flash.get_mut();
             let crc = self.crc.get_mut();
-            let mut read_buffer = [0u8; 4 + 5];
+            let mut read_buffer = [0u8; 5 + 8];
             let mut reader = SpiReader::new((i * 32 * 1024).try_into().unwrap(), flash, crc);
 
             reader.reset_crc();

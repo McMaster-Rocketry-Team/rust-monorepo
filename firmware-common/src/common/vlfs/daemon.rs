@@ -18,20 +18,24 @@ where
                 crc_offset,
                 mut data,
             } => {
-                info!("Flush: write {:#X}", address);
+                info!("Flush: write to {:#X}", address);
                 if let Some(crc_offset) = crc_offset {
                     let mut crc = self.crc.lock().await;
-                    let crc = crc.calculate(&data[..crc_offset]);
-                    (&mut data[crc_offset..(crc_offset + 4)]).copy_from_slice(&crc.to_be_bytes());
+                    let crc = crc.calculate(&data[5..(crc_offset + 5)]);
+                    (&mut data[(crc_offset + 5)..(crc_offset + 5 + 4)])
+                        .copy_from_slice(&crc.to_be_bytes());
                 }
+                info!("Flush: start: {=[u8]}", &data[5..(5 + 16)]);
+                info!("Flush:   end: {=[u8]}", &data[(5 + PAGE_SIZE - 16)..]);
                 flash.write_256b(address, &mut data).await;
             }
         }
     }
 
     pub async fn flush(&self) {
+        let receiver = self.writing_queue.receiver();
         loop {
-            let entry = self.writing_queue.receiver().recv().await;
+            let entry = receiver.recv().await;
             self.flush_single(entry).await;
         }
     }

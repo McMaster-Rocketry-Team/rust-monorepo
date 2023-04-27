@@ -9,7 +9,7 @@ pub trait Crc {
 
     fn calculate(&mut self, data: &[u8]) -> u32 {
         self.reset();
-        info!("Crc calculate: {}", data);
+        info!("CRC calculate: {}", data);
         let words = data.len() / 4;
         for i in 0..words {
             let value = u32::from_be_bytes(data[(i * 4)..((i + 1) * 4)].try_into().unwrap());

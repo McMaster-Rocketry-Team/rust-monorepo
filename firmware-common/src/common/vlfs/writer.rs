@@ -29,7 +29,7 @@ where
                 let mut current_sector_index = first_sector_index;
                 loop {
                     let next_sector_index_address =
-                        (current_sector_index as usize * SECTOR_SIZE + 4096 - 8) as u32;
+                        (current_sector_index as usize * SECTOR_SIZE + SECTOR_SIZE - 8) as u32;
 
                     flash.read(next_sector_index_address, 8, &mut buffer).await;
                     let next_sector_index = find_most_common_u16_out_of_4(&buffer[5..]).unwrap();
@@ -39,9 +39,14 @@ where
                         current_sector_index = next_sector_index;
                     }
                 }
+                trace!("index of the last sector: {}", current_sector_index);
 
                 let current_sector_address = (current_sector_index as usize * SECTOR_SIZE) as u32;
+
                 let temp_sector_index = self.claim_avaliable_sector().unwrap();
+                flash
+                    .erase_sector_4kib(temp_sector_index as u32 * SECTOR_SIZE as u32)
+                    .await;
                 // copy last sector to temp sector, with "index of next sector" changed
                 for i in 0..PAGES_PER_SECTOR {
                     let read_address = (current_sector_address as usize + i * PAGE_SIZE) as u32;
@@ -78,6 +83,11 @@ where
                 true
             };
 
+            self.writing_queue
+                .send(WritingQueueEntry::EraseSector {
+                    address: new_sector_index as u32 * SECTOR_SIZE as u32,
+                })
+                .await;
             let result = Some(FileWriter::new(self, new_sector_index, file_entry.file_id));
             drop(at);
 
@@ -110,18 +120,20 @@ where
     F: SpiFlash,
     C: Crc,
 {
-    fn new(vlfs: &'a VLFS<F, C>, current_sector_index: u16, file_id: u64) -> Self {
+    fn new(vlfs: &'a VLFS<F, C>, initial_sector_index: u16, file_id: u64) -> Self {
+        info!("initial_sector_index: {:#X}", initial_sector_index);
         FileWriter {
             vlfs,
             buffer: [0xFFu8; 5 + PAGE_SIZE],
             buffer_offset: 5,
             sector_data_length: 0,
-            current_sector_index,
+            current_sector_index: initial_sector_index,
             file_id,
         }
     }
 
     fn send_page_to_queue(&mut self, address: u32, crc_offset: Option<usize>) {
+        info!("send_page_to_queue");
         self.vlfs
             .writing_queue
             .try_send(WritingQueueEntry::WritePage {
@@ -135,6 +147,7 @@ where
     }
 
     fn send_erase_to_queue(&mut self, sector_index: u16) {
+        info!("send_erase_to_queue");
         self.vlfs
             .writing_queue
             .try_send(WritingQueueEntry::EraseSector {
@@ -169,24 +182,22 @@ where
 
         let next_sector_index = self.vlfs.claim_avaliable_sector().unwrap();
         self._flush(next_sector_index).await;
+        self.send_erase_to_queue(next_sector_index);
         self.current_sector_index = next_sector_index;
     }
 
     async fn _flush(&mut self, next_sector_index: u16) {
         // pad to 4 bytes
-        let buffer_data_len = self.buffer_offset - 5;
-        if buffer_data_len % 4 != 0 {
-            self.buffer_offset += 4 - buffer_data_len % 4;
-        }
+        let crc_offset = ((self.buffer_offset - 5) + 3) & !3;
 
         if self.is_last_data_page() {
             // last data page contains data
             self.write_length_and_next_sector_index(next_sector_index);
 
-            self.send_page_to_queue(self.page_address(), Some(self.buffer_offset));
+            self.send_page_to_queue(self.page_address(), Some(crc_offset));
         } else {
             // last data page does not contain data
-            self.send_page_to_queue(self.page_address(), Some(self.buffer_offset));
+            self.send_page_to_queue(self.page_address(), Some(crc_offset));
 
             self.write_length_and_next_sector_index(next_sector_index);
 
@@ -234,6 +245,8 @@ where
                     .copy_from_slice(slice);
                 self.buffer_offset += slice.len();
                 self.sector_data_length += slice.len() as u16;
+
+                slice = &[];
             } else {
                 (&mut self.buffer[self.buffer_offset..]).copy_from_slice(&slice[..buffer_free]);
                 self.buffer_offset += buffer_free;
@@ -243,13 +256,13 @@ where
                     let next_sector_index = self.vlfs.claim_avaliable_sector().unwrap();
                     self.write_length_and_next_sector_index(next_sector_index);
 
-                    self.send_page_to_queue(self.page_address(), Some(self.buffer_offset));
+                    self.send_page_to_queue(self.page_address(), Some(self.buffer_offset - 5));
                     self.send_erase_to_queue(next_sector_index);
 
                     self.sector_data_length = 0;
                     self.current_sector_index = next_sector_index
                 } else {
-                    self.send_page_to_queue(self.page_address(), Some(self.buffer_offset));
+                    self.send_page_to_queue(self.page_address(), Some(self.buffer_offset - 5));
                 }
 
                 slice = &slice[buffer_free..];

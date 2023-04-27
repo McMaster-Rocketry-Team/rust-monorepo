@@ -34,7 +34,7 @@ pub trait SpiFlash {
             } else {
                 read_length - bytes_read
             };
-            info!("reading {}/{} bytes", bytes_read, read_length);
+            // info!("reading {}/{} bytes", bytes_read, read_length);
             self.read_4kib(
                 address + bytes_read as u32,
                 length,
@@ -61,7 +61,7 @@ pub trait SpiFlash {
             } else {
                 write_length - bytes_written
             };
-            info!("writing {}/{} bytes", bytes_written, write_length);
+            // info!("writing {}/{} bytes", bytes_written, write_length);
             self.write_256b(
                 address + bytes_written as u32,
                 &mut write_buffer[bytes_written..],
