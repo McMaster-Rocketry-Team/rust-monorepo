@@ -101,10 +101,13 @@ where
 
             let flash = self.flash.get_mut();
             let crc = self.crc.get_mut();
-            let mut read_buffer = [0u8; 5 + 16];
+            let mut read_buffer = [0u8; 5 + 12];
             let mut reader = FlashReader::new((i * 32 * 1024).try_into().unwrap(), flash, crc);
 
-            let version = reader.read_u32(&mut read_buffer).await;
+            let read_result = reader.read_slice(&mut read_buffer, 12).await;
+            let version = u32::from_be_bytes((&read_result[0..4]).try_into().unwrap());
+            let sequence_number = u32::from_be_bytes((&read_result[4..8]).try_into().unwrap());
+            let file_count = u32::from_be_bytes((&read_result[8..12]).try_into().unwrap());
             if version != VLFS_VERSION {
                 warn!(
                     "Version mismatch for allocation table #{}, expected: {}, actual: {}",
@@ -112,18 +115,17 @@ where
                 );
                 continue;
             }
-
-            let sequence_number = reader.read_u32(&mut read_buffer).await;
-            let file_count = reader.read_u32(&mut read_buffer).await;
             if file_count > MAX_FILES.try_into().unwrap() {
                 warn!("file_count > MAX_FILES");
                 continue;
             }
             let mut files: Vec<FileEntry, MAX_FILES> = Vec::<FileEntry, MAX_FILES>::new();
             for _ in 0..file_count {
-                let file_id = reader.read_u64(&mut read_buffer).await;
-                let file_type = reader.read_u16(&mut read_buffer).await;
-                let first_sector_index = reader.read_u16(&mut read_buffer).await;
+                let read_result = reader.read_slice(&mut read_buffer, 12).await;
+                let file_id = u64::from_be_bytes((&read_result[0..8]).try_into().unwrap());
+                let file_type = u16::from_be_bytes((&read_result[8..10]).try_into().unwrap());
+                let first_sector_index =
+                    u16::from_be_bytes((&read_result[10..12]).try_into().unwrap());
                 files
                     .push(FileEntry {
                         file_id,

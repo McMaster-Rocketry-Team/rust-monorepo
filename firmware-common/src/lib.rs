@@ -59,25 +59,31 @@ pub async fn init<
     console.run().await;
 
     // meg.reset(false).await.unwrap();
-    // loop {
-    // let reading = imu.read().await;
-    // info!("imu: {}", reading);
-    // info!(
-    //     "battery: {}V, {}A",
-    //     batt_voltmeter.read().await,
-    //     batt_ammeter.read().await
-    // );
-    // info!("arming: {}", arming_switch.read_arming().await);
-    // info!("pyro1 cont: {}", pyro1.read_continuity().await);
-    // buzzer.set_enable(true).await;
-    // timer.sleep(500).await;
-    // info!("meg: {}", meg.read().await);
-    // timer.sleep(500).await;
-    // let len = usb.read_packet(&mut usb_buffer).await;
-    // if let Ok(len) = len {
-    //     info!("usb: {}", &usb_buffer[0..len]);
-    // }
-    // }
+    let mut time = timer.now_micros();
+    loop {
+        let _ = imu.read().await;
+        let new_time = timer.now_micros();
+        info!(
+            "{}Hz",
+            (1.0 / (((new_time - time) as f64) / 1000.0 / 1000.0)) as u32
+        );
+        time = new_time;
+        // info!(
+        //     "battery: {}V, {}A",
+        //     batt_voltmeter.read().await,
+        //     batt_ammeter.read().await
+        // );
+        // info!("arming: {}", arming_switch.read_arming().await);
+        // info!("pyro1 cont: {}", pyro1.read_continuity().await);
+        // buzzer.set_enable(true).await;
+        // timer.sleep(500).await;
+        // info!("meg: {}", meg.read().await);
+        // timer.sleep(500).await;
+        // let len = usb.read_packet(&mut usb_buffer).await;
+        // if let Ok(len) = len {
+        //     info!("usb: {}", &usb_buffer[0..len]);
+        // }
+    }
 
     // count down 5s, log every 1s
     // for i in 0..5 {
