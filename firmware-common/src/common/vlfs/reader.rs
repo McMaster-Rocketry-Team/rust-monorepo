@@ -1,5 +1,7 @@
 use core::fmt;
 
+use crate::common::io_traits::AsyncReader;
+
 use super::*;
 
 impl<F, C> VLFS<F, C>
@@ -38,11 +40,6 @@ where
     page_buffer_read_ahead_range: (usize, usize),
 }
 
-enum ReadNextPageError {
-    CorruptedPage,
-    EndOfFile,
-}
-
 impl<'a, F, C> FileReader<'a, F, C>
 where
     F: SpiFlash,
@@ -72,7 +69,8 @@ where
         self.sector_read_data_length = 0;
     }
 
-    async fn read_next_page(&mut self) -> Result<(), ReadNextPageError> {
+    // return is end of file
+    async fn read_next_page(&mut self) -> Result<bool, VLFSError> {
         if let Some(current_sector_index) = self.current_sector_index {
             let is_last_page = self.current_page_index == 15;
             let mut flash = self.vlfs.flash.lock().await;
@@ -81,11 +79,10 @@ where
             if self.sector_data_length.is_none() {
                 defmt::assert!(self.current_page_index == 0);
                 let sector_data_length_address = (sector_address + SECTOR_SIZE - 8 - 8) as u32;
-                flash
+                let read_result = flash
                     .read(sector_data_length_address, 8, &mut self.page_buffer)
-                    .await;
-                self.sector_data_length =
-                    Some(find_most_common_u16_out_of_4(&self.page_buffer[5..]).unwrap());
+                    .await?;
+                self.sector_data_length = Some(find_most_common_u16_out_of_4(read_result).unwrap());
             }
 
             let sector_unread_data_length =
@@ -93,15 +90,14 @@ where
 
             if sector_unread_data_length == 0 {
                 let next_sector_index_address = (sector_address + SECTOR_SIZE - 8) as u32;
-                flash
+                let read_result = flash
                     .read(next_sector_index_address, 8, &mut self.page_buffer)
-                    .await;
+                    .await?;
 
-                let next_sector_index =
-                    find_most_common_u16_out_of_4(&self.page_buffer[5..]).unwrap();
+                let next_sector_index = find_most_common_u16_out_of_4(read_result).unwrap();
                 self.set_current_sector_index(next_sector_index);
                 self.page_buffer_read_ahead_range = (0, 0);
-                return Ok(());
+                return Ok(false);
             }
 
             let read_data_length = core::cmp::min(
@@ -116,7 +112,7 @@ where
 
             let page_address =
                 (sector_address + self.current_page_index as usize * PAGE_SIZE) as u32;
-            flash
+            let read_result = flash
                 .read(
                     page_address,
                     if is_last_page {
@@ -126,40 +122,62 @@ where
                     },
                     &mut self.page_buffer,
                 )
-                .await;
+                .await?;
             self.sector_read_data_length += read_data_length as u16;
             drop(flash);
 
-            let data_buffer_padded = &self.page_buffer[5..(5 + read_data_length_padded)];
+            let data_buffer_padded = &read_result[..read_data_length_padded];
             let expected_crc_buffer =
-                &self.page_buffer[(5 + read_data_length_padded)..(5 + read_data_length_padded + 4)];
+                &read_result[read_data_length_padded..(read_data_length_padded + 4)];
             let expected_crc = u32::from_be_bytes(expected_crc_buffer.try_into().unwrap());
             let mut crc = self.vlfs.crc.lock().await;
             let actual_crc = crc.calculate(data_buffer_padded);
             drop(crc);
 
             if actual_crc != expected_crc {
-                return Err(ReadNextPageError::CorruptedPage);
+                return Err(VLFSError::CorruptedPage {
+                    address: page_address,
+                });
             }
 
             if is_last_page {
                 let next_sector_index =
-                    find_most_common_u16_out_of_4(&self.page_buffer[(5 + PAGE_SIZE - 8)..])
-                        .unwrap();
+                    find_most_common_u16_out_of_4(&read_result[(PAGE_SIZE - 8)..]).unwrap();
                 self.set_current_sector_index(next_sector_index);
             } else {
                 self.current_page_index += 1;
             }
 
             self.page_buffer_read_ahead_range = (5, 5 + read_data_length);
-            return Ok(());
+            return Ok(false);
         } else {
             self.page_buffer_read_ahead_range = (0, 0);
-            return Err(ReadNextPageError::EndOfFile);
+            return Ok(true);
         }
     }
 
-    pub async fn read_slice<'b>(&mut self, read_buffer: &'b mut [u8], length: usize) -> &'b [u8] {
+    pub async fn close(self) {
+        let mut at = self.vlfs.allocation_table.write().await;
+        let file_entry = self
+            .vlfs
+            .find_file_entry_mut(&mut at.allocation_table, self.file_id)
+            .unwrap();
+        file_entry.opened = false;
+    }
+}
+
+impl<'a, F, C> AsyncReader for FileReader<'a, F, C>
+where
+    F: SpiFlash,
+    C: Crc,
+{
+    type Error = VLFSError;
+
+    async fn read_slice<'b>(
+        &mut self,
+        read_buffer: &'b mut [u8],
+        length: usize,
+    ) -> Result<&'b [u8], VLFSError> {
         let mut read_length = 0;
 
         while read_length < length {
@@ -167,14 +185,14 @@ where
                 [self.page_buffer_read_ahead_range.0..self.page_buffer_read_ahead_range.1];
             if read_ahead_slice.len() == 0 {
                 match self.read_next_page().await {
-                    Ok(_) => {
+                    Ok(false) => {
                         continue;
                     }
-                    Err(ReadNextPageError::EndOfFile) => {
-                        return &read_buffer[..read_length];
+                    Ok(true) => {
+                        return Ok(&read_buffer[..read_length]);
                     }
-                    Err(ReadNextPageError::CorruptedPage) => {
-                        defmt::panic!("CorruptedPage!")
+                    Err(error) => {
+                        return Err(error);
                     }
                 }
             }
@@ -195,16 +213,7 @@ where
             }
         }
 
-        &read_buffer[..length]
-    }
-
-    pub async fn close(self) {
-        let mut at = self.vlfs.allocation_table.write().await;
-        let file_entry = self
-            .vlfs
-            .find_file_entry_mut(&mut at.allocation_table, self.file_id)
-            .unwrap();
-        file_entry.opened = false;
+        Ok(&read_buffer[..length])
     }
 }
 

@@ -1,11 +1,14 @@
-use super::{utils::find_most_common_u16_out_of_4, *};
+use super::{error::VLFSError, utils::find_most_common_u16_out_of_4, *};
 use crate::{
     common::{
         flash::{FlashReader, FlashWriter},
         io_traits::{AsyncReader, AsyncWriter},
         rwlock::RwLock,
     },
-    driver::{crc::Crc, flash::SpiFlash},
+    driver::{
+        crc::Crc,
+        flash::SpiFlash,
+    },
 };
 use embassy_sync::blocking_mutex::Mutex as BlockingMutex;
 use embassy_sync::channel::Channel;
@@ -35,15 +38,15 @@ where
         }
     }
 
-    pub async fn init(&mut self) {
-        if self.read_allocation_table().await {
+    pub async fn init(&mut self) -> Result<(), VLFSError> {
+        if self.read_allocation_table().await? {
             let at = self.allocation_table.read().await;
             info!(
                 "Found valid allocation table, file count: {}",
                 at.allocation_table.file_entries.len()
             );
             drop(at);
-            self.read_free_sectors().await;
+            self.read_free_sectors().await?;
             self.free_sectors.lock(|free_sectors| {
                 let free_sectors = free_sectors.borrow();
 
@@ -57,13 +60,14 @@ where
                 );
             });
         } else {
-            info!("No valid allocation table found, creating new one");
-            self.write_allocation_table().await;
+            info!("No valid allocation table found, creating a new one");
+            self.write_allocation_table().await?;
         }
         info!("VLFS initialized");
+        Ok(())
     }
 
-    async fn read_free_sectors(&mut self) {
+    async fn read_free_sectors(&mut self)->Result<(),VLFSError> {
         let at = self.allocation_table.read().await;
         for file_entry in &at.allocation_table.file_entries {
             let mut current_sector_index = file_entry.first_sector_index;
@@ -80,7 +84,7 @@ where
                 self.flash
                     .get_mut()
                     .read(next_sector_index_address, 8, &mut buffer)
-                    .await;
+                    .await?;
                 let next_sector_index = find_most_common_u16_out_of_4(&buffer[5..13]).unwrap();
                 trace!("next_sector_inndex: {}", next_sector_index);
                 current_sector_index = if next_sector_index == 0xFFFF {
@@ -90,9 +94,11 @@ where
                 };
             }
         }
+
+        Ok(())
     }
 
-    async fn read_allocation_table(&mut self) -> bool {
+    async fn read_allocation_table(&mut self) -> Result<bool, VLFSError> {
         let mut found_valid_table = false;
         let mut at = self.allocation_table.write().await;
 
@@ -104,7 +110,7 @@ where
             let mut read_buffer = [0u8; 5 + 12];
             let mut reader = FlashReader::new((i * 32 * 1024).try_into().unwrap(), flash, crc);
 
-            let read_result = reader.read_slice(&mut read_buffer, 12).await;
+            let read_result = reader.read_slice(&mut read_buffer, 12).await?;
             let version = u32::from_be_bytes((&read_result[0..4]).try_into().unwrap());
             let sequence_number = u32::from_be_bytes((&read_result[4..8]).try_into().unwrap());
             let file_count = u32::from_be_bytes((&read_result[8..12]).try_into().unwrap());
@@ -115,13 +121,13 @@ where
                 );
                 continue;
             }
-            if file_count > MAX_FILES.try_into().unwrap() {
+            if file_count > MAX_FILES as u32 {
                 warn!("file_count > MAX_FILES");
                 continue;
             }
             let mut files: Vec<FileEntry, MAX_FILES> = Vec::<FileEntry, MAX_FILES>::new();
             for _ in 0..file_count {
-                let read_result = reader.read_slice(&mut read_buffer, 12).await;
+                let read_result = reader.read_slice(&mut read_buffer, 12).await?;
                 let file_id = u64::from_be_bytes((&read_result[0..8]).try_into().unwrap());
                 let file_type = u16::from_be_bytes((&read_result[8..10]).try_into().unwrap());
                 let first_sector_index =
@@ -137,12 +143,11 @@ where
                         },
                         opened: false,
                     })
-                    .ok()
                     .unwrap();
             }
 
             let actual_crc = reader.get_crc();
-            let expected_crc = reader.read_u32(&mut read_buffer).await;
+            let expected_crc = reader.read_u32(&mut read_buffer).await?;
             if actual_crc == expected_crc {
                 info!("CRC match!");
             } else {
@@ -163,10 +168,10 @@ where
             }
         }
 
-        found_valid_table
+        Ok(found_valid_table)
     }
 
-    pub(super) async fn write_allocation_table(&self) {
+    pub(super) async fn write_allocation_table(&self)->Result<(),VLFSError> {
         let mut at = self.allocation_table.write().await;
         at.allocation_table_index = (at.allocation_table_index + 1) % TABLE_COUNT;
         at.allocation_table.sequence_number += 1;
@@ -177,7 +182,7 @@ where
         let mut flash = self.flash.lock().await;
         flash
             .erase_block_32kib((at.allocation_table_index * 32 * 1024) as u32)
-            .await;
+            .await?;
 
         let mut crc = self.crc.lock().await;
         let mut writer = FlashWriter::new(
@@ -186,25 +191,27 @@ where
             &mut crc,
         );
 
-        writer.extend_from_u32(VLFS_VERSION).await;
+        writer.extend_from_u32(VLFS_VERSION).await?;
         writer
             .extend_from_u32(at.allocation_table.sequence_number)
-            .await;
+            .await?;
         writer
             .extend_from_u32(at.allocation_table.file_entries.len() as u32)
-            .await;
+            .await?;
 
         for file in &at.allocation_table.file_entries {
-            writer.extend_from_u64(file.file_id).await;
-            writer.extend_from_u16(file.file_type).await;
+            writer.extend_from_u64(file.file_id).await?;
+            writer.extend_from_u16(file.file_type).await?;
             if let Some(first_sector_index) = file.first_sector_index {
-                writer.extend_from_u16(first_sector_index).await;
+                writer.extend_from_u16(first_sector_index).await?;
             } else {
-                writer.extend_from_u16(0xFFFF).await;
+                writer.extend_from_u16(0xFFFF).await?;
             }
         }
 
-        writer.extend_from_u32(writer.get_crc()).await;
-        writer.flush().await;
+        writer.extend_from_u32(writer.get_crc()).await?;
+        writer.flush().await?;
+
+        Ok(())
     }
 }

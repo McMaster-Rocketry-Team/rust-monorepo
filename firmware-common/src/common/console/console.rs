@@ -1,6 +1,6 @@
 use crate::{
     common::{
-        io_traits::Writer,
+        io_traits::{Writer, AsyncReader},
         vlfs::{reader::FileReader, writer::FileWriter, VLFS},
     },
     driver::{crc::Crc, flash::SpiFlash, pyro::PyroChannel, serial::Serial, timer::Timer},
@@ -110,8 +110,8 @@ impl<I: Timer, T: Serial, F: SpiFlash, C: Crc, P: PyroChannel> Console<I, T, F, 
             } else if command[0] == "fs.test" {
                 self.vlfs.create_file(0x1, 0x0).await.unwrap();
                 let mut file_writer = self.vlfs.open_file_for_write(0x1).await.unwrap();
-                file_writer.extend_from_slice(b"12345");
-                file_writer.close().await;
+                file_writer.extend_from_slice(b"12345").unwrap();
+                file_writer.close().await.unwrap();
             } else if command[0] == "fs.touch" {
                 let id = u64::from_str_radix(command[1], 16).unwrap();
                 let typ = u16::from_str_radix(command[2], 16).unwrap();
@@ -150,7 +150,7 @@ impl<I: Timer, T: Serial, F: SpiFlash, C: Crc, P: PyroChannel> Console<I, T, F, 
             } else if command[0] == "fs.close.write" {
                 let fd = usize::from_str_radix(command[1], 16).unwrap();
                 let file_writer = opened_write_files.remove(fd);
-                file_writer.close().await;
+                file_writer.close().await.unwrap();
                 self.writeln(b"Closed").await;
             } else if command[0] == "fs.close.read" {
                 let fd = usize::from_str_radix(command[1], 16).unwrap();
@@ -160,18 +160,18 @@ impl<I: Timer, T: Serial, F: SpiFlash, C: Crc, P: PyroChannel> Console<I, T, F, 
             } else if command[0] == "fs.write" {
                 let fd = usize::from_str_radix(command[1], 16).unwrap();
                 let file_writer = opened_write_files.get_mut(fd).unwrap();
-                file_writer.extend_from_slice(command[2].as_bytes());
+                file_writer.extend_from_slice(command[2].as_bytes()).unwrap();
                 self.writeln(b"OK").await;
             } else if command[0] == "fs.write.flush" {
                 let fd = usize::from_str_radix(command[1], 16).unwrap();
                 let file_writer = opened_write_files.get_mut(fd).unwrap();
-                file_writer.flush().await;
+                file_writer.flush().await.unwrap();
                 self.writeln(b"OK").await;
             } else if command[0] == "fs.read" {
                 let fd = usize::from_str_radix(command[1], 16).unwrap();
                 let mut buffer = [0u8; 64];
                 let file_reader = opened_read_files.get_mut(fd).unwrap();
-                let result = file_reader.read_slice(&mut buffer, 64).await;
+                let result = file_reader.read_slice(&mut buffer, 64).await.unwrap();
                 self.writeln(result).await;
             } else if command[0] == "fs.rm" {
                 let id = u64::from_str_radix(command[1], 16).unwrap();

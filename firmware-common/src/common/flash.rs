@@ -1,4 +1,7 @@
-use crate::driver::{crc::Crc, flash::SpiFlash};
+use crate::driver::{
+    crc::Crc,
+    flash::{SpiFlash, SpiFlashError},
+};
 
 use super::{
     io_traits::{AsyncReader, AsyncWriter},
@@ -39,14 +42,21 @@ where
     F: SpiFlash,
     C: Crc,
 {
+    type Error = SpiFlashError;
+
     // maximum read length is the length of buffer - 5 bytes
-    async fn read_slice<'b>(&mut self, buffer: &'b mut [u8], length: usize) -> &'b [u8] {
-        self.flash.read(self.address, length, buffer).await;
+    // TODO implement read-ahead
+    async fn read_slice<'b>(
+        &mut self,
+        buffer: &'b mut [u8],
+        length: usize,
+    ) -> Result<&'b [u8], SpiFlashError> {
+        self.flash.read(self.address, length, buffer).await?;
         self.address += length as u32;
 
         let read_result = &buffer[5..(length + 5)];
         self.crc.process(read_result);
-        read_result
+        Ok(read_result)
     }
 }
 
@@ -82,12 +92,13 @@ where
         self.crc.read_crc()
     }
 
-    pub async fn flush(&mut self) {
+    pub async fn flush(&mut self) -> Result<(), SpiFlashError> {
         self.flash
             .write_256b(self.page_address, &mut self.buffer)
-            .await;
+            .await?;
         self.buffer = [0xFF; 5 + 256];
         self.buffer_offset = 5;
+        Ok(())
     }
 }
 
@@ -96,9 +107,11 @@ where
     F: SpiFlash,
     C: Crc,
 {
-    async fn extend_from_slice(&mut self, slice: &[u8]) {
+    type Error = SpiFlashError;
+
+    async fn extend_from_slice(&mut self, slice: &[u8]) -> Result<(), SpiFlashError> {
         self.crc.process(slice);
-        
+
         let mut slice = slice;
         while slice.len() > 0 {
             let buffer_free = self.buffer.len() - self.buffer_offset;
@@ -113,10 +126,12 @@ where
                 (&mut self.buffer[self.buffer_offset..]).copy_from_slice(&slice[..buffer_free]);
                 self.buffer_offset += buffer_free;
 
-                self.flush().await;
+                self.flush().await?;
 
                 slice = &slice[buffer_free..];
             }
         }
+
+        Ok(())
     }
 }

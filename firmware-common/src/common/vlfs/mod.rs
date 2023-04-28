@@ -7,14 +7,15 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::blocking_mutex::Mutex as BlockingMutex;
 use embassy_sync::channel::Channel;
 use embassy_sync::mutex::Mutex;
-use heapless::Vec;
 
-use self::utils::find_most_common_u16_out_of_4;
 use self::writer::WritingQueueEntry;
+use self::{error::VLFSError, utils::find_most_common_u16_out_of_4};
+use heapless::Vec;
 
 use super::rwlock::{RwLock, RwLockReadGuard};
 
 mod daemon;
+pub mod error;
 mod init;
 mod iter;
 pub mod reader;
@@ -77,9 +78,9 @@ struct FreeSectors {
 }
 
 impl FreeSectors {
-    fn claim_avaliable_sector(&mut self) -> Option<u16> {
+    fn claim_avaliable_sector(&mut self) -> Result<u16, VLFSError> {
         if self.free_sectors_count == 0 {
-            return None;
+            return Err(VLFSError::DeviceFull);
         }
 
         for i in self.last_sector_map_i..SECTORS_COUNT {
@@ -88,7 +89,7 @@ impl FreeSectors {
                 self.free_sectors_count -= 1;
                 self.last_sector_map_i = (i + 1) % SECTORS_COUNT;
                 info!("claim_avaliable_sector {:#X}", i);
-                return Some(i as u16);
+                return Ok(i as u16);
             }
         }
         for i in 0..self.last_sector_map_i {
@@ -97,7 +98,7 @@ impl FreeSectors {
                 self.free_sectors_count -= 1;
                 self.last_sector_map_i = (i + 1) % SECTORS_COUNT;
                 info!("claim_avaliable_sector {:#X}", i);
-                return Some(i as u16);
+                return Ok(i as u16);
             }
         }
 
@@ -136,11 +137,11 @@ where
     F: SpiFlash,
     C: Crc,
 {
-    pub async fn create_file(&self, file_id: u64, file_type: u16) -> Result<(), ()> {
+    pub async fn create_file(&self, file_id: u64, file_type: u16) -> Result<(), VLFSError> {
         let mut at = self.allocation_table.write().await;
         for file_entry in &at.allocation_table.file_entries {
             if file_entry.file_id == file_id {
-                return Err(());
+                return Err(VLFSError::FileAlreadyExists);
             }
         }
 
@@ -150,19 +151,22 @@ where
             first_sector_index: None,
             opened: false,
         };
-        at.allocation_table.file_entries.push(file_entry).unwrap(); // TODO error handling
+        at.allocation_table
+            .file_entries
+            .push(file_entry)
+            .map_err(|_| VLFSError::MaxFilesReached)?;
         drop(at);
-        self.write_allocation_table().await;
+        self.write_allocation_table().await?;
         Ok(())
     }
 
-    pub async fn remove_file(&self, file_id: u64) -> Result<(), ()> {
+    pub async fn remove_file(&self, file_id: u64) -> Result<(), VLFSError> {
         let mut current_sector_index: Option<u16> = None;
         let mut at = self.allocation_table.write().await;
         for i in 0..at.allocation_table.file_entries.len() {
             if at.allocation_table.file_entries[i].file_id == file_id {
                 if at.allocation_table.file_entries[i].opened {
-                    return Err(());
+                    return Err(VLFSError::FileInUse);
                 }
                 current_sector_index = at.allocation_table.file_entries[i].first_sector_index;
                 at.allocation_table.file_entries.swap_remove(i);
@@ -170,7 +174,7 @@ where
             }
         }
         drop(at);
-        self.write_allocation_table().await;
+        self.write_allocation_table().await?;
 
         // update sectors list
         let mut buffer = [0u8; 5 + 8];
@@ -180,8 +184,8 @@ where
             let address = sector_index as u32 * SECTOR_SIZE as u32;
             let address = address + SECTOR_SIZE as u32 - 8;
 
-            flash.read(address, 8, &mut buffer).await;
-            let next_sector_index = find_most_common_u16_out_of_4(&buffer[5..13]).unwrap();
+            let read_result = flash.read(address, 8, &mut buffer).await?;
+            let next_sector_index = find_most_common_u16_out_of_4(read_result).unwrap();
             self.return_sector(sector_index);
             current_sector_index = if next_sector_index == 0xFFFF {
                 None
@@ -193,7 +197,7 @@ where
         Ok(())
     }
 
-    fn claim_avaliable_sector(&self) -> Option<u16> {
+    fn claim_avaliable_sector(&self) -> Result<u16, VLFSError> {
         self.free_sectors.lock(|free_sectors| {
             let mut free_sectors = free_sectors.borrow_mut();
             free_sectors.claim_avaliable_sector()
@@ -207,7 +211,7 @@ where
         });
     }
 
-    pub async fn get_file_size(&self, file_id: u64) -> Option<(usize, usize)> {
+    pub async fn get_file_size(&self, file_id: u64) -> Result<(usize, usize), VLFSError> {
         trace!("get file size start");
         let at = self.allocation_table.read().await;
         if let Some(file_entry) = self.find_file_entry(&at.allocation_table, file_id) {
@@ -222,10 +226,10 @@ where
                 let address = sector_index as u32 * SECTOR_SIZE as u32;
                 let address = address + SECTOR_SIZE as u32 - 8 - 8;
 
-                flash.read(address, 16, &mut buffer).await;
+                let read_result = flash.read(address, 16, &mut buffer).await?;
 
                 let sector_data_size =
-                    find_most_common_u16_out_of_4(&buffer[5..13]).unwrap() as usize; // TODO handle error
+                    find_most_common_u16_out_of_4(&read_result[..8]).unwrap() as usize; // TODO handle error
                 trace!("sector_data_size: {}", sector_data_size);
                 if sector_data_size > MAX_SECTOR_DATA_SIZE {
                     warn!("sector_data_size > MAX_SECTOR_DATA_SIZE");
@@ -235,7 +239,7 @@ where
                     size += sector_data_size;
                 }
 
-                let next_sector_index = find_most_common_u16_out_of_4(&buffer[13..21]).unwrap();
+                let next_sector_index = find_most_common_u16_out_of_4(&read_result[8..]).unwrap();
 
                 current_sector_index = if next_sector_index == 0xFFFF {
                     None
@@ -245,10 +249,10 @@ where
                 sectors += 1;
             }
 
-            return Some((size, sectors));
+            return Ok((size, sectors));
         }
 
-        None
+        Err(VLFSError::FileDoesNotExist)
     }
 
     fn find_file_entry<'a>(

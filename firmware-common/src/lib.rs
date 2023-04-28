@@ -51,7 +51,7 @@ pub async fn init<
     mut rng: R,
 ) {
     let mut fs = VLFS::new(flash, crc);
-    fs.init().await;
+    fs.init().await.unwrap();
     // let mut usb_buffer = [0u8; 64];
     // timer.sleep(2000).await;
 

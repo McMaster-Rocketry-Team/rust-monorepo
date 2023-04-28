@@ -11,3 +11,4 @@ pub mod buzzer;
 pub mod lora;
 pub mod serial;
 pub mod rng;
+pub mod spi;
