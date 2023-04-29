@@ -5,10 +5,7 @@ use crate::{
         io_traits::{AsyncReader, AsyncWriter},
         rwlock::RwLock,
     },
-    driver::{
-        crc::Crc,
-        flash::SpiFlash,
-    },
+    driver::{crc::Crc, flash::SpiFlash},
 };
 use embassy_sync::blocking_mutex::Mutex as BlockingMutex;
 use embassy_sync::channel::Channel;
@@ -67,7 +64,7 @@ where
         Ok(())
     }
 
-    async fn read_free_sectors(&mut self)->Result<(),VLFSError> {
+    async fn read_free_sectors(&mut self) -> Result<(), VLFSError> {
         let at = self.allocation_table.read().await;
         for file_entry in &at.allocation_table.file_entries {
             let mut current_sector_index = file_entry.first_sector_index;
@@ -116,8 +113,8 @@ where
             let file_count = u32::from_be_bytes((&read_result[8..12]).try_into().unwrap());
             if version != VLFS_VERSION {
                 warn!(
-                    "Version mismatch for allocation table #{}, expected: {}, actual: {}",
-                    i, VLFS_VERSION, version
+                    "Version mismatch, expected: {}, actual: {}",
+                    VLFS_VERSION, version
                 );
                 continue;
             }
@@ -171,7 +168,7 @@ where
         Ok(found_valid_table)
     }
 
-    pub(super) async fn write_allocation_table(&self)->Result<(),VLFSError> {
+    pub(super) async fn write_allocation_table(&self) -> Result<(), VLFSError> {
         let mut at = self.allocation_table.write().await;
         at.allocation_table_index = (at.allocation_table_index + 1) % TABLE_COUNT;
         at.allocation_table.sequence_number += 1;

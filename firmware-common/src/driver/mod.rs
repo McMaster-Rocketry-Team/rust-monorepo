@@ -12,3 +12,6 @@ pub mod lora;
 pub mod serial;
 pub mod rng;
 pub mod spi;
+pub mod indicator;
+pub mod bus_error;
+pub mod barometer;

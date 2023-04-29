@@ -5,9 +5,21 @@
 use common::{console::console::Console, rwlock::rwLockTest};
 use defmt::info;
 use driver::{
-    adc::ADC, arming::HardwareArming, buzzer::Buzzer, crc::Crc, flash::SpiFlash, imu::IMU,
-    lora::LoRa, meg::Megnetometer, pyro::PyroChannel, rng::RNG, timer::Timer,
+    adc::ADC,
+    arming::HardwareArming,
+    barometer::{self, Barometer},
+    buzzer::Buzzer,
+    crc::Crc,
+    flash::SpiFlash,
+    imu::IMU,
+    indicator::Indicator,
+    lora::LoRa,
+    meg::Megnetometer,
+    pyro::PyroChannel,
+    rng::RNG,
+    timer::Timer,
 };
+use futures::future::{join, join3};
 
 use crate::common::vlfs::VLFS;
 
@@ -33,6 +45,9 @@ pub async fn init<
     M: Megnetometer,
     // L: LoRa,
     R: RNG,
+    IS: Indicator,
+    IE: Indicator,
+    BA: Barometer,
 >(
     timer: T,
     flash: F,
@@ -49,14 +64,34 @@ pub async fn init<
     mut meg: M,
     // mut lora: L,
     mut rng: R,
+    mut status_indicator: IS,
+    mut error_indicator: IE,
+    mut barometer: BA,
 ) {
     let mut fs = VLFS::new(flash, crc);
     fs.init().await.unwrap();
     // let mut usb_buffer = [0u8; 64];
     // timer.sleep(2000).await;
 
+    let indicator_fut = async {
+        loop {
+            timer.sleep(2000).await;
+            status_indicator.set_enable(true).await;
+            timer.sleep(10).await;
+            status_indicator.set_enable(false).await;
+        }
+    };
+
+    barometer.reset().await.unwrap();
+    let baro_fut = async {
+        loop {
+            timer.sleep(1000).await;
+            info!("baro: {}", barometer.read().await);
+        }
+    };
+
     let mut console = Console::new(timer, usb, fs, pyro3);
-    console.run().await;
+    join3(console.run(), indicator_fut, baro_fut).await;
 
     // meg.reset(false).await.unwrap();
     let mut time = timer.now_micros();
