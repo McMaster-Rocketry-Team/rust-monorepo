@@ -1,9 +1,11 @@
 use crate::{
     common::{
-        io_traits::{Writer, AsyncReader},
+        io_traits::{AsyncReader, Writer},
         vlfs::{reader::FileReader, writer::FileWriter, VLFS},
     },
-    driver::{crc::Crc, flash::SpiFlash, pyro::PyroChannel, serial::Serial, timer::Timer},
+    driver::{
+        buzzer::Buzzer, crc::Crc, flash::SpiFlash, pyro::PyroChannel, serial::Serial, timer::Timer,
+    },
     heapless_format_bytes,
 };
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
@@ -11,20 +13,24 @@ use futures::future::join;
 use heapless::String;
 use heapless::Vec;
 
-pub struct Console<I: Timer, T: Serial, F: SpiFlash, C: Crc, P: PyroChannel> {
+pub struct Console<I: Timer, T: Serial, F: SpiFlash, C: Crc, P: PyroChannel, B: Buzzer> {
     timer: I,
     serial: Mutex<CriticalSectionRawMutex, T>,
     vlfs: VLFS<F, C>,
     pyro: P,
+    buzzer: Mutex<CriticalSectionRawMutex, B>,
 }
 
-impl<I: Timer, T: Serial, F: SpiFlash, C: Crc, P: PyroChannel> Console<I, T, F, C, P> {
-    pub fn new(timer: I, serial: T, vlfs: VLFS<F, C>, pyro: P) -> Self {
+impl<I: Timer, T: Serial, F: SpiFlash, C: Crc, P: PyroChannel, B: Buzzer>
+    Console<I, T, F, C, P, B>
+{
+    pub fn new(timer: I, serial: T, vlfs: VLFS<F, C>, pyro: P, buzzer: B) -> Self {
         Self {
             timer,
             serial: Mutex::new(serial),
             vlfs,
             pyro,
+            buzzer: Mutex::new(buzzer),
         }
     }
 
@@ -160,7 +166,9 @@ impl<I: Timer, T: Serial, F: SpiFlash, C: Crc, P: PyroChannel> Console<I, T, F, 
             } else if command[0] == "fs.write" {
                 let fd = usize::from_str_radix(command[1], 16).unwrap();
                 let file_writer = opened_write_files.get_mut(fd).unwrap();
-                file_writer.extend_from_slice(command[2].as_bytes()).unwrap();
+                file_writer
+                    .extend_from_slice(command[2].as_bytes())
+                    .unwrap();
                 self.writeln(b"OK").await;
             } else if command[0] == "fs.write.flush" {
                 let fd = usize::from_str_radix(command[1], 16).unwrap();
@@ -177,6 +185,15 @@ impl<I: Timer, T: Serial, F: SpiFlash, C: Crc, P: PyroChannel> Console<I, T, F, 
                 let id = u64::from_str_radix(command[1], 16).unwrap();
                 self.vlfs.remove_file(id).await.unwrap();
                 self.writeln(b"Removed").await;
+            } else if command[0] == "buzzer" {
+                let mut buzzer = self.buzzer.lock().await;
+                buzzer.set_frequency(2900).await;
+                loop {
+                    buzzer.set_enable(true).await;
+                    self.timer.sleep(1500).await;
+                    buzzer.set_enable(false).await;
+                    self.timer.sleep(1000).await;
+                }
             } else if command[0] == "sys.reset" {
                 // cortex_m::peripheral::SCB::sys_reset();
             } else if command[0] == "f" {

@@ -2,8 +2,10 @@ use core::fmt::Write;
 use heapless::String;
 use nalgebra::Vector3;
 
+use super::bus_error::BusError;
+
 pub struct MegReading {
-    pub timestamp: u64, // ms
+    pub timestamp: u64,    // ms
     pub meg: Vector3<f32>, // gauss
 }
 
@@ -23,7 +25,6 @@ impl defmt::Format for MegReading {
 }
 
 pub trait Megnetometer {
-    async fn reset(&mut self, power_saving:bool) -> Result<(), ()>;
-
-    async fn read(&mut self) -> Result<MegReading, ()>;
+    async fn reset(&mut self, power_saving: bool) -> Result<(), BusError>;
+    async fn read(&mut self) -> Result<MegReading, BusError>;
 }

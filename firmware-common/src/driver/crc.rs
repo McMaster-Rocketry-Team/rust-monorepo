@@ -1,6 +1,5 @@
 use core::ops::{DerefMut, Deref};
 
-use defmt::info;
 use embassy_sync::{mutex::MutexGuard, blocking_mutex::raw::RawMutex};
 
 pub trait Crc {
@@ -10,10 +9,9 @@ pub trait Crc {
 
     fn read(&self) -> u32;
 
-    // TODO remove
+    // data must be 4 bytes aligned
     fn calculate(&mut self, data: &[u8]) -> u32 {
         self.reset();
-        info!("CRC calculate: {}", data);
         let words = data.len() / 4;
         for i in 0..words {
             let value = u32::from_be_bytes(data[(i * 4)..((i + 1) * 4)].try_into().unwrap());

@@ -82,16 +82,18 @@ pub async fn init<
         }
     };
 
-    barometer.reset().await.unwrap();
-    let baro_fut = async {
-        loop {
-            timer.sleep(1000).await;
-            info!("baro: {}", barometer.read().await);
-        }
-    };
+    // barometer.reset().await.unwrap();
+    // let baro_fut = async {
+    //     loop {
+    //         timer.sleep(1000).await;
+    //         info!("baro: {}", barometer.read().await);
+    //     }
+    // };
 
-    let mut console = Console::new(timer, usb, fs, pyro3);
-    join3(console.run(), indicator_fut, baro_fut).await;
+    let mut console = Console::new(timer, usb, fs, pyro3,buzzer);
+    join(console.run(), indicator_fut).await;
+
+    return;
 
     // meg.reset(false).await.unwrap();
     let mut time = timer.now_micros();

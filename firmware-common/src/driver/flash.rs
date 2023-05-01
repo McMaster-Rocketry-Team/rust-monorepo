@@ -2,23 +2,31 @@ use core::ops::{Deref, DerefMut};
 
 use embassy_sync::{blocking_mutex::raw::RawMutex, mutex::MutexGuard};
 
-use super::spi::SpiBusError;
+use super::{bus_error::BusError, spi::SpiBusError};
 
 #[derive(Debug, defmt::Format)]
 pub enum SpiFlashError {
-    BusError(SpiBusError),
+    BusError(BusError),
     WaitBusyTimeout { ms: u64 },
 }
 
-impl From<SpiBusError> for SpiFlashError{
-    fn from(value: SpiBusError) -> Self {
+impl From<BusError> for SpiFlashError {
+    fn from(value: BusError) -> Self {
         Self::BusError(value)
+    }
+}
+
+impl From<SpiBusError> for SpiFlashError {
+    fn from(value: SpiBusError) -> Self {
+        Self::BusError(BusError::SpiBusError(value))
     }
 }
 
 pub trait SpiFlash {
     // size in bytes
     fn size(&self) -> u32;
+
+    async fn reset(&mut self) -> Result<(), SpiFlashError>;
 
     async fn erase_sector_4kib(&mut self, address: u32) -> Result<(), SpiFlashError>;
     async fn erase_block_32kib(&mut self, address: u32) -> Result<(), SpiFlashError>;
@@ -104,6 +112,10 @@ where
 {
     fn size(&self) -> u32 {
         self.deref().size()
+    }
+
+    async fn reset(&mut self) -> Result<(), SpiFlashError>{
+        self.deref_mut().reset().await
     }
 
     async fn erase_sector_4kib(&mut self, address: u32) -> Result<(), SpiFlashError> {

@@ -1,3 +1,5 @@
+use super::bus_error::BusError;
+
 #[derive(Copy, Clone)]
 pub enum Bandwidth {
     _125KHz,
@@ -50,14 +52,15 @@ pub struct RxQuality {
 }
 
 pub trait LoRa {
-    async fn sleep(&mut self) -> Result<(), ()>;
-    async fn reset(&mut self) -> Result<(), ()>;
+    async fn reset(&mut self) -> Result<(), BusError>;
+    async fn sleep(&mut self) -> Result<(), BusError>;
+    
     fn min_power(&self) -> i8;
     fn max_power(&self) -> i8;
 
-    async fn set_rx_config(&mut self, rx_config: RxConfig) -> Result<(), ()>;
-    async fn set_tx_config(&mut self, tx_config: TxConfig) -> Result<(), ()>;
+    async fn set_rx_config(&mut self, rx_config: RxConfig) -> Result<(), BusError>;
+    async fn set_tx_config(&mut self, tx_config: TxConfig) -> Result<(), BusError>;
 
-    async fn tx(&mut self, data: &[u8]) -> Result<(), ()>;
-    async fn rx(&mut self, buffer: &mut [u8], timeout_ms: u32) -> Result<(usize, RxQuality), ()>;
+    async fn tx(&mut self, data: &[u8]) -> Result<(), BusError>;
+    async fn rx(&mut self, buffer: &mut [u8], timeout_ms: u32) -> Result<(usize, RxQuality), BusError>;
 }

@@ -2,6 +2,8 @@ use core::fmt::Write;
 use heapless::String;
 use nalgebra::Vector3;
 
+use super::bus_error::BusError;
+
 pub struct IMUReading {
     pub timestamp: u64, // ms
     pub acc: Vector3<f32>, // m/s^2
@@ -27,5 +29,6 @@ impl defmt::Format for IMUReading {
 }
 
 pub trait IMU {
-    async fn read(&mut self) -> IMUReading;
+    async fn reset(&mut self) -> Result<(), BusError>;
+    async fn read(&mut self) -> Result<IMUReading, BusError>;
 }
