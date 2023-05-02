@@ -2,5 +2,6 @@
 
 members = [
     "tiny-nmea",
-    "firmware-common"
+    "firmware-common",
+    "nyoom"
 ]
