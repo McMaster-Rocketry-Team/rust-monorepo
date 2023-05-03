@@ -11,6 +11,7 @@ use driver::{
     buzzer::Buzzer,
     crc::Crc,
     flash::SpiFlash,
+    gps::GPS,
     imu::IMU,
     indicator::Indicator,
     lora::LoRa,
@@ -48,6 +49,7 @@ pub async fn init<
     IS: Indicator,
     IE: Indicator,
     BA: Barometer,
+    G: GPS,
 >(
     timer: T,
     flash: F,
@@ -67,8 +69,12 @@ pub async fn init<
     mut status_indicator: IS,
     mut error_indicator: IE,
     mut barometer: BA,
+    mut gps: G,
 ) {
     let mut fs = VLFS::new(flash, crc);
+
+    gps.reset().await;
+
     fs.init().await.unwrap();
     // let mut usb_buffer = [0u8; 64];
     // timer.sleep(2000).await;
@@ -82,6 +88,12 @@ pub async fn init<
         }
     };
 
+    let imu_fut = async {
+        loop {
+            let _ = imu.read().await;
+        }
+    };
+
     // barometer.reset().await.unwrap();
     // let baro_fut = async {
     //     loop {
@@ -90,8 +102,8 @@ pub async fn init<
     //     }
     // };
 
-    let mut console = Console::new(timer, usb, fs, pyro3,buzzer);
-    join(console.run(), indicator_fut).await;
+    let mut console = Console::new(timer, usb, fs, pyro3, buzzer);
+    join3(console.run(), indicator_fut, imu_fut).await;
 
     return;
 
@@ -100,10 +112,10 @@ pub async fn init<
     loop {
         let _ = imu.read().await;
         let new_time = timer.now_micros();
-        info!(
-            "{}Hz",
-            (1.0 / (((new_time - time) as f64) / 1000.0 / 1000.0)) as u32
-        );
+        // info!(
+        //     "{}Hz",
+        //     (1.0 / (((new_time - time) as f64) / 1000.0 / 1000.0)) as u32
+        // );
         time = new_time;
         // info!(
         //     "battery: {}V, {}A",
