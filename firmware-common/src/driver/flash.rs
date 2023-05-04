@@ -4,33 +4,17 @@ use embassy_sync::{blocking_mutex::raw::RawMutex, mutex::MutexGuard};
 
 use super::{bus_error::BusError, spi::SpiBusError};
 
-#[derive(Debug, defmt::Format)]
-pub enum SpiFlashError {
-    BusError(BusError),
-    WaitBusyTimeout { ms: u64 },
-}
+pub trait Flash {
+    type Error: defmt::Format;
 
-impl From<BusError> for SpiFlashError {
-    fn from(value: BusError) -> Self {
-        Self::BusError(value)
-    }
-}
-
-impl From<SpiBusError> for SpiFlashError {
-    fn from(value: SpiBusError) -> Self {
-        Self::BusError(BusError::SpiBusError(value))
-    }
-}
-
-pub trait SpiFlash {
     // size in bytes
     fn size(&self) -> u32;
 
-    async fn reset(&mut self) -> Result<(), SpiFlashError>;
+    async fn reset(&mut self) -> Result<(), Self::Error>;
 
-    async fn erase_sector_4kib(&mut self, address: u32) -> Result<(), SpiFlashError>;
-    async fn erase_block_32kib(&mut self, address: u32) -> Result<(), SpiFlashError>;
-    async fn erase_block_64kib(&mut self, address: u32) -> Result<(), SpiFlashError>;
+    async fn erase_sector_4kib(&mut self, address: u32) -> Result<(), Self::Error>;
+    async fn erase_block_32kib(&mut self, address: u32) -> Result<(), Self::Error>;
+    async fn erase_block_64kib(&mut self, address: u32) -> Result<(), Self::Error>;
 
     // maximum read length is 4 kb
     // size of the buffer must be at least 5 bytes larger than read_length
@@ -39,7 +23,7 @@ pub trait SpiFlash {
         address: u32,
         read_length: usize,
         read_buffer: &'b mut [u8],
-    ) -> Result<&'b [u8], SpiFlashError>;
+    ) -> Result<&'b [u8], Self::Error>;
 
     // Write a full page of 256 bytes, the last byte of the address is ignored
     // The write buffer must be less than or equals 261 bytes long, where the last 256 bytes are the data to write
@@ -47,15 +31,15 @@ pub trait SpiFlash {
         &mut self,
         address: u32,
         write_buffer: &'b mut [u8],
-    ) -> Result<(), SpiFlashError>;
+    ) -> Result<(), Self::Error>;
 
     // read arbitary length, length of read_buffer must be larger or equal to read_length + 5
-    async fn read<'b, 'c>(
+    async fn read<'b>(
         &mut self,
         address: u32,
         read_length: usize,
         read_buffer: &'b mut [u8],
-    ) -> Result<&'b [u8], SpiFlashError> {
+    ) -> Result<&'b [u8], Self::Error> {
         let mut bytes_read = 0;
         while bytes_read < read_length {
             let length = if read_length - bytes_read > 4096 {
@@ -78,13 +62,13 @@ pub trait SpiFlash {
 
     // write arbitary length (must be a multiple of 256 bytes)
     // address must be 256-byte-aligned
-    // length of write_buffer must be larger or equal to read_length + 5
-    async fn write<'b, 'c>(
+    // length of write_buffer must be larger or equal to write_length + 5
+    async fn write<'b>(
         &mut self,
         address: u32,
         write_length: usize,
         write_buffer: &'b mut [u8],
-    ) -> Result<(), SpiFlashError> {
+    ) -> Result<(), Self::Error> {
         let mut bytes_written = 0;
         while bytes_written < write_length {
             let length = if write_length - bytes_written > 256 {
@@ -105,28 +89,30 @@ pub trait SpiFlash {
     }
 }
 
-impl<'a, M, T> SpiFlash for MutexGuard<'a, M, T>
+impl<'a, M, T> Flash for MutexGuard<'a, M, T>
 where
     M: RawMutex,
-    T: SpiFlash,
+    T: Flash,
 {
+    type Error = T::Error;
+
     fn size(&self) -> u32 {
         self.deref().size()
     }
 
-    async fn reset(&mut self) -> Result<(), SpiFlashError>{
+    async fn reset(&mut self) -> Result<(), Self::Error> {
         self.deref_mut().reset().await
     }
 
-    async fn erase_sector_4kib(&mut self, address: u32) -> Result<(), SpiFlashError> {
+    async fn erase_sector_4kib(&mut self, address: u32) -> Result<(), Self::Error> {
         self.deref_mut().erase_sector_4kib(address).await
     }
 
-    async fn erase_block_32kib(&mut self, address: u32) -> Result<(), SpiFlashError> {
+    async fn erase_block_32kib(&mut self, address: u32) -> Result<(), Self::Error> {
         self.deref_mut().erase_block_32kib(address).await
     }
 
-    async fn erase_block_64kib(&mut self, address: u32) -> Result<(), SpiFlashError> {
+    async fn erase_block_64kib(&mut self, address: u32) -> Result<(), Self::Error> {
         self.deref_mut().erase_block_64kib(address).await
     }
 
@@ -135,7 +121,7 @@ where
         address: u32,
         read_length: usize,
         read_buffer: &'b mut [u8],
-    ) -> Result<&'b [u8], SpiFlashError> {
+    ) -> Result<&'b [u8], Self::Error> {
         self.deref_mut()
             .read_4kib(address, read_length, read_buffer)
             .await
@@ -145,7 +131,7 @@ where
         &mut self,
         address: u32,
         write_buffer: &'b mut [u8],
-    ) -> Result<(), SpiFlashError> {
+    ) -> Result<(), Self::Error> {
         self.deref_mut().write_256b(address, write_buffer).await
     }
 }

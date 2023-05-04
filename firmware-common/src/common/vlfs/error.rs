@@ -1,8 +1,9 @@
-use crate::driver::flash::SpiFlashError;
+use crate::driver::flash::Flash;
 
-#[derive(Debug, defmt::Format)]
-pub enum VLFSError {
-    FlashError(SpiFlashError),
+#[derive(defmt::Format)]
+pub enum VLFSError<F: Flash>
+{
+    FlashError(F::Error),
     FileAlreadyExists,
     MaxFilesReached,
     FileInUse,
@@ -12,8 +13,9 @@ pub enum VLFSError {
     CorruptedPage { address: u32 },
 }
 
-impl From<SpiFlashError> for VLFSError {
-    fn from(value: SpiFlashError) -> Self {
+impl<F: Flash> VLFSError<F>
+{
+    pub fn fromFlash(value: F::Error) -> Self {
         Self::FlashError(value)
     }
 }

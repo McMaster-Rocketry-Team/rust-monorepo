@@ -2,7 +2,7 @@ use super::*;
 
 impl<F, C> VLFS<F, C>
 where
-    F: SpiFlash,
+    F: Flash,
     C: Crc,
 {
     pub async fn files_iter(&self) -> FilesIterator {

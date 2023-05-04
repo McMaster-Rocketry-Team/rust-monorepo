@@ -6,7 +6,7 @@ use super::*;
 
 impl<F, C> VLFS<F, C>
 where
-    F: SpiFlash,
+    F: Flash,
     C: Crc,
 {
     pub async fn open_file_for_read(&self, file_id: u64) -> Option<FileReader<F, C>> {
@@ -25,7 +25,7 @@ where
 
 pub struct FileReader<'a, F, C>
 where
-    F: SpiFlash,
+    F: Flash,
     C: Crc,
 {
     vlfs: &'a VLFS<F, C>,
@@ -42,7 +42,7 @@ where
 
 impl<'a, F, C> FileReader<'a, F, C>
 where
-    F: SpiFlash,
+    F: Flash,
     C: Crc,
 {
     fn new(vlfs: &'a VLFS<F, C>, file_entry: &FileEntry) -> Self {
@@ -70,7 +70,7 @@ where
     }
 
     // return is end of file
-    async fn read_next_page(&mut self) -> Result<bool, VLFSError> {
+    async fn read_next_page(&mut self) -> Result<bool, VLFSError<F>> {
         if let Some(current_sector_index) = self.current_sector_index {
             let is_last_page = self.current_page_index == 15;
             let mut flash = self.vlfs.flash.lock().await;
@@ -81,7 +81,7 @@ where
                 let sector_data_length_address = (sector_address + SECTOR_SIZE - 8 - 8) as u32;
                 let read_result = flash
                     .read(sector_data_length_address, 8, &mut self.page_buffer)
-                    .await?;
+                    .await.map_err(VLFSError::fromFlash)?;
                 self.sector_data_length = Some(find_most_common_u16_out_of_4(read_result).unwrap());
             }
 
@@ -92,7 +92,7 @@ where
                 let next_sector_index_address = (sector_address + SECTOR_SIZE - 8) as u32;
                 let read_result = flash
                     .read(next_sector_index_address, 8, &mut self.page_buffer)
-                    .await?;
+                    .await.map_err(VLFSError::fromFlash)?;
 
                 let next_sector_index = find_most_common_u16_out_of_4(read_result).unwrap();
                 self.set_current_sector_index(next_sector_index);
@@ -122,7 +122,7 @@ where
                     },
                     &mut self.page_buffer,
                 )
-                .await?;
+                .await.map_err(VLFSError::fromFlash)?;
             self.sector_read_data_length += read_data_length as u16;
             drop(flash);
 
@@ -168,16 +168,16 @@ where
 
 impl<'a, F, C> AsyncReader for FileReader<'a, F, C>
 where
-    F: SpiFlash,
+    F: Flash,
     C: Crc,
 {
-    type Error = VLFSError;
+    type Error = VLFSError<F>;
 
     async fn read_slice<'b>(
         &mut self,
         read_buffer: &'b mut [u8],
         length: usize,
-    ) -> Result<&'b [u8], VLFSError> {
+    ) -> Result<&'b [u8], VLFSError<F>> {
         let mut read_length = 0;
 
         while read_length < length {
@@ -219,7 +219,7 @@ where
 
 impl<'a, F, C> fmt::Debug for FileReader<'a, F, C>
 where
-    F: SpiFlash,
+    F: Flash,
     C: Crc,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

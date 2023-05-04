@@ -1,16 +1,17 @@
 #![cfg_attr(not(test), no_std)]
 #![feature(async_fn_in_trait)]
+#![feature(impl_trait_projections)]
 #![feature(let_chains)]
 
 use common::{console::console::Console, rwlock::rwLockTest};
-use defmt::info;
+use defmt::*;
 use driver::{
     adc::ADC,
     arming::HardwareArming,
     barometer::{self, Barometer},
     buzzer::Buzzer,
     crc::Crc,
-    flash::SpiFlash,
+    flash::Flash,
     gps::GPS,
     imu::IMU,
     indicator::Indicator,
@@ -32,7 +33,7 @@ mod utils;
 
 pub async fn init<
     T: Timer,
-    F: SpiFlash,
+    F: Flash + defmt::Format,
     C: Crc,
     I: IMU,
     V: ADC,
@@ -72,10 +73,9 @@ pub async fn init<
     mut gps: G,
 ) {
     let mut fs = VLFS::new(flash, crc);
-
+    unwrap!(fs.init().await);
     gps.reset().await;
 
-    fs.init().await.unwrap();
     // let mut usb_buffer = [0u8; 64];
     // timer.sleep(2000).await;
 

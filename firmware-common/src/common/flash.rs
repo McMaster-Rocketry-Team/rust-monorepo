@@ -1,6 +1,6 @@
 use crate::driver::{
     crc::Crc,
-    flash::{SpiFlash, SpiFlashError},
+    flash::Flash,
 };
 
 use super::{
@@ -10,7 +10,7 @@ use super::{
 
 pub struct FlashReader<'a, F, C>
 where
-    F: SpiFlash,
+    F: Flash,
     C: Crc,
 {
     address: u32,
@@ -20,7 +20,7 @@ where
 
 impl<'a, 'b, F, C> FlashReader<'a, F, C>
 where
-    F: SpiFlash,
+    F: Flash,
     C: Crc,
 {
     pub fn new(start_address: u32, flash: &'a mut F, crc: &'a mut C) -> Self {
@@ -39,10 +39,10 @@ where
 
 impl<'a, F, C> AsyncReader for FlashReader<'a, F, C>
 where
-    F: SpiFlash,
+    F: Flash,
     C: Crc,
 {
-    type Error = SpiFlashError;
+    type Error = F::Error;
 
     // maximum read length is the length of buffer - 5 bytes
     // TODO implement read-ahead
@@ -50,7 +50,7 @@ where
         &mut self,
         buffer: &'b mut [u8],
         length: usize,
-    ) -> Result<&'b [u8], SpiFlashError> {
+    ) -> Result<&'b [u8], F::Error> {
         self.flash.read(self.address, length, buffer).await?;
         self.address += length as u32;
 
@@ -62,7 +62,7 @@ where
 
 pub struct FlashWriter<'a, F, C>
 where
-    F: SpiFlash,
+    F: Flash,
     C: Crc,
 {
     page_address: u32,
@@ -74,7 +74,7 @@ where
 
 impl<'a, F, C> FlashWriter<'a, F, C>
 where
-    F: SpiFlash,
+    F: Flash,
     C: Crc,
 {
     pub fn new(start_address: u32, flash: &'a mut F, crc: &'a mut C) -> Self {
@@ -92,7 +92,7 @@ where
         self.crc.read_crc()
     }
 
-    pub async fn flush(&mut self) -> Result<(), SpiFlashError> {
+    pub async fn flush(&mut self) -> Result<(), F::Error> {
         self.flash
             .write_256b(self.page_address, &mut self.buffer)
             .await?;
@@ -104,12 +104,12 @@ where
 
 impl<'a, F, C> AsyncWriter for FlashWriter<'a, F, C>
 where
-    F: SpiFlash,
+    F: Flash,
     C: Crc,
 {
-    type Error = SpiFlashError;
+    type Error = F::Error;
 
-    async fn extend_from_slice(&mut self, slice: &[u8]) -> Result<(), SpiFlashError> {
+    async fn extend_from_slice(&mut self, slice: &[u8]) -> Result<(), F::Error> {
         self.crc.process(slice);
 
         let mut slice = slice;

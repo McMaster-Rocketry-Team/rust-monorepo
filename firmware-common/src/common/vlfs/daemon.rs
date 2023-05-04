@@ -1,9 +1,9 @@
 use super::*;
-use crate::driver::{crc::Crc, flash::SpiFlash};
+use crate::driver::{crc::Crc, flash::Flash};
 
 impl<F, C> VLFS<F, C>
 where
-    F: SpiFlash,
+    F: Flash,
     C: Crc,
 {
     async fn flush_single(&self, entry: WritingQueueEntry) {

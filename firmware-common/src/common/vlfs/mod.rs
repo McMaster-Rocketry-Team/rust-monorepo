@@ -1,6 +1,7 @@
 use core::cell::RefCell;
+use core::marker::PhantomData;
 
-use crate::driver::{crc::Crc, flash::SpiFlash};
+use crate::driver::{crc::Crc, flash::Flash};
 use bitvec::prelude::*;
 use defmt::*;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
@@ -71,14 +72,18 @@ impl Default for AllocationTableWrapper {
     }
 }
 
-struct FreeSectors {
+struct FreeSectors<F: Flash> {
+    phantom: PhantomData<F>,
     sector_map: BitArray<[u32; SECTOR_MAP_ARRAY_SIZE], Lsb0>, // false: unused; true: used
     last_sector_map_i: usize,
     free_sectors_count: u32,
 }
 
-impl FreeSectors {
-    fn claim_avaliable_sector(&mut self) -> Result<u16, VLFSError> {
+impl<F: Flash> FreeSectors<F>
+where
+    F::Error: defmt::Format,
+{
+    fn claim_avaliable_sector(&mut self) -> Result<u16, VLFSError<F>> {
         if self.free_sectors_count == 0 {
             return Err(VLFSError::DeviceFull);
         }
@@ -122,22 +127,30 @@ impl FreeSectors {
 
 pub struct VLFS<F, C>
 where
-    F: SpiFlash,
+    F: Flash,
     C: Crc,
 {
     allocation_table: RwLock<CriticalSectionRawMutex, AllocationTableWrapper, 10>,
-    free_sectors: BlockingMutex<CriticalSectionRawMutex, RefCell<FreeSectors>>,
+    free_sectors: BlockingMutex<CriticalSectionRawMutex, RefCell<FreeSectors<F>>>,
     flash: Mutex<CriticalSectionRawMutex, F>,
     crc: Mutex<CriticalSectionRawMutex, C>,
     writing_queue: Channel<CriticalSectionRawMutex, WritingQueueEntry, WRITING_QUEUE_SIZE>,
 }
 
-impl<F, C> VLFS<F, C>
+impl<F, C> defmt::Format for VLFS<F, C>
 where
-    F: SpiFlash,
+    F: Flash,
     C: Crc,
 {
-    pub async fn create_file(&self, file_id: u64, file_type: u16) -> Result<(), VLFSError> {
+    fn format(&self, fmt: Formatter) {}
+}
+
+impl<F, C> VLFS<F, C>
+where
+    F: Flash,
+    C: Crc,
+{
+    pub async fn create_file(&self, file_id: u64, file_type: u16) -> Result<(), VLFSError<F>> {
         let mut at = self.allocation_table.write().await;
         for file_entry in &at.allocation_table.file_entries {
             if file_entry.file_id == file_id {
@@ -160,7 +173,7 @@ where
         Ok(())
     }
 
-    pub async fn remove_file(&self, file_id: u64) -> Result<(), VLFSError> {
+    pub async fn remove_file(&self, file_id: u64) -> Result<(), VLFSError<F>> {
         let mut current_sector_index: Option<u16> = None;
         let mut at = self.allocation_table.write().await;
         for i in 0..at.allocation_table.file_entries.len() {
@@ -184,7 +197,10 @@ where
             let address = sector_index as u32 * SECTOR_SIZE as u32;
             let address = address + SECTOR_SIZE as u32 - 8;
 
-            let read_result = flash.read(address, 8, &mut buffer).await?;
+            let read_result = flash
+                .read(address, 8, &mut buffer)
+                .await
+                .map_err(VLFSError::fromFlash)?;
             let next_sector_index = find_most_common_u16_out_of_4(read_result).unwrap();
             self.return_sector(sector_index);
             current_sector_index = if next_sector_index == 0xFFFF {
@@ -197,7 +213,7 @@ where
         Ok(())
     }
 
-    fn claim_avaliable_sector(&self) -> Result<u16, VLFSError> {
+    fn claim_avaliable_sector(&self) -> Result<u16, VLFSError<F>> {
         self.free_sectors.lock(|free_sectors| {
             let mut free_sectors = free_sectors.borrow_mut();
             free_sectors.claim_avaliable_sector()
@@ -211,7 +227,7 @@ where
         });
     }
 
-    pub async fn get_file_size(&self, file_id: u64) -> Result<(usize, usize), VLFSError> {
+    pub async fn get_file_size(&self, file_id: u64) -> Result<(usize, usize), VLFSError<F>> {
         trace!("get file size start");
         let at = self.allocation_table.read().await;
         if let Some(file_entry) = self.find_file_entry(&at.allocation_table, file_id) {
@@ -226,7 +242,10 @@ where
                 let address = sector_index as u32 * SECTOR_SIZE as u32;
                 let address = address + SECTOR_SIZE as u32 - 8 - 8;
 
-                let read_result = flash.read(address, 16, &mut buffer).await?;
+                let read_result = flash
+                    .read(address, 16, &mut buffer)
+                    .await
+                    .map_err(VLFSError::fromFlash)?;
 
                 let sector_data_size =
                     find_most_common_u16_out_of_4(&read_result[..8]).unwrap() as usize; // TODO handle error
