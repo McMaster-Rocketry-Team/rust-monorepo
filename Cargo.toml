@@ -1,7 +1,3 @@
 [workspace]
 
-members = [
-    "tiny-nmea",
-    "firmware-common",
-    "nyoom"
-]
+members = ["tiny-nmea", "firmware-common", "nyoom", "vlfs"]

@@ -2,8 +2,6 @@ use core::ops::{Deref, DerefMut};
 
 use embassy_sync::{blocking_mutex::raw::RawMutex, mutex::MutexGuard};
 
-use super::{bus_error::BusError, spi::SpiBusError};
-
 pub trait Flash {
     type Error: defmt::Format;
 
