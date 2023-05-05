@@ -10,6 +10,7 @@ pub trait Flash {
 
     async fn reset(&mut self) -> Result<(), Self::Error>;
 
+    // erase methods must set all the erased bits to 1 - VLFS relies on this assuption
     async fn erase_sector_4kib(&mut self, address: u32) -> Result<(), Self::Error>;
     async fn erase_block_32kib(&mut self, address: u32) -> Result<(), Self::Error>;
     async fn erase_block_64kib(&mut self, address: u32) -> Result<(), Self::Error>;
