@@ -4,6 +4,8 @@
 
 # Features
 
+- `#[no_std]` support
+- No allocation
 - Power-loss resilience: at most 256 bytes of unflushed data will be lost (see TODO)
 - Dynamic wear leveling
 - Bounded RAM/ROM
