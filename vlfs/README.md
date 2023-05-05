@@ -31,10 +31,13 @@ VLFS is based on a file allocation table design and uses linklists to store data
 
 ![VLFS Layout](./layout.svg)
 
+Note: Multiple allocation tables are used for wear-leveling purpose.
+
 # Todo
 
 - Power loss resilience when initiating append to an existing file (I think this is the only case where a power loss will corrupt flushed data)
 - Replace file write queue with fair rwlock (caller can't get error after the data is in queue)
+- Always skip sectors used by the allocation tables in `claim_avaliable_sector`
 - Error handling for `find_most_common_u16_out_of_4`
 - Fild files by file type
 - Erase ahead (32KiB erases are faster (per bit) than 4KiB erases)
