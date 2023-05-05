@@ -25,8 +25,10 @@ where
             free_sectors: BlockingMutex::new(RefCell::new(FreeSectors {
                 phantom: PhantomData,
                 sector_map,
-                last_sector_map_i: ALLOC_TABLES_SECTORS_USED + 1,
                 free_sectors_count: (SECTORS_COUNT - ALLOC_TABLES_SECTORS_USED) as u32,
+                rng: SmallRng::seed_from_u64(
+                    0b1010011001010000010000000111001110111101011110001100000011100000u64,
+                ),
             })),
             flash: Mutex::new(flash),
             crc: Mutex::new(crc),

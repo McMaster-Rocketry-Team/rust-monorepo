@@ -86,9 +86,9 @@ pub async fn init<
     };
 
     let imu_fut = async {
-        loop {
-            let _ = imu.read().await;
-        }
+        // loop {
+        //     let _ = imu.read().await;
+        // }
     };
 
     // barometer.reset().await.unwrap();

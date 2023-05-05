@@ -8,6 +8,8 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::blocking_mutex::Mutex as BlockingMutex;
 use embassy_sync::channel::Channel;
 use embassy_sync::mutex::Mutex;
+use rand::rngs::SmallRng;
+use rand::{RngCore, SeedableRng};
 
 use self::writer::WritingQueueEntry;
 use self::{error::VLFSError, utils::find_most_common_u16_out_of_4};
@@ -75,8 +77,8 @@ impl Default for AllocationTableWrapper {
 struct FreeSectors<F: Flash> {
     phantom: PhantomData<F>,
     sector_map: BitArray<[u32; SECTOR_MAP_ARRAY_SIZE], Lsb0>, // false: unused; true: used
-    last_sector_map_i: usize,
     free_sectors_count: u32,
+    rng: SmallRng,
 }
 
 impl<F: Flash> FreeSectors<F>
@@ -88,20 +90,19 @@ where
             return Err(VLFSError::DeviceFull);
         }
 
-        for i in self.last_sector_map_i..SECTORS_COUNT {
+        let start_i = (self.rng.next_u64() as usize) % SECTORS_COUNT;
+        for i in start_i..SECTORS_COUNT {
             if !self.sector_map[i] {
                 self.sector_map.set(i, true);
                 self.free_sectors_count -= 1;
-                self.last_sector_map_i = (i + 1) % SECTORS_COUNT;
                 info!("claim_avaliable_sector {:#X}", i);
                 return Ok(i as u16);
             }
         }
-        for i in 0..self.last_sector_map_i {
+        for i in 0..start_i {
             if !self.sector_map[i] {
                 self.sector_map.set(i, true);
                 self.free_sectors_count -= 1;
-                self.last_sector_map_i = (i + 1) % SECTORS_COUNT;
                 info!("claim_avaliable_sector {:#X}", i);
                 return Ok(i as u16);
             }
@@ -216,10 +217,16 @@ where
     }
 
     fn claim_avaliable_sector(&self) -> Result<u16, VLFSError<F>> {
-        self.free_sectors.lock(|free_sectors| {
+        let result = self.free_sectors.lock(|free_sectors| {
             let mut free_sectors = free_sectors.borrow_mut();
             free_sectors.claim_avaliable_sector()
-        })
+        });
+
+        if let Ok(index) = result{
+            info!("Claimed sector #{:#X}", index);
+        }
+
+        result
     }
 
     fn return_sector(&self, sector_index: u16) {
