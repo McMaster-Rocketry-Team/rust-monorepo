@@ -24,20 +24,23 @@ VLFS is based on a file allocation table design and uses linklists to store data
 
 - To change the maximum supported flash size, update `SECTORS_COUNT` in [./src/fs/mod.rs](./src/fs/mod.rs). Reducing sectors count reduces the  required memory.
 - Flash's erase methods must set all the erased bits to 1 - VLFS relies on this assuption.
-- CRC implementations must not produce 0xFFFF for [0u8; 252] or [0u8; 236] - VLFS relies on this assuption.
+- CRC implementations must not produce 0xFFFF for [0u32; 252] or [0u32; 236] - VLFS relies on this assuption.
 - If CRC functionalities is not desired, a CRC implementation that always produces 0 can be used.
 
 # Disk Layout
+
+![VLFS Layout](./layout.svg)
 
 # Todo
 
 - Power loss resilience when initiating append to an existing file (I think this is the only case where a power loss will corrupt flushed data)
 - Replace file write queue with fair rwlock (caller can't get error after the data is in queue)
+- Error handling for `find_most_common_u16_out_of_4`
 - Fild files by file type
 - Erase ahead (32KiB erases are faster (per bit) than 4KiB erases)
 
 # Long-term Todo
 
 - Use constant generics to support different sizes of flash (tried it before but crashed the compiler)
-- Support CRC with DMA
 - Host application for creating / reading VLFS images
+- Use driver traits from `async_embedded_traits`
