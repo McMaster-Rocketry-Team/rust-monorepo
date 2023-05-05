@@ -33,7 +33,7 @@ where
 
                     let read_result = flash
                         .read(next_sector_index_address, 8, &mut buffer)
-                        .await.map_err(VLFSError::fromFlash)?;
+                        .await.map_err(VLFSError::from_flash)?;
                     let next_sector_index = find_most_common_u16_out_of_4(read_result).unwrap();
                     if next_sector_index == 0xFFFF {
                         break;
@@ -48,11 +48,11 @@ where
                 let temp_sector_index = self.claim_avaliable_sector()?;
                 flash
                     .erase_sector_4kib(temp_sector_index as u32 * SECTOR_SIZE as u32)
-                    .await.map_err(VLFSError::fromFlash)?;
+                    .await.map_err(VLFSError::from_flash)?;
                 // copy last sector to temp sector, with "index of next sector" changed
                 for i in 0..PAGES_PER_SECTOR {
                     let read_address = (current_sector_address as usize + i * PAGE_SIZE) as u32;
-                    flash.read(read_address, PAGE_SIZE, &mut buffer).await.map_err(VLFSError::fromFlash)?;
+                    flash.read(read_address, PAGE_SIZE, &mut buffer).await.map_err(VLFSError::from_flash)?;
                     if i == PAGES_PER_SECTOR - 1 {
                         // last page
                         (&mut buffer[(5 + PAGE_SIZE - 8)..]).copy_from_u16x4(new_sector_index);
@@ -60,20 +60,20 @@ where
 
                     let write_address =
                         (temp_sector_index as usize * SECTOR_SIZE + i * PAGE_SIZE) as u32;
-                    flash.write_256b(write_address, &mut buffer).await.map_err(VLFSError::fromFlash)?;
+                    flash.write_256b(write_address, &mut buffer).await.map_err(VLFSError::from_flash)?;
                 }
 
                 // erase last sector
-                flash.erase_sector_4kib(current_sector_address).await.map_err(VLFSError::fromFlash)?;
+                flash.erase_sector_4kib(current_sector_address).await.map_err(VLFSError::from_flash)?;
 
                 // copy temp sector to last sector
                 for i in 0..PAGES_PER_SECTOR {
                     let read_address =
                         (temp_sector_index as usize * SECTOR_SIZE + i * PAGE_SIZE) as u32;
-                    flash.read(read_address, PAGE_SIZE, &mut buffer).await.map_err(VLFSError::fromFlash)?;
+                    flash.read(read_address, PAGE_SIZE, &mut buffer).await.map_err(VLFSError::from_flash)?;
 
                     let write_address = (current_sector_address as usize + i * PAGE_SIZE) as u32;
-                    flash.write_256b(write_address, &mut buffer).await.map_err(VLFSError::fromFlash)?;
+                    flash.write_256b(write_address, &mut buffer).await.map_err(VLFSError::from_flash)?;
                 }
                 self.return_sector(temp_sector_index);
 

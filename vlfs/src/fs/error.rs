@@ -15,7 +15,7 @@ pub enum VLFSError<F: Flash>
 
 impl<F: Flash> VLFSError<F>
 {
-    pub fn fromFlash(value: F::Error) -> Self {
+    pub fn from_flash(value: F::Error) -> Self {
         Self::FlashError(value)
     }
 }

@@ -6,6 +6,7 @@ where
     F: Flash,
     C: Crc,
 {
+    // todo get rid of queue (the caller can't get errors), replace with fair rwlock
     async fn flush_single(&self, entry: WritingQueueEntry) {
         let mut flash = self.flash.lock().await;
         match entry {

@@ -81,7 +81,7 @@ where
                 let sector_data_length_address = (sector_address + SECTOR_SIZE - 8 - 8) as u32;
                 let read_result = flash
                     .read(sector_data_length_address, 8, &mut self.page_buffer)
-                    .await.map_err(VLFSError::fromFlash)?;
+                    .await.map_err(VLFSError::from_flash)?;
                 self.sector_data_length = Some(find_most_common_u16_out_of_4(read_result).unwrap());
             }
 
@@ -92,7 +92,7 @@ where
                 let next_sector_index_address = (sector_address + SECTOR_SIZE - 8) as u32;
                 let read_result = flash
                     .read(next_sector_index_address, 8, &mut self.page_buffer)
-                    .await.map_err(VLFSError::fromFlash)?;
+                    .await.map_err(VLFSError::from_flash)?;
 
                 let next_sector_index = find_most_common_u16_out_of_4(read_result).unwrap();
                 self.set_current_sector_index(next_sector_index);
@@ -122,7 +122,7 @@ where
                     },
                     &mut self.page_buffer,
                 )
-                .await.map_err(VLFSError::fromFlash)?;
+                .await.map_err(VLFSError::from_flash)?;
             self.sector_read_data_length += read_data_length as u16;
             drop(flash);
 

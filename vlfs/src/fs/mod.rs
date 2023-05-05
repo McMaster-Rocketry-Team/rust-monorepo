@@ -142,7 +142,9 @@ where
     F: Flash,
     C: Crc,
 {
-    fn format(&self, fmt: Formatter) {}
+    fn format(&self, fmt: Formatter) {
+        // TODO
+    }
 }
 
 impl<F, C> VLFS<F, C>
@@ -200,7 +202,7 @@ where
             let read_result = flash
                 .read(address, 8, &mut buffer)
                 .await
-                .map_err(VLFSError::fromFlash)?;
+                .map_err(VLFSError::from_flash)?;
             let next_sector_index = find_most_common_u16_out_of_4(read_result).unwrap();
             self.return_sector(sector_index);
             current_sector_index = if next_sector_index == 0xFFFF {
@@ -245,7 +247,7 @@ where
                 let read_result = flash
                     .read(address, 16, &mut buffer)
                     .await
-                    .map_err(VLFSError::fromFlash)?;
+                    .map_err(VLFSError::from_flash)?;
 
                 let sector_data_size =
                     find_most_common_u16_out_of_4(&read_result[..8]).unwrap() as usize; // TODO handle error
