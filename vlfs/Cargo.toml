@@ -6,3 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+embassy-sync = { version = "0.1.0", default-features = false }
+defmt = "0.3"
+heapless = { version = "0.7.5", default-features = false}
+bitvec = { version = "1.0.1", default-features = false }
+futures = { version = "0.3.17", default-features = false, features = ["async-await"] }

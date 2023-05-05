@@ -3,12 +3,8 @@ use core::future::poll_fn;
 use core::ops::{Deref, DerefMut};
 use core::task::Poll;
 
-use crate::driver::timer::Timer;
-use defmt::info;
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::blocking_mutex::Mutex as BlockingMutex;
 use embassy_sync::{blocking_mutex::raw::RawMutex, waitqueue::MultiWakerRegistration};
-use futures::future::join;
 
 enum LockedState {
     Unlocked,
@@ -204,89 +200,87 @@ where
     }
 }
 
-pub async fn rwLockTest<T: Timer>(timer: &T) {
-    async {
-        info!("rw lock test 1 started! =====");
-        let data = RwLock::<CriticalSectionRawMutex, _, 10>::new(1);
+// pub async fn rwLockTest<T: Timer>(timer: &T) {
+//     async {
+//         info!("rw lock test 1 started! =====");
+//         let data = RwLock::<CriticalSectionRawMutex, _, 10>::new(1);
 
-        let task1 = async {
-            let read1 = data.read().await;
-            info!("task1: start {}", *read1);
-            timer.sleep(100).await;
-            info!("task1: end {}", *read1);
-        };
+//         let task1 = async {
+//             let read1 = data.read().await;
+//             info!("task1: start {}", *read1);
+//             timer.sleep(100).await;
+//             info!("task1: end {}", *read1);
+//         };
 
-        let task2 = async {
-            let read2 = data.read().await;
-            info!("task2: start {}", *read2);
-            timer.sleep(100).await;
-            info!("task2: end {}", *read2);
-        };
+//         let task2 = async {
+//             let read2 = data.read().await;
+//             info!("task2: start {}", *read2);
+//             timer.sleep(100).await;
+//             info!("task2: end {}", *read2);
+//         };
 
-        let task3 = async {
-            timer.sleep(50).await;
-            let mut write = data.write().await;
-            info!("task3: start {}", *write);
-            *write = 2;
-            timer.sleep(100).await;
-            info!("task3: end {}", *write);
-        };
+//         let task3 = async {
+//             timer.sleep(50).await;
+//             let mut write = data.write().await;
+//             info!("task3: start {}", *write);
+//             *write = 2;
+//             timer.sleep(100).await;
+//             info!("task3: end {}", *write);
+//         };
 
-        let task4 = async {
-            timer.sleep(125).await;
-            let read4 = data.read().await;
-            info!("task4: start {}", *read4);
-            timer.sleep(100).await;
-            info!("task4: end {}", *read4);
-        };
+//         let task4 = async {
+//             timer.sleep(125).await;
+//             let read4 = data.read().await;
+//             info!("task4: start {}", *read4);
+//             timer.sleep(100).await;
+//             info!("task4: end {}", *read4);
+//         };
 
-        join(join(task1, task2), join(task3, task4)).await;
-    }
-    .await;
+//         join(join(task1, task2), join(task3, task4)).await;
+//     }
+//     .await;
 
-    async {
-        info!("rw lock test 2 started! =====");
-        let data = RwLock::<CriticalSectionRawMutex, _, 10>::new(1);
+//     async {
+//         info!("rw lock test 2 started! =====");
+//         let data = RwLock::<CriticalSectionRawMutex, _, 10>::new(1);
 
-        let task1 = async {
-            loop {
-                let read1 = data.read().await;
-                info!("task1: start {}", *read1);
-                timer.sleep(100).await;
-                info!("task1: end {}", *read1);
-                if *read1 == 2 {
-                    break;
-                }
-            }
-        };
+//         let task1 = async {
+//             loop {
+//                 let read1 = data.read().await;
+//                 info!("task1: start {}", *read1);
+//                 timer.sleep(100).await;
+//                 info!("task1: end {}", *read1);
+//                 if *read1 == 2 {
+//                     break;
+//                 }
+//             }
+//         };
 
-        let task2 = async {
-            timer.sleep(50).await;
+//         let task2 = async {
+//             timer.sleep(50).await;
 
-            loop {
-                let read2 = data.read().await;
-                info!("task2: start {}", *read2);
-                timer.sleep(100).await;
-                info!("task2: end {}", *read2);
-                if *read2 == 2 {
-                    break;
-                }
-            }
-        };
+//             loop {
+//                 let read2 = data.read().await;
+//                 info!("task2: start {}", *read2);
+//                 timer.sleep(100).await;
+//                 info!("task2: end {}", *read2);
+//                 if *read2 == 2 {
+//                     break;
+//                 }
+//             }
+//         };
 
-        let task3 = async {
-            timer.sleep(125).await;
+//         let task3 = async {
+//             timer.sleep(125).await;
 
-            let mut write3 = data.write().await;
-            info!("task3: start {}", *write3);
-            *write3 = 2;
-            timer.sleep(100).await;
-            info!("task3: end {}", *write3);
-        };
+//             let mut write3 = data.write().await;
+//             info!("task3: start {}", *write3);
+//             *write3 = 2;
+//             timer.sleep(100).await;
+//             info!("task3: end {}", *write3);
+//         };
 
-        join(join(task1, task2), task3).await;
-    }
-    .await;
-}
-
-
+//         join(join(task1, task2), task3).await;
+//     }
+//     .await;
+// }

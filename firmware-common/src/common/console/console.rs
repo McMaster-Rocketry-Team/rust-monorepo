@@ -1,10 +1,6 @@
 use crate::{
-    common::{
-        io_traits::{AsyncReader, Writer},
-        vlfs::{reader::FileReader, writer::FileWriter, VLFS},
-    },
     driver::{
-        buzzer::Buzzer, crc::Crc, flash::Flash, pyro::PyroChannel, serial::Serial, timer::Timer,
+        buzzer::Buzzer, pyro::PyroChannel, serial::Serial, timer::Timer,
     },
     heapless_format_bytes,
 };
@@ -13,6 +9,7 @@ use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 use futures::future::join;
 use heapless::String;
 use heapless::Vec;
+use vlfs::{VLFS, Flash, Crc, FileWriter, FileReader, io_traits::{Writer, AsyncReader}};
 
 pub struct Console<I: Timer, T: Serial, F: Flash, C: Crc, P: PyroChannel, B: Buzzer>
 where

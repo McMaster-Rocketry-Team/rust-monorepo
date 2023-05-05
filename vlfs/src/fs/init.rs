@@ -1,11 +1,9 @@
 use super::{error::VLFSError, utils::find_most_common_u16_out_of_4, *};
 use crate::{
-    common::{
-        flash::{FlashReader, FlashWriter},
-        io_traits::{AsyncReader, AsyncWriter},
-        rwlock::RwLock,
-    },
     driver::{crc::Crc, flash::Flash},
+    utils::flash_io::{FlashReader, FlashWriter},
+    utils::io_traits::{AsyncReader, AsyncWriter},
+    utils::rwlock::RwLock,
 };
 use embassy_sync::blocking_mutex::Mutex as BlockingMutex;
 use embassy_sync::channel::Channel;
@@ -25,7 +23,7 @@ where
         Self {
             allocation_table: RwLock::new(AllocationTableWrapper::default()),
             free_sectors: BlockingMutex::new(RefCell::new(FreeSectors {
-                phantom:PhantomData,
+                phantom: PhantomData,
                 sector_map,
                 last_sector_map_i: ALLOC_TABLES_SECTORS_USED + 1,
                 free_sectors_count: (SECTORS_COUNT - ALLOC_TABLES_SECTORS_USED) as u32,
@@ -82,7 +80,8 @@ where
                 self.flash
                     .get_mut()
                     .read(next_sector_index_address, 8, &mut buffer)
-                    .await.map_err(VLFSError::fromFlash)?;
+                    .await
+                    .map_err(VLFSError::fromFlash)?;
                 let next_sector_index = find_most_common_u16_out_of_4(&buffer[5..13]).unwrap();
                 trace!("next_sector_inndex: {}", next_sector_index);
                 current_sector_index = if next_sector_index == 0xFFFF {
@@ -108,7 +107,10 @@ where
             let mut read_buffer = [0u8; 5 + 12];
             let mut reader = FlashReader::new((i * 32 * 1024).try_into().unwrap(), flash, crc);
 
-            let read_result = reader.read_slice(&mut read_buffer, 12).await.map_err(VLFSError::fromFlash)?;
+            let read_result = reader
+                .read_slice(&mut read_buffer, 12)
+                .await
+                .map_err(VLFSError::fromFlash)?;
             let version = u32::from_be_bytes((&read_result[0..4]).try_into().unwrap());
             let sequence_number = u32::from_be_bytes((&read_result[4..8]).try_into().unwrap());
             let file_count = u32::from_be_bytes((&read_result[8..12]).try_into().unwrap());
@@ -125,7 +127,10 @@ where
             }
             let mut files: Vec<FileEntry, MAX_FILES> = Vec::<FileEntry, MAX_FILES>::new();
             for _ in 0..file_count {
-                let read_result = reader.read_slice(&mut read_buffer, 12).await.map_err(VLFSError::fromFlash)?;
+                let read_result = reader
+                    .read_slice(&mut read_buffer, 12)
+                    .await
+                    .map_err(VLFSError::fromFlash)?;
                 let file_id = u64::from_be_bytes((&read_result[0..8]).try_into().unwrap());
                 let file_type = u16::from_be_bytes((&read_result[8..10]).try_into().unwrap());
                 let first_sector_index =
@@ -145,7 +150,10 @@ where
             }
 
             let actual_crc = reader.get_crc();
-            let expected_crc = reader.read_u32(&mut read_buffer).await.map_err(VLFSError::fromFlash)?;
+            let expected_crc = reader
+                .read_u32(&mut read_buffer)
+                .await
+                .map_err(VLFSError::fromFlash)?;
             if actual_crc == expected_crc {
                 info!("CRC match!");
             } else {
@@ -180,7 +188,8 @@ where
         let mut flash = self.flash.lock().await;
         flash
             .erase_block_32kib((at.allocation_table_index * 32 * 1024) as u32)
-            .await.map_err(VLFSError::fromFlash)?;
+            .await
+            .map_err(VLFSError::fromFlash)?;
 
         let mut crc = self.crc.lock().await;
         let mut writer = FlashWriter::new(
@@ -189,25 +198,45 @@ where
             &mut crc,
         );
 
-        writer.extend_from_u32(VLFS_VERSION).await.map_err(VLFSError::fromFlash)?;
+        writer
+            .extend_from_u32(VLFS_VERSION)
+            .await
+            .map_err(VLFSError::fromFlash)?;
         writer
             .extend_from_u32(at.allocation_table.sequence_number)
-            .await.map_err(VLFSError::fromFlash)?;
+            .await
+            .map_err(VLFSError::fromFlash)?;
         writer
             .extend_from_u32(at.allocation_table.file_entries.len() as u32)
-            .await.map_err(VLFSError::fromFlash)?;
+            .await
+            .map_err(VLFSError::fromFlash)?;
 
         for file in &at.allocation_table.file_entries {
-            writer.extend_from_u64(file.file_id).await.map_err(VLFSError::fromFlash)?;
-            writer.extend_from_u16(file.file_type).await.map_err(VLFSError::fromFlash)?;
+            writer
+                .extend_from_u64(file.file_id)
+                .await
+                .map_err(VLFSError::fromFlash)?;
+            writer
+                .extend_from_u16(file.file_type)
+                .await
+                .map_err(VLFSError::fromFlash)?;
             if let Some(first_sector_index) = file.first_sector_index {
-                writer.extend_from_u16(first_sector_index).await.map_err(VLFSError::fromFlash)?;
+                writer
+                    .extend_from_u16(first_sector_index)
+                    .await
+                    .map_err(VLFSError::fromFlash)?;
             } else {
-                writer.extend_from_u16(0xFFFF).await.map_err(VLFSError::fromFlash)?;
+                writer
+                    .extend_from_u16(0xFFFF)
+                    .await
+                    .map_err(VLFSError::fromFlash)?;
             }
         }
 
-        writer.extend_from_u32(writer.get_crc()).await.map_err(VLFSError::fromFlash)?;
+        writer
+            .extend_from_u32(writer.get_crc())
+            .await
+            .map_err(VLFSError::fromFlash)?;
         writer.flush().await.map_err(VLFSError::fromFlash)?;
 
         Ok(())

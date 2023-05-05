@@ -1,6 +1,6 @@
 use core::fmt;
 
-use crate::common::io_traits::AsyncReader;
+use crate::utils::io_traits::AsyncReader;
 
 use super::*;
 

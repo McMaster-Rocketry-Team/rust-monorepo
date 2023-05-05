@@ -3,8 +3,6 @@ pub mod arming;
 pub mod barometer;
 pub mod bus_error;
 pub mod buzzer;
-pub mod crc;
-pub mod flash;
 pub mod gps;
 pub mod i2c;
 pub mod imu;

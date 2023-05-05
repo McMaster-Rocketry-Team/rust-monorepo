@@ -13,14 +13,14 @@ use self::writer::WritingQueueEntry;
 use self::{error::VLFSError, utils::find_most_common_u16_out_of_4};
 use heapless::Vec;
 
-use super::rwlock::{RwLock, RwLockReadGuard};
+use crate::utils::rwlock::{RwLock, RwLockReadGuard};
 
-mod daemon;
+pub mod daemon;
 pub mod error;
-mod init;
-mod iter;
+pub mod init;
+pub mod iter;
 pub mod reader;
-mod utils;
+pub mod utils;
 pub mod writer;
 
 const VLFS_VERSION: u32 = 15;

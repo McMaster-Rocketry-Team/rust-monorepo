@@ -3,15 +3,13 @@
 #![feature(impl_trait_projections)]
 #![feature(let_chains)]
 
-use common::{console::console::Console, rwlock::rwLockTest};
+use common::{console::console::Console};
 use defmt::*;
 use driver::{
     adc::ADC,
     arming::HardwareArming,
-    barometer::{self, Barometer},
+    barometer::{Barometer},
     buzzer::Buzzer,
-    crc::Crc,
-    flash::Flash,
     gps::GPS,
     imu::IMU,
     indicator::Indicator,
@@ -19,11 +17,10 @@ use driver::{
     meg::Megnetometer,
     pyro::PyroChannel,
     rng::RNG,
-    timer::Timer,
+    timer::Timer, serial::Serial,
 };
-use futures::future::{join, join3};
-
-use crate::common::vlfs::VLFS;
+use futures::future::{join3};
+use vlfs::{Flash, Crc, VLFS};
 
 mod avionics;
 mod common;
@@ -42,7 +39,7 @@ pub async fn init<
     P2: PyroChannel,
     P3: PyroChannel,
     ARM: HardwareArming,
-    USB: driver::usb::USB,
+    S: Serial,
     B: Buzzer,
     M: Megnetometer,
     // L: LoRa,
@@ -62,7 +59,7 @@ pub async fn init<
     mut pyro2: P2,
     mut pyro3: P3,
     mut arming_switch: ARM,
-    mut usb: USB,
+    mut serial: S,
     mut buzzer: B,
     mut meg: M,
     // mut lora: L,
@@ -102,7 +99,7 @@ pub async fn init<
     //     }
     // };
 
-    let mut console = Console::new(timer, usb, fs, pyro3, buzzer);
+    let mut console = Console::new(timer, serial, fs, pyro3, buzzer);
     join3(console.run(), indicator_fut, imu_fut).await;
 
     return;
