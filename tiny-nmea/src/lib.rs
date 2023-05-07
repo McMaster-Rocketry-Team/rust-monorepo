@@ -11,6 +11,9 @@ use heapless::String;
 use heapless::Vec;
 
 fn validate(sentence: &String<84>) -> Result<(), ()> {
+    if sentence.len()<6 {
+        return Err(());
+    }
     let expected_checksum = substring!(sentence, sentence.len() - 4, 2);
     let expected_checksum = u8::from_str_radix(expected_checksum.as_str(), 16).map_err(|_| ())?;
     let mut checksum: u8 = 0;
@@ -33,6 +36,10 @@ pub fn parse(sentence: &String<84>) -> Result<NMEAMessage, ()> {
     let fields: Vec<&str, 41> = sentence
         .split(|c| c == '$' || c == ',' || c == '*')
         .collect();
+    let message_type = fields[1].clone();
+    if message_type.len() < 5 {
+        return Err(());
+    }
     let message_type = &(fields[1].clone())[2..5];
     match message_type {
         "GLL" => gll::parse_gll(fields),

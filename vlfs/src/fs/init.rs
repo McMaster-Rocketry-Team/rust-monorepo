@@ -85,7 +85,7 @@ where
                     .await
                     .map_err(VLFSError::from_flash)?;
                 let next_sector_index = find_most_common_u16_out_of_4(&buffer[5..13]).unwrap();
-                trace!("next_sector_inndex: {}", next_sector_index);
+                trace!("next_sector_index: {}", next_sector_index);
                 current_sector_index = if next_sector_index == 0xFFFF {
                     None
                 } else {
@@ -186,16 +186,17 @@ where
         drop(at);
 
         let at = self.allocation_table.read().await;
+        let at_address = (at.allocation_table_index * 32 * 1024) as u32;
 
         let mut flash = self.flash.lock().await;
         flash
-            .erase_block_32kib((at.allocation_table_index * 32 * 1024) as u32)
+            .erase_block_32kib(at_address)
             .await
             .map_err(VLFSError::from_flash)?;
 
         let mut crc = self.crc.lock().await;
         let mut writer = FlashWriter::new(
-            (at.allocation_table_index * 32 * 1024) as u32,
+            at_address,
             &mut flash,
             &mut crc,
         );
@@ -235,6 +236,7 @@ where
             }
         }
 
+        info!("CRC: {}", writer.get_crc());
         writer
             .extend_from_u32(writer.get_crc())
             .await

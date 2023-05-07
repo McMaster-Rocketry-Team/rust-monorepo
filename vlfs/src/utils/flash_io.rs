@@ -44,7 +44,6 @@ where
     type Error = F::Error;
 
     // maximum read length is the length of buffer - 5 bytes
-    // TODO implement read-ahead
     async fn read_slice<'b>(
         &mut self,
         buffer: &'b mut [u8],
@@ -95,6 +94,7 @@ where
         self.flash
             .write_256b(self.page_address, &mut self.buffer)
             .await?;
+        self.page_address += 256;
         self.buffer = [0xFF; 5 + 256];
         self.buffer_offset = 5;
         Ok(())

@@ -1,7 +1,5 @@
 use crate::{
-    driver::{
-        buzzer::Buzzer, pyro::PyroChannel, serial::Serial, timer::Timer,
-    },
+    driver::{buzzer::Buzzer, pyro::PyroChannel, serial::Serial, timer::Timer},
     heapless_format_bytes,
 };
 use defmt::unwrap;
@@ -9,7 +7,12 @@ use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 use futures::future::join;
 use heapless::String;
 use heapless::Vec;
-use vlfs::{VLFS, Flash, Crc, FileWriter, FileReader, io_traits::{Writer, AsyncReader}};
+use vlfs::{
+    io_traits::{AsyncReader, Writer},
+    Crc, FileReader, FileWriter, Flash, VLFS,
+};
+
+use super::programs::write_file::WriteFile;
 
 pub struct Console<I: Timer, T: Serial, F: Flash, C: Crc, P: PyroChannel, B: Buzzer>
 where
@@ -54,7 +57,7 @@ where
     }
 
     async fn read_command(&self) -> Result<String<64>, ()> {
-        self.write(b"vlf3> ").await;
+        // self.write(b"vlf3> ").await;
         let mut buffer = [0u8; 64];
         let mut command = String::<64>::new();
 
@@ -66,17 +69,17 @@ where
 
             for byte in (&buffer[0..read_len]).iter() {
                 if *byte == b'\r' {
-                    self.write(b"\r\n").await;
+                    // self.write(b"\r\n").await;
                     return Ok(command);
                 }
 
                 if *byte == 8 {
                     if command.pop().is_some() {
-                        self.write(&[8, b' ', 8]).await;
+                        // self.write(&[8, b' ', 8]).await;
                     }
                 } else {
                     command.push(*byte as char).unwrap();
-                    self.write(&[*byte]).await;
+                    // self.write(&[*byte]).await;
                 }
             }
         }
@@ -92,6 +95,22 @@ where
     }
 
     async fn run_console(&self) -> ! {
+        let write_file = WriteFile::new();
+
+        loop {
+            let command = self.read_command().await.unwrap();
+            let command = command.as_str();
+            let command = command.split_ascii_whitespace().collect::<Vec<&str, 10>>();
+            if command.len() == 0 {
+                continue;
+            }
+
+            let mut serial = self.serial.lock().await;
+            if command[0] == write_file.name() {
+                unwrap!(write_file.start(&mut serial, &self.vlfs).await);
+            }
+        }
+
         let mut opened_write_files = Vec::<FileWriter<F, C>, 2>::new();
         let mut opened_read_files = Vec::<FileReader<F, C>, 2>::new();
         loop {
@@ -170,8 +189,7 @@ where
             } else if command[0] == "fs.write" {
                 let fd = usize::from_str_radix(command[1], 16).unwrap();
                 let file_writer = opened_write_files.get_mut(fd).unwrap();
-                unwrap!(file_writer
-                    .extend_from_slice(command[2].as_bytes()));
+                unwrap!(file_writer.extend_from_slice(command[2].as_bytes()));
                 self.writeln(b"OK").await;
             } else if command[0] == "fs.write.flush" {
                 let fd = usize::from_str_radix(command[1], 16).unwrap();

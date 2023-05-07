@@ -50,7 +50,7 @@ pub async fn init<
     G: GPS,
 >(
     timer: T,
-    flash: F,
+    mut flash: F,
     crc: C,
     mut imu: I,
     mut batt_voltmeter: V,
@@ -69,6 +69,7 @@ pub async fn init<
     mut barometer: BA,
     mut gps: G,
 ) {
+    flash.reset().await.ok();
     let mut fs = VLFS::new(flash, crc);
     unwrap!(fs.init().await);
     gps.reset().await;
