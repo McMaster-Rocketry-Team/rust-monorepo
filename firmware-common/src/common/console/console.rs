@@ -2,13 +2,13 @@ use crate::{
     driver::{buzzer::Buzzer, pyro::PyroChannel, serial::Serial, timer::Timer},
     heapless_format_bytes,
 };
-use defmt::{info, unwrap};
+use defmt::{info, unwrap, warn};
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 use futures::future::join;
 use heapless::String;
 use heapless::Vec;
 use vlfs::{
-    io_traits::{AsyncReader, Writer},
+    io_traits::{AsyncReader, AsyncWriter, Writer},
     Crc, FileReader, FileWriter, Flash, VLFS,
 };
 

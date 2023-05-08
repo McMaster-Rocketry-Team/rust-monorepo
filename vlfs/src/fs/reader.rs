@@ -132,7 +132,7 @@ where
             self.sector_read_data_length += read_data_length as u16;
             drop(flash);
 
-            info!("read result: len: {} {=[u8]:X}", read_result.len(), read_result);
+            // info!("read result: len: {} {=[u8]:X}", read_result.len(), read_result);
             let data_buffer_padded = &read_result[..read_data_length_padded];
             let expected_crc_buffer =
                 &read_result[read_data_length_padded..(read_data_length_padded + 4)];

@@ -1,5 +1,8 @@
 use defmt::{info, unwrap};
-use vlfs::{io_traits::{Writer, AsyncWriter}, Crc, Flash, VLFS};
+use vlfs::{
+    io_traits::{AsyncWriter},
+    Crc, Flash, VLFS,
+};
 
 use crate::driver::serial::Serial;
 pub struct WriteFile {}
@@ -48,12 +51,13 @@ impl WriteFile {
             unwrap!(serial.write(&chunk_len.to_be_bytes()).await);
 
             // info!("reading chunk");
+            let read_len = unwrap!(serial.read(&mut buffer).await);
+            assert!(read_len == chunk_len as usize);
+
             unwrap!(
-                serial
-                    .read_all(&mut buffer[..(chunk_len as usize)])
+                file.extend_from_slice(&buffer[..(chunk_len as usize)])
                     .await
             );
-            unwrap!(file.extend_from_slice(&buffer[..(chunk_len as usize)]).await);
             wrote_len += chunk_len;
         }
 

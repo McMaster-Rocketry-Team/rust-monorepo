@@ -1,9 +1,7 @@
 use core::ops::DerefMut;
 
-use embassy_sync::{mutex::MutexGuard, blocking_mutex::raw::RawMutex};
+use embassy_sync::{blocking_mutex::raw::RawMutex, mutex::MutexGuard};
 
-
-// TODO define error type
 pub trait Serial {
     type Error: defmt::Format;
 
@@ -16,7 +14,7 @@ pub trait Serial {
         Ok(())
     }
 
-    async fn read_all(&mut self, buffer: &mut [u8])->Result<(),Self::Error>{
+    async fn read_all(&mut self, buffer: &mut [u8]) -> Result<(), Self::Error> {
         let mut read_length = 0;
         while read_length < buffer.len() {
             read_length += self.read(&mut buffer[read_length..]).await?;
@@ -25,7 +23,6 @@ pub trait Serial {
         Ok(())
     }
 }
-
 
 impl<'a, M, T> Serial for MutexGuard<'a, M, T>
 where
