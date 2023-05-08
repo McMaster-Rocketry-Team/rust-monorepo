@@ -1,6 +1,6 @@
 use core::fmt;
 
-use crate::utils::io_traits::Writer;
+use crate::io_traits::AsyncWriter;
 
 use super::utils::CopyFromU16x4;
 use super::*;
@@ -105,11 +105,13 @@ where
                 true
             };
 
-            self.writing_queue
-                .send(WritingQueueEntry::EraseSector {
-                    address: new_sector_index as u32 * SECTOR_SIZE as u32,
-                })
-                .await;
+            let mut flash = self.flash.lock().await;
+            flash
+                .erase_sector_4kib(new_sector_index as u32 * SECTOR_SIZE as u32)
+                .await
+                .map_err(VLFSError::from_flash)?;
+            drop(flash);
+            
             let result = Ok(FileWriter::new(self, new_sector_index, file_entry.file_id));
             drop(at);
 
@@ -153,31 +155,36 @@ where
         }
     }
 
-    fn send_page_to_queue(
+    async fn write_page(
         &mut self,
         address: u32,
         crc_offset: Option<usize>,
     ) -> Result<(), VLFSError<F>> {
-        self.vlfs
-            .writing_queue
-            .try_send(WritingQueueEntry::WritePage {
-                address,
-                crc_offset,
-                data: self.buffer,
-            })
-            .map_err(|_| VLFSError::WritingQueueFull)?;
+        if let Some(crc_offset) = crc_offset {
+            let mut crc = self.vlfs.crc.lock().await;
+            let crc = crc.calculate(&self.buffer[5..(crc_offset + 5)]);
+            (&mut self.buffer[(crc_offset + 5)..(crc_offset + 5 + 4)])
+                .copy_from_slice(&crc.to_be_bytes());
+        }
+
+        let mut flash = self.vlfs.flash.lock().await;
+        flash
+            .write_256b(address, &mut self.buffer)
+            .await
+            .map_err(VLFSError::<F>::from_flash)?;
+
         self.buffer = [0xFFu8; 5 + 256];
         self.buffer_offset = 5;
         Ok(())
     }
 
-    fn send_erase_to_queue(&mut self, sector_index: u16) -> Result<(), VLFSError<F>> {
-        self.vlfs
-            .writing_queue
-            .try_send(WritingQueueEntry::EraseSector {
-                address: (sector_index as usize * SECTOR_SIZE) as u32,
-            })
-            .map_err(|_| VLFSError::WritingQueueFull)
+    async fn erase_sector(&mut self, sector_index: u16) -> Result<(), VLFSError<F>> {
+        let mut flash = self.vlfs.flash.lock().await;
+        flash
+            .erase_sector_4kib((sector_index as usize * SECTOR_SIZE) as u32)
+            .await
+            .map_err(VLFSError::<F>::from_flash)?;
+        Ok(())
     }
 
     fn is_last_data_page(&self) -> bool {
@@ -206,7 +213,7 @@ where
 
         let next_sector_index = self.vlfs.claim_avaliable_sector()?;
         self._flush(next_sector_index).await?;
-        self.send_erase_to_queue(next_sector_index)?;
+        self.erase_sector(next_sector_index).await?;
         self.current_sector_index = next_sector_index;
 
         Ok(())
@@ -216,10 +223,11 @@ where
         if self.sector_data_length == 0 {
             self.write_length_and_next_sector_index(next_sector_index);
             let current_sector_address = (self.current_sector_index as usize * SECTOR_SIZE) as u32;
-            self.send_page_to_queue(
+            self.write_page(
                 current_sector_address + (SECTOR_SIZE - PAGE_SIZE) as u32,
                 None,
-            )?;
+            )
+            .await?;
             return Ok(());
         }
 
@@ -230,18 +238,21 @@ where
             // last data page contains data
             self.write_length_and_next_sector_index(next_sector_index);
 
-            self.send_page_to_queue(self.page_address(), Some(crc_offset))?;
+            self.write_page(self.page_address(), Some(crc_offset))
+                .await?;
         } else {
             // last data page does not contain data
-            self.send_page_to_queue(self.page_address(), Some(crc_offset))?;
+            self.write_page(self.page_address(), Some(crc_offset))
+                .await?;
 
             self.write_length_and_next_sector_index(next_sector_index);
 
             let current_sector_address = (self.current_sector_index as usize * SECTOR_SIZE) as u32;
-            self.send_page_to_queue(
+            self.write_page(
                 current_sector_address + (SECTOR_SIZE - PAGE_SIZE) as u32,
                 None,
-            )?;
+            )
+            .await?;
         }
 
         self.sector_data_length = 0;
@@ -264,14 +275,14 @@ where
     }
 }
 
-impl<'a, F, C> Writer for FileWriter<'a, F, C>
+impl<'a, F, C> AsyncWriter for FileWriter<'a, F, C>
 where
     F: Flash,
     C: Crc,
 {
     type Error = VLFSError<F>;
 
-    fn extend_from_slice(&mut self, slice: &[u8]) -> Result<(), VLFSError<F>> {
+    async fn extend_from_slice(&mut self, slice: &[u8]) -> Result<(), VLFSError<F>> {
         let mut slice = slice;
         while slice.len() > 0 {
             let buffer_reserved_size = if self.is_last_data_page() {
@@ -305,17 +316,15 @@ where
                     let next_sector_index = self.vlfs.claim_avaliable_sector()?;
                     self.write_length_and_next_sector_index(next_sector_index);
 
-                    info!(
-                        "Last data page, buffer offset: {}, reserved size: {}",
-                        self.buffer_offset, buffer_reserved_size
-                    );
-                    self.send_page_to_queue(self.page_address(), Some(self.buffer_offset - 5))?;
-                    self.send_erase_to_queue(next_sector_index)?;
+                    self.write_page(self.page_address(), Some(self.buffer_offset - 5))
+                        .await?;
+                    self.erase_sector(next_sector_index).await?;
 
                     self.sector_data_length = 0;
                     self.current_sector_index = next_sector_index
                 } else {
-                    self.send_page_to_queue(self.page_address(), Some(self.buffer_offset - 5))?;
+                    self.write_page(self.page_address(), Some(self.buffer_offset - 5))
+                        .await?;
                 }
 
                 slice = &slice[buffer_free..];
@@ -338,15 +347,4 @@ where
             .field("current_sector_index", &self.current_sector_index)
             .finish()
     }
-}
-
-pub(super) enum WritingQueueEntry {
-    WritePage {
-        address: u32,
-        crc_offset: Option<usize>,
-        data: [u8; 5 + PAGE_SIZE],
-    },
-    EraseSector {
-        address: u32,
-    },
 }

@@ -6,7 +6,6 @@ use crate::{
     utils::rwlock::RwLock,
 };
 use embassy_sync::blocking_mutex::Mutex as BlockingMutex;
-use embassy_sync::channel::Channel;
 use embassy_sync::mutex::Mutex;
 use heapless::Vec;
 
@@ -32,7 +31,6 @@ where
             })),
             flash: Mutex::new(flash),
             crc: Mutex::new(crc),
-            writing_queue: Channel::new(),
         }
     }
 

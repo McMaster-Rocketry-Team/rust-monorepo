@@ -56,7 +56,5 @@ impl ReadNyoom {
                 length_read += read_chunk_size;
             }
         }
-
-        Ok(())
     }
 }

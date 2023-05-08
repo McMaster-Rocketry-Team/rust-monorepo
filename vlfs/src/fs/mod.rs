@@ -6,18 +6,15 @@ use bitvec::prelude::*;
 use defmt::*;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::blocking_mutex::Mutex as BlockingMutex;
-use embassy_sync::channel::Channel;
 use embassy_sync::mutex::Mutex;
 use rand::rngs::SmallRng;
 use rand::{RngCore, SeedableRng};
 
-use self::writer::WritingQueueEntry;
 use self::{error::VLFSError, utils::find_most_common_u16_out_of_4};
 use heapless::Vec;
 
 use crate::utils::rwlock::{RwLock, RwLockReadGuard};
 
-pub mod daemon;
 pub mod error;
 pub mod init;
 pub mod iter;
@@ -25,7 +22,7 @@ pub mod reader;
 pub mod utils;
 pub mod writer;
 
-const VLFS_VERSION: u32 = 15;
+const VLFS_VERSION: u32 = 16;
 const SECTORS_COUNT: usize = 16384; // for 512M-bit flash (W25Q512JV)
 const SECTOR_SIZE: usize = 4096;
 const PAGE_SIZE: usize = 256;
@@ -95,7 +92,6 @@ where
             if !self.sector_map[i] {
                 self.sector_map.set(i, true);
                 self.free_sectors_count -= 1;
-                info!("claim_avaliable_sector {:#X}", i);
                 return Ok(i as u16);
             }
         }
@@ -103,7 +99,6 @@ where
             if !self.sector_map[i] {
                 self.sector_map.set(i, true);
                 self.free_sectors_count -= 1;
-                info!("claim_avaliable_sector {:#X}", i);
                 return Ok(i as u16);
             }
         }
@@ -135,7 +130,6 @@ where
     free_sectors: BlockingMutex<CriticalSectionRawMutex, RefCell<FreeSectors<F>>>,
     flash: Mutex<CriticalSectionRawMutex, F>,
     crc: Mutex<CriticalSectionRawMutex, C>,
-    writing_queue: Channel<CriticalSectionRawMutex, WritingQueueEntry, WRITING_QUEUE_SIZE>,
 }
 
 impl<F, C> defmt::Format for VLFS<F, C>
@@ -247,7 +241,6 @@ where
             let mut flash = self.flash.lock().await;
 
             while let Some(sector_index) = current_sector_index {
-                trace!("at sector {:#X}", sector_index);
                 let address = sector_index as u32 * SECTOR_SIZE as u32;
                 let address = address + SECTOR_SIZE as u32 - 8 - 8;
 
@@ -258,7 +251,7 @@ where
 
                 let sector_data_size =
                     find_most_common_u16_out_of_4(&read_result[..8]).unwrap() as usize; // TODO handle error
-                trace!("sector_data_size: {}", sector_data_size);
+                info!("sector data size = {} at sector #{:#X}", sector_data_size, sector_index);
                 if sector_data_size > MAX_SECTOR_DATA_SIZE {
                     warn!("sector_data_size > MAX_SECTOR_DATA_SIZE");
                     sectors += 1;

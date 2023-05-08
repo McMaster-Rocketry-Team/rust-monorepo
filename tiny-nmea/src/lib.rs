@@ -11,7 +11,7 @@ use heapless::String;
 use heapless::Vec;
 
 fn validate(sentence: &String<84>) -> Result<(), ()> {
-    if sentence.len()<6 {
+    if sentence.len() < 6 {
         return Err(());
     }
     let expected_checksum = substring!(sentence, sentence.len() - 4, 2);

@@ -1,5 +1,5 @@
 use defmt::{info, unwrap};
-use vlfs::{io_traits::Writer, Crc, Flash, VLFS};
+use vlfs::{io_traits::{Writer, AsyncWriter}, Crc, Flash, VLFS};
 
 use crate::driver::serial::Serial;
 pub struct WriteFile {}
@@ -22,7 +22,7 @@ impl WriteFile {
         F::Error: defmt::Format,
         F: defmt::Format,
     {
-        let mut buffer = [0u8; 256];
+        let mut buffer = [0u8; 64];
         unwrap!(serial.read_all(&mut buffer[..(8 + 2 + 4)]).await);
         let file_id = u64::from_be_bytes((&buffer[0..8]).try_into().unwrap());
         let file_type = u16::from_be_bytes((&buffer[8..10]).try_into().unwrap());
@@ -42,15 +42,19 @@ impl WriteFile {
 
         let mut wrote_len = 0u32;
         while wrote_len < file_size {
-            info!("Wrote len: {}", wrote_len);
-            let serial_read_len = core::cmp::min(buffer.len() as u32, file_size - wrote_len);
+            // info!("Wrote len: {}", wrote_len);
+            let chunk_len = core::cmp::min(buffer.len() as u32, file_size - wrote_len);
+            // info!("sending chunk len: {}", chunk_len);
+            unwrap!(serial.write(&chunk_len.to_be_bytes()).await);
+
+            // info!("reading chunk");
             unwrap!(
                 serial
-                    .read_all(&mut buffer[..(serial_read_len as usize)])
+                    .read_all(&mut buffer[..(chunk_len as usize)])
                     .await
             );
-            unwrap!(file.extend_from_slice(&buffer[..(serial_read_len as usize)]));
-            wrote_len += serial_read_len;
+            unwrap!(file.extend_from_slice(&buffer[..(chunk_len as usize)]).await);
+            wrote_len += chunk_len;
         }
 
         unwrap!(file.close().await);
