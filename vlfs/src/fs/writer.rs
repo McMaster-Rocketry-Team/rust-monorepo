@@ -10,7 +10,10 @@ where
     F: Flash,
     C: Crc,
 {
-    pub async fn open_file_for_write(&self, file_id: u64) -> Result<FileWriter<F, C>, VLFSError<F>> {
+    pub async fn open_file_for_write(
+        &self,
+        file_id: u64,
+    ) -> Result<FileWriter<F, C>, VLFSError<F>> {
         let mut at = self.allocation_table.write().await;
         if let Some(file_entry) = self.find_file_entry_mut(&mut at.allocation_table, file_id) {
             if file_entry.opened {
@@ -33,7 +36,8 @@ where
 
                     let read_result = flash
                         .read(next_sector_index_address, 8, &mut buffer)
-                        .await.map_err(VLFSError::from_flash)?;
+                        .await
+                        .map_err(VLFSError::from_flash)?;
                     let next_sector_index = find_most_common_u16_out_of_4(read_result).unwrap();
                     if next_sector_index == 0xFFFF {
                         break;
@@ -48,11 +52,15 @@ where
                 let temp_sector_index = self.claim_avaliable_sector()?;
                 flash
                     .erase_sector_4kib(temp_sector_index as u32 * SECTOR_SIZE as u32)
-                    .await.map_err(VLFSError::from_flash)?;
+                    .await
+                    .map_err(VLFSError::from_flash)?;
                 // copy last sector to temp sector, with "index of next sector" changed
                 for i in 0..PAGES_PER_SECTOR {
                     let read_address = (current_sector_address as usize + i * PAGE_SIZE) as u32;
-                    flash.read(read_address, PAGE_SIZE, &mut buffer).await.map_err(VLFSError::from_flash)?;
+                    flash
+                        .read(read_address, PAGE_SIZE, &mut buffer)
+                        .await
+                        .map_err(VLFSError::from_flash)?;
                     if i == PAGES_PER_SECTOR - 1 {
                         // last page
                         (&mut buffer[(5 + PAGE_SIZE - 8)..]).copy_from_u16x4(new_sector_index);
@@ -60,20 +68,32 @@ where
 
                     let write_address =
                         (temp_sector_index as usize * SECTOR_SIZE + i * PAGE_SIZE) as u32;
-                    flash.write_256b(write_address, &mut buffer).await.map_err(VLFSError::from_flash)?;
+                    flash
+                        .write_256b(write_address, &mut buffer)
+                        .await
+                        .map_err(VLFSError::from_flash)?;
                 }
 
                 // erase last sector
-                flash.erase_sector_4kib(current_sector_address).await.map_err(VLFSError::from_flash)?;
+                flash
+                    .erase_sector_4kib(current_sector_address)
+                    .await
+                    .map_err(VLFSError::from_flash)?;
 
                 // copy temp sector to last sector
                 for i in 0..PAGES_PER_SECTOR {
                     let read_address =
                         (temp_sector_index as usize * SECTOR_SIZE + i * PAGE_SIZE) as u32;
-                    flash.read(read_address, PAGE_SIZE, &mut buffer).await.map_err(VLFSError::from_flash)?;
+                    flash
+                        .read(read_address, PAGE_SIZE, &mut buffer)
+                        .await
+                        .map_err(VLFSError::from_flash)?;
 
                     let write_address = (current_sector_address as usize + i * PAGE_SIZE) as u32;
-                    flash.write_256b(write_address, &mut buffer).await.map_err(VLFSError::from_flash)?;
+                    flash
+                        .write_256b(write_address, &mut buffer)
+                        .await
+                        .map_err(VLFSError::from_flash)?;
                 }
                 self.return_sector(temp_sector_index);
 
@@ -254,13 +274,18 @@ where
     fn extend_from_slice(&mut self, slice: &[u8]) -> Result<(), VLFSError<F>> {
         let mut slice = slice;
         while slice.len() > 0 {
-            let buffer_free = if self.is_last_data_page() {
-                self.buffer.len() - self.buffer_offset - 8 - 8 - 4
+            let buffer_reserved_size = if self.is_last_data_page() {
+                8 + 8 + 4
             } else {
-                self.buffer.len() - self.buffer_offset - 4
+                4
             };
+            let buffer_len = self.buffer.len();
+            let buffer_free = self.buffer.len() - self.buffer_offset - buffer_reserved_size;
 
             if slice.len() < buffer_free {
+                // if the slice fits inside available buffer space
+                // and there are empty buffer space left after copying the slice
+
                 (&mut self.buffer[self.buffer_offset..(self.buffer_offset + slice.len())])
                     .copy_from_slice(slice);
                 self.buffer_offset += slice.len();
@@ -268,7 +293,11 @@ where
 
                 slice = &[];
             } else {
-                (&mut self.buffer[self.buffer_offset..]).copy_from_slice(&slice[..buffer_free]);
+                // 1. if slice fits inside available buffer space but there are no empty buffer space left after copying the slice
+                // 2. if slice does not fit inside available buffer space
+
+                (&mut self.buffer[self.buffer_offset..(buffer_len - buffer_reserved_size)])
+                    .copy_from_slice(&slice[..buffer_free]);
                 self.buffer_offset += buffer_free;
                 self.sector_data_length += buffer_free as u16;
 
