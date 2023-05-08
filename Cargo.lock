@@ -247,6 +247,7 @@ dependencies = [
  "embassy-sync 0.1.0",
  "futures",
  "heapless",
+ "micromath",
  "nalgebra 0.32.2",
  "rand",
  "rkyv",
@@ -511,6 +512,12 @@ name = "memchr"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2dffe52ecf27772e601905b7522cb4ef790d2cc203488bbd0e2fe85fcb74566d"
+
+[[package]]
+name = "micromath"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "39617bc909d64b068dcffd0e3e31679195b5576d0c83fadc52690268cc2b2b55"
 
 [[package]]
 name = "multimap"

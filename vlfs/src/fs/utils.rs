@@ -1,3 +1,5 @@
+use super::*;
+
 pub(super) fn find_most_common_u16_out_of_4(buffer: &[u8]) -> Option<u16> {
     find_most_common(
         u16::from_be_bytes((&buffer[0..2]).try_into().unwrap()),
@@ -41,5 +43,37 @@ impl CopyFromU16x4 for [u8] {
         (&mut self[2..4]).copy_from_slice(be_bytes);
         (&mut self[4..6]).copy_from_slice(be_bytes);
         (&mut self[6..8]).copy_from_slice(be_bytes);
+    }
+}
+
+impl<F, C> VLFS<F, C>
+where
+    F: Flash,
+    C: Crc,
+{
+    pub(super) fn find_file_entry<'a>(
+        &self,
+        allocation_table: &'a AllocationTable,
+        file_id: u64,
+    ) -> Option<&'a FileEntry> {
+        for file_entry in &allocation_table.file_entries {
+            if file_entry.file_id == file_id {
+                return Some(file_entry);
+            }
+        }
+        None
+    }
+
+    pub(super) fn find_file_entry_mut<'a>(
+        &self,
+        allocation_table: &'a mut AllocationTable,
+        file_id: u64,
+    ) -> Option<&'a mut FileEntry> {
+        for file_entry in &mut allocation_table.file_entries {
+            if file_entry.file_id == file_id {
+                return Some(file_entry);
+            }
+        }
+        None
     }
 }

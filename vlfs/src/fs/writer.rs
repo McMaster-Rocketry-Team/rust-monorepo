@@ -21,7 +21,7 @@ where
             }
             file_entry.opened = true;
 
-            let new_sector_index = self.claim_avaliable_sector()?;
+            let new_sector_index = self.claim_avaliable_sector_and_erase().await?;
             let new_file = if let Some(first_sector_index) = file_entry.first_sector_index {
                 // this file has been written to before,
                 // update "index of next sector" in the last sector
@@ -49,11 +49,7 @@ where
 
                 let current_sector_address = (current_sector_index as usize * SECTOR_SIZE) as u32;
 
-                let temp_sector_index = self.claim_avaliable_sector()?;
-                flash
-                    .erase_sector_4kib(temp_sector_index as u32 * SECTOR_SIZE as u32)
-                    .await
-                    .map_err(VLFSError::from_flash)?;
+                let temp_sector_index = self.claim_avaliable_sector_and_erase().await?;
                 // copy last sector to temp sector, with "index of next sector" changed
                 for i in 0..PAGES_PER_SECTOR {
                     let read_address = (current_sector_address as usize + i * PAGE_SIZE) as u32;
@@ -104,13 +100,6 @@ where
                 file_entry.first_sector_index = Some(new_sector_index);
                 true
             };
-
-            let mut flash = self.flash.lock().await;
-            flash
-                .erase_sector_4kib(new_sector_index as u32 * SECTOR_SIZE as u32)
-                .await
-                .map_err(VLFSError::from_flash)?;
-            drop(flash);
 
             let result = Ok(FileWriter::new(self, new_sector_index, file_entry.file_id));
             drop(at);
@@ -214,9 +203,8 @@ where
             return Ok(());
         }
 
-        let next_sector_index = self.vlfs.claim_avaliable_sector()?;
+        let next_sector_index = self.vlfs.claim_avaliable_sector_and_erase().await?;
         self._flush(next_sector_index).await?;
-        self.erase_sector(next_sector_index).await?;
         self.current_sector_index = next_sector_index;
 
         Ok(())
@@ -318,12 +306,11 @@ where
                 self.sector_data_length += buffer_free as u16;
 
                 if self.is_last_data_page() {
-                    let next_sector_index = self.vlfs.claim_avaliable_sector()?;
+                    let next_sector_index = self.vlfs.claim_avaliable_sector_and_erase().await?;
                     self.write_length_and_next_sector_index(next_sector_index);
 
                     self.write_page(self.page_address(), Some(self.buffer_offset - 5))
                         .await?;
-                    self.erase_sector(next_sector_index).await?;
 
                     self.sector_data_length = 0;
                     self.current_sector_index = next_sector_index

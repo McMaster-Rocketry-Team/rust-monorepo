@@ -9,6 +9,14 @@ pub trait Crc {
 
     fn read(&self) -> u32;
 
+    fn calculate_u32(&mut self, data: &[u32]) -> u32 {
+        self.reset();
+        for word in data {
+            self.feed(*word);
+        }
+        self.read()
+    }
+
     // data must be 4 bytes aligned
     fn calculate(&mut self, data: &[u8]) -> u32 {
         self.reset();

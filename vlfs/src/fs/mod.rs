@@ -10,6 +10,7 @@ use embassy_sync::mutex::Mutex;
 use rand::rngs::SmallRng;
 use rand::{RngCore, SeedableRng};
 
+use self::sector_management::SectorsMng;
 use self::{error::VLFSError, utils::find_most_common_u16_out_of_4};
 use heapless::Vec;
 
@@ -21,6 +22,7 @@ pub mod iter;
 pub mod reader;
 pub mod utils;
 pub mod writer;
+pub mod sector_management;
 
 const VLFS_VERSION: u32 = 16;
 const SECTORS_COUNT: usize = 16384; // for 512M-bit flash (W25Q512JV)
@@ -29,10 +31,10 @@ const PAGE_SIZE: usize = 256;
 const PAGES_PER_SECTOR: usize = SECTOR_SIZE / PAGE_SIZE;
 const MAX_FILES: usize = 256; // can be as large as 2728
 const TABLE_COUNT: usize = 4;
-const SECTOR_MAP_ARRAY_SIZE: usize = SECTORS_COUNT / 32;
-const WRITING_QUEUE_SIZE: usize = 4;
 const MAX_SECTOR_DATA_SIZE: usize = 4016;
 const ALLOC_TABLES_SECTORS_USED: usize = TABLE_COUNT * 32 * 1024 / SECTOR_SIZE;
+const DATA_REGION_SECTORS: usize = SECTORS_COUNT - ALLOC_TABLES_SECTORS_USED;
+const SECTOR_MAP_ARRAY_SIZE: usize = DATA_REGION_SECTORS / 32;
 
 #[derive(Debug, Clone)]
 struct FileEntry {
@@ -71,75 +73,15 @@ impl Default for AllocationTableWrapper {
     }
 }
 
-struct FreeSectors<F: Flash> {
-    phantom: PhantomData<F>,
-    sector_map: BitArray<[u32; SECTOR_MAP_ARRAY_SIZE], Lsb0>, // false: unused; true: used
-    free_sectors_count: u32,
-    rng: SmallRng,
-}
-
-impl<F: Flash> FreeSectors<F>
-where
-    F::Error: defmt::Format,
-{
-    fn claim_avaliable_sector(&mut self) -> Result<u16, VLFSError<F>> {
-        if self.free_sectors_count == 0 {
-            return Err(VLFSError::DeviceFull);
-        }
-
-        let start_i = (self.rng.next_u64() as usize) % SECTORS_COUNT;
-        for i in start_i..SECTORS_COUNT {
-            if !self.sector_map[i] {
-                self.sector_map.set(i, true);
-                self.free_sectors_count -= 1;
-                return Ok(i as u16);
-            }
-        }
-        for i in 0..start_i {
-            if !self.sector_map[i] {
-                self.sector_map.set(i, true);
-                self.free_sectors_count -= 1;
-                return Ok(i as u16);
-            }
-        }
-
-        defmt::panic!("wtf");
-    }
-
-    fn claim_sector(&mut self, sector_index: u16) {
-        if !self.sector_map[sector_index as usize] {
-            self.free_sectors_count -= 1;
-            self.sector_map.set(sector_index as usize, true);
-        }
-    }
-
-    fn return_sector(&mut self, sector_index: u16) {
-        if self.sector_map[sector_index as usize] {
-            self.free_sectors_count += 1;
-            self.sector_map.set(sector_index as usize, false);
-        }
-    }
-}
-
 pub struct VLFS<F, C>
 where
     F: Flash,
     C: Crc,
 {
     allocation_table: RwLock<CriticalSectionRawMutex, AllocationTableWrapper, 10>,
-    free_sectors: BlockingMutex<CriticalSectionRawMutex, RefCell<FreeSectors<F>>>,
+    sectors_mng: BlockingMutex<CriticalSectionRawMutex, RefCell<SectorsMng>>,
     flash: Mutex<CriticalSectionRawMutex, F>,
     crc: Mutex<CriticalSectionRawMutex, C>,
-}
-
-impl<F, C> defmt::Format for VLFS<F, C>
-where
-    F: Flash,
-    C: Crc,
-{
-    fn format(&self, fmt: Formatter) {
-        // TODO
-    }
 }
 
 impl<F, C> VLFS<F, C>
@@ -210,26 +152,6 @@ where
         Ok(())
     }
 
-    fn claim_avaliable_sector(&self) -> Result<u16, VLFSError<F>> {
-        let result = self.free_sectors.lock(|free_sectors| {
-            let mut free_sectors = free_sectors.borrow_mut();
-            free_sectors.claim_avaliable_sector()
-        });
-
-        if let Ok(index) = result{
-            info!("Claimed sector #{:#X}", index);
-        }
-
-        result
-    }
-
-    fn return_sector(&self, sector_index: u16) {
-        self.free_sectors.lock(|free_sectors| {
-            let mut free_sectors = free_sectors.borrow_mut();
-            free_sectors.return_sector(sector_index)
-        });
-    }
-
     pub async fn get_file_size(&self, file_id: u64) -> Result<(usize, usize), VLFSError<F>> {
         trace!("get file size start");
         let at = self.allocation_table.read().await;
@@ -251,7 +173,10 @@ where
 
                 let sector_data_size =
                     find_most_common_u16_out_of_4(&read_result[..8]).unwrap() as usize; // TODO handle error
-                info!("sector data size = {} at sector #{:#X}", sector_data_size, sector_index);
+                info!(
+                    "sector data size = {} at sector #{:#X}",
+                    sector_data_size, sector_index
+                );
                 if sector_data_size > MAX_SECTOR_DATA_SIZE {
                     warn!("sector_data_size > MAX_SECTOR_DATA_SIZE");
                     sectors += 1;
@@ -276,29 +201,16 @@ where
         Err(VLFSError::FileDoesNotExist)
     }
 
-    fn find_file_entry<'a>(
-        &self,
-        allocation_table: &'a AllocationTable,
-        file_id: u64,
-    ) -> Option<&'a FileEntry> {
-        for file_entry in &allocation_table.file_entries {
-            if file_entry.file_id == file_id {
-                return Some(file_entry);
-            }
-        }
-        None
-    }
+    
+}
 
-    fn find_file_entry_mut<'a>(
-        &self,
-        allocation_table: &'a mut AllocationTable,
-        file_id: u64,
-    ) -> Option<&'a mut FileEntry> {
-        for file_entry in &mut allocation_table.file_entries {
-            if file_entry.file_id == file_id {
-                return Some(file_entry);
-            }
-        }
-        None
+
+impl<F, C> defmt::Format for VLFS<F, C>
+where
+    F: Flash,
+    C: Crc,
+{
+    fn format(&self, _fmt: Formatter) {
+        // TODO
     }
 }
