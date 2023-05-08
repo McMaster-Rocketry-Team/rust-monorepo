@@ -81,7 +81,8 @@ where
                 let sector_data_length_address = (sector_address + SECTOR_SIZE - 8 - 8) as u32;
                 let read_result = flash
                     .read(sector_data_length_address, 8, &mut self.page_buffer)
-                    .await.map_err(VLFSError::from_flash)?;
+                    .await
+                    .map_err(VLFSError::from_flash)?;
                 self.sector_data_length = Some(find_most_common_u16_out_of_4(read_result).unwrap());
             }
 
@@ -92,7 +93,8 @@ where
                 let next_sector_index_address = (sector_address + SECTOR_SIZE - 8) as u32;
                 let read_result = flash
                     .read(next_sector_index_address, 8, &mut self.page_buffer)
-                    .await.map_err(VLFSError::from_flash)?;
+                    .await
+                    .map_err(VLFSError::from_flash)?;
 
                 let next_sector_index = find_most_common_u16_out_of_4(read_result).unwrap();
                 self.set_current_sector_index(next_sector_index);
@@ -112,6 +114,9 @@ where
 
             let page_address =
                 (sector_address + self.current_page_index as usize * PAGE_SIZE) as u32;
+
+            info!("Read page {:X}, page_index: {}", page_address, self.current_page_index);
+
             let read_result = flash
                 .read(
                     page_address,
@@ -122,10 +127,12 @@ where
                     },
                     &mut self.page_buffer,
                 )
-                .await.map_err(VLFSError::from_flash)?;
+                .await
+                .map_err(VLFSError::from_flash)?;
             self.sector_read_data_length += read_data_length as u16;
             drop(flash);
 
+            info!("read result: len: {} {=[u8]:X}", read_result.len(), read_result);
             let data_buffer_padded = &read_result[..read_data_length_padded];
             let expected_crc_buffer =
                 &read_result[read_data_length_padded..(read_data_length_padded + 4)];
@@ -135,6 +142,10 @@ where
             drop(crc);
 
             if actual_crc != expected_crc {
+                info!(
+                    "CRC mismatch: expected {}, actual {}",
+                    expected_crc, actual_crc
+                );
                 return Err(VLFSError::CorruptedPage {
                     address: page_address,
                 });

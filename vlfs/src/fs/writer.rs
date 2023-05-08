@@ -181,7 +181,7 @@ where
     }
 
     fn is_last_data_page(&self) -> bool {
-        self.sector_data_length > (SECTOR_SIZE - PAGE_SIZE) as u16
+        self.sector_data_length > (252 * 15)
     }
 
     fn page_address(&self) -> u32 {
@@ -305,6 +305,10 @@ where
                     let next_sector_index = self.vlfs.claim_avaliable_sector()?;
                     self.write_length_and_next_sector_index(next_sector_index);
 
+                    info!(
+                        "Last data page, buffer offset: {}, reserved size: {}",
+                        self.buffer_offset, buffer_reserved_size
+                    );
                     self.send_page_to_queue(self.page_address(), Some(self.buffer_offset - 5))?;
                     self.send_erase_to_queue(next_sector_index)?;
 

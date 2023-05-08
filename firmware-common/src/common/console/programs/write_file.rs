@@ -1,8 +1,5 @@
 use defmt::{info, unwrap};
-use vlfs::{
-    io_traits::{Writer},
-    Crc, Flash, VLFS,
-};
+use vlfs::{io_traits::Writer, Crc, Flash, VLFS};
 
 use crate::driver::serial::Serial;
 pub struct WriteFile {}
@@ -47,15 +44,19 @@ impl WriteFile {
         while wrote_len < file_size {
             info!("Wrote len: {}", wrote_len);
             let serial_read_len = core::cmp::min(buffer.len() as u32, file_size - wrote_len);
-            unwrap!(serial
-                .read_all(&mut buffer[..(serial_read_len as usize)])
-                .await);
+            unwrap!(
+                serial
+                    .read_all(&mut buffer[..(serial_read_len as usize)])
+                    .await
+            );
             unwrap!(file.extend_from_slice(&buffer[..(serial_read_len as usize)]));
             wrote_len += serial_read_len;
         }
 
         unwrap!(file.close().await);
-        info!("File saved!");
+
+        let (size, sector) = unwrap!(vlfs.get_file_size(file_id).await);
+        info!("File saved! size: {}, sector: {}", size, sector);
 
         Ok(())
     }

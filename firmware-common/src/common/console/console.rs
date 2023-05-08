@@ -12,7 +12,7 @@ use vlfs::{
     Crc, FileReader, FileWriter, Flash, VLFS,
 };
 
-use super::programs::write_file::WriteFile;
+use super::programs::{write_file::WriteFile, read_nyoom::ReadNyoom};
 
 pub struct Console<I: Timer, T: Serial, F: Flash, C: Crc, P: PyroChannel, B: Buzzer>
 where
@@ -52,6 +52,7 @@ where
 
     async fn run_console(&self) -> ! {
         let write_file = WriteFile::new();
+        let read_nyoom = ReadNyoom::new();
         let mut serial = self.serial.lock().await;
         let mut command_buffer = [0u8; 8];
 
@@ -61,6 +62,8 @@ where
 
             if command_id == write_file.id() {
                 unwrap!(write_file.start(&mut serial, &self.vlfs).await);
+            }if command_id == read_nyoom.id() {
+                unwrap!(read_nyoom.start(&mut serial, &self.vlfs).await);
             } else {
                 info!("Unknown command!");
             }

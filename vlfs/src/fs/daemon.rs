@@ -26,8 +26,7 @@ where
                     (&mut data[(crc_offset + 5)..(crc_offset + 5 + 4)])
                         .copy_from_slice(&crc.to_be_bytes());
                 }
-                trace!("Flush: start: {=[u8]:02X}", &data[5..(5 + 16)]);
-                trace!("Flush:   end: {=[u8]:02X}", &data[(5 + PAGE_SIZE - 16)..]);
+                info!("Flush: {=[u8]:02X}", &data[5..]);
                 flash.write_256b(address, &mut data).await;
             }
         }
