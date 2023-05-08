@@ -118,10 +118,10 @@ where
             let page_address =
                 (sector_address + self.current_page_index as usize * PAGE_SIZE) as u32;
 
-            info!(
-                "Read page {:X}, page_index: {}",
-                page_address, self.current_page_index
-            );
+            // info!(
+            //     "Read page {:X}, page_index: {}",
+            //     page_address, self.current_page_index
+            // );
 
             let read_result = flash
                 .read(

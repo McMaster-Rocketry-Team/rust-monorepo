@@ -5,7 +5,6 @@ use crate::{
     utils::io_traits::{AsyncReader, AsyncWriter},
     utils::rwlock::RwLock,
 };
-use embassy_sync::blocking_mutex::Mutex as BlockingMutex;
 use embassy_sync::mutex::Mutex;
 use heapless::Vec;
 
@@ -17,11 +16,12 @@ where
     pub fn new(flash: F, crc: C) -> Self {
         Self {
             allocation_table: RwLock::new(AllocationTableWrapper::default()),
-            sectors_mng: BlockingMutex::new(RefCell::new(SectorsMng {
+            sectors_mng: RwLock::new(SectorsMng {
                 sector_map: BitArray::<_, Lsb0>::new([0u32; SECTOR_MAP_ARRAY_SIZE]),
+                erase_ahead_sectors: Vec::new(),
                 free_sectors_count: (SECTORS_COUNT - ALLOC_TABLES_SECTORS_USED) as u32,
                 rng: SmallRng::seed_from_u64(0),
-            })),
+            }),
             flash: Mutex::new(flash),
             crc: Mutex::new(crc),
         }
@@ -36,29 +36,26 @@ where
             );
             drop(at);
             self.read_free_sectors().await?;
-            self.sectors_mng.lock(|sectors_mng| {
-                let sectors_mng = sectors_mng.borrow();
 
-                let total_sectors = SECTORS_COUNT - ALLOC_TABLES_SECTORS_USED;
-                let used_sectors = total_sectors - sectors_mng.free_sectors_count as usize;
-                let free_space =
-                    (sectors_mng.free_sectors_count as usize * MAX_SECTOR_DATA_SIZE) / 1024;
-                info!(
-                    "{} out of {} sectors used, avaliable space: {}KiB",
-                    used_sectors, total_sectors, free_space,
-                );
-            });
+            let sectors_mng = self.sectors_mng.read().await;
+            let total_sectors = SECTORS_COUNT - ALLOC_TABLES_SECTORS_USED;
+            let used_sectors = total_sectors - sectors_mng.free_sectors_count as usize;
+            let free_space =
+                (sectors_mng.free_sectors_count as usize * MAX_SECTOR_DATA_SIZE) / 1024;
+            info!(
+                "{} out of {} sectors used, avaliable space: {}KiB",
+                used_sectors, total_sectors, free_space,
+            );
         } else {
             info!("No valid allocation table found, creating a new one");
             self.write_allocation_table().await?;
         }
 
         let crc = self.crc.get_mut();
-        self.sectors_mng.lock(|sectors_mng| {
-            let mut sectors_mng = sectors_mng.borrow_mut();
-            let crc = crc.calculate_u32(&sectors_mng.sector_map.data);
-            sectors_mng.rng = SmallRng::seed_from_u64(crc as u64 + ((crc as u64) << 32));
-        });
+        let mut sectors_mng = self.sectors_mng.write().await;
+        let crc = crc.calculate_u32(&sectors_mng.sector_map.data);
+        sectors_mng.rng = SmallRng::seed_from_u64(crc as u64 + ((crc as u64) << 32));
+
         info!("VLFS initialized");
         Ok(())
     }
@@ -69,7 +66,7 @@ where
             let mut current_sector_index = file_entry.first_sector_index;
             while let Some(sector_index) = current_sector_index {
                 trace!("at sector {:#X}", sector_index);
-                self.claim_sector(sector_index);
+                self.claim_sector(sector_index).await;
 
                 let mut buffer = [0u8; 5 + 8];
                 let next_sector_index_address =

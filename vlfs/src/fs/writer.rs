@@ -91,7 +91,7 @@ where
                         .await
                         .map_err(VLFSError::from_flash)?;
                 }
-                self.return_sector(temp_sector_index);
+                self.return_sector(temp_sector_index).await;
 
                 false
             } else {
@@ -167,15 +167,6 @@ where
 
         self.buffer = [0xFFu8; 5 + 256];
         self.buffer_offset = 5;
-        Ok(())
-    }
-
-    async fn erase_sector(&mut self, sector_index: u16) -> Result<(), VLFSError<F>> {
-        let mut flash = self.vlfs.flash.lock().await;
-        flash
-            .erase_sector_4kib((sector_index as usize * SECTOR_SIZE) as u32)
-            .await
-            .map_err(VLFSError::<F>::from_flash)?;
         Ok(())
     }
 

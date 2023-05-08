@@ -1,11 +1,7 @@
-use core::cell::RefCell;
-use core::marker::PhantomData;
-
 use crate::driver::{crc::Crc, flash::Flash};
 use bitvec::prelude::*;
 use defmt::*;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::blocking_mutex::Mutex as BlockingMutex;
 use embassy_sync::mutex::Mutex;
 use rand::rngs::SmallRng;
 use rand::{RngCore, SeedableRng};
@@ -33,7 +29,7 @@ const MAX_FILES: usize = 256; // can be as large as 2728
 const TABLE_COUNT: usize = 4;
 const MAX_SECTOR_DATA_SIZE: usize = 4016;
 const ALLOC_TABLES_SECTORS_USED: usize = TABLE_COUNT * 32 * 1024 / SECTOR_SIZE;
-const DATA_REGION_SECTORS: usize = SECTORS_COUNT - ALLOC_TABLES_SECTORS_USED;
+const DATA_REGION_SECTORS: usize = SECTORS_COUNT - ALLOC_TABLES_SECTORS_USED;  // must be a multiple of 16 & aligned to 16
 const SECTOR_MAP_ARRAY_SIZE: usize = DATA_REGION_SECTORS / 32;
 
 #[derive(Debug, Clone)]
@@ -79,7 +75,7 @@ where
     C: Crc,
 {
     allocation_table: RwLock<CriticalSectionRawMutex, AllocationTableWrapper, 10>,
-    sectors_mng: BlockingMutex<CriticalSectionRawMutex, RefCell<SectorsMng>>,
+    sectors_mng: RwLock<CriticalSectionRawMutex, SectorsMng,10>,
     flash: Mutex<CriticalSectionRawMutex, F>,
     crc: Mutex<CriticalSectionRawMutex, C>,
 }
@@ -141,7 +137,7 @@ where
                 .await
                 .map_err(VLFSError::from_flash)?;
             let next_sector_index = find_most_common_u16_out_of_4(read_result).unwrap();
-            self.return_sector(sector_index);
+            self.return_sector(sector_index).await;
             current_sector_index = if next_sector_index == 0xFFFF {
                 None
             } else {
