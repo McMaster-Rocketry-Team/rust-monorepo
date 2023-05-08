@@ -22,6 +22,17 @@ VLFS is based on a file allocation table design and uses linklists to store data
 - [Flash and CRC implementation](https://gist.github.com/PegasisForever/e3ece967100eae4870c550a751886b67)
 - [VLFS Usage](../firmware-common/src/common/console/console.rs)
 
+# Benchmark
+
+NOR flash (W25Q512JV) on 16MHz SPI bus:
+
+- Average sequential write speed: 113KiB/s
+  - 64 bytes writing time:
+    - mean: 0.5ms
+    - stddev: 7.2ms
+    - max: 241.6ms
+- Average sequential read speed: 630KiB/s
+
 # Notes
 
 - To change the maximum supported flash size, update `SECTORS_COUNT` in [./src/fs/mod.rs](./src/fs/mod.rs). Reducing sectors count reduces the  required memory.
@@ -40,13 +51,12 @@ Note: Multiple allocation tables are used for wear-leveling purpose.
 - Replace file write queue with fair rwlock (caller can't get error after the data is in queue)
 - Power loss resilience when initiating append to an existing file (I think this is the only case where a power loss will corrupt flushed data)
 - Handle file sector without data length written at the end due to power loss (This is the case where more than 256 bytes of unflushed data will be lost)
-- Always skip sectors used by the allocation tables in `claim_avaliable_sector`
 - Error handling for `find_most_common_u16_out_of_4`
 - Fild files by file type
-- Erase ahead (32KiB erases are faster (per bit) than 4KiB erases)
 
 # Long-term Todo
 
+- Support erase suspend / resume
 - Use constant generics to support different sizes of flash (tried it before but crashed the compiler)
 - Host application for creating / reading VLFS images
 - Use driver traits from `async_embedded_traits`
