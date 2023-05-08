@@ -38,6 +38,8 @@ where
 
     page_buffer: [u8; 5 + PAGE_SIZE],
     page_buffer_read_ahead_range: (usize, usize),
+
+    closed: bool,
 }
 
 impl<'a, F, C> FileReader<'a, F, C>
@@ -55,6 +57,7 @@ where
             file_id: file_entry.file_id,
             page_buffer: [0u8; 5 + PAGE_SIZE],
             page_buffer_read_ahead_range: (0, 0),
+            closed: false,
         }
     }
 
@@ -115,7 +118,10 @@ where
             let page_address =
                 (sector_address + self.current_page_index as usize * PAGE_SIZE) as u32;
 
-            info!("Read page {:X}, page_index: {}", page_address, self.current_page_index);
+            info!(
+                "Read page {:X}, page_index: {}",
+                page_address, self.current_page_index
+            );
 
             let read_result = flash
                 .read(
@@ -167,13 +173,14 @@ where
         }
     }
 
-    pub async fn close(self) {
+    pub async fn close(mut self) {
         let mut at = self.vlfs.allocation_table.write().await;
         let file_entry = self
             .vlfs
             .find_file_entry_mut(&mut at.allocation_table, self.file_id)
             .unwrap();
         file_entry.opened = false;
+        self.closed = true;
     }
 }
 
@@ -225,6 +232,21 @@ where
         }
 
         Ok(&read_buffer[..length])
+    }
+}
+
+impl<'a, F, C> Drop for FileReader<'a, F, C>
+where
+    F: Flash,
+    C: Crc,
+{
+    fn drop(&mut self) {
+        if !self.closed {
+            defmt::panic!(
+                "FileReader for file {:X} dropped without being closed",
+                self.file_id
+            );
+        }
     }
 }
 

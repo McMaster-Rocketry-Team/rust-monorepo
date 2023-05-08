@@ -35,6 +35,7 @@ impl ReadNyoom {
             let nyoom_message_length_bytes = unwrap!(reader.read_slice(&mut buffer[0..4], 4).await);
             if nyoom_message_length_bytes.len() == 0 {
                 unwrap!(serial.write(&[0u8; 4]).await);
+                reader.close().await;
                 return Ok(());
             }
             let nyoom_message_length =

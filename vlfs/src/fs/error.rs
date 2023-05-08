@@ -11,6 +11,7 @@ pub enum VLFSError<F: Flash>
     DeviceFull,
     WritingQueueFull,
     CorruptedPage { address: u32 },
+    FileClosed,
 }
 
 impl<F: Flash> VLFSError<F>

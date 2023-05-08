@@ -111,7 +111,7 @@ where
                 .await
                 .map_err(VLFSError::from_flash)?;
             drop(flash);
-            
+
             let result = Ok(FileWriter::new(self, new_sector_index, file_entry.file_id));
             drop(at);
 
@@ -137,6 +137,8 @@ where
     sector_data_length: u16,
     current_sector_index: u16,
     file_id: u64,
+
+    closed: bool,
 }
 
 impl<'a, F, C> FileWriter<'a, F, C>
@@ -152,6 +154,7 @@ where
             sector_data_length: 0,
             current_sector_index: initial_sector_index,
             file_id,
+            closed: false,
         }
     }
 
@@ -271,6 +274,8 @@ where
             .find_file_entry_mut(&mut at.allocation_table, self.file_id)
             .unwrap();
         file_entry.opened = false;
+
+        self.closed = true;
         Ok(())
     }
 }
@@ -332,6 +337,21 @@ where
         }
 
         Ok(())
+    }
+}
+
+impl<'a, F, C> Drop for FileWriter<'a, F, C>
+where
+    F: Flash,
+    C: Crc,
+{
+    fn drop(&mut self) {
+        if !self.closed {
+            defmt::panic!(
+                "FileWriter for file {:X} dropped without being closed",
+                self.file_id
+            );
+        }
     }
 }
 

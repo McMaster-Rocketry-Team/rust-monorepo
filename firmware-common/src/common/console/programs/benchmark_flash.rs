@@ -91,6 +91,7 @@ impl BenchmarkFlash {
                     );
                 }
             }
+            file.close().await;
             timer.now_mills() - start_time - random_time
         };
 
