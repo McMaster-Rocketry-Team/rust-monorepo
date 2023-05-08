@@ -7,12 +7,15 @@ use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 use futures::future::join;
 use heapless::String;
 use heapless::Vec;
+use rand::{rngs::SmallRng, RngCore, SeedableRng};
 use vlfs::{
     io_traits::{AsyncReader, AsyncWriter, Writer},
     Crc, FileReader, FileWriter, Flash, VLFS,
 };
 
-use super::programs::{read_nyoom::ReadNyoom, write_file::WriteFile};
+use super::programs::{
+    benchmark_flash::BenchmarkFlash, read_nyoom::ReadNyoom, write_file::WriteFile,
+};
 
 pub struct Console<I: Timer, T: Serial, F: Flash, C: Crc, P: PyroChannel, B: Buzzer>
 where
@@ -48,6 +51,7 @@ where
     async fn run_console(&self) -> ! {
         let write_file = WriteFile::new();
         let read_nyoom = ReadNyoom::new();
+        let benchmark_flash = BenchmarkFlash::new();
         let mut serial = self.serial.lock().await;
         let mut command_buffer = [0u8; 8];
 
@@ -59,6 +63,12 @@ where
                 unwrap!(write_file.start(&mut serial, &self.vlfs).await);
             } else if command_id == read_nyoom.id() {
                 unwrap!(read_nyoom.start(&mut serial, &self.vlfs).await);
+            } else if command_id == benchmark_flash.id() {
+                unwrap!(
+                    benchmark_flash
+                        .start(&mut serial, &self.vlfs, &self.timer)
+                        .await
+                );
             } else {
                 info!("Unknown command: {:X}", command_id);
             }

@@ -248,6 +248,7 @@ dependencies = [
  "futures",
  "heapless",
  "nalgebra 0.32.2",
+ "rand",
  "rkyv",
  "tiny-nmea",
  "vlfs",
