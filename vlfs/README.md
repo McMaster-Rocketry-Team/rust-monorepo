@@ -20,7 +20,7 @@ VLFS is based on a file allocation table design and uses linklists to store data
 # Example
 
 - [Flash and CRC implementation](https://gist.github.com/PegasisForever/e3ece967100eae4870c550a751886b67)
-- [VLFS Usage](../firmware-common/src/common/console/console.rs)
+- [VLFS Usage](https://github.com/McMaster-Rocketry-Team/rust-monorepo/blob/92613b85c1826f4ef27d66bb3ff2f102b9ff49c2/firmware-common/src/common/console/console.rs#L104)
 
 # Benchmark
 
