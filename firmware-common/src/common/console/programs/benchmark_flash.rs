@@ -1,10 +1,7 @@
 use core::hint::black_box;
 
-use core::cmp::Ordering::Equal;
 use defmt::*;
-use heapless::Vec;
-use micromath::statistics::Mean;
-use micromath::statistics::StdDev;
+
 use rand::{rngs::SmallRng, RngCore, SeedableRng};
 use vlfs::{
     io_traits::{AsyncReader, AsyncWriter},
@@ -26,7 +23,7 @@ impl BenchmarkFlash {
 
     pub async fn start<T: Serial, F: Flash, C: Crc, I: Timer>(
         &self,
-        serial: &mut T,
+        _serial: &mut T,
         vlfs: &VLFS<F, C>,
         timer: &I,
     ) -> Result<(), ()>
@@ -74,7 +71,7 @@ impl BenchmarkFlash {
                 let write_64b_start_time = timer.now_micros();
                 unwrap!(file.extend_from_slice(&buffer).await);
                 let write_64b_end_time = timer.now_micros() - write_64b_start_time;
-                if (write_64b_end_time > max_64b_write_time_us){
+                if write_64b_end_time > max_64b_write_time_us {
                     max_64b_write_time_us = write_64b_end_time;
                 }
             }

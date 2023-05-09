@@ -16,9 +16,9 @@ pub mod error;
 pub mod init;
 pub mod iter;
 pub mod reader;
+pub mod sector_management;
 pub mod utils;
 pub mod writer;
-pub mod sector_management;
 
 const VLFS_VERSION: u32 = 16;
 const SECTORS_COUNT: usize = 16384; // for 512M-bit flash (W25Q512JV)
@@ -29,7 +29,7 @@ const MAX_FILES: usize = 256; // can be as large as 2728
 const TABLE_COUNT: usize = 4;
 const MAX_SECTOR_DATA_SIZE: usize = 4016;
 const ALLOC_TABLES_SECTORS_USED: usize = TABLE_COUNT * 32 * 1024 / SECTOR_SIZE;
-const DATA_REGION_SECTORS: usize = SECTORS_COUNT - ALLOC_TABLES_SECTORS_USED;  // must be a multiple of 16 & aligned to 16
+const DATA_REGION_SECTORS: usize = SECTORS_COUNT - ALLOC_TABLES_SECTORS_USED; // must be a multiple of 16 & aligned to 16
 const SECTOR_MAP_ARRAY_SIZE: usize = DATA_REGION_SECTORS / 32;
 
 #[derive(Debug, Clone)]
@@ -75,7 +75,7 @@ where
     C: Crc,
 {
     allocation_table: RwLock<CriticalSectionRawMutex, AllocationTableWrapper, 10>,
-    sectors_mng: RwLock<CriticalSectionRawMutex, SectorsMng,10>,
+    sectors_mng: RwLock<CriticalSectionRawMutex, SectorsMng, 10>,
     flash: Mutex<CriticalSectionRawMutex, F>,
     crc: Mutex<CriticalSectionRawMutex, C>,
 }
@@ -196,10 +196,7 @@ where
 
         Err(VLFSError::FileDoesNotExist)
     }
-
-    
 }
-
 
 impl<F, C> defmt::Format for VLFS<F, C>
 where

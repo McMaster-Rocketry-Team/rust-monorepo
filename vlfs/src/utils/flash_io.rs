@@ -1,10 +1,8 @@
-use crate::driver::{
-    crc::Crc,
-    flash::Flash,
-};
+use crate::driver::{crc::Crc, flash::Flash};
 
 use super::{
-    io_traits::{AsyncReader, AsyncWriter}, u8_crc::U8Crc,
+    io_traits::{AsyncReader, AsyncWriter},
+    u8_crc::U8Crc,
 };
 
 pub struct FlashReader<'a, F, C>

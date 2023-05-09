@@ -1,4 +1,4 @@
-use defmt::{info, panic, unwrap};
+use defmt::{info, unwrap};
 use vlfs::{io_traits::AsyncReader, Crc, Flash, VLFS};
 
 use crate::driver::serial::Serial;

@@ -1,17 +1,8 @@
-use crate::{
-    driver::{buzzer::Buzzer, pyro::PyroChannel, serial::Serial, timer::Timer},
-    heapless_format_bytes,
-};
-use defmt::{info, unwrap, warn};
+use crate::driver::{serial::Serial, timer::Timer};
+use defmt::{info, unwrap};
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
-use futures::future::join;
-use heapless::String;
-use heapless::Vec;
-use rand::{rngs::SmallRng, RngCore, SeedableRng};
-use vlfs::{
-    io_traits::{AsyncReader, AsyncWriter, Writer},
-    Crc, FileReader, FileWriter, Flash, VLFS,
-};
+
+use vlfs::{Crc, Flash, VLFS};
 
 use super::programs::{
     benchmark_flash::BenchmarkFlash, read_nyoom::ReadNyoom, write_file::WriteFile,

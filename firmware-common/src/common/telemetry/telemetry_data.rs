@@ -1,7 +1,5 @@
 use nalgebra::{Vector3, Vector4};
 
-use crate::driver::pyro;
-
 #[derive(Debug, Copy, Clone)]
 pub enum AvionicsState {
     Sleeping,

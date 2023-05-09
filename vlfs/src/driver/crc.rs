@@ -1,6 +1,6 @@
-use core::ops::{DerefMut, Deref};
+use core::ops::{Deref, DerefMut};
 
-use embassy_sync::{mutex::MutexGuard, blocking_mutex::raw::RawMutex};
+use embassy_sync::{blocking_mutex::raw::RawMutex, mutex::MutexGuard};
 
 pub trait Crc {
     fn reset(&mut self);

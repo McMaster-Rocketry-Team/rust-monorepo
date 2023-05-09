@@ -43,7 +43,10 @@ where
 
                 if all_free {
                     let start_sector_i_unoffseted = start_sector_i + ALLOC_TABLES_SECTORS_USED;
-                    info!("Erasing 64KiB block at sector #{:X}", start_sector_i_unoffseted);
+                    info!(
+                        "Erasing 64KiB block at sector #{:X}",
+                        start_sector_i_unoffseted
+                    );
                     self.flash
                         .lock()
                         .await
@@ -79,7 +82,10 @@ where
 
                 if all_free {
                     let start_sector_i_unoffseted = start_sector_i + ALLOC_TABLES_SECTORS_USED;
-                    info!("Erasing 32KiB block at sector #{:X}", start_sector_i_unoffseted);
+                    info!(
+                        "Erasing 32KiB block at sector #{:X}",
+                        start_sector_i_unoffseted
+                    );
                     self.flash
                         .lock()
                         .await
