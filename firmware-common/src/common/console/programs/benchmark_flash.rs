@@ -36,7 +36,6 @@ impl BenchmarkFlash {
     {
         let rounds = 10000usize;
         let length = rounds * 64;
-        let mut write_times = Vec::<f32, 10000>::new();
 
         let random_time = {
             let mut rng = SmallRng::seed_from_u64(
@@ -54,6 +53,7 @@ impl BenchmarkFlash {
 
         let file_id = 10u64;
         let file_type = 0u16;
+        let mut max_64b_write_time_us = 0u64;
 
         let write_time = {
             let mut rng = SmallRng::seed_from_u64(
@@ -71,11 +71,12 @@ impl BenchmarkFlash {
             let mut buffer = [0u8; 64];
             for _ in 0..rounds {
                 rng.fill_bytes(&mut buffer);
-                let write_start_time = timer.now_micros();
+                let write_64b_start_time = timer.now_micros();
                 unwrap!(file.extend_from_slice(&buffer).await);
-                write_times
-                    .push(((timer.now_micros() - write_start_time) as f32) / 1000.0)
-                    .unwrap();
+                let write_64b_end_time = timer.now_micros() - write_64b_start_time;
+                if (write_64b_end_time > max_64b_write_time_us){
+                    max_64b_write_time_us = write_64b_end_time;
+                }
             }
             unwrap!(file.close().await);
             timer.now_mills() - start_time - random_time
@@ -108,16 +109,10 @@ impl BenchmarkFlash {
             "Write speed: {}KiB/s",
             (length as f32 / 1024.0) / (write_time as f32 / 1000.0)
         );
-        let stddev = write_times.as_slice().stddev();
-        let mean = write_times.iter().cloned().mean();
-        let max = write_times
-            .iter()
-            .cloned()
-            .max_by(|a, b| a.partial_cmp(b).unwrap_or(Equal))
-            .unwrap();
         info!(
-            "64 bytes writing time: mean: {}ms, stddev: {}ms, max: {}ms",
-            mean, stddev, max
+            "64 bytes writing time: mean: {}ms, max: {}ms",
+            (write_time as f32) / (rounds as f32),
+            (max_64b_write_time_us as f32) / 1000.0
         );
 
         info!(
