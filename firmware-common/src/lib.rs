@@ -13,13 +13,13 @@ use driver::{
     gps::GPS,
     imu::IMU,
     indicator::Indicator,
-    lora::LoRa,
     meg::Megnetometer,
     pyro::PyroChannel,
     rng::RNG,
     timer::Timer, serial::Serial,
 };
 use futures::future::{join3};
+use lora_phy::mod_traits::RadioKind;
 use vlfs::{Flash, Crc, VLFS};
 
 mod avionics;
@@ -42,7 +42,7 @@ pub async fn init<
     S: Serial,
     B: Buzzer,
     M: Megnetometer,
-    // L: LoRa,
+    L: RadioKind,
     R: RNG,
     IS: Indicator,
     IE: Indicator,
@@ -62,7 +62,7 @@ pub async fn init<
     mut serial: S,
     mut buzzer: B,
     mut meg: M,
-    // mut lora: L,
+    mut lora: L,
     mut rng: R,
     mut status_indicator: IS,
     mut error_indicator: IE,

@@ -56,7 +56,9 @@ where
         let mut command_buffer = [0u8; 8];
 
         loop {
-            unwrap!(serial.read_all(&mut command_buffer).await);
+            if serial.read_all(&mut command_buffer).await.is_err() {
+                continue;
+            };
             let command_id = u64::from_be_bytes(command_buffer);
 
             if command_id == write_file.id() {
