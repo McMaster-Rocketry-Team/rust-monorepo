@@ -1,5 +1,8 @@
-use crate::{driver::{serial::Serial, timer::Timer}, try_or_warn};
-use defmt::{info};
+use crate::{
+    driver::{serial::Serial, timer::Timer},
+    try_or_warn,
+};
+use defmt::info;
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 
 use vlfs::{Crc, Flash, VLFS};

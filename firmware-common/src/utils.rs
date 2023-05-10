@@ -4,5 +4,5 @@ macro_rules! try_or_warn {
         if let Err(e) = $e {
             defmt::warn!("`{}` failed: {:?}", stringify!($e), e);
         }
-    }}
+    }};
 }
