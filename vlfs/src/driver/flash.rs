@@ -8,13 +8,13 @@ pub trait Flash {
     // This type must implement the defmt::Format trait.
     type Error: defmt::Format;
 
-    //This function returns the size of the flash memory in bytes.
+    // This function returns the size of the flash memory in bytes.
     fn size(&self) -> u32;
 
-    //"reboots" the flash device, returning it to a known state
+    // "reboots" the flash device, returning it to a known state
     async fn reset(&mut self) -> Result<(), Self::Error>;
 
-    //erase methods must set all the erased bits to 1 - VLFS relies on this assumption
+    // erase methods must set all the erased bits to 1 - VLFS relies on this assumption
     async fn erase_sector_4kib(&mut self, address: u32) -> Result<(), Self::Error>;
     async fn erase_block_32kib(&mut self, address: u32) -> Result<(), Self::Error>;
     async fn erase_block_64kib(&mut self, address: u32) -> Result<(), Self::Error>;
@@ -32,7 +32,7 @@ pub trait Flash {
     /// #Examples
     /// 
     /// ```
-    /// let mut read_buffer = [0u8; 4096];
+    /// let mut read_buffer = [0u8; 5 + 4096];
     /// let read_data = flash.read_4kib(0x0000_0000, 4096, &mut read_buffer).await;
     ///
     /// ```
@@ -72,19 +72,20 @@ pub trait Flash {
     /// size of the buffer must be at least read_length + 5 bytes long
     /// refer to the read_4kib function for more details on the parameters and outputs as they are the same
     /// 
-    /// This loop reads the data from the flash by calling read_4kib multiple times, with each call
-    /// reading up to 4096 bytes at a time, until it has read the entire requested length.
-    /// 
-    /// Variables:
-    ///    bytes_read: usize integer that keeps track of the number of bytes that have been read so far
-    ///    length:     usize integer that specifies the number of bytes to be read in the current iteration
-    /// 
+
     async fn read<'b>(
         &mut self,
         address: u32,
         read_length: usize,
         read_buffer: &'b mut [u8],
     ) -> Result<&'b [u8], Self::Error> {
+         /* This loop reads the data from the flash by calling read_4kib multiple times, with each call
+         reading up to 4096 bytes at a time, until it has read the entire requested length.
+
+         Variables:
+            bytes_read: usize integer that keeps track of the number of bytes that have been read so far
+            length:     usize integer that specifies the number of bytes to be read in the current iteration */
+
         let mut bytes_read = 0;
         while bytes_read < read_length {
             // Determine the maximum number of bytes to read in this iteration, which is either the remaining
@@ -115,20 +116,20 @@ pub trait Flash {
     /// address must be 256-byte-aligned
     /// length of write_buffer must be larger or equal to write_length + 5
     /// refer to the write_256b function for more details on the parameters and outputs as they are the same
-    /// 
-    /// THis loop writes the data to the flash by calling write_256b multiple times, with each call
-    /// writing up to 256 bytes at a time, until it has written the entire requested length.
-    /// 
-    /// Variables:
-    ///   bytes_written: usize integer that keeps track of the number of bytes that have been written so far
-    ///   length:        usize integer that specifies the number of bytes to be written in the current iteration
-    /// 
+    
     async fn write<'b>(
         &mut self,
         address: u32,
         write_length: usize,
         write_buffer: &'b mut [u8],
-    ) -> Result<(), Self::Error> {
+    ) -> Result<(), Self::Error> {  
+        /* This loop writes the data to the flash by calling write_256b multiple times, with each call
+        writing up to 256 bytes at a time, until it has written the entire requested length.
+        
+        Variables:
+        bytes_written: usize integer that keeps track of the number of bytes that have been written so far
+        length:        usize integer that specifies the number of bytes to be written in the current iteration */ 
+       
         let mut bytes_written = 0;
         while bytes_written < write_length {
             let length = if write_length - bytes_written > 256 {
