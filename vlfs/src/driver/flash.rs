@@ -36,7 +36,6 @@ pub trait Flash {
     /// let read_data = flash.read_4kib(0x0000_0000, 4096, &mut read_buffer).await;
     ///
     /// ```
-    /// 
     async fn read_4kib<'b>(
         &mut self,
         address: u32,
@@ -71,8 +70,6 @@ pub trait Flash {
     /// maximum read length is 4 kb
     /// size of the buffer must be at least read_length + 5 bytes long
     /// refer to the read_4kib function for more details on the parameters and outputs as they are the same
-    /// 
-
     async fn read<'b>(
         &mut self,
         address: u32,
@@ -116,7 +113,6 @@ pub trait Flash {
     /// address must be 256-byte-aligned
     /// length of write_buffer must be larger or equal to write_length + 5
     /// refer to the write_256b function for more details on the parameters and outputs as they are the same
-    
     async fn write<'b>(
         &mut self,
         address: u32,
@@ -137,13 +133,13 @@ pub trait Flash {
             } else {
                 write_length - bytes_written
             };
-            // info!("writing {}/{} bytes", bytes_written, write_length);
+            
             self.write_256b(
                 address + bytes_written as u32,
                 &mut write_buffer[bytes_written..],
             )
             .await?;
-            //Update the number of bytes written.
+            // Update the number of bytes written.
             bytes_written += length;
         }
         // Return Ok if no error occured during all the write operations
@@ -164,17 +160,17 @@ where
 
     // `size` returns the total size of the flash memory, in bytes
     fn size(&self) -> u32 {
-        self.deref().size() 
+        self.deref().size()
     }
 
     // `reset` erases all contents of the flash memory
     async fn reset(&mut self) -> Result<(), Self::Error> {
-        self.deref_mut().reset().await 
+        self.deref_mut().reset().await
     }
 
     // `erase_sector_4kib` erases a 4KB sector of the flash memory starting at the given address
     async fn erase_sector_4kib(&mut self, address: u32) -> Result<(), Self::Error> {
-        self.deref_mut().erase_sector_4kib(address).await 
+        self.deref_mut().erase_sector_4kib(address).await
     }
 
     // `erase_block_32kib` erases a 32KB block of the flash memory starting at the given address
@@ -184,7 +180,7 @@ where
 
     // `erase_block_64kib` erases a 64KB block of the flash memory starting at the given address
     async fn erase_block_64kib(&mut self, address: u32) -> Result<(), Self::Error> {
-        self.deref_mut().erase_block_64kib(address).await 
+        self.deref_mut().erase_block_64kib(address).await
     }
 
     // `read_4kib` reads a 4KB block of the flash memory starting at the given address into the provided buffer
@@ -196,7 +192,7 @@ where
     ) -> Result<&'b [u8], Self::Error> {
         self.deref_mut()
             .read_4kib(address, read_length, read_buffer)
-            .await 
+            .await
     }
     async fn write_256b<'b>(
         &mut self,
