@@ -1,5 +1,5 @@
-use crate::driver::{serial::Serial, timer::Timer};
-use defmt::{info, unwrap};
+use crate::{driver::{serial::Serial, timer::Timer}, try_or_warn};
+use defmt::{info};
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 
 use vlfs::{Crc, Flash, VLFS};
@@ -45,11 +45,11 @@ where
             let command_id = u64::from_be_bytes(command_buffer);
 
             if command_id == write_file.id() {
-                unwrap!(write_file.start(&mut serial, &self.vlfs).await);
+                try_or_warn!(write_file.start(&mut serial, &self.vlfs).await);
             } else if command_id == read_nyoom.id() {
-                unwrap!(read_nyoom.start(&mut serial, &self.vlfs).await);
+                try_or_warn!(read_nyoom.start(&mut serial, &self.vlfs).await);
             } else if command_id == benchmark_flash.id() {
-                unwrap!(
+                try_or_warn!(
                     benchmark_flash
                         .start(&mut serial, &self.vlfs, &self.timer)
                         .await
