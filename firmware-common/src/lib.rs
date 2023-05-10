@@ -8,7 +8,7 @@ use defmt::*;
 use driver::{
     adc::ADC, arming::HardwareArming, barometer::Barometer, buzzer::Buzzer, gps::GPS, imu::IMU,
     indicator::Indicator, meg::Megnetometer, pyro::PyroChannel, rng::RNG, serial::Serial,
-    timer::Timer,
+    timer::Timer, usb::USB,
 };
 use futures::future::join3;
 use lora_phy::mod_traits::RadioKind;
@@ -31,8 +31,8 @@ pub async fn init<
     P2: PyroChannel,
     P3: PyroChannel,
     ARM: HardwareArming,
-    S1: Serial,
-    S2: Serial,
+    S: Serial,
+    U: USB,
     B: Buzzer,
     M: Megnetometer,
     L: RadioKind,
@@ -52,8 +52,8 @@ pub async fn init<
     _pyro2: P2,
     _pyro3: P3,
     _arming_switch: ARM,
-    serial1: S1,
-    serial2: S2,
+    serial: S,
+    mut usb: U,
     _buzzer: B,
     _meg: M,
     _lora: L,
@@ -78,8 +78,8 @@ pub async fn init<
         }
     };
 
-    let mut console1 = Console::new(timer, serial1, &fs);
-    let mut console2 = Console::new(timer, serial2, &fs);
+    let mut console1 = Console::new(timer, serial, &fs);
+    let mut console2 = Console::new(timer, usb, &fs);
 
     join3(console1.run(), console2.run(), indicator_fut).await;
 

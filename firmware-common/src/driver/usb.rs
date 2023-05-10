@@ -6,6 +6,7 @@ pub trait USB {
     type Error: defmt::Format;
     async fn write_64b(&mut self, data: &[u8]) -> Result<(), Self::Error>;
     async fn read(&mut self, buffer: &mut [u8]) -> Result<usize, Self::Error>;
+    async fn wait_connection(&mut self);
 }
 
 impl<T: USB> Serial for T {
