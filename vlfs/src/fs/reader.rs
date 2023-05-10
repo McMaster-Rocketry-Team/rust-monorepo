@@ -9,17 +9,17 @@ where
     F: Flash,
     C: Crc,
 {
-    pub async fn open_file_for_read(&self, file_id: u64) -> Option<FileReader<F, C>> {
+    pub async fn open_file_for_read(&self, file_id: u64) -> Result<FileReader<F, C>, VLFSError<F>> {
         let mut at = self.allocation_table.write().await;
         if let Some(file_entry) = self.find_file_entry_mut(&mut at.allocation_table, file_id) {
             if file_entry.opened {
-                return None;
+                return Err(VLFSError::FileInUse);
             }
             file_entry.opened = true;
 
-            return Some(FileReader::new(self, &file_entry));
+            return Ok(FileReader::new(self, &file_entry));
         }
-        None
+        Err(VLFSError::FileDoesNotExist)
     }
 }
 

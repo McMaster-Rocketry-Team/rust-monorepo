@@ -85,6 +85,12 @@ where
     F: Flash,
     C: Crc,
 {
+    pub async fn exists(&self, file_id: u64) -> bool {
+        let at = self.allocation_table.read().await;
+        self.find_file_entry(&at.allocation_table, file_id)
+            .is_some()
+    }
+
     pub async fn create_file(&self, file_id: u64, file_type: u16) -> Result<(), VLFSError<F>> {
         let mut at = self.allocation_table.write().await;
         for file_entry in &at.allocation_table.file_entries {

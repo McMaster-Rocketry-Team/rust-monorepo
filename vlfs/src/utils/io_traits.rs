@@ -7,6 +7,13 @@ pub trait AsyncReader {
         length: usize,
     ) -> Result<&'b [u8], Self::Error>;
 
+    async fn read_all<'b>(
+        &mut self,
+        read_buffer: &'b mut [u8],
+    ) -> Result<&'b [u8], Self::Error> {
+        self.read_slice(read_buffer, read_buffer.len()).await
+    }
+
     async fn read_u8(&mut self, buffer: &mut [u8]) -> Result<u8, Self::Error> {
         Ok(self.read_slice(buffer, 1).await?[0])
     }
