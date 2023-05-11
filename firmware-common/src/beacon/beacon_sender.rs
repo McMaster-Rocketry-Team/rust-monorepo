@@ -55,7 +55,10 @@ pub async fn beacon_sender(
                 "{} | NMEA received at {}: {}\n",
                 timer.now_mills(),
                 sentence.timestamp,
-                sentence.sentence.as_str().trim_end_matches(|c| c == '\r' || c == '\n')
+                sentence
+                    .sentence
+                    .as_str()
+                    .trim_end_matches(|c| c == '\r' || c == '\n')
             )
             .unwrap();
             log_file.extend_from_slice(log_str.as_bytes()).await.ok();

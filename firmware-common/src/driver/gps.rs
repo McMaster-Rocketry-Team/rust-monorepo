@@ -1,6 +1,6 @@
 use heapless::String;
 
-pub struct NmeaSentence{
+pub struct NmeaSentence {
     pub sentence: String<84>,
     pub timestamp: u64,
 }

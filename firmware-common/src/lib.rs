@@ -6,30 +6,16 @@
 use common::console::console::Console;
 use defmt::*;
 use driver::{
-    adc::ADC,
-    arming::HardwareArming,
-    barometer::Barometer,
-    buzzer::Buzzer,
-    device_management::{self, DeviceManagement},
-    gps::GPS,
-    imu::IMU,
-    indicator::Indicator,
-    meg::Megnetometer,
-    pyro::PyroChannel,
-    rng::RNG,
-    serial::Serial,
-    timer::Timer,
-    usb::USB,
+    adc::ADC, arming::HardwareArming, barometer::Barometer, buzzer::Buzzer,
+    device_management::DeviceManagement, gps::GPS, imu::IMU, indicator::Indicator,
+    meg::Megnetometer, pyro::PyroChannel, rng::RNG, serial::Serial, timer::Timer, usb::USB,
 };
 use futures::{
     future::{join5, select},
     pin_mut,
 };
 use lora_phy::mod_traits::RadioKind;
-use vlfs::{
-    io_traits::{AsyncReader, AsyncWriter},
-    Crc, Flash, VLFSError, VLFS,
-};
+use vlfs::{Crc, Flash, VLFS};
 
 use crate::{
     beacon::{beacon_receiver::beacon_receiver, beacon_sender::beacon_sender},

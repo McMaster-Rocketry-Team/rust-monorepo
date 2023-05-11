@@ -1,6 +1,5 @@
-use vlfs::{VLFS, Flash, Crc, VLFSError};
 use vlfs::io_traits::{AsyncReader, AsyncWriter};
-
+use vlfs::{Crc, Flash, VLFSError, VLFS};
 
 #[derive(Clone, Copy, defmt::Format)]
 #[repr(u8)]
@@ -33,19 +32,23 @@ pub async fn read_device_mode(fs: &VLFS<impl Flash, impl Crc>) -> Option<DeviceM
         let mut buffer = [0u8; 1];
         let read_result = reader.read_u8(&mut buffer).await;
         reader.close().await;
-        if let Ok((Some(value),_))= read_result{
+        if let Ok((Some(value), _)) = read_result {
             return value.try_into().ok();
         }
     }
     None
 }
 
-pub async fn write_device_mode<F: Flash>(fs: &VLFS<F, impl Crc>, mode: DeviceMode) -> Result<(), VLFSError<F>> {
+pub async fn write_device_mode<F: Flash>(
+    fs: &VLFS<F, impl Crc>,
+    mode: DeviceMode,
+) -> Result<(), VLFSError<F>> {
     if fs.exists(DEVICE_MODE_FILE_ID).await {
         fs.remove_file(DEVICE_MODE_FILE_ID).await?;
     }
 
-    fs.create_file(DEVICE_MODE_FILE_ID, DEVICE_MODE_FILE_TYPE).await?;
+    fs.create_file(DEVICE_MODE_FILE_ID, DEVICE_MODE_FILE_TYPE)
+        .await?;
     let mut writer = fs.open_file_for_write(DEVICE_MODE_FILE_ID).await?;
     writer.extend_from_slice(&[mode as u8]).await?;
     writer.close().await?;

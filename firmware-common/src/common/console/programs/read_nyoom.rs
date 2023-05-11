@@ -44,7 +44,8 @@ impl ReadNyoom {
                         reader
                             .read_slice(&mut buffer, read_chunk_size as usize)
                             .await
-                    ).0;
+                    )
+                    .0;
                     unwrap!(serial.write(buffer).await);
                     length_read += read_chunk_size;
                 }

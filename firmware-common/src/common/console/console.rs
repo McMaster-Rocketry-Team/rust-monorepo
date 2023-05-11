@@ -1,9 +1,5 @@
 use crate::{
-    driver::{
-        device_management::DeviceManagement,
-        serial::Serial,
-        timer::Timer,
-    },
+    driver::{device_management::DeviceManagement, serial::Serial, timer::Timer},
     try_or_warn,
 };
 use defmt::info;

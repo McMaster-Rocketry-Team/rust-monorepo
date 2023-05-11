@@ -1,7 +1,7 @@
 use nmea::Nmea;
 use vlfs::{Crc, Flash};
 
-use crate::driver::gps::{GPS, NmeaSentence};
+use crate::driver::gps::{NmeaSentence, GPS};
 
 pub struct GPSParser<G: GPS> {
     gps: G,
@@ -24,9 +24,7 @@ impl<G: GPS> GPSParser<G> {
         self.gps.set_enable(enable).await;
     }
 
-    pub fn update_one(
-        &mut self,
-    ) -> Option<NmeaSentence> {
+    pub fn update_one(&mut self) -> Option<NmeaSentence> {
         while let Some(sentence) = self.gps.read_next_nmea_sentence() {
             self.nmea.parse(&sentence.sentence.as_str());
             return Some(sentence);
