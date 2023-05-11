@@ -1,7 +1,10 @@
+use core::cell::RefCell;
+
 use crate::driver::{crc::Crc, flash::Flash};
 use bitvec::prelude::*;
 use defmt::*;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::blocking_mutex::Mutex as BlockingMutex;
 use embassy_sync::mutex::Mutex;
 use rand::rngs::SmallRng;
 use rand::{RngCore, SeedableRng};
@@ -38,6 +41,17 @@ struct FileEntry {
     file_type: u16,
     first_sector_index: Option<u16>, // None means the file is empty
     opened: bool,
+}
+
+impl FileEntry {
+    fn new(file_id: u64, file_type: u16) -> Self {
+        Self {
+            file_id,
+            file_type,
+            first_sector_index: None,
+            opened: false,
+        }
+    }
 }
 
 // serialized size must fit in half a block (32kib)
@@ -78,6 +92,7 @@ where
     sectors_mng: RwLock<CriticalSectionRawMutex, SectorsMng, 10>,
     flash: Mutex<CriticalSectionRawMutex, F>,
     crc: Mutex<CriticalSectionRawMutex, C>,
+    rng: BlockingMutex<CriticalSectionRawMutex, RefCell<SmallRng>>,
 }
 
 impl<F, C> VLFS<F, C>
@@ -99,12 +114,7 @@ where
             }
         }
 
-        let file_entry = FileEntry {
-            file_id,
-            file_type,
-            first_sector_index: None,
-            opened: false,
-        };
+        let file_entry = FileEntry::new(file_id, file_type);
         at.allocation_table
             .file_entries
             .push(file_entry)
@@ -112,6 +122,32 @@ where
         drop(at);
         self.write_allocation_table().await?;
         Ok(())
+    }
+
+    pub async fn create_file_from_type(&self, file_type: u16) -> Result<u64, VLFSError<F>> {
+        let mut at = self.allocation_table.write().await;
+        let file_id = self.rng.lock(|rng| {
+            let mut rng = rng.borrow_mut();
+            let mut file_id = rng.next_u64();
+
+            while self
+                .find_file_entry(&at.allocation_table, file_id)
+                .is_some()
+            {
+                file_id = rng.next_u64();
+            }
+            file_id
+        });
+
+        let file_entry = FileEntry::new(file_id, file_type);
+        at.allocation_table
+            .file_entries
+            .push(file_entry)
+            .map_err(|_| VLFSError::MaxFilesReached)?;
+        drop(at);
+        self.write_allocation_table().await?;
+
+        Ok(file_id)
     }
 
     pub async fn remove_file(&self, file_id: u64) -> Result<(), VLFSError<F>> {

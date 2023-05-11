@@ -6,6 +6,8 @@ use crate::{
     utils::rwlock::RwLock,
 };
 use embassy_sync::mutex::Mutex;
+
+use embassy_sync::blocking_mutex::Mutex as BlockingMutex;
 use heapless::Vec;
 
 impl<F, C> VLFS<F, C>
@@ -24,6 +26,7 @@ where
             }),
             flash: Mutex::new(flash),
             crc: Mutex::new(crc),
+            rng: BlockingMutex::new(RefCell::new(SmallRng::seed_from_u64(0))),
         }
     }
 
@@ -55,6 +58,10 @@ where
         let mut sectors_mng = self.sectors_mng.write().await;
         let crc = crc.calculate_u32(&sectors_mng.sector_map.data);
         sectors_mng.rng = SmallRng::seed_from_u64(crc as u64 + ((crc as u64) << 32));
+
+        self.rng.lock(|rng| {
+            rng.replace(SmallRng::seed_from_u64(sectors_mng.rng.next_u64()));
+        });
 
         info!("VLFS initialized");
         Ok(())

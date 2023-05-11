@@ -33,7 +33,10 @@ use vlfs::{
 
 use crate::{
     beacon::{beacon_receiver::beacon_receiver, beacon_sender::beacon_sender},
-    common::device_mode::{read_device_mode, write_device_mode, DeviceMode},
+    common::{
+        device_mode::{read_device_mode, write_device_mode, DeviceMode},
+        gps_parser::GPSParser,
+    },
 };
 
 mod allocator;
@@ -148,7 +151,9 @@ pub async fn init<
         match device_mode {
             DeviceMode::Avionics => defmt::panic!("Avionics mode not implemented"),
             DeviceMode::GCM => defmt::panic!("GCM mode not implemented"),
-            DeviceMode::BeaconSender => beacon_sender(timer, &fs, gps, radio_kind).await,
+            DeviceMode::BeaconSender => {
+                beacon_sender(timer, &fs, GPSParser::new(gps), radio_kind).await
+            }
             DeviceMode::BeaconReceiver => beacon_receiver(timer, &fs, radio_kind).await,
         };
     };
