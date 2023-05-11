@@ -1,13 +1,13 @@
 use core::fmt::Write;
 use heapless::String;
-use micromath::vector::F32x3;
-#[allow(unused_imports)]
-use micromath::F32Ext;
+use nalgebra::Vector3;
+
+use super::bus_error::BusError;
 
 pub struct IMUReading {
-    pub timestamp: u64, // ms
-    pub acc: F32x3,
-    pub gyro: F32x3,
+    pub timestamp: u64,    // ms
+    pub acc: Vector3<f32>, // m/s^2
+    pub gyro: Vector3<f32>,
 }
 
 impl defmt::Format for IMUReading {
@@ -29,5 +29,6 @@ impl defmt::Format for IMUReading {
 }
 
 pub trait IMU {
-    async fn read(&mut self) -> IMUReading;
+    async fn reset(&mut self) -> Result<(), BusError>;
+    async fn read(&mut self) -> Result<IMUReading, BusError>;
 }

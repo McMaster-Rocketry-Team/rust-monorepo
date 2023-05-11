@@ -1,0 +1,13 @@
+[package]
+name = "vlfs"
+version = "0.9.0"
+edition = "2021"
+authors = ["pegasis"]
+
+[dependencies]
+embassy-sync = { version = "0.2.0", default-features = false }
+defmt = "0.3"
+heapless = { version = "0.7.5", default-features = false}
+bitvec = { version = "1.0.1", default-features = false }
+futures = { version = "0.3.17", default-features = false, features = ["async-await"] }
+rand = { version = "0.8.5", features = ["small_rng"], default-features = false }

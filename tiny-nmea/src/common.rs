@@ -4,10 +4,18 @@ use heapless::String;
 #[macro_export]
 macro_rules! substring {
     ($string:expr, $start:expr, $length:expr) => {
-        $string.chars().skip($start).take($length).collect::<String<$length>>()
+        $string
+            .chars()
+            .skip($start)
+            .take($length)
+            .collect::<String<$length>>()
     };
     ($string:expr, $start:expr, $length:expr, $max_length:expr) => {
-        $string.chars().skip($start).take($length).collect::<String<$max_length>>()
+        $string
+            .chars()
+            .skip($start)
+            .take($length)
+            .collect::<String<$max_length>>()
     };
 }
 
