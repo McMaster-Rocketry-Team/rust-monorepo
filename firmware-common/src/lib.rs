@@ -10,14 +10,18 @@ use driver::{
     indicator::Indicator, meg::Megnetometer, pyro::PyroChannel, rng::RNG, serial::Serial,
     timer::Timer, usb::USB,
 };
-use futures::future::join4;
+use futures::future::{join4, join5};
 use lora_phy::mod_traits::RadioKind;
 use vlfs::{
     io_traits::{AsyncReader, AsyncWriter},
     Crc, Flash, VLFSError, VLFS,
 };
 
+use crate::beacon::beacon_sender::beacon_sender;
+
+mod allocator;
 mod avionics;
+mod beacon;
 mod common;
 pub mod driver;
 mod gcm;
@@ -38,7 +42,7 @@ pub async fn init<
     U: USB,
     B: Buzzer,
     M: Megnetometer,
-    L: RadioKind,
+    L: RadioKind + 'static,
     R: RNG,
     IS: Indicator,
     IE: Indicator,
@@ -48,7 +52,7 @@ pub async fn init<
     timer: T,
     mut flash: F,
     crc: C,
-    _imu: I,
+    mut imu: I,
     _batt_voltmeter: V,
     _batt_ammeter: A,
     _pyro1: P1,
@@ -59,18 +63,23 @@ pub async fn init<
     usb: U,
     _buzzer: B,
     _meg: M,
-    _lora: L,
+    radio_kind: L,
     _rng: R,
     mut status_indicator: IS,
     _error_indicator: IE,
     _barometer: BA,
-    mut gps: G,
+    gps: G,
 ) -> ! {
     flash.reset().await.ok();
     let mut fs = VLFS::new(flash, crc);
     unwrap!(fs.init().await);
 
-    gps.reset().await;
+    let imu_fut = async {
+        imu.reset().await.ok();
+        loop {
+            let _ = imu.read().await;
+        }
+    };
 
     let indicator_fut = async {
         loop {
@@ -95,15 +104,23 @@ pub async fn init<
         }
 
         info!("Starting in mode {}", mode);
-        // match mode_file.mode {
+        beacon_sender(timer, &fs, gps, radio_kind).await;
+        // match mode {
         //     Mode::Avionics => defmt::panic!("Avionics mode not implemented"),
         //     Mode::GCM => defmt::panic!("GCM mode not implemented"),
-        //     Mode::BeaconSender => defmt::panic!("Beacon sender mode not implemented"),
+        //     Mode::BeaconSender => beacon_sender(timer, &fs, gps, lora).await,
         //     Mode::BeaconReceiver => defmt::panic!("Beacon receiver mode not implemented"),
-        // }
+        // };
     };
 
-    join4(main_fut, console1.run(), console2.run(), indicator_fut).await;
+    join5(
+        imu_fut,
+        main_fut,
+        console1.run(),
+        console2.run(),
+        indicator_fut,
+    )
+    .await;
 
     defmt::panic!("wtf");
 }
