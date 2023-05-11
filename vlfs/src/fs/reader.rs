@@ -23,6 +23,19 @@ where
     }
 }
 
+enum SectorDataLength {
+    NotRead,   // Sector data length has not been read yet
+    Read(u16), // Sector data length has been read
+    Unknown,   // Sector data length has been read, but the value is invalid
+}
+
+#[derive(defmt::Format)]
+pub enum VLFSReadStatus {
+    Ok,
+    EndOfFile,
+    CorruptedPage { address: u32 },
+}
+
 pub struct FileReader<'a, F, C>
 where
     F: Flash,
@@ -31,7 +44,7 @@ where
     vlfs: &'a VLFS<F, C>,
     current_sector_index: Option<u16>,
     current_page_index: u16,
-    sector_data_length: Option<u16>,
+    sector_data_length: SectorDataLength,
 
     sector_read_data_length: u16,
     file_id: u64,
@@ -50,7 +63,7 @@ where
     fn new(vlfs: &'a VLFS<F, C>, file_entry: &FileEntry) -> Self {
         Self {
             vlfs,
-            sector_data_length: None,
+            sector_data_length: SectorDataLength::NotRead,
             sector_read_data_length: 0,
             current_sector_index: file_entry.first_sector_index,
             current_page_index: 0,
@@ -68,67 +81,83 @@ where
             Some(sector_index)
         };
         self.current_page_index = 0;
-        self.sector_data_length = None;
+        self.sector_data_length = SectorDataLength::NotRead;
         self.sector_read_data_length = 0;
     }
 
-    // return is end of file
-    async fn read_next_page(&mut self) -> Result<bool, VLFSError<F>> {
+    async fn read_next_page(&mut self) -> Result<VLFSReadStatus, VLFSError<F>> {
         if let Some(current_sector_index) = self.current_sector_index {
             let is_last_page = self.current_page_index == 15;
             let mut flash = self.vlfs.flash.lock().await;
             let sector_address = current_sector_index as usize * SECTOR_SIZE;
 
-            if self.sector_data_length.is_none() {
+            if let SectorDataLength::NotRead = self.sector_data_length {
                 defmt::assert!(self.current_page_index == 0);
                 let sector_data_length_address = (sector_address + SECTOR_SIZE - 8 - 8) as u32;
                 let read_result = flash
                     .read(sector_data_length_address, 8, &mut self.page_buffer)
                     .await
                     .map_err(VLFSError::from_flash)?;
-                self.sector_data_length = Some(find_most_common_u16_out_of_4(read_result).unwrap());
+                let sector_data_length = find_most_common_u16_out_of_4(read_result);
+                if let Some(sector_data_length) = sector_data_length && sector_data_length <= MAX_DATA_LENGTH_PER_SECTION as u16 {
+                    self.sector_data_length = SectorDataLength::Read(sector_data_length);
+                } else {
+                    self.sector_data_length = SectorDataLength::Unknown;
+                }
             }
 
             let sector_unread_data_length =
-                self.sector_data_length.unwrap() - self.sector_read_data_length;
+                if let SectorDataLength::Read(sector_data_length) = self.sector_data_length {
+                    Some(sector_data_length - self.sector_read_data_length)
+                } else {
+                    None
+                };
 
-            if sector_unread_data_length == 0 {
-                let next_sector_index_address = (sector_address + SECTOR_SIZE - 8) as u32;
-                let read_result = flash
-                    .read(next_sector_index_address, 8, &mut self.page_buffer)
-                    .await
-                    .map_err(VLFSError::from_flash)?;
+            if let Some(sector_unread_data_length) = sector_unread_data_length {
+                // Jump to next sector
+                // This if statement is true when the sector is fully read before the last page
+                if sector_unread_data_length == 0 {
+                    let next_sector_index_address = (sector_address + SECTOR_SIZE - 8) as u32;
+                    let read_result = flash
+                        .read(next_sector_index_address, 8, &mut self.page_buffer)
+                        .await
+                        .map_err(VLFSError::from_flash)?;
 
-                let next_sector_index = find_most_common_u16_out_of_4(read_result).unwrap();
-                self.set_current_sector_index(next_sector_index);
-                self.page_buffer_read_ahead_range = (0, 0);
-                return Ok(false);
+                    let next_sector_index = find_most_common_u16_out_of_4(read_result).unwrap();
+                    self.set_current_sector_index(next_sector_index);
+                    self.page_buffer_read_ahead_range = (0, 0);
+                    return Ok(VLFSReadStatus::Ok);
+                }
             }
 
-            let read_data_length = core::cmp::min(
-                sector_unread_data_length,
-                if is_last_page {
-                    PAGE_SIZE - 8 - 8 - 4
+            // Calculate how much data this page contains
+            let max_data_length_in_page = if is_last_page {
+                MAX_DATA_LENGTH_LAST_PAGE
+            } else {
+                MAX_DATA_LENGTH_PER_PAGE
+            } as u16;
+            let read_data_length =
+                if let Some(sector_unread_data_length) = sector_unread_data_length {
+                    core::cmp::min(sector_unread_data_length, max_data_length_in_page) as usize
                 } else {
-                    PAGE_SIZE - 4
-                } as u16,
-            ) as usize;
+                    max_data_length_in_page as usize
+                };
+
+            // Calculate padding
             let read_data_length_padded = (read_data_length + 3) & !3;
 
             let page_address =
                 (sector_address + self.current_page_index as usize * PAGE_SIZE) as u32;
 
-            // info!(
-            //     "Read page {:X}, page_index: {}",
-            //     page_address, self.current_page_index
-            // );
-
             let read_result = flash
                 .read(
                     page_address,
                     if is_last_page {
+                        // Always read the full page if it is the last page
+                        // This is because the next sector index information is stored at the end
                         256
                     } else {
+                        // Only read the data and crc if it is not the last page
                         read_data_length_padded + 4
                     },
                     &mut self.page_buffer,
@@ -138,7 +167,7 @@ where
             self.sector_read_data_length += read_data_length as u16;
             drop(flash);
 
-            // info!("read result: len: {} {=[u8]:X}", read_result.len(), read_result);
+            // Check CRC
             let data_buffer_padded = &read_result[..read_data_length_padded];
             let expected_crc_buffer =
                 &read_result[read_data_length_padded..(read_data_length_padded + 4)];
@@ -146,16 +175,6 @@ where
             let mut crc = self.vlfs.crc.lock().await;
             let actual_crc = crc.calculate(data_buffer_padded);
             drop(crc);
-
-            if actual_crc != expected_crc {
-                info!(
-                    "CRC mismatch: expected {}, actual {}",
-                    expected_crc, actual_crc
-                );
-                return Err(VLFSError::CorruptedPage {
-                    address: page_address,
-                });
-            }
 
             if is_last_page {
                 let next_sector_index =
@@ -165,11 +184,24 @@ where
                 self.current_page_index += 1;
             }
 
-            self.page_buffer_read_ahead_range = (5, 5 + read_data_length);
-            return Ok(false);
+            if actual_crc != expected_crc {
+                info!(
+                    "CRC mismatch: expected {}, actual {}",
+                    expected_crc, actual_crc
+                );
+                // Tell the application the page is corrupted
+                // and let the application decide if it wants to continue reading
+                self.page_buffer_read_ahead_range = (0, 0);
+                return Ok(VLFSReadStatus::CorruptedPage {
+                    address: page_address,
+                });
+            } else {
+                self.page_buffer_read_ahead_range = (5, 5 + read_data_length);
+                return Ok(VLFSReadStatus::Ok);
+            }
         } else {
             self.page_buffer_read_ahead_range = (0, 0);
-            return Ok(true);
+            return Ok(VLFSReadStatus::EndOfFile);
         }
     }
 
@@ -190,12 +222,13 @@ where
     C: Crc,
 {
     type Error = VLFSError<F>;
+    type ReadStatus = VLFSReadStatus;
 
     async fn read_slice<'b>(
         &mut self,
         read_buffer: &'b mut [u8],
         length: usize,
-    ) -> Result<&'b [u8], VLFSError<F>> {
+    ) -> Result<(&'b [u8], VLFSReadStatus), VLFSError<F>> {
         let mut read_length = 0;
 
         while read_length < length {
@@ -203,11 +236,17 @@ where
                 [self.page_buffer_read_ahead_range.0..self.page_buffer_read_ahead_range.1];
             if read_ahead_slice.len() == 0 {
                 match self.read_next_page().await {
-                    Ok(false) => {
+                    Ok(VLFSReadStatus::Ok) => {
                         continue;
                     }
-                    Ok(true) => {
-                        return Ok(&read_buffer[..read_length]);
+                    Ok(VLFSReadStatus::EndOfFile) => {
+                        return Ok((&read_buffer[..read_length], VLFSReadStatus::EndOfFile));
+                    }
+                    Ok(VLFSReadStatus::CorruptedPage { address }) => {
+                        return Ok((
+                            &read_buffer[..read_length],
+                            VLFSReadStatus::CorruptedPage { address },
+                        ));
                     }
                     Err(error) => {
                         return Err(error);
@@ -231,7 +270,7 @@ where
             }
         }
 
-        Ok(&read_buffer[..length])
+        Ok((&read_buffer[..read_length], VLFSReadStatus::Ok))
     }
 }
 

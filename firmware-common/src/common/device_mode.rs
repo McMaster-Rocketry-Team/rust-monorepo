@@ -30,14 +30,11 @@ static DEVICE_MODE_FILE_TYPE: u16 = 0;
 
 pub async fn read_device_mode(fs: &VLFS<impl Flash, impl Crc>) -> Option<DeviceMode> {
     if let Ok(mut reader) = fs.open_file_for_read(DEVICE_MODE_FILE_ID).await {
-        let mut file_content = [0u8; 1];
-        let read_result = reader.read_all(&mut file_content).await;
+        let mut buffer = [0u8; 1];
+        let read_result = reader.read_u8(&mut buffer).await;
         reader.close().await;
-        if let Ok(file_content) = read_result {
-            if file_content.len() != 1 {
-                return None;
-            }
-            return file_content[0].try_into().ok();
+        if let Ok((Some(value),_))= read_result{
+            return value.try_into().ok();
         }
     }
     None

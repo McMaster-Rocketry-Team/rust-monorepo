@@ -28,6 +28,10 @@ const SECTORS_COUNT: usize = 16384; // for 512M-bit flash (W25Q512JV)
 const SECTOR_SIZE: usize = 4096;
 const PAGE_SIZE: usize = 256;
 const PAGES_PER_SECTOR: usize = SECTOR_SIZE / PAGE_SIZE;
+const MAX_DATA_LENGTH_PER_PAGE: usize = PAGE_SIZE - 4;
+const MAX_DATA_LENGTH_LAST_PAGE: usize = PAGE_SIZE - 4 - 8 - 8;
+const MAX_DATA_LENGTH_PER_SECTION: usize =
+    (PAGES_PER_SECTOR - 1) * MAX_DATA_LENGTH_PER_PAGE + MAX_DATA_LENGTH_LAST_PAGE;
 const MAX_FILES: usize = 256; // can be as large as 2728
 const TABLE_COUNT: usize = 4;
 const MAX_SECTOR_DATA_SIZE: usize = 4016;

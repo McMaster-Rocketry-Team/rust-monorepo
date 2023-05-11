@@ -50,7 +50,6 @@ Note: Multiple allocation tables are used for wear-leveling purpose.
 
 - Replace file write queue with fair rwlock (caller can't get error after the data is in queue)
 - Power loss resilience when initiating append to an existing file (I think this is the only case where a power loss will corrupt flushed data)
-- Handle file sector without data length written at the end due to power loss (This is the case where more than 256 bytes of unflushed data will be lost)
 - Error handling for `find_most_common_u16_out_of_4`
 - Fild files by file type
 

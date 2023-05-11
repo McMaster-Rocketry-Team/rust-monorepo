@@ -111,7 +111,8 @@ where
             let read_result = reader
                 .read_slice(&mut read_buffer, 12)
                 .await
-                .map_err(VLFSError::from_flash)?;
+                .map_err(VLFSError::from_flash)?
+                .0;
             let version = u32::from_be_bytes((&read_result[0..4]).try_into().unwrap());
             let sequence_number = u32::from_be_bytes((&read_result[4..8]).try_into().unwrap());
             let file_count = u32::from_be_bytes((&read_result[8..12]).try_into().unwrap());
@@ -131,7 +132,8 @@ where
                 let read_result = reader
                     .read_slice(&mut read_buffer, 12)
                     .await
-                    .map_err(VLFSError::from_flash)?;
+                    .map_err(VLFSError::from_flash)?
+                    .0;
                 let file_id = u64::from_be_bytes((&read_result[0..8]).try_into().unwrap());
                 let file_type = u16::from_be_bytes((&read_result[8..10]).try_into().unwrap());
                 let first_sector_index =
@@ -154,7 +156,9 @@ where
             let expected_crc = reader
                 .read_u32(&mut read_buffer)
                 .await
-                .map_err(VLFSError::from_flash)?;
+                .map_err(VLFSError::from_flash)?
+                .0
+                .expect("Read from flash should always return the desired length");
             if actual_crc == expected_crc {
                 info!("CRC match!");
             } else {

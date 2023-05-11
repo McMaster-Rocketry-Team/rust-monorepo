@@ -1,6 +1,6 @@
 use crate::{
     driver::{
-        device_management::{self, DeviceManagement},
+        device_management::DeviceManagement,
         serial::Serial,
         timer::Timer,
     },
@@ -12,8 +12,8 @@ use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 use vlfs::{Crc, Flash, VLFS};
 
 use super::programs::{
-    benchmark_flash::BenchmarkFlash, change_mode::ChangeMode, read_nyoom::ReadNyoom,
-    write_file::WriteFile,
+    benchmark_flash::BenchmarkFlash, change_mode::ChangeMode, read_file::ReadFile,
+    read_nyoom::ReadNyoom, write_file::WriteFile,
 };
 
 pub struct Console<'a, I: Timer, T: Serial, F: Flash, C: Crc, D: DeviceManagement>
@@ -46,6 +46,7 @@ where
         let read_nyoom = ReadNyoom::new();
         let benchmark_flash = BenchmarkFlash::new();
         let change_mode = ChangeMode::new();
+        let read_file = ReadFile::new();
         let mut serial = self.serial.lock().await;
         let mut command_buffer = [0u8; 8];
 
@@ -71,6 +72,8 @@ where
                         .start(&mut serial, &self.vlfs, self.device_mngmt)
                         .await
                 );
+            } else if command_id == read_file.id() {
+                try_or_warn!(read_file.start(&mut serial, &self.vlfs).await);
             } else {
                 info!("Unknown command: {:X}", command_id);
             }

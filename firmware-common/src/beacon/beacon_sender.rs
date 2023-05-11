@@ -55,7 +55,7 @@ pub async fn beacon_sender(
                 "{} | NMEA received at {}: {}\n",
                 timer.now_mills(),
                 sentence.timestamp,
-                sentence.sentence.as_str()
+                sentence.sentence.as_str().trim_end_matches(|c| c == '\r' || c == '\n')
             )
             .unwrap();
             log_file.extend_from_slice(log_str.as_bytes()).await.ok();
@@ -90,7 +90,7 @@ pub async fn beacon_sender(
             .unwrap();
 
         let mut log_str = String::<32>::new();
-        core::write!(&mut log_str, "{} | Beacon send!", timer.now_mills()).unwrap();
+        core::write!(&mut log_str, "{} | Beacon send!\n", timer.now_mills()).unwrap();
         log_file.extend_from_slice(log_str.as_bytes()).await.ok();
         info!("{}", log_str.as_str());
 

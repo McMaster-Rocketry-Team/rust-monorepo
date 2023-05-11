@@ -40,19 +40,20 @@ where
     C: Crc,
 {
     type Error = F::Error;
+    type ReadStatus = ();
 
     // maximum read length is the length of buffer - 5 bytes
     async fn read_slice<'b>(
         &mut self,
         buffer: &'b mut [u8],
         length: usize,
-    ) -> Result<&'b [u8], F::Error> {
+    ) -> Result<(&'b [u8], ()), F::Error> {
         self.flash.read(self.address, length, buffer).await?;
         self.address += length as u32;
 
         let read_result = &buffer[5..(length + 5)];
         self.crc.process(read_result);
-        Ok(read_result)
+        Ok((read_result, ()))
     }
 }
 
