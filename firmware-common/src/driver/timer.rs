@@ -6,7 +6,7 @@ pub trait Timer: Copy {
     fn now_micros(&self) -> u64;
 }
 
-pub(crate) struct DelayUsWrapper<T: Timer> (pub(crate) T);
+pub(crate) struct DelayUsWrapper<T: Timer>(pub(crate) T);
 
 impl<T: Timer> DelayUs for DelayUsWrapper<T> {
     async fn delay_us(&mut self, us: u32) {

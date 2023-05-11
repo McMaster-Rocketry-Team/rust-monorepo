@@ -7,7 +7,6 @@ pub mod gps;
 pub mod i2c;
 pub mod imu;
 pub mod indicator;
-pub mod lora;
 pub mod meg;
 pub mod pyro;
 pub mod rng;

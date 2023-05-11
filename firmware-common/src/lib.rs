@@ -10,14 +10,14 @@ use driver::{
     indicator::Indicator, meg::Megnetometer, pyro::PyroChannel, rng::RNG, serial::Serial,
     timer::Timer, usb::USB,
 };
-use futures::future::{join4, join5};
+use futures::future::join5;
 use lora_phy::mod_traits::RadioKind;
 use vlfs::{
     io_traits::{AsyncReader, AsyncWriter},
     Crc, Flash, VLFSError, VLFS,
 };
 
-use crate::beacon::beacon_sender::beacon_sender;
+use crate::beacon::{beacon_receiver::beacon_receiver, beacon_sender::beacon_sender};
 
 mod allocator;
 mod avionics;
@@ -105,12 +105,12 @@ pub async fn init<
 
         info!("Starting in mode {}", mode);
         beacon_sender(timer, &fs, gps, radio_kind).await;
-        // match mode {
-        //     Mode::Avionics => defmt::panic!("Avionics mode not implemented"),
-        //     Mode::GCM => defmt::panic!("GCM mode not implemented"),
-        //     Mode::BeaconSender => beacon_sender(timer, &fs, gps, lora).await,
-        //     Mode::BeaconReceiver => defmt::panic!("Beacon receiver mode not implemented"),
-        // };
+        match mode {
+            Mode::Avionics => defmt::panic!("Avionics mode not implemented"),
+            Mode::GCM => defmt::panic!("GCM mode not implemented"),
+            Mode::BeaconSender => beacon_sender(timer, &fs, gps, radio_kind).await,
+            Mode::BeaconReceiver => beacon_receiver(timer, &fs, radio_kind).await,
+        };
     };
 
     join5(

@@ -1,4 +1,3 @@
-
 use core::ops::{Deref, DerefMut};
 use embassy_sync::{blocking_mutex::raw::RawMutex, mutex::MutexGuard};
 
@@ -22,15 +21,15 @@ pub trait Flash {
     /// Reads 4KiB of data from the memory device starting at the specified address.
     /// maximum read length is 4 kb
     /// size of the buffer must be at least 5 bytes larger than read_length
-    /// 
+    ///
     /// #Arguments
-    /// 
+    ///
     /// * `address` - u32 integer that specifies the starting address of the 4KiB block that will be read
     /// * `read_length` - usize integer that specifies the # of bytes to be read from the memory device.
     /// * `read_buffer` - buffer where read data will be stored
-    /// 
+    ///
     /// #Examples
-    /// 
+    ///
     /// ```
     /// let mut read_buffer = [0u8; 5 + 4096];
     /// let read_data = flash.read_4kib(0x0000_0000, 4096, &mut read_buffer).await;
@@ -41,30 +40,28 @@ pub trait Flash {
         address: u32,
         read_length: usize,
         read_buffer: &'b mut [u8],
-    ) -> Result<&'b [u8], Self::Error>;//
-
+    ) -> Result<&'b [u8], Self::Error>; //
 
     /// Writes 256 bytes of data to the memory device starting at the specified address.
     /// size of the buffer must be at least 261 bytes long
-    /// 
+    ///
     /// #Arguments
-    /// 
+    ///
     /// * `address` - u32 integer that specifies the starting address of the 256 byte block that will be written
     /// * `write_buffer` - buffer where data to be written is stored
-    /// 
+    ///
     /// #Examples
-    /// 
+    ///
     /// ```
     /// let mut write_buffer = [0u8; 261];
     /// flash.write_256b(0x0000_0000, &mut write_buffer).await;
-    /// 
+    ///
     /// ```
     async fn write_256b<'b>(
         &mut self,
         address: u32,
         write_buffer: &'b mut [u8],
     ) -> Result<(), Self::Error>;
-
 
     /// Reads arbitary length of data from the memory device starting at the specified address.
     /// maximum read length is 4 kb
@@ -76,12 +73,12 @@ pub trait Flash {
         read_length: usize,
         read_buffer: &'b mut [u8],
     ) -> Result<&'b [u8], Self::Error> {
-         /* This loop reads the data from the flash by calling read_4kib multiple times, with each call
-         reading up to 4096 bytes at a time, until it has read the entire requested length.
+        /* This loop reads the data from the flash by calling read_4kib multiple times, with each call
+        reading up to 4096 bytes at a time, until it has read the entire requested length.
 
-         Variables:
-            bytes_read: usize integer that keeps track of the number of bytes that have been read so far
-            length:     usize integer that specifies the number of bytes to be read in the current iteration */
+        Variables:
+           bytes_read: usize integer that keeps track of the number of bytes that have been read so far
+           length:     usize integer that specifies the number of bytes to be read in the current iteration */
 
         let mut bytes_read = 0;
         while bytes_read < read_length {
@@ -118,14 +115,14 @@ pub trait Flash {
         address: u32,
         write_length: usize,
         write_buffer: &'b mut [u8],
-    ) -> Result<(), Self::Error> {  
+    ) -> Result<(), Self::Error> {
         /* This loop writes the data to the flash by calling write_256b multiple times, with each call
         writing up to 256 bytes at a time, until it has written the entire requested length.
-        
+
         Variables:
         bytes_written: usize integer that keeps track of the number of bytes that have been written so far
-        length:        usize integer that specifies the number of bytes to be written in the current iteration */ 
-       
+        length:        usize integer that specifies the number of bytes to be written in the current iteration */
+
         let mut bytes_written = 0;
         while bytes_written < write_length {
             let length = if write_length - bytes_written > 256 {
@@ -133,7 +130,7 @@ pub trait Flash {
             } else {
                 write_length - bytes_written
             };
-            
+
             self.write_256b(
                 address + bytes_written as u32,
                 &mut write_buffer[bytes_written..],
@@ -152,9 +149,8 @@ pub trait Flash {
 impl<'a, M, T> Flash for MutexGuard<'a, M, T>
 where
     M: RawMutex, // M is a type that implements the `RawMutex` trait
-    T: Flash,    // T is a type that implements the `Flash` trait. This is the type of the wrapped object
+    T: Flash, // T is a type that implements the `Flash` trait. This is the type of the wrapped object
 {
-
     // `Error` is the error type of the wrapped `T` object
     type Error = T::Error;
 
