@@ -14,3 +14,4 @@ pub mod serial;
 pub mod spi;
 pub mod timer;
 pub mod usb;
+pub mod device_management;

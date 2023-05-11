@@ -6,18 +6,35 @@
 use common::console::console::Console;
 use defmt::*;
 use driver::{
-    adc::ADC, arming::HardwareArming, barometer::Barometer, buzzer::Buzzer, gps::GPS, imu::IMU,
-    indicator::Indicator, meg::Megnetometer, pyro::PyroChannel, rng::RNG, serial::Serial,
-    timer::Timer, usb::USB,
+    adc::ADC,
+    arming::HardwareArming,
+    barometer::Barometer,
+    buzzer::Buzzer,
+    device_management::{self, DeviceManagement},
+    gps::GPS,
+    imu::IMU,
+    indicator::Indicator,
+    meg::Megnetometer,
+    pyro::PyroChannel,
+    rng::RNG,
+    serial::Serial,
+    timer::Timer,
+    usb::USB,
 };
-use futures::future::join5;
+use futures::{
+    future::{join5, select},
+    pin_mut,
+};
 use lora_phy::mod_traits::RadioKind;
 use vlfs::{
     io_traits::{AsyncReader, AsyncWriter},
     Crc, Flash, VLFSError, VLFS,
 };
 
-use crate::beacon::{beacon_receiver::beacon_receiver, beacon_sender::beacon_sender};
+use crate::{
+    beacon::{beacon_receiver::beacon_receiver, beacon_sender::beacon_sender},
+    common::device_mode::{read_device_mode, write_device_mode, DeviceMode},
+};
 
 mod allocator;
 mod avionics;
@@ -28,6 +45,7 @@ mod gcm;
 mod utils;
 
 pub async fn init<
+    D: DeviceManagement,
     T: Timer,
     F: Flash + defmt::Format,
     C: Crc,
@@ -49,6 +67,7 @@ pub async fn init<
     BA: Barometer,
     G: GPS,
 >(
+    device_management: D,
     timer: T,
     mut flash: F,
     crc: C,
@@ -60,7 +79,7 @@ pub async fn init<
     _pyro3: P3,
     _arming_switch: ARM,
     serial: S,
-    usb: U,
+    mut usb: U,
     _buzzer: B,
     _meg: M,
     radio_kind: L,
@@ -90,90 +109,58 @@ pub async fn init<
         }
     };
 
-    let mut console1 = Console::new(timer, serial, &fs);
-    let mut console2 = Console::new(timer, usb, &fs);
+    let usb_connected = {
+        let timeout_fut = timer.sleep(500);
+        let usb_wait_connection_fut = usb.wait_connection();
+        pin_mut!(timeout_fut);
+        pin_mut!(usb_wait_connection_fut);
+        match select(timeout_fut, usb_wait_connection_fut).await {
+            futures::future::Either::Left(_) => {
+                info!("USB not connected");
+                false
+            }
+            futures::future::Either::Right(_) => {
+                info!("USB connected");
+                true
+            }
+        }
+    };
+
+    let mut serial_console = Console::new(timer, serial, &fs, device_management);
+    let mut usb_console = Console::new(timer, usb, &fs, device_management);
 
     let main_fut = async {
-        let mut mode = Mode::Avionics;
-        if let Some(mode_) = read_mode(&fs).await {
-            info!("Read mode from disk: {}", mode_);
-            mode = mode_;
-        } else {
-            info!("No mode file found, creating one");
-            try_or_warn!(write_mode(&fs, mode).await);
+        if usb_connected {
+            info!("USB connected on boot, stopping main");
+            return;
         }
 
-        info!("Starting in mode {}", mode);
-        beacon_sender(timer, &fs, gps, radio_kind).await;
-        match mode {
-            Mode::Avionics => defmt::panic!("Avionics mode not implemented"),
-            Mode::GCM => defmt::panic!("GCM mode not implemented"),
-            Mode::BeaconSender => beacon_sender(timer, &fs, gps, radio_kind).await,
-            Mode::BeaconReceiver => beacon_receiver(timer, &fs, radio_kind).await,
+        let mut device_mode = DeviceMode::Avionics;
+        if let Some(device_mode_) = read_device_mode(&fs).await {
+            info!("Read device mode from disk: {}", device_mode_);
+            device_mode = device_mode_;
+        } else {
+            info!("No device mode file found, creating one");
+            try_or_warn!(write_device_mode(&fs, device_mode).await);
+        }
+
+        info!("Starting in mode {}", device_mode);
+        match device_mode {
+            DeviceMode::Avionics => defmt::panic!("Avionics mode not implemented"),
+            DeviceMode::GCM => defmt::panic!("GCM mode not implemented"),
+            DeviceMode::BeaconSender => beacon_sender(timer, &fs, gps, radio_kind).await,
+            DeviceMode::BeaconReceiver => beacon_receiver(timer, &fs, radio_kind).await,
         };
     };
 
     join5(
         imu_fut,
         main_fut,
-        console1.run(),
-        console2.run(),
+        serial_console.run(),
+        usb_console.run(),
         indicator_fut,
     )
     .await;
 
     defmt::panic!("wtf");
-}
-
-#[derive(Clone, Copy, defmt::Format)]
-#[repr(u8)]
-enum Mode {
-    Avionics = 1,
-    GCM = 2,
-    BeaconSender = 3,
-    BeaconReceiver = 4,
-}
-
-impl TryFrom<u8> for Mode {
-    type Error = ();
-
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        match value {
-            1 => Ok(Mode::Avionics),
-            2 => Ok(Mode::GCM),
-            3 => Ok(Mode::BeaconSender),
-            4 => Ok(Mode::BeaconReceiver),
-            _ => Err(()),
-        }
-    }
-}
-
-static MODE_FILE_ID: u64 = 0;
-static MODE_FILE_TYPE: u16 = 0;
-
-async fn read_mode(fs: &VLFS<impl Flash, impl Crc>) -> Option<Mode> {
-    if let Ok(mut reader) = fs.open_file_for_read(MODE_FILE_ID).await {
-        let mut file_content = [0u8; 1];
-        let read_result = reader.read_all(&mut file_content).await;
-        reader.close().await;
-        if let Ok(file_content) = read_result {
-            if file_content.len() != 1 {
-                return None;
-            }
-            return file_content[0].try_into().ok();
-        }
-    }
-    None
-}
-
-async fn write_mode<F: Flash>(fs: &VLFS<F, impl Crc>, mode: Mode) -> Result<(), VLFSError<F>> {
-    if fs.exists(MODE_FILE_ID).await {
-        fs.remove_file(MODE_FILE_ID).await?;
-    }
-
-    fs.create_file(MODE_FILE_ID, MODE_FILE_TYPE).await?;
-    let mut writer = fs.open_file_for_write(MODE_FILE_ID).await?;
-    writer.extend_from_slice(&[mode as u8]).await?;
-    writer.close().await?;
-    Ok(())
 }

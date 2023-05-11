@@ -1,5 +1,9 @@
 use crate::{
-    driver::{serial::Serial, timer::Timer},
+    driver::{
+        device_management::{self, DeviceManagement},
+        serial::Serial,
+        timer::Timer,
+    },
     try_or_warn,
 };
 use defmt::info;
@@ -8,10 +12,11 @@ use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 use vlfs::{Crc, Flash, VLFS};
 
 use super::programs::{
-    benchmark_flash::BenchmarkFlash, read_nyoom::ReadNyoom, write_file::WriteFile,
+    benchmark_flash::BenchmarkFlash, change_mode::ChangeMode, read_nyoom::ReadNyoom,
+    write_file::WriteFile,
 };
 
-pub struct Console<'a, I: Timer, T: Serial, F: Flash, C: Crc>
+pub struct Console<'a, I: Timer, T: Serial, F: Flash, C: Crc, D: DeviceManagement>
 where
     F::Error: defmt::Format,
     F: defmt::Format,
@@ -19,18 +24,20 @@ where
     timer: I,
     serial: Mutex<CriticalSectionRawMutex, T>,
     vlfs: &'a VLFS<F, C>,
+    device_mngmt: D,
 }
 
-impl<'a, I: Timer, T: Serial, F: Flash, C: Crc> Console<'a, I, T, F, C>
+impl<'a, I: Timer, T: Serial, F: Flash, C: Crc, D: DeviceManagement> Console<'a, I, T, F, C, D>
 where
     F::Error: defmt::Format,
     F: defmt::Format,
 {
-    pub fn new(timer: I, serial: T, vlfs: &'a VLFS<F, C>) -> Self {
+    pub fn new(timer: I, serial: T, vlfs: &'a VLFS<F, C>, device_mngmt: D) -> Self {
         Self {
             timer,
             serial: Mutex::new(serial),
             vlfs,
+            device_mngmt,
         }
     }
 
@@ -38,6 +45,7 @@ where
         let write_file = WriteFile::new();
         let read_nyoom = ReadNyoom::new();
         let benchmark_flash = BenchmarkFlash::new();
+        let change_mode = ChangeMode::new();
         let mut serial = self.serial.lock().await;
         let mut command_buffer = [0u8; 8];
 
@@ -55,6 +63,12 @@ where
                 try_or_warn!(
                     benchmark_flash
                         .start(&mut serial, &self.vlfs, &self.timer)
+                        .await
+                );
+            } else if command_id == change_mode.id() {
+                try_or_warn!(
+                    change_mode
+                        .start(&mut serial, &self.vlfs, self.device_mngmt)
                         .await
                 );
             } else {
