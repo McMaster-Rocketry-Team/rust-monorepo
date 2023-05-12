@@ -73,8 +73,8 @@ pub async fn init<
     _meg: M,
     radio_kind: L,
     _rng: R,
-    mut status_indicator: IS,
-    _error_indicator: IE,
+    status_indicator: IS,
+    error_indicator: IE,
     _barometer: BA,
     gps: G,
 ) -> ! {
@@ -90,12 +90,12 @@ pub async fn init<
     };
 
     let indicator_fut = async {
-        loop {
-            timer.sleep(2000).await;
-            status_indicator.set_enable(true).await;
-            timer.sleep(10).await;
-            status_indicator.set_enable(false).await;
-        }
+        // loop {
+        //     timer.sleep(2000).await;
+        //     status_indicator.set_enable(true).await;
+        //     timer.sleep(10).await;
+        //     status_indicator.set_enable(false).await;
+        // }
     };
 
     let usb_connected = {
@@ -138,7 +138,15 @@ pub async fn init<
             DeviceMode::Avionics => defmt::panic!("Avionics mode not implemented"),
             DeviceMode::GCM => defmt::panic!("GCM mode not implemented"),
             DeviceMode::BeaconSender => {
-                beacon_sender(timer, &fs, GPSParser::new(gps), radio_kind).await
+                beacon_sender(
+                    timer,
+                    &fs,
+                    GPSParser::new(gps),
+                    radio_kind,
+                    status_indicator,
+                    error_indicator,
+                )
+                .await
             }
             DeviceMode::BeaconReceiver => beacon_receiver(timer, &fs, radio_kind).await,
         };
