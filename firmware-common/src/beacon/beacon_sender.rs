@@ -89,14 +89,14 @@ pub async fn beacon_sender(
                 .create_modulation_params(
                     SpreadingFactor::_12,
                     Bandwidth::_250KHz,
-                    CodingRate::_4_5,
+                    CodingRate::_4_8,
                     915_000_000,
                 )
                 .unwrap();
             let mut tx_params = lora
                 .create_tx_packet_params(8, false, true, false, &modulation_params)
                 .unwrap();
-            lora.prepare_for_tx(&modulation_params, 0, true)
+            lora.prepare_for_tx(&modulation_params, 22, true)
                 .await
                 .unwrap();
             lora.tx(&modulation_params, &mut tx_params, buffer, 0xFFFFFF)

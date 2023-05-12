@@ -1,5 +1,4 @@
 use nmea::Nmea;
-use vlfs::{Crc, Flash};
 
 use crate::driver::gps::{NmeaSentence, GPS};
 

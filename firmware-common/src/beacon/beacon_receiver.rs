@@ -35,7 +35,7 @@ pub async fn beacon_receiver(
         .create_modulation_params(
             SpreadingFactor::_12,
             Bandwidth::_250KHz,
-            CodingRate::_4_5,
+            CodingRate::_4_8,
             915_000_000,
         )
         .unwrap();

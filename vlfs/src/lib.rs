@@ -4,6 +4,7 @@
 #![feature(let_chains)]
 
 pub use driver::crc::Crc;
+pub use driver::dummy_flash::DummyFlash;
 pub use driver::flash::Flash;
 pub use fs::error::VLFSError;
 pub use fs::iter::{FilesIterator, LsFileEntry};

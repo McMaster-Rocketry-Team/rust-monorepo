@@ -11,7 +11,7 @@ use driver::{
     meg::Megnetometer, pyro::PyroChannel, rng::RNG, serial::Serial, timer::Timer, usb::USB,
 };
 use futures::{
-    future::{join5, select},
+    future::{join3, select},
     pin_mut,
 };
 use lora_phy::mod_traits::RadioKind;
@@ -60,7 +60,7 @@ pub async fn init<
     timer: T,
     mut flash: F,
     crc: C,
-    mut imu: I,
+    mut _imu: I,
     _batt_voltmeter: V,
     _batt_ammeter: A,
     _pyro1: P1,
@@ -73,30 +73,14 @@ pub async fn init<
     _meg: M,
     radio_kind: L,
     _rng: R,
-    status_indicator: IS,
-    error_indicator: IE,
+    mut status_indicator: IS,
+    mut error_indicator: IE,
     _barometer: BA,
     gps: G,
 ) -> ! {
     flash.reset().await.ok();
     let mut fs = VLFS::new(flash, crc);
     unwrap!(fs.init().await);
-
-    let imu_fut = async {
-        imu.reset().await.ok();
-        loop {
-            let _ = imu.read().await;
-        }
-    };
-
-    let indicator_fut = async {
-        // loop {
-        //     timer.sleep(2000).await;
-        //     status_indicator.set_enable(true).await;
-        //     timer.sleep(10).await;
-        //     status_indicator.set_enable(false).await;
-        // }
-    };
 
     let usb_connected = {
         let timeout_fut = timer.sleep(500);
@@ -121,10 +105,17 @@ pub async fn init<
     let main_fut = async {
         if usb_connected {
             info!("USB connected on boot, stopping main");
-            return;
+            loop {
+                status_indicator.set_enable(true).await;
+                error_indicator.set_enable(false).await;
+                timer.sleep(1000).await;
+                status_indicator.set_enable(false).await;
+                error_indicator.set_enable(true).await;
+                timer.sleep(1000).await;
+            }
         }
 
-        let mut device_mode = DeviceMode::Avionics;
+        let mut device_mode = DeviceMode::BeaconReceiver;
         if let Some(device_mode_) = read_device_mode(&fs).await {
             info!("Read device mode from disk: {}", device_mode_);
             device_mode = device_mode_;
@@ -152,14 +143,7 @@ pub async fn init<
         };
     };
 
-    join5(
-        imu_fut,
-        main_fut,
-        serial_console.run(),
-        usb_console.run(),
-        indicator_fut,
-    )
-    .await;
+    join3(main_fut, serial_console.run(), usb_console.run()).await;
 
     defmt::panic!("wtf");
 }

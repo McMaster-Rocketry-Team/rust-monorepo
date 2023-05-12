@@ -12,3 +12,15 @@ pub trait GPS {
 
     fn read_next_nmea_sentence(&mut self) -> Option<NmeaSentence>;
 }
+
+pub struct DummyGPS {}
+
+impl GPS for DummyGPS {
+    async fn reset(&mut self) {}
+
+    async fn set_enable(&mut self, _enable: bool) {}
+
+    fn read_next_nmea_sentence(&mut self) -> Option<NmeaSentence> {
+        None
+    }
+}
