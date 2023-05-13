@@ -2,7 +2,7 @@ use core::fmt::Write;
 use heapless::String;
 use nalgebra::Vector3;
 
-use super::bus_error::BusError;
+use super::timer::Timer;
 
 pub struct IMUReading {
     pub timestamp: u64,    // ms
@@ -29,6 +29,35 @@ impl defmt::Format for IMUReading {
 }
 
 pub trait IMU {
-    async fn reset(&mut self) -> Result<(), BusError>;
-    async fn read(&mut self) -> Result<IMUReading, BusError>;
+    type Error;
+
+    async fn reset(&mut self) -> Result<(), Self::Error>;
+    async fn read(&mut self) -> Result<IMUReading, Self::Error>;
+}
+
+pub struct DummyIMU<T: Timer> {
+    timer: T,
+}
+
+impl<T: Timer> DummyIMU<T> {
+    pub fn new(timer: T) -> Self {
+        Self { timer }
+    }
+}
+
+impl<T: Timer> IMU for DummyIMU<T> {
+    type Error = ();
+
+    async fn reset(&mut self) -> Result<(), ()> {
+        Ok(())
+    }
+
+    async fn read(&mut self) -> Result<IMUReading, ()> {
+        self.timer.sleep(1).await;
+        Ok(IMUReading {
+            timestamp: 0,
+            acc: Vector3::new(0.0, 0.0, 0.0),
+            gyro: Vector3::new(0.0, 0.0, 0.0),
+        })
+    }
 }

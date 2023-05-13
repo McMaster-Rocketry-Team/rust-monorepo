@@ -1,4 +1,4 @@
-use super::bus_error::BusError;
+use super::timer::Timer;
 
 #[derive(defmt::Format, Debug)]
 pub struct BaroReading {
@@ -8,6 +8,34 @@ pub struct BaroReading {
 }
 
 pub trait Barometer {
-    async fn reset(&mut self) -> Result<(), BusError>;
-    async fn read(&mut self) -> Result<BaroReading, BusError>;
+    type Error;
+
+    async fn reset(&mut self) -> Result<(), Self::Error>;
+    async fn read(&mut self) -> Result<BaroReading, Self::Error>;
+}
+
+pub struct DummyBarometer<T: Timer> {
+    timer: T,
+}
+
+impl<T: Timer> DummyBarometer<T> {
+    pub fn new(timer: T) -> Self {
+        Self { timer }
+    }
+}
+impl<T: Timer> Barometer for DummyBarometer<T> {
+    type Error = ();
+
+    async fn reset(&mut self) -> Result<(), ()> {
+        Ok(())
+    }
+
+    async fn read(&mut self) -> Result<BaroReading, ()> {
+        self.timer.sleep(1).await;
+        Ok(BaroReading {
+            timestamp: 0,
+            temperature: 0.0,
+            pressure: 0.0,
+        })
+    }
 }

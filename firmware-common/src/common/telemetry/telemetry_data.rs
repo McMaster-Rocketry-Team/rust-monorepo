@@ -1,5 +1,6 @@
 use nalgebra::{Vector3, Vector4};
 
+#[allow(dead_code)]
 #[derive(Debug, Copy, Clone)]
 pub enum AvionicsState {
     Sleeping,
@@ -10,6 +11,7 @@ pub enum AvionicsState {
     Landed,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct Pyro {
     continuity: bool,
@@ -17,6 +19,7 @@ pub struct Pyro {
     fault: bool,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct TelemetryData {
     timestamp: u64, // ms

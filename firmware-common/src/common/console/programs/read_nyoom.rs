@@ -1,5 +1,5 @@
 use defmt::{info, unwrap};
-use vlfs::{io_traits::AsyncReader, Crc, Flash, VLFS};
+use vlfs::{io_traits::AsyncReader, Crc, Flash, VLFSReadStatus, VLFS};
 
 use crate::driver::serial::Serial;
 
@@ -32,27 +32,29 @@ impl ReadNyoom {
         loop {
             unwrap!(serial.read_all(&mut buffer[0..1]).await);
             info!("Read next");
-            let nyoom_message_length_bytes = unwrap!(reader.read_slice(&mut buffer[0..4], 4).await);
-            if nyoom_message_length_bytes.len() == 0 {
+            let read_result = reader.read_u32(&mut buffer).await;
+            if let Ok((Some(nyoom_message_length), _)) = read_result {
+                unwrap!(serial.write(&nyoom_message_length.to_be_bytes()).await);
+
+                let mut length_read = 0u32;
+                while length_read < nyoom_message_length {
+                    let read_chunk_size =
+                        core::cmp::min(buffer.len() as u32, nyoom_message_length - length_read);
+                    let buffer = unwrap!(
+                        reader
+                            .read_slice(&mut buffer, read_chunk_size as usize)
+                            .await
+                    )
+                    .0;
+                    unwrap!(serial.write(buffer).await);
+                    length_read += read_chunk_size;
+                }
+            } else if let Ok((None, VLFSReadStatus::EndOfFile)) = read_result {
                 unwrap!(serial.write(&[0u8; 4]).await);
                 reader.close().await;
                 return Ok(());
-            }
-            let nyoom_message_length =
-                u32::from_be_bytes(nyoom_message_length_bytes.try_into().unwrap());
-
-            unwrap!(serial.write(nyoom_message_length_bytes).await);
-            let mut length_read = 0u32;
-            while length_read < nyoom_message_length {
-                let read_chunk_size =
-                    core::cmp::min(buffer.len() as u32, nyoom_message_length - length_read);
-                let buffer = unwrap!(
-                    reader
-                        .read_slice(&mut buffer, read_chunk_size as usize)
-                        .await
-                );
-                unwrap!(serial.write(buffer).await);
-                length_read += read_chunk_size;
+            } else {
+                panic!("Failed to read nyoom message length")
             }
         }
     }

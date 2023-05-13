@@ -6,6 +6,8 @@ use crate::{
     utils::rwlock::RwLock,
 };
 use embassy_sync::mutex::Mutex;
+
+use embassy_sync::blocking_mutex::Mutex as BlockingMutex;
 use heapless::Vec;
 
 impl<F, C> VLFS<F, C>
@@ -24,6 +26,7 @@ where
             }),
             flash: Mutex::new(flash),
             crc: Mutex::new(crc),
+            rng: BlockingMutex::new(RefCell::new(SmallRng::seed_from_u64(0))),
         }
     }
 
@@ -55,6 +58,10 @@ where
         let mut sectors_mng = self.sectors_mng.write().await;
         let crc = crc.calculate_u32(&sectors_mng.sector_map.data);
         sectors_mng.rng = SmallRng::seed_from_u64(crc as u64 + ((crc as u64) << 32));
+
+        self.rng.lock(|rng| {
+            rng.replace(SmallRng::seed_from_u64(sectors_mng.rng.next_u64()));
+        });
 
         info!("VLFS initialized");
         Ok(())
@@ -104,7 +111,8 @@ where
             let read_result = reader
                 .read_slice(&mut read_buffer, 12)
                 .await
-                .map_err(VLFSError::from_flash)?;
+                .map_err(VLFSError::from_flash)?
+                .0;
             let version = u32::from_be_bytes((&read_result[0..4]).try_into().unwrap());
             let sequence_number = u32::from_be_bytes((&read_result[4..8]).try_into().unwrap());
             let file_count = u32::from_be_bytes((&read_result[8..12]).try_into().unwrap());
@@ -124,7 +132,8 @@ where
                 let read_result = reader
                     .read_slice(&mut read_buffer, 12)
                     .await
-                    .map_err(VLFSError::from_flash)?;
+                    .map_err(VLFSError::from_flash)?
+                    .0;
                 let file_id = u64::from_be_bytes((&read_result[0..8]).try_into().unwrap());
                 let file_type = u16::from_be_bytes((&read_result[8..10]).try_into().unwrap());
                 let first_sector_index =
@@ -147,7 +156,9 @@ where
             let expected_crc = reader
                 .read_u32(&mut read_buffer)
                 .await
-                .map_err(VLFSError::from_flash)?;
+                .map_err(VLFSError::from_flash)?
+                .0
+                .expect("Read from flash should always return the desired length");
             if actual_crc == expected_crc {
                 info!("CRC match!");
             } else {

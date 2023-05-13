@@ -1,3 +1,26 @@
+use super::timer::Timer;
+
 pub trait ADC {
-    async fn read(&mut self) -> f32; // ma
+    type Error;
+
+    async fn read(&mut self) -> Result<f32, Self::Error>;
+}
+
+pub struct DummyADC<T: Timer> {
+    timer: T,
+}
+
+impl<T: Timer> DummyADC<T> {
+    pub fn new(timer: T) -> Self {
+        Self { timer }
+    }
+}
+
+impl<T: Timer> ADC for DummyADC<T> {
+    type Error = ();
+
+    async fn read(&mut self) -> Result<f32, ()> {
+        self.timer.sleep(1).await;
+        Ok(0.0)
+    }
 }
