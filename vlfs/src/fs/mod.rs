@@ -20,9 +20,9 @@ pub mod error;
 pub mod init;
 pub mod iter;
 pub mod reader;
+pub mod sector_management;
 pub mod utils;
 pub mod writer;
-pub mod sector_management;
 
 const VLFS_VERSION: u32 = 16;
 const SECTORS_COUNT: usize = 16384; // for 512M-bit flash (W25Q512JV)
@@ -200,10 +200,7 @@ where
 
         Err(VLFSError::FileDoesNotExist)
     }
-
-    
 }
-
 
 impl<F, C> defmt::Format for VLFS<F, C>
 where

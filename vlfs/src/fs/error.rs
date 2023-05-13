@@ -1,8 +1,7 @@
 use crate::driver::flash::Flash;
 
 #[derive(defmt::Format)]
-pub enum VLFSError<F: Flash>
-{
+pub enum VLFSError<F: Flash> {
     FlashError(F::Error),
     FileAlreadyExists,
     MaxFilesReached,
@@ -14,8 +13,7 @@ pub enum VLFSError<F: Flash>
     FileClosed,
 }
 
-impl<F: Flash> VLFSError<F>
-{
+impl<F: Flash> VLFSError<F> {
     pub fn from_flash(value: F::Error) -> Self {
         Self::FlashError(value)
     }

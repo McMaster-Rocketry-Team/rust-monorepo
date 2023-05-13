@@ -6,7 +6,6 @@ pub(super) struct SectorsMng {
     pub(super) rng: SmallRng,
 }
 
-
 impl<F, C> VLFS<F, C>
 where
     F: Flash,

@@ -11,13 +11,13 @@ pub struct Time {
 #[derive(Debug)]
 pub enum NMEAMessage {
     GLL {
-        talker: String::<2>,
+        talker: String<2>,
         latitude: f32,
         longitude: f32,
         utc: Time,
     },
-    GSV{
-        talker: String::<2>,
+    GSV {
+        talker: String<2>,
         satellites_visible: u8,
-    }
+    },
 }

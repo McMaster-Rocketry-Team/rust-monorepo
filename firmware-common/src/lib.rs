@@ -3,24 +3,15 @@
 #![feature(impl_trait_projections)]
 #![feature(let_chains)]
 
-use common::{console::console::Console};
+use common::console::console::Console;
 use defmt::*;
 use driver::{
-    adc::ADC,
-    arming::HardwareArming,
-    barometer::{Barometer},
-    buzzer::Buzzer,
-    gps::GPS,
-    imu::IMU,
-    indicator::Indicator,
-    lora::LoRa,
-    meg::Megnetometer,
-    pyro::PyroChannel,
-    rng::RNG,
-    timer::Timer, serial::Serial,
+    adc::ADC, arming::HardwareArming, barometer::Barometer, buzzer::Buzzer, gps::GPS, imu::IMU,
+    indicator::Indicator, lora::LoRa, meg::Megnetometer, pyro::PyroChannel, rng::RNG,
+    serial::Serial, timer::Timer,
 };
-use futures::future::{join3};
-use vlfs::{Flash, Crc, VLFS};
+use futures::future::join3;
+use vlfs::{Crc, Flash, VLFS};
 
 mod avionics;
 mod common;

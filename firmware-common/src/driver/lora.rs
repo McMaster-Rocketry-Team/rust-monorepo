@@ -54,7 +54,7 @@ pub struct RxQuality {
 pub trait LoRa {
     async fn reset(&mut self) -> Result<(), BusError>;
     async fn sleep(&mut self) -> Result<(), BusError>;
-    
+
     fn min_power(&self) -> i8;
     fn max_power(&self) -> i8;
 
@@ -62,5 +62,9 @@ pub trait LoRa {
     async fn set_tx_config(&mut self, tx_config: TxConfig) -> Result<(), BusError>;
 
     async fn tx(&mut self, data: &[u8]) -> Result<(), BusError>;
-    async fn rx(&mut self, buffer: &mut [u8], timeout_ms: u32) -> Result<(usize, RxQuality), BusError>;
+    async fn rx(
+        &mut self,
+        buffer: &mut [u8],
+        timeout_ms: u32,
+    ) -> Result<(usize, RxQuality), BusError>;
 }

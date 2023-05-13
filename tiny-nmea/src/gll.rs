@@ -1,14 +1,16 @@
-use crate::message::NMEAMessage;
-use heapless::String;
-use heapless::Vec;
 use crate::common::parse_time;
+use crate::message::NMEAMessage;
 use crate::message::NMEAMessage::GLL;
 use crate::substring;
+use heapless::String;
+use heapless::Vec;
 
 pub fn parse_gll(fields: Vec<&str, 41>) -> Result<NMEAMessage, ()> {
     let talker = substring!(fields[1], 0, 2);
     let lat_degree = substring!(fields[2], 0, 2).parse::<f32>().map_err(|_| ())?;
-    let lat_minute = substring!(fields[2], 2, 10).parse::<f32>().map_err(|_| ())?;
+    let lat_minute = substring!(fields[2], 2, 10)
+        .parse::<f32>()
+        .map_err(|_| ())?;
     let mut lat = lat_degree + (lat_minute / 60.0);
     let lat_direction = fields[3];
     if lat_direction == "S" {
@@ -16,14 +18,16 @@ pub fn parse_gll(fields: Vec<&str, 41>) -> Result<NMEAMessage, ()> {
     }
 
     let lon_degree = substring!(fields[4], 0, 3).parse::<f32>().map_err(|_| ())?;
-    let lon_minute = substring!(fields[4], 3, 10).parse::<f32>().map_err(|_| ())?;
+    let lon_minute = substring!(fields[4], 3, 10)
+        .parse::<f32>()
+        .map_err(|_| ())?;
     let mut lon = lon_degree + (lon_minute / 60.0);
     let lon_direction = fields[5];
     if lon_direction == "W" {
         lon = -lon;
     }
 
-    Ok(GLL{
+    Ok(GLL {
         talker,
         latitude: lat,
         longitude: lon,
