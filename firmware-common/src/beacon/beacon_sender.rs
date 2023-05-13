@@ -39,6 +39,7 @@ pub async fn beacon_sender(
     let mut lora = LoRa::new(radio_kind, false, &mut DelayUsWrapper(timer))
         .await
         .unwrap();
+    lora.sleep(&mut DelayUsWrapper(timer)).await.unwrap();
 
     if !fs.exists(BEACON_SENDER_LOG_FILE_ID).await {
         unwrap!(
@@ -80,36 +81,36 @@ pub async fn beacon_sender(
             };
             satellites_count.lock(|v| v.replace(gps_parser.nmea.satellites().len() as u32));
             locked.lock(|v| v.replace(gps_parser.nmea.longitude.is_some()));
-            let mut serializer = BufferSerializer::new([0u8; 32]);
-            serializer.serialize_value(&beacon_data).unwrap();
-            let buffer = serializer.into_inner();
-            let buffer = &buffer[..core::mem::size_of::<<BeaconData as Archive>::Archived>()];
+            // let mut serializer = BufferSerializer::new([0u8; 32]);
+            // serializer.serialize_value(&beacon_data).unwrap();
+            // let buffer = serializer.into_inner();
+            // let buffer = &buffer[..core::mem::size_of::<<BeaconData as Archive>::Archived>()];
 
-            let modulation_params = lora
-                .create_modulation_params(
-                    SpreadingFactor::_12,
-                    Bandwidth::_250KHz,
-                    CodingRate::_4_8,
-                    915_000_000,
-                )
-                .unwrap();
-            let mut tx_params = lora
-                .create_tx_packet_params(8, false, true, false, &modulation_params)
-                .unwrap();
-            lora.prepare_for_tx(&modulation_params, 22, true)
-                .await
-                .unwrap();
-            lora.tx(&modulation_params, &mut tx_params, buffer, 0xFFFFFF)
-                .await
-                .unwrap();
+            // let modulation_params = lora
+            //     .create_modulation_params(
+            //         SpreadingFactor::_12,
+            //         Bandwidth::_250KHz,
+            //         CodingRate::_4_8,
+            //         915_000_000,
+            //     )
+            //     .unwrap();
+            // let mut tx_params = lora
+            //     .create_tx_packet_params(8, false, true, false, &modulation_params)
+            //     .unwrap();
+            // lora.prepare_for_tx(&modulation_params, 22, true)
+            //     .await
+            //     .unwrap();
+            // lora.tx(&modulation_params, &mut tx_params, buffer, 0xFFFFFF)
+            //     .await
+            //     .unwrap();
 
             let mut log_str = String::<32>::new();
             core::write!(&mut log_str, "{} | Beacon send!\n", timer.now_mills()).unwrap();
             log_file.extend_from_slice(log_str.as_bytes()).await.ok();
             info!("{}", log_str.as_str());
 
-            lora.sleep(&mut DelayUsWrapper(timer)).await.unwrap();
-            timer.sleep(2000).await;
+            // lora.sleep(&mut DelayUsWrapper(timer)).await.unwrap();
+            timer.sleep(1000).await;
         }
     };
 

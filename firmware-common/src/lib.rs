@@ -115,7 +115,7 @@ pub async fn init<
             }
         }
 
-        let mut device_mode = DeviceMode::BeaconReceiver;
+        let mut device_mode = DeviceMode::BeaconSender;
         if let Some(device_mode_) = read_device_mode(&fs).await {
             info!("Read device mode from disk: {}", device_mode_);
             device_mode = device_mode_;

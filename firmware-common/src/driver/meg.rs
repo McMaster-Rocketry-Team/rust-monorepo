@@ -34,6 +34,12 @@ pub struct DummyMegnetometer<T: Timer> {
     timer: T,
 }
 
+impl<T: Timer> DummyMegnetometer<T> {
+    pub fn new(timer: T) -> Self {
+        Self { timer }
+    }
+}
+
 impl<T: Timer> Megnetometer for DummyMegnetometer<T> {
     type Error = ();
 
