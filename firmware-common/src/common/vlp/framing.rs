@@ -40,12 +40,12 @@ pub struct Packet {
 }
 
 impl Packet {
-    pub fn serialize(self) -> Vec<u8, 256> {
+    pub fn serialize(&self) -> Vec<u8, 256> {
         let mut buf = packet![self.flags.bits()];
-        buf.push(((self.seqnum >> 8) as u8));
+        buf.push((self.seqnum >> 8) as u8);
         buf.push((self.seqnum & 0xff) as u8);
         if let Some(payload) = self.payload {
-            buf.extend(payload.into_iter());
+            buf.extend_from_slice(&payload[..]);
         }
 
         buf

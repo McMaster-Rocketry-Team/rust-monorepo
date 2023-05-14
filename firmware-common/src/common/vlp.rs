@@ -94,7 +94,7 @@ impl<R: RadioKind+'static> VLPSocket<R> {
 
 
         if _self.params.reliability {
-            let _ = _self.reliable_tx(estab).await;
+            let _ = _self.reliable_tx(&estab).await;
         } else {
             _self.phy.tx(&estab.serialize()[..]).await;
         }
@@ -155,13 +155,25 @@ impl<R: RadioKind+'static> VLPSocket<R> {
         self.next_seqnum = self.next_seqnum.wrapping_add(1);
 
         if self.params.reliability {
-            let packet = self.reliable_tx(packet).await;
-            if packet.seqnum == self.next_seqnum {
-            }
-            if packet.flags.contains(Flags::PSH) {
-                return Ok(packet.payload);
-            } else {
-                return Ok(None)
+            loop {
+                let packet = self.reliable_tx(&packet).await;
+                if packet.seqnum == self.next_seqnum {
+                    self.next_seqnum = self.next_seqnum.wrapping_add(1);
+                    //TODO: Is this a good way to handle PSH|ACK from the passive party?
+                    // They'll know that we recv'd their packet if there's no re-tx of the packet they're ACKing
+                    if packet.flags.contains(Flags::PSH) {
+                        let ack = Packet {
+                            flags: Flags::ACK,
+                            seqnum: self.next_seqnum,
+                            payload: None
+                        };
+                        self.phy.tx(&ack.serialize()[..]).await;
+                        self.next_seqnum = self.next_seqnum.wrapping_add(1);
+                        return Ok(packet.payload);
+                    } else {
+                        return Ok(None)
+                    }
+                }
             }
         } else {
             self.phy.tx(&packet.serialize()[..]).await;
@@ -182,7 +194,7 @@ impl<R: RadioKind+'static> VLPSocket<R> {
         };
         self.next_seqnum = self.next_seqnum.wrapping_add(1);
 
-        self.reliable_tx(packet).await;
+        self.reliable_tx(&packet).await;
         self.prio = Priority::Listener;
         self.next_seqnum = self.next_seqnum.wrapping_add(1);
         Ok(())
@@ -217,7 +229,7 @@ impl<R: RadioKind+'static> VLPSocket<R> {
         }
     }
 
-    async fn reliable_tx(&mut self, packet: Packet) -> Packet {
+    async fn reliable_tx(&mut self, packet: &Packet) -> Packet {
         let packet = packet.serialize();
         self.phy.tx(&packet[..]).await;
 
