@@ -17,7 +17,6 @@ rkyv = { version = "0.7", default-features = false, optional = true }
 nalgebra = { version = "0.32.2", default-features = false, features = ["libm"]}
 defmt = { version = "0.3", optional = true }
 libm = "0.2.6"
-simple_moving_average = "0.1.2"
 
 [dev-dependencies]
 approx = "0.5.1"

@@ -1,4 +1,4 @@
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 #[cfg_attr(
     feature = "rkyv-no-std",
     derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)

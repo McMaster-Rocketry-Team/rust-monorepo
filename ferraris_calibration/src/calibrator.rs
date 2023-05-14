@@ -1,9 +1,6 @@
 use core::marker::PhantomData;
 
-use libm::sqrt;
-use nalgebra::{Matrix3, Vector3};
-
-use crate::{calibration_info::CalibrationInfo, imu_reading::IMUReading};
+use crate::{calibration_info::CalibrationInfo, imu_reading::IMUReading, calibrator_inner::CalibratorInner};
 
 pub struct XPlus {}
 pub struct XMinus {}
@@ -14,103 +11,6 @@ pub struct ZMinus {}
 pub struct XRotation {}
 pub struct YRotation {}
 pub struct ZRotation {}
-
-pub(crate) struct CalibratorInner {
-    gravity: f64,
-    expected_angle: f64,
-
-    x_p_count: u32,
-    x_a_count: u32,
-    y_p_count: u32,
-    y_a_count: u32,
-    z_p_count: u32,
-    z_a_count: u32,
-
-    acc_x_p_sum: Vector3<f64>,
-    acc_x_a_sum: Vector3<f64>,
-    acc_y_p_sum: Vector3<f64>,
-    acc_y_a_sum: Vector3<f64>,
-    acc_z_p_sum: Vector3<f64>,
-    acc_z_a_sum: Vector3<f64>,
-
-    gyro_x_p_sum: Vector3<f64>,
-    gyro_x_a_sum: Vector3<f64>,
-    gyro_y_p_sum: Vector3<f64>,
-    gyro_y_a_sum: Vector3<f64>,
-    gyro_z_p_sum: Vector3<f64>,
-    gyro_z_a_sum: Vector3<f64>,
-
-    x_rotation_count: u32,
-    y_rotation_count: u32,
-    z_rotation_count: u32,
-
-    x_rotation_start_time_ms: f64,
-    y_rotation_start_time_ms: f64,
-    z_rotation_start_time_ms: f64,
-
-    x_rotation_end_time_ms: f64,
-    y_rotation_end_time_ms: f64,
-    z_rotation_end_time_ms: f64,
-
-    acc_x_rotation_sum: Vector3<f64>,
-    acc_y_rotation_sum: Vector3<f64>,
-    acc_z_rotation_sum: Vector3<f64>,
-
-    gyro_x_rotation_sum: Vector3<f64>,
-    gyro_y_rotation_sum: Vector3<f64>,
-    gyro_z_rotation_sum: Vector3<f64>,
-}
-
-impl CalibratorInner {
-    pub fn new(gravity: Option<f64>, expected_angle: Option<f64>) -> Self {
-        CalibratorInner {
-            gravity: gravity.unwrap_or(9.81),
-            expected_angle: expected_angle.unwrap_or(-360.0),
-
-            x_p_count: 0,
-            x_a_count: 0,
-            y_p_count: 0,
-            y_a_count: 0,
-            z_p_count: 0,
-            z_a_count: 0,
-
-            acc_x_p_sum: Vector3::zeros(),
-            acc_x_a_sum: Vector3::zeros(),
-            acc_y_p_sum: Vector3::zeros(),
-            acc_y_a_sum: Vector3::zeros(),
-            acc_z_p_sum: Vector3::zeros(),
-            acc_z_a_sum: Vector3::zeros(),
-
-            gyro_x_p_sum: Vector3::zeros(),
-            gyro_x_a_sum: Vector3::zeros(),
-            gyro_y_p_sum: Vector3::zeros(),
-            gyro_y_a_sum: Vector3::zeros(),
-            gyro_z_p_sum: Vector3::zeros(),
-            gyro_z_a_sum: Vector3::zeros(),
-
-            x_rotation_count: 0,
-            y_rotation_count: 0,
-            z_rotation_count: 0,
-
-            x_rotation_start_time_ms: 0.0,
-            y_rotation_start_time_ms: 0.0,
-            z_rotation_start_time_ms: 0.0,
-
-            x_rotation_end_time_ms: 0.0,
-            y_rotation_end_time_ms: 0.0,
-            z_rotation_end_time_ms: 0.0,
-
-            acc_x_rotation_sum: Vector3::zeros(),
-            acc_y_rotation_sum: Vector3::zeros(),
-            acc_z_rotation_sum: Vector3::zeros(),
-
-            gyro_x_rotation_sum: Vector3::zeros(),
-            gyro_y_rotation_sum: Vector3::zeros(),
-            gyro_z_rotation_sum: Vector3::zeros(),
-        }
-    }
-}
-
 pub struct Calibrator<S> {
     phantom: PhantomData<S>,
     inner: CalibratorInner,
@@ -125,9 +25,7 @@ pub fn new_calibrator(gravity: Option<f64>, expected_angle: Option<f64>) -> Cali
 
 impl Calibrator<XPlus> {
     pub fn process(&mut self, reading: &IMUReading) {
-        self.inner.x_p_count += 1;
-        self.inner.acc_x_p_sum += Vector3::from_row_slice(&reading.acc).cast();
-        self.inner.gyro_x_p_sum += Vector3::from_row_slice(&reading.gyro).cast();
+        self.inner.process_x_p(reading);
     }
 
     pub fn next(self) -> Calibrator<XMinus> {
@@ -140,9 +38,7 @@ impl Calibrator<XPlus> {
 
 impl Calibrator<XMinus> {
     pub fn process(&mut self, reading: &IMUReading) {
-        self.inner.x_a_count += 1;
-        self.inner.acc_x_a_sum += Vector3::from_row_slice(&reading.acc).cast();
-        self.inner.gyro_x_a_sum += Vector3::from_row_slice(&reading.gyro).cast();
+        self.inner.process_x_n(reading);
     }
 
     pub fn next(self) -> Calibrator<YPlus> {
@@ -155,9 +51,7 @@ impl Calibrator<XMinus> {
 
 impl Calibrator<YPlus> {
     pub fn process(&mut self, reading: &IMUReading) {
-        self.inner.y_p_count += 1;
-        self.inner.acc_y_p_sum += Vector3::from_row_slice(&reading.acc).cast();
-        self.inner.gyro_y_p_sum += Vector3::from_row_slice(&reading.gyro).cast();
+        self.inner.process_y_p(reading);
     }
 
     pub fn next(self) -> Calibrator<YMinus> {
@@ -170,9 +64,7 @@ impl Calibrator<YPlus> {
 
 impl Calibrator<YMinus> {
     pub fn process(&mut self, reading: &IMUReading) {
-        self.inner.y_a_count += 1;
-        self.inner.acc_y_a_sum += Vector3::from_row_slice(&reading.acc).cast();
-        self.inner.gyro_y_a_sum += Vector3::from_row_slice(&reading.gyro).cast();
+        self.inner.process_y_n(reading);
     }
 
     pub fn next(self) -> Calibrator<ZPlus> {
@@ -185,9 +77,7 @@ impl Calibrator<YMinus> {
 
 impl Calibrator<ZPlus> {
     pub fn process(&mut self, reading: &IMUReading) {
-        self.inner.z_p_count += 1;
-        self.inner.acc_z_p_sum += Vector3::from_row_slice(&reading.acc).cast();
-        self.inner.gyro_z_p_sum += Vector3::from_row_slice(&reading.gyro).cast();
+        self.inner.process_z_p(reading);
     }
 
     pub fn next(self) -> Calibrator<ZMinus> {
@@ -200,9 +90,7 @@ impl Calibrator<ZPlus> {
 
 impl Calibrator<ZMinus> {
     pub fn process(&mut self, reading: &IMUReading) {
-        self.inner.z_a_count += 1;
-        self.inner.acc_z_a_sum += Vector3::from_row_slice(&reading.acc).cast();
-        self.inner.gyro_z_a_sum += Vector3::from_row_slice(&reading.gyro).cast();
+        self.inner.process_z_n(reading);
     }
 
     pub fn next(self) -> Calibrator<XRotation> {
@@ -215,13 +103,7 @@ impl Calibrator<ZMinus> {
 
 impl Calibrator<XRotation> {
     pub fn process(&mut self, reading: &IMUReading) {
-        if self.inner.x_rotation_count == 0 {
-            self.inner.x_rotation_start_time_ms = reading.timestamp;
-        }
-        self.inner.x_rotation_end_time_ms = reading.timestamp;
-        self.inner.x_rotation_count += 1;
-        self.inner.acc_x_rotation_sum += Vector3::from_row_slice(&reading.acc).cast();
-        self.inner.gyro_x_rotation_sum += Vector3::from_row_slice(&reading.gyro).cast();
+         self.inner.process_x_rotation(reading);
     }
 
     pub fn next(self) -> Calibrator<YRotation> {
@@ -234,13 +116,7 @@ impl Calibrator<XRotation> {
 
 impl Calibrator<YRotation> {
     pub fn process(&mut self, reading: &IMUReading) {
-        if self.inner.y_rotation_count == 0 {
-            self.inner.y_rotation_start_time_ms = reading.timestamp;
-        }
-        self.inner.y_rotation_end_time_ms = reading.timestamp;
-        self.inner.y_rotation_count += 1;
-        self.inner.acc_y_rotation_sum += Vector3::from_row_slice(&reading.acc).cast();
-        self.inner.gyro_y_rotation_sum += Vector3::from_row_slice(&reading.gyro).cast();
+        self.inner.process_y_rotation(reading);
     }
 
     pub fn next(self) -> Calibrator<ZRotation> {
@@ -253,159 +129,18 @@ impl Calibrator<YRotation> {
 
 impl Calibrator<ZRotation> {
     pub fn process(&mut self, reading: &IMUReading) {
-        if self.inner.z_rotation_count == 0 {
-            self.inner.z_rotation_start_time_ms = reading.timestamp;
-        }
-        self.inner.z_rotation_end_time_ms = reading.timestamp;
-        self.inner.z_rotation_count += 1;
-        self.inner.acc_z_rotation_sum += Vector3::from_row_slice(&reading.acc).cast();
-        self.inner.gyro_z_rotation_sum += Vector3::from_row_slice(&reading.gyro).cast();
+        self.inner.process_z_rotation(reading);
     }
 
-    #[allow(non_snake_case)]
-    pub fn calculate(mut self) -> CalibrationInfo {
-        let mut inner = self.inner;
-        // Compute Acceleration Matrix
-
-        // Calculate means from all static phases and stack them into 3x3 matrices
-        // Note: Each measurement should be a column
-        let U_a_p = Matrix3::from_columns(&[
-            inner.acc_x_p_sum / inner.x_p_count as f64,
-            inner.acc_y_p_sum / inner.y_p_count as f64,
-            inner.acc_z_p_sum / inner.z_p_count as f64,
-        ]);
-
-        let U_a_n = Matrix3::from_columns(&[
-            inner.acc_x_a_sum / inner.x_a_count as f64,
-            inner.acc_y_a_sum / inner.y_a_count as f64,
-            inner.acc_z_a_sum / inner.z_a_count as f64,
-        ]);
-
-        // Eq. 19
-        let U_a_s = U_a_p + U_a_n;
-
-        // Bias Matrix
-        // Eq. 20
-        let B_a = U_a_s / 2.0;
-
-        // Bias Vector
-        let b_a = B_a.diagonal();
-
-        // Compute Scaling and Rotation
-        // No need for bias correction, since it cancels out!
-        // Eq. 21
-        let U_a_d = U_a_p - U_a_n;
-
-        // Calculate Scaling matrix
-        // Eq. 23
-        let k_a_sq =
-            1.0 / (4.0 * inner.gravity * inner.gravity) * (U_a_d * U_a_d.transpose()).diagonal();
-        let K_a = Matrix3::from_diagonal(&k_a_sq.map(sqrt));
-
-        // Calculate Rotation matrix
-        // Eq. 22
-        let R_a = K_a.try_inverse().unwrap() * (U_a_d / (2.0 * inner.gravity));
-
-        // Calculate Gyroscope Matrix
-
-        // Gyro Bias from the static phases of the acc calibration
-        // One static phase would be sufficient, but why not use all of them if you have them.
-        // Note that this calibration ignores any influences due to the earth rotation.
-        let b_g = (inner.gyro_x_p_sum
-            + inner.gyro_y_p_sum
-            + inner.gyro_z_p_sum
-            + inner.gyro_x_a_sum
-            + inner.gyro_y_a_sum
-            + inner.gyro_z_a_sum)
-            / (inner.x_p_count
-                + inner.y_p_count
-                + inner.z_p_count
-                + inner.x_a_count
-                + inner.y_a_count
-                + inner.z_a_count) as f64;
-
-        // Acceleration sensitivity
-        let U_g_p = Matrix3::from_columns(&[
-            inner.gyro_x_p_sum / inner.x_p_count as f64,
-            inner.gyro_y_p_sum / inner.y_p_count as f64,
-            inner.gyro_z_p_sum / inner.z_p_count as f64,
-        ]);
-        let U_g_a = Matrix3::from_columns(&[
-            inner.gyro_x_a_sum / inner.x_a_count as f64,
-            inner.gyro_y_a_sum / inner.y_a_count as f64,
-            inner.gyro_z_a_sum / inner.z_a_count as f64,
-        ]);
-
-        // Eq. 9
-        let K_ga = (U_g_p - U_g_a) / (2.0 * inner.gravity);
-
-        // Gyroscope Scaling and Rotation
-
-        // First apply partial calibration to remove offset and acceleration influence
-        let acc_mat = R_a.try_inverse().unwrap() * K_a.try_inverse().unwrap();
-        let apply_calibration =
-            |acc_sum: &mut Vector3<f64>, gyro_sum: &mut Vector3<f64>, count: u32| {
-                *acc_sum = acc_mat * (*acc_sum - count as f64 * b_a);
-                *gyro_sum = *gyro_sum - K_ga * *acc_sum - count as f64 * b_g;
-            };
-        apply_calibration(
-            &mut inner.acc_x_rotation_sum,
-            &mut inner.gyro_x_rotation_sum,
-            inner.x_rotation_count,
-        );
-        apply_calibration(
-            &mut inner.acc_y_rotation_sum,
-            &mut inner.gyro_y_rotation_sum,
-            inner.y_rotation_count,
-        );
-        apply_calibration(
-            &mut inner.acc_z_rotation_sum,
-            &mut inner.gyro_z_rotation_sum,
-            inner.z_rotation_count,
-        );
-
-        // Integrate gyro readings
-        // Eq. 13/14
-        let W_s = Matrix3::from_columns(&[
-            inner.gyro_x_rotation_sum
-                / (inner.x_rotation_count as f64
-                    / ((inner.x_rotation_end_time_ms - inner.x_rotation_start_time_ms) as f64
-                        / 1000.0)),
-            inner.gyro_y_rotation_sum
-                / (inner.y_rotation_count as f64
-                    / ((inner.y_rotation_end_time_ms - inner.y_rotation_start_time_ms) as f64
-                        / 1000.0)),
-            inner.gyro_z_rotation_sum
-                / (inner.z_rotation_count as f64
-                    / ((inner.z_rotation_end_time_ms - inner.z_rotation_start_time_ms) as f64
-                        / 1000.0)),
-        ]);
-
-        // Eq. 15
-        let expected_angles = inner.expected_angle * Matrix3::identity();
-        let multiplied = W_s * expected_angles.try_inverse().unwrap();
-
-        // Eq. 12
-        let k_g_sq = (multiplied * multiplied.transpose()).diagonal();
-        let K_g = Matrix3::from_diagonal(&k_g_sq.map(sqrt));
-
-        let R_g = K_g.try_inverse().unwrap() * multiplied;
-
-        CalibrationInfo::from_raw(
-            K_a.cast(),
-            R_a.cast(),
-            b_a.cast(),
-            K_g.cast(),
-            R_g.cast(),
-            K_ga.cast(),
-            b_g.cast(),
-        )
+    pub fn calculate(self) -> CalibrationInfo {
+        self.inner.calculate()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use approx::assert_abs_diff_eq;
+    use nalgebra::{Vector3, Matrix3};
     extern crate alloc;
     use std::path::Path;
     use std::vec::Vec;
