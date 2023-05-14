@@ -6,9 +6,9 @@ edition = "2021"
 keywords = ["imu", "sensor", "calibration", "ferraris"]
 
 [features]
-rkyv-no-std  = [ "rkyv/size_32" ]
-rkyv-validation = [ "rkyv/validation" ]
-rkyv = [ "rkyv-no-std", "rkyv-validation", "rkyv/std" ]
+rkyv-no-std  = ["rkyv/size_32"]
+rkyv-validation = ["rkyv/validation"]
+rkyv = ["rkyv-no-std", "rkyv-validation", "rkyv/std"]
 defmt = ["dep:defmt"]
 
 [dependencies]
@@ -17,6 +17,7 @@ rkyv = { version = "0.7", default-features = false, optional = true }
 nalgebra = { version = "0.32.2", default-features = false, features = ["libm"]}
 defmt = { version = "0.3", optional = true }
 libm = "0.2.6"
+simple_moving_average = "0.1.2"
 
 [dev-dependencies]
 approx = "0.5.1"

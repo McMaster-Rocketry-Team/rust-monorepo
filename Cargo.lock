@@ -290,6 +290,7 @@ dependencies = [
  "libm",
  "nalgebra 0.32.2",
  "rkyv",
+ "simple_moving_average",
 ]
 
 [[package]]
@@ -1084,6 +1085,15 @@ name = "simdutf8"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f27f6278552951f1f2b8cf9da965d10969b2efdea95a6ec47987ab46edfe263a"
+
+[[package]]
+name = "simple_moving_average"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cdd19d3808aad2604c824399fd270260d634678b010328c9d96851bb0fb63121"
+dependencies = [
+ "num-traits",
+]
 
 [[package]]
 name = "slab"
