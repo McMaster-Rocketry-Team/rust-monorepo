@@ -20,6 +20,7 @@ use vlfs::{Crc, Flash, VLFS};
 use crate::{
     beacon::{beacon_receiver::beacon_receiver, beacon_sender::beacon_sender},
     common::{
+        console::programs::calibrate::Calibrate,
         device_mode::{read_device_mode, write_device_mode, DeviceMode},
         gps_parser::GPSParser,
     },
@@ -60,16 +61,16 @@ pub async fn init<
     timer: T,
     mut flash: F,
     crc: C,
-    mut _imu: I,
+    mut imu: I,
     _batt_voltmeter: V,
     _batt_ammeter: A,
     _pyro1: P1,
     _pyro2: P2,
     _pyro3: P3,
     _arming_switch: ARM,
-    serial: S,
+    mut serial: S,
     mut usb: U,
-    _buzzer: B,
+    mut buzzer: B,
     _meg: M,
     radio_kind: L,
     _rng: R,
@@ -83,7 +84,7 @@ pub async fn init<
     unwrap!(fs.init().await);
 
     let usb_connected = {
-        let timeout_fut = timer.sleep(500);
+        let timeout_fut = timer.sleep(500.0);
         let usb_wait_connection_fut = usb.wait_connection();
         pin_mut!(timeout_fut);
         pin_mut!(usb_wait_connection_fut);
@@ -99,19 +100,26 @@ pub async fn init<
         }
     };
 
-    let mut serial_console = Console::new(timer, serial, &fs, device_management);
-    let mut usb_console = Console::new(timer, usb, &fs, device_management);
+    // let mut serial_console = Console::new(timer, serial, &fs, device_management);
+    let mut usb_console = Console::new(timer, usb, &fs, device_management, imu, buzzer);
 
     let main_fut = async {
+        // let calibrate = Calibrate::new();
+        // try_or_warn!(
+        //     calibrate
+        //         .start(&mut serial, &mut imu, &mut buzzer, timer, &fs)
+        //         .await
+        // );
+
         if usb_connected {
             info!("USB connected on boot, stopping main");
             loop {
                 status_indicator.set_enable(true).await;
                 error_indicator.set_enable(false).await;
-                timer.sleep(1000).await;
+                timer.sleep(1000.0).await;
                 status_indicator.set_enable(false).await;
                 error_indicator.set_enable(true).await;
-                timer.sleep(1000).await;
+                timer.sleep(1000.0).await;
             }
         }
 
@@ -143,7 +151,7 @@ pub async fn init<
         };
     };
 
-    join3(main_fut, serial_console.run(), usb_console.run()).await;
+    join3(main_fut, async {}, usb_console.run()).await;
 
     defmt::panic!("wtf");
 }

@@ -61,7 +61,7 @@ impl<T: Timer> Serial for DummySerial<T> {
 
     async fn read(&mut self, _buffer: &mut [u8]) -> Result<usize, Self::Error> {
         loop {
-            self.timer.sleep(1000).await;
+            self.timer.sleep(1000.0).await;
         }
     }
 }

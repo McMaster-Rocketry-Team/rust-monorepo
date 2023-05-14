@@ -50,7 +50,7 @@ impl BenchmarkFlash {
 
         let file_id = 10u64;
         let file_type = 0u16;
-        let mut max_64b_write_time_us = 0u64;
+        let mut max_64b_write_time = 0f64;
 
         let write_time = {
             let mut rng = SmallRng::seed_from_u64(
@@ -68,11 +68,11 @@ impl BenchmarkFlash {
             let mut buffer = [0u8; 64];
             for _ in 0..rounds {
                 rng.fill_bytes(&mut buffer);
-                let write_64b_start_time = timer.now_micros();
+                let write_64b_start_time = timer.now_mills();
                 unwrap!(file.extend_from_slice(&buffer).await);
-                let write_64b_end_time = timer.now_micros() - write_64b_start_time;
-                if write_64b_end_time > max_64b_write_time_us {
-                    max_64b_write_time_us = write_64b_end_time;
+                let write_64b_end_time = timer.now_mills() - write_64b_start_time;
+                if write_64b_end_time > max_64b_write_time {
+                    max_64b_write_time = write_64b_end_time;
                 }
             }
             unwrap!(file.close().await);
@@ -109,7 +109,7 @@ impl BenchmarkFlash {
         info!(
             "64 bytes writing time: mean: {}ms, max: {}ms",
             (write_time as f32) / (rounds as f32),
-            (max_64b_write_time_us as f32) / 1000.0
+            max_64b_write_time
         );
 
         info!(

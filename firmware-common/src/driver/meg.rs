@@ -5,7 +5,7 @@ use nalgebra::Vector3;
 use super::timer::Timer;
 
 pub struct MegReading {
-    pub timestamp: u64,    // ms
+    pub timestamp: f64,    // ms
     pub meg: Vector3<f32>, // gauss
 }
 
@@ -48,9 +48,9 @@ impl<T: Timer> Megnetometer for DummyMegnetometer<T> {
     }
 
     async fn read(&mut self) -> Result<MegReading, ()> {
-        self.timer.sleep(1).await;
+        self.timer.sleep(1.0).await;
         Ok(MegReading {
-            timestamp: 0,
+            timestamp: 0.0,
             meg: Vector3::new(0.0, 0.0, 0.0),
         })
     }

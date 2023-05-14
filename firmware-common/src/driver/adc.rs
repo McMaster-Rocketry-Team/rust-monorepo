@@ -20,7 +20,7 @@ impl<T: Timer> ADC for DummyADC<T> {
     type Error = ();
 
     async fn read(&mut self) -> Result<f32, ()> {
-        self.timer.sleep(1).await;
+        self.timer.sleep(1.0).await;
         Ok(0.0)
     }
 }

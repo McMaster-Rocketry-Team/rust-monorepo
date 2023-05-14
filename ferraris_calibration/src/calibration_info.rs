@@ -18,6 +18,90 @@ pub struct CalibrationInfo {
     pub(crate) gyro_mat: Matrix3<f32>,
 }
 
+impl defmt::Format for CalibrationInfo {
+    fn format(&self, fmt: defmt::Formatter) {
+        defmt::write!(fmt, "CalibrationInfo {{\n");
+        defmt::write!(
+            fmt,
+            "    b_a:      [{}, {}, {}],\n",
+            self.b_a.x,
+            self.b_a.y,
+            self.b_a.z
+        );
+        defmt::write!(
+            fmt,
+            "    K_ga:     [{}, {}, {},\n",
+            self.K_ga.m11,
+            self.K_ga.m12,
+            self.K_ga.m13
+        );
+        defmt::write!(
+            fmt,
+            "               {}, {}, {},\n",
+            self.K_ga.m21,
+            self.K_ga.m22,
+            self.K_ga.m23
+        );
+        defmt::write!(
+            fmt,
+            "               {}, {}, {}],\n",
+            self.K_ga.m31,
+            self.K_ga.m32,
+            self.K_ga.m33
+        );
+        defmt::write!(
+            fmt,
+            "    b_g:      [{}, {}, {}],\n",
+            self.b_g.x,
+            self.b_g.y,
+            self.b_g.z
+        );
+        defmt::write!(
+            fmt,
+            "    acc_mat:  [{}, {}, {},\n",
+            self.acc_mat.m11,
+            self.acc_mat.m12,
+            self.acc_mat.m13
+        );
+        defmt::write!(
+            fmt,
+            "               {}, {}, {},\n",
+            self.acc_mat.m21,
+            self.acc_mat.m22,
+            self.acc_mat.m23
+        );
+        defmt::write!(
+            fmt,
+            "               {}, {}, {}],\n",
+            self.acc_mat.m31,
+            self.acc_mat.m32,
+            self.acc_mat.m33
+        );
+        defmt::write!(
+            fmt,
+            "    gyro_mat: [{}, {}, {},\n",
+            self.gyro_mat.m11,
+            self.gyro_mat.m12,
+            self.gyro_mat.m13
+        );
+        defmt::write!(
+            fmt,
+            "               {}, {}, {},\n",
+            self.gyro_mat.m21,
+            self.gyro_mat.m22,
+            self.gyro_mat.m23
+        );
+        defmt::write!(
+            fmt,
+            "               {}, {}, {}],\n",
+            self.gyro_mat.m31,
+            self.gyro_mat.m32,
+            self.gyro_mat.m33
+        );
+        defmt::write!(fmt, "}}");
+    }
+}
+
 impl CalibrationInfo {
     #[allow(non_snake_case)]
     pub fn new(
@@ -45,14 +129,14 @@ impl CalibrationInfo {
         R_g: Matrix3<f32>,
         K_ga: Matrix3<f32>,
         b_g: Vector3<f32>,
-    ) -> Self {
-        Self {
+    ) -> Option<Self> {
+        Some(Self {
             b_a,
             K_ga,
             b_g,
-            acc_mat: R_a.try_inverse().unwrap() * K_a.try_inverse().unwrap(),
-            gyro_mat: R_g.try_inverse().unwrap() * K_g.try_inverse().unwrap(),
-        }
+            acc_mat: R_a.try_inverse()? * K_a.try_inverse()?,
+            gyro_mat: R_g.try_inverse()? * K_g.try_inverse()?,
+        })
     }
 
     #[inline(always)]
@@ -220,7 +304,7 @@ mod tests {
                 0.17122412951449306,
                 -0.36269792946025897,
             ),
-        )
+        ).unwrap()
     }
 
     #[test]

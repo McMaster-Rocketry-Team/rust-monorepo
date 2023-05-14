@@ -2,6 +2,7 @@ use crate::{
     calibrator_inner::CalibratorInner, moving_average::SingleSumSMA, CalibrationInfo, IMUReading,
 };
 
+use defmt::info;
 use nalgebra::Vector3;
 use Axis::*;
 use Direction::*;
@@ -47,13 +48,19 @@ pub struct InteractiveCalibrator {
 
 const minimum_sample_time: f64 = 3000.0;
 
+impl Default for InteractiveCalibrator {
+    fn default() -> Self {
+        Self::new(None, None, None)
+    }
+}
+
 impl InteractiveCalibrator {
     pub fn new(
         still_gyro_threshold: Option<f64>,
         gravity: Option<f64>,
         expected_angle: Option<f64>,
     ) -> Self {
-        let still_gyro_threshold = still_gyro_threshold.unwrap_or(0.7);
+        let still_gyro_threshold = still_gyro_threshold.unwrap_or(0.17);
         Self {
             state: Idle,
             inner: CalibratorInner::new(gravity, expected_angle),
@@ -73,11 +80,13 @@ impl InteractiveCalibrator {
         if delta_time > 100.0 {
             let gyro = Vector3::from_row_slice(&reading.gyro).cast();
             let delta = gyro - Vector3::from_row_slice(&self.last_reading.gyro).cast();
-            let angular_acceleration = delta / delta_time;
+            let angular_acceleration = delta / (delta_time / 1000.0);
+            info!("angular_acceleration: {}", angular_acceleration.as_slice());
             self.last_reading = reading.clone();
 
             self.angular_acceleration_moving_avg
                 .add_sample(angular_acceleration);
+            
             if self.angular_acceleration_moving_avg.is_full()
                 && self
                     .angular_acceleration_moving_avg
@@ -215,15 +224,11 @@ impl InteractiveCalibrator {
             State(Z, Rotation, Start) => {
                 self.inner.process_z_rotation(reading);
                 if self.wait_still(&reading) {
-                    new_state = Some(State(Z, Rotation, End));
-                }
-            }
-            State(Z, Rotation, End) => {
-                if self.wait_still(&reading) {
                     new_state = Some(Complete);
                 }
             }
             Complete => {}
+            _ => panic!("Invalid state"),
         }
 
         if let Some(new_state) = new_state {
@@ -232,7 +237,7 @@ impl InteractiveCalibrator {
         new_state
     }
 
-    pub fn calculate(self) -> CalibrationInfo {
+    pub fn calculate(self) -> Option<CalibrationInfo> {
         self.inner.calculate()
     }
 }

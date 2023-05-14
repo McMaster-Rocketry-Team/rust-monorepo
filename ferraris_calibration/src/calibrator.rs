@@ -132,7 +132,7 @@ impl Calibrator<ZRotation> {
         self.inner.process_z_rotation(reading);
     }
 
-    pub fn calculate(self) -> CalibrationInfo {
+    pub fn calculate(self) -> Option<CalibrationInfo> {
         self.inner.calculate()
     }
 }
@@ -209,7 +209,7 @@ mod tests {
             calibrator.process(imu_reading);
         }
 
-        let cal_info = calibrator.calculate();
+        let cal_info = calibrator.calculate().unwrap();
 
         assert_abs_diff_eq!(
             cal_info.b_a,

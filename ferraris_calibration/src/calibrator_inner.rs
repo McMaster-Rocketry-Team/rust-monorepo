@@ -165,7 +165,7 @@ impl CalibratorInner {
     }
 
     #[allow(non_snake_case)]
-    pub fn calculate(mut self) -> CalibrationInfo {
+    pub fn calculate(mut self) -> Option<CalibrationInfo> {
         // Compute Acceleration Matrix
 
         // Calculate means from all static phases and stack them into 3x3 matrices
@@ -205,7 +205,7 @@ impl CalibratorInner {
 
         // Calculate Rotation matrix
         // Eq. 22
-        let R_a = K_a.try_inverse().unwrap() * (U_a_d / (2.0 * self.gravity));
+        let R_a = K_a.try_inverse()? * (U_a_d / (2.0 * self.gravity));
 
         // Calculate Gyroscope Matrix
 
@@ -243,7 +243,7 @@ impl CalibratorInner {
         // Gyroscope Scaling and Rotation
 
         // First apply partial calibration to remove offset and acceleration influence
-        let acc_mat = R_a.try_inverse().unwrap() * K_a.try_inverse().unwrap();
+        let acc_mat = R_a.try_inverse()? * K_a.try_inverse()?;
         let apply_calibration =
             |acc_sum: &mut Vector3<f64>, gyro_sum: &mut Vector3<f64>, count: u32| {
                 *acc_sum = acc_mat * (*acc_sum - count as f64 * b_a);
@@ -284,13 +284,13 @@ impl CalibratorInner {
 
         // Eq. 15
         let expected_angles = self.expected_angle * Matrix3::identity();
-        let multiplied = W_s * expected_angles.try_inverse().unwrap();
+        let multiplied = W_s * expected_angles.try_inverse()?;
 
         // Eq. 12
         let k_g_sq = (multiplied * multiplied.transpose()).diagonal();
         let K_g = Matrix3::from_diagonal(&k_g_sq.map(sqrt));
 
-        let R_g = K_g.try_inverse().unwrap() * multiplied;
+        let R_g = K_g.try_inverse()? * multiplied;
 
         CalibrationInfo::from_raw(
             K_a.cast(),

@@ -110,7 +110,7 @@ pub async fn beacon_sender(
             info!("{}", log_str.as_str());
 
             // lora.sleep(&mut DelayUsWrapper(timer)).await.unwrap();
-            timer.sleep(1000).await;
+            timer.sleep(1000.0).await;
         }
     };
 
@@ -123,12 +123,12 @@ pub async fn beacon_sender(
 
             for _ in 0..(satellites_count + 1) {
                 status_indicator.set_enable(true).await;
-                timer.sleep(20).await;
+                timer.sleep(20.0).await;
                 status_indicator.set_enable(false).await;
-                timer.sleep(50).await;
+                timer.sleep(50.0).await;
             }
 
-            timer.sleep(1000).await;
+            timer.sleep(1000.0).await;
         }
     };
 
