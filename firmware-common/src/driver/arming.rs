@@ -18,7 +18,7 @@ impl<T: Timer> DummyHardwareArming<T> {
 impl<T: Timer> HardwareArming for DummyHardwareArming<T> {
     async fn wait_arming_change(&mut self) {
         loop {
-            self.timer.sleep(1000).await;
+            self.timer.sleep(1000.0).await;
         }
     }
 

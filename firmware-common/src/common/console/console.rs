@@ -1,5 +1,11 @@
 use crate::{
-    driver::{device_management::DeviceManagement, serial::Serial, timer::Timer},
+    driver::{
+        buzzer::{self, Buzzer},
+        device_management::DeviceManagement,
+        imu::IMU,
+        serial::Serial,
+        timer::Timer,
+    },
     try_or_warn,
 };
 use defmt::info;
@@ -8,12 +14,20 @@ use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 use vlfs::{Crc, Flash, VLFS};
 
 use super::programs::{
-    benchmark_flash::BenchmarkFlash, change_mode::ChangeMode, read_file::ReadFile,
-    read_nyoom::ReadNyoom, write_file::WriteFile,
+    benchmark_flash::BenchmarkFlash, calibrate::Calibrate, change_mode::ChangeMode,
+    read_file::ReadFile, read_nyoom::ReadNyoom, write_file::WriteFile,
 };
 
-pub struct Console<'a, I: Timer, T: Serial, F: Flash, C: Crc, D: DeviceManagement>
-where
+pub struct Console<
+    'a,
+    I: Timer,
+    T: Serial,
+    F: Flash,
+    C: Crc,
+    D: DeviceManagement,
+    IM: IMU,
+    B: Buzzer,
+> where
     F::Error: defmt::Format,
     F: defmt::Format,
 {
@@ -21,19 +35,31 @@ where
     serial: Mutex<CriticalSectionRawMutex, T>,
     vlfs: &'a VLFS<F, C>,
     device_mngmt: D,
+    imu: IM,
+    buzzer: B,
 }
 
-impl<'a, I: Timer, T: Serial, F: Flash, C: Crc, D: DeviceManagement> Console<'a, I, T, F, C, D>
+impl<'a, I: Timer, T: Serial, F: Flash, C: Crc, D: DeviceManagement, IM: IMU, B: Buzzer>
+    Console<'a, I, T, F, C, D, IM, B>
 where
     F::Error: defmt::Format,
     F: defmt::Format,
 {
-    pub fn new(timer: I, serial: T, vlfs: &'a VLFS<F, C>, device_mngmt: D) -> Self {
+    pub fn new(
+        timer: I,
+        serial: T,
+        vlfs: &'a VLFS<F, C>,
+        device_mngmt: D,
+        imu: IM,
+        buzzer: B,
+    ) -> Self {
         Self {
             timer,
             serial: Mutex::new(serial),
             vlfs,
             device_mngmt,
+            imu,
+            buzzer,
         }
     }
 
@@ -43,6 +69,7 @@ where
         let benchmark_flash = BenchmarkFlash::new();
         let change_mode = ChangeMode::new();
         let read_file = ReadFile::new();
+        let calibrate = Calibrate::new();
         let mut serial = self.serial.lock().await;
         let mut command_buffer = [0u8; 8];
 
@@ -70,6 +97,18 @@ where
                 );
             } else if command_id == read_file.id() {
                 try_or_warn!(read_file.start(&mut serial, &self.vlfs).await);
+            } else if command_id == calibrate.id() {
+                try_or_warn!(
+                    calibrate
+                        .start(
+                            &mut serial,
+                            &mut self.imu,
+                            &mut self.buzzer,
+                            self.timer,
+                            &self.vlfs
+                        )
+                        .await
+                );
             } else {
                 info!("Unknown command: {:X}", command_id);
             }

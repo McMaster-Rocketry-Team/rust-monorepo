@@ -19,7 +19,7 @@ impl<T: Timer> DummyPyroChannel<T> {
 impl<T: Timer> PyroChannel for DummyPyroChannel<T> {
     async fn wait_continuity_change(&mut self) {
         loop {
-            self.timer.sleep(1000).await;
+            self.timer.sleep(1000.0).await;
         }
     }
 

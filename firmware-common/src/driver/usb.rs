@@ -44,13 +44,13 @@ impl<T: Timer> USB for DummyUSB<T> {
 
     async fn read(&mut self, _buffer: &mut [u8]) -> Result<usize, Self::Error> {
         loop {
-            self.timer.sleep(1000).await;
+            self.timer.sleep(1000.0).await;
         }
     }
 
     async fn wait_connection(&mut self) {
         loop {
-            self.timer.sleep(1000).await;
+            self.timer.sleep(1000.0).await;
         }
     }
 }

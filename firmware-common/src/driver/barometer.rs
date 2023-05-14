@@ -31,7 +31,7 @@ impl<T: Timer> Barometer for DummyBarometer<T> {
     }
 
     async fn read(&mut self) -> Result<BaroReading, ()> {
-        self.timer.sleep(1).await;
+        self.timer.sleep(1.0).await;
         Ok(BaroReading {
             timestamp: 0,
             temperature: 0.0,
