@@ -1,8 +1,18 @@
-use nalgebra::Vector3;
-
 #[derive(Debug, Clone)]
+#[cfg_attr(
+    feature = "rkyv-no-std",
+    derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)
+)]
+#[cfg_attr(
+    feature = "rkyv-validation",
+    archive(check_bytes)
+)]
+#[cfg_attr(
+    feature = "defmt",
+    derive(defmt::Format)
+)]
 pub struct IMUReading {
-    pub timestamp: u64,    // ms
-    pub acc: Vector3<f32>, // m/s^2
-    pub gyro: Vector3<f32>,
+    pub timestamp: f64,    // ms
+    pub acc: [f32; 3], // m/s^2
+    pub gyro: [f32; 3],
 }

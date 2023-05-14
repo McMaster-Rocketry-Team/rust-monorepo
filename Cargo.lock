@@ -95,6 +95,7 @@ checksum = "13fe11640a23eb24562225322cd3e452b93a3d4091d62fab69c70542fcd17d1f"
 dependencies = [
  "bytecheck_derive",
  "ptr_meta",
+ "simdutf8",
 ]
 
 [[package]]
@@ -286,7 +287,7 @@ dependencies = [
  "csv",
  "defmt",
  "heapless",
- "micromath",
+ "libm",
  "nalgebra 0.32.2",
  "rkyv",
 ]
@@ -301,6 +302,7 @@ dependencies = [
  "embassy-sync",
  "embedded-alloc",
  "embedded-hal-async",
+ "ferraris-calibration",
  "futures",
  "heapless",
  "lora-phy",
@@ -1076,6 +1078,12 @@ dependencies = [
  "num-traits",
  "paste",
 ]
+
+[[package]]
+name = "simdutf8"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f27f6278552951f1f2b8cf9da965d10969b2efdea95a6ec47987ab46edfe263a"
 
 [[package]]
 name = "slab"

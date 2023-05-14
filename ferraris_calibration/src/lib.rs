@@ -1,7 +1,10 @@
 #![cfg_attr(not(test), no_std)]
-#![feature(generic_const_exprs)]
+#![feature(trivial_bounds)]
 
-mod imu_reading;
-mod ferraris_calibration;
-mod signal_regions;
+pub use calibration_info::CalibrationInfo;
+pub use calibrator::{Calibrator, new_calibrator};
+pub use imu_reading::IMUReading;
+
 mod calibration_info;
+mod calibrator;
+mod imu_reading;

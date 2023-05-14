@@ -3,13 +3,15 @@ use nalgebra::{Matrix3, Vector3};
 use crate::imu_reading::IMUReading;
 
 #[allow(non_snake_case)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
+// Couldn't figure out how to get rkyv to work
+// #[cfg_attr(
+//     feature = "rkyv-no-std",
+//     derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)
+// )]
+// #[cfg_attr(feature = "rkyv-validation", archive(check_bytes))]
 pub struct CalibrationInfo {
-    pub(crate) K_a: Matrix3<f32>,
-    pub(crate) R_a: Matrix3<f32>,
     pub(crate) b_a: Vector3<f32>,
-    pub(crate) K_g: Matrix3<f32>,
-    pub(crate) R_g: Matrix3<f32>,
     pub(crate) K_ga: Matrix3<f32>,
     pub(crate) b_g: Vector3<f32>,
     pub(crate) acc_mat: Matrix3<f32>,
@@ -17,7 +19,25 @@ pub struct CalibrationInfo {
 }
 
 impl CalibrationInfo {
+    #[allow(non_snake_case)]
     pub fn new(
+        b_a: Vector3<f32>,
+        K_ga: Matrix3<f32>,
+        b_g: Vector3<f32>,
+        acc_mat: Matrix3<f32>,
+        gyro_mat: Matrix3<f32>,
+    ) -> Self {
+        Self {
+            b_a,
+            K_ga,
+            b_g,
+            acc_mat,
+            gyro_mat,
+        }
+    }
+
+    #[allow(non_snake_case)]
+    pub(crate) fn from_raw(
         K_a: Matrix3<f32>,
         R_a: Matrix3<f32>,
         b_a: Vector3<f32>,
@@ -27,11 +47,7 @@ impl CalibrationInfo {
         b_g: Vector3<f32>,
     ) -> Self {
         Self {
-            K_a,
-            R_a,
             b_a,
-            K_g,
-            R_g,
             K_ga,
             b_g,
             acc_mat: R_a.try_inverse().unwrap() * K_a.try_inverse().unwrap(),
@@ -63,13 +79,70 @@ impl CalibrationInfo {
         self.gyro_mat * self.calibrate_gyr_offsets(gyr, calibrated_acc)
     }
 
-    pub fn apply_calibration(&self, imu_reading: IMUReading) -> IMUReading {
-        let calibrated_acc = self.calibrate_acc(imu_reading.acc);
-        let calibrated_gyr = self.calibrate_gyr(imu_reading.gyro, calibrated_acc);
+    pub fn apply_calibration(&self, imu_reading: &IMUReading) -> IMUReading {
+        let calibrated_acc = self.calibrate_acc(Vector3::from_row_slice(&imu_reading.acc));
+        let calibrated_gyr =
+            self.calibrate_gyr(Vector3::from_row_slice(&imu_reading.gyro), calibrated_acc);
         IMUReading {
             timestamp: imu_reading.timestamp,
-            acc: calibrated_acc,
-            gyro: calibrated_gyr,
+            acc: calibrated_acc.into(),
+            gyro: calibrated_gyr.into(),
+        }
+    }
+
+    // workaround until getting rkyv working
+    // WARNING: this is not endian-safe
+    pub fn serialize(&self, buffer: &mut [u8; 132]) {
+        unsafe {
+            (&mut buffer[0..12]).copy_from_slice(core::slice::from_raw_parts(
+                self.b_a.as_ptr() as *const u8,
+                12,
+            ));
+            (&mut buffer[12..48]).copy_from_slice(core::slice::from_raw_parts(
+                self.K_ga.as_ptr() as *const u8,
+                36,
+            ));
+            (&mut buffer[48..60]).copy_from_slice(core::slice::from_raw_parts(
+                self.b_g.as_ptr() as *const u8,
+                12,
+            ));
+            (&mut buffer[60..96]).copy_from_slice(core::slice::from_raw_parts(
+                self.acc_mat.as_ptr() as *const u8,
+                36,
+            ));
+            (&mut buffer[96..132]).copy_from_slice(core::slice::from_raw_parts(
+                self.gyro_mat.as_ptr() as *const u8,
+                36,
+            ));
+        }
+    }
+
+    // workaround until getting rkyv working
+    // WARNING: this is not endian-safe
+    pub fn deserialize(buffer: [u8; 132]) -> Self {
+        unsafe {
+            Self {
+                b_a: Vector3::from_column_slice(core::slice::from_raw_parts(
+                    buffer.as_ptr() as *const f32,
+                    3,
+                )),
+                K_ga: Matrix3::from_column_slice(core::slice::from_raw_parts(
+                    buffer[12..48].as_ptr() as *const f32,
+                    9,
+                )),
+                b_g: Vector3::from_column_slice(core::slice::from_raw_parts(
+                    buffer[48..60].as_ptr() as *const f32,
+                    3,
+                )),
+                acc_mat: Matrix3::from_column_slice(core::slice::from_raw_parts(
+                    buffer[60..96].as_ptr() as *const f32,
+                    9,
+                )),
+                gyro_mat: Matrix3::from_column_slice(core::slice::from_raw_parts(
+                    buffer[96..132].as_ptr() as *const f32,
+                    9,
+                )),
+            }
         }
     }
 }
@@ -80,9 +153,8 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn apply_calibration() {
-        let cal_info = CalibrationInfo::new(
+    fn create_cal_info() -> CalibrationInfo {
+        CalibrationInfo::from_raw(
             Matrix3::new(
                 0.012852893468065155,
                 0.0,
@@ -148,25 +220,39 @@ mod tests {
                 0.17122412951449306,
                 -0.36269792946025897,
             ),
-        );
+        )
+    }
+
+    #[test]
+    fn apply_calibration() {
+        let cal_info = create_cal_info();
 
         let imu_reading = IMUReading {
-            timestamp: 0,
-            acc: Vector3::new(-0.0009765625, 0.12249755859375, 0.016357421875),
-            gyro: Vector3::new(-0.549618320610687, -5.099236641221374, -1.083969465648855),
+            timestamp: 0.0,
+            acc: [-0.0009765625, 0.12249755859375, 0.016357421875],
+            gyro: [-0.549618320610687, -5.099236641221374, -1.083969465648855],
         };
-        let calibrated = cal_info.apply_calibration(imu_reading);
+        let calibrated = cal_info.apply_calibration(&imu_reading);
 
-        assert_eq!(calibrated.timestamp, 0);
+        assert_eq!(calibrated.timestamp, 0.0);
         assert_abs_diff_eq!(
-            calibrated.acc,
+            Vector3::from_row_slice(&calibrated.acc),
             Vector3::new(0.01484103, 9.86576754, -0.0160403),
             epsilon = 0.0001
         );
         assert_abs_diff_eq!(
-            calibrated.gyro,
+            Vector3::from_row_slice(&calibrated.gyro),
             Vector3::new(0.11598146, -2.59643185, 0.07955285),
             epsilon = 0.0001
         );
+    }
+
+    #[test]
+    fn serialization() {
+        let cal_info = create_cal_info();
+        let mut buffer = [0u8; 132];
+        cal_info.serialize(&mut buffer);
+        let deserialized = CalibrationInfo::deserialize(buffer);
+        assert_eq!(cal_info, deserialized);
     }
 }
