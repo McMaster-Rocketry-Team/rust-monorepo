@@ -30,7 +30,7 @@ static BEACON_SENDER_LOG_FILE_TYPE: u16 = 1;
 #[inline(never)]
 pub async fn beacon_sender(
     timer: impl Timer,
-    fs: &VLFS<impl Flash + defmt::Format, impl Crc>,
+    fs: &VLFS<impl Flash, impl Crc>,
     mut gps_parser: GPSParser<impl GPS>,
     radio_kind: impl RadioKind + 'static,
     mut status_indicator: impl Indicator,

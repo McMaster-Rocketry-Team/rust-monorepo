@@ -1,6 +1,8 @@
 use core::marker::PhantomData;
 
-use crate::{calibration_info::CalibrationInfo, imu_reading::IMUReading, calibrator_inner::CalibratorInner};
+use crate::{
+    calibration_info::CalibrationInfo, calibrator_inner::CalibratorInner, imu_reading::IMUReading,
+};
 
 pub struct XPlus {}
 pub struct XMinus {}
@@ -103,7 +105,7 @@ impl Calibrator<ZMinus> {
 
 impl Calibrator<XRotation> {
     pub fn process(&mut self, reading: &IMUReading) {
-         self.inner.process_x_rotation(reading);
+        self.inner.process_x_rotation(reading);
     }
 
     pub fn next(self) -> Calibrator<YRotation> {
@@ -140,7 +142,7 @@ impl Calibrator<ZRotation> {
 #[cfg(test)]
 mod tests {
     use approx::assert_abs_diff_eq;
-    use nalgebra::{Vector3, Matrix3};
+    use nalgebra::{Matrix3, Vector3};
     extern crate alloc;
     use std::path::Path;
     use std::vec::Vec;

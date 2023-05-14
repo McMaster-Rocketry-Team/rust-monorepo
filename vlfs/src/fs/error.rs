@@ -1,8 +1,6 @@
-use crate::driver::flash::Flash;
-
 #[derive(defmt::Format)]
-pub enum VLFSError<F: Flash> {
-    FlashError(F::Error),
+pub enum VLFSError<FlashError: defmt::Format> {
+    FlashError(FlashError),
     FileAlreadyExists,
     MaxFilesReached,
     FileInUse,
@@ -11,10 +9,4 @@ pub enum VLFSError<F: Flash> {
     WritingQueueFull,
     CorruptedPage { address: u32 },
     FileClosed,
-}
-
-impl<F: Flash> VLFSError<F> {
-    pub fn from_flash(value: F::Error) -> Self {
-        Self::FlashError(value)
-    }
 }

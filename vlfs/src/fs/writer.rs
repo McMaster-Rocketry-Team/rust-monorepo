@@ -13,7 +13,7 @@ where
     pub async fn open_file_for_write(
         &self,
         file_id: u64,
-    ) -> Result<FileWriter<F, C>, VLFSError<F>> {
+    ) -> Result<FileWriter<F, C>, VLFSError<F::Error>> {
         let mut at = self.allocation_table.write().await;
         if let Some(file_entry) = self.find_file_entry_mut(&mut at.allocation_table, file_id) {
             if file_entry.opened {
@@ -37,7 +37,7 @@ where
                     let read_result = flash
                         .read(next_sector_index_address, 8, &mut buffer)
                         .await
-                        .map_err(VLFSError::from_flash)?;
+                        .map_err(VLFSError::FlashError)?;
                     let next_sector_index = find_most_common_u16_out_of_4(read_result).unwrap();
                     if next_sector_index == 0xFFFF {
                         break;
@@ -56,7 +56,7 @@ where
                     flash
                         .read(read_address, PAGE_SIZE, &mut buffer)
                         .await
-                        .map_err(VLFSError::from_flash)?;
+                        .map_err(VLFSError::FlashError)?;
                     if i == PAGES_PER_SECTOR - 1 {
                         // last page
                         (&mut buffer[(5 + PAGE_SIZE - 8)..]).copy_from_u16x4(new_sector_index);
@@ -67,14 +67,14 @@ where
                     flash
                         .write_256b(write_address, &mut buffer)
                         .await
-                        .map_err(VLFSError::from_flash)?;
+                        .map_err(VLFSError::FlashError)?;
                 }
 
                 // erase last sector
                 flash
                     .erase_sector_4kib(current_sector_address)
                     .await
-                    .map_err(VLFSError::from_flash)?;
+                    .map_err(VLFSError::FlashError)?;
 
                 // copy temp sector to last sector
                 for i in 0..PAGES_PER_SECTOR {
@@ -83,13 +83,13 @@ where
                     flash
                         .read(read_address, PAGE_SIZE, &mut buffer)
                         .await
-                        .map_err(VLFSError::from_flash)?;
+                        .map_err(VLFSError::FlashError)?;
 
                     let write_address = (current_sector_address as usize + i * PAGE_SIZE) as u32;
                     flash
                         .write_256b(write_address, &mut buffer)
                         .await
-                        .map_err(VLFSError::from_flash)?;
+                        .map_err(VLFSError::FlashError)?;
                 }
                 self.return_sector(temp_sector_index).await;
 
@@ -151,7 +151,7 @@ where
         &mut self,
         address: u32,
         crc_offset: Option<usize>,
-    ) -> Result<(), VLFSError<F>> {
+    ) -> Result<(), VLFSError<F::Error>> {
         if let Some(crc_offset) = crc_offset {
             let mut crc = self.vlfs.crc.lock().await;
             let crc = crc.calculate(&self.buffer[5..(crc_offset + 5)]);
@@ -163,7 +163,7 @@ where
         flash
             .write_256b(address, &mut self.buffer)
             .await
-            .map_err(VLFSError::<F>::from_flash)?;
+            .map_err(VLFSError::FlashError)?;
 
         self.buffer = [0xFFu8; 5 + 256];
         self.buffer_offset = 5;
@@ -189,7 +189,7 @@ where
             .copy_from_u16x4(next_sector_index);
     }
 
-    pub async fn flush(&mut self) -> Result<(), VLFSError<F>> {
+    pub async fn flush(&mut self) -> Result<(), VLFSError<F::Error>> {
         if self.sector_data_length == 0 {
             return Ok(());
         }
@@ -201,7 +201,7 @@ where
         Ok(())
     }
 
-    async fn _flush(&mut self, next_sector_index: u16) -> Result<(), VLFSError<F>> {
+    async fn _flush(&mut self, next_sector_index: u16) -> Result<(), VLFSError<F::Error>> {
         if self.sector_data_length == 0 {
             self.write_length_and_next_sector_index(next_sector_index);
             let current_sector_address = (self.current_sector_index as usize * SECTOR_SIZE) as u32;
@@ -241,7 +241,7 @@ where
         Ok(())
     }
 
-    pub async fn close(mut self) -> Result<(), VLFSError<F>> {
+    pub async fn close(mut self) -> Result<(), VLFSError<F::Error>> {
         // will cause an empty sector to be saved, when self.sector_data_length == 0,
         // alternative is to read-modify-write the previous sector.
         // shouldn't happen a lot in real world use cases, ignore for now
@@ -264,9 +264,9 @@ where
     F: Flash,
     C: Crc,
 {
-    type Error = VLFSError<F>;
+    type Error = VLFSError<F::Error>;
 
-    async fn extend_from_slice(&mut self, slice: &[u8]) -> Result<(), VLFSError<F>> {
+    async fn extend_from_slice(&mut self, slice: &[u8]) -> Result<(), VLFSError<F::Error>> {
         let mut slice = slice;
         while slice.len() > 0 {
             let buffer_reserved_size = if self.is_last_data_page() {

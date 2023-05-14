@@ -1,15 +1,12 @@
+use crate::common::device_manager::prelude::*;
 use crate::{
+    device_manager_type,
     driver::{
-        buzzer::{self, Buzzer},
-        device_management::DeviceManagement,
-        imu::IMU,
-        serial::Serial,
-        timer::Timer,
+        buzzer::Buzzer, device_management::DeviceManagement, imu::IMU, serial::Serial, timer::Timer,
     },
     try_or_warn,
 };
 use defmt::info;
-use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 
 use vlfs::{Crc, Flash, VLFS};
 
@@ -18,100 +15,43 @@ use super::programs::{
     read_file::ReadFile, read_nyoom::ReadNyoom, write_file::WriteFile,
 };
 
-pub struct Console<
-    'a,
-    I: Timer,
-    T: Serial,
-    F: Flash,
-    C: Crc,
-    D: DeviceManagement,
-    IM: IMU,
-    B: Buzzer,
-> where
-    F::Error: defmt::Format,
-    F: defmt::Format,
-{
-    timer: I,
-    serial: Mutex<CriticalSectionRawMutex, T>,
-    vlfs: &'a VLFS<F, C>,
-    device_mngmt: D,
-    imu: IM,
-    buzzer: B,
-}
+pub async fn run_console(
+    fs: &VLFS<impl Flash, impl Crc>,
+    mut serial: impl Serial,
+    device_manager: device_manager_type!(),
+) -> ! {
+    let write_file = WriteFile::new();
+    let read_nyoom = ReadNyoom::new();
+    let benchmark_flash = BenchmarkFlash::new();
+    let change_mode = ChangeMode::new();
+    let read_file = ReadFile::new();
+    let calibrate = Calibrate::new();
 
-impl<'a, I: Timer, T: Serial, F: Flash, C: Crc, D: DeviceManagement, IM: IMU, B: Buzzer>
-    Console<'a, I, T, F, C, D, IM, B>
-where
-    F::Error: defmt::Format,
-    F: defmt::Format,
-{
-    pub fn new(
-        timer: I,
-        serial: T,
-        vlfs: &'a VLFS<F, C>,
-        device_mngmt: D,
-        imu: IM,
-        buzzer: B,
-    ) -> Self {
-        Self {
-            timer,
-            serial: Mutex::new(serial),
-            vlfs,
-            device_mngmt,
-            imu,
-            buzzer,
-        }
-    }
+    let mut command_buffer = [0u8; 8];
+    loop {
+        if serial.read_all(&mut command_buffer).await.is_err() {
+            continue;
+        };
+        let command_id = u64::from_be_bytes(command_buffer);
 
-    pub async fn run(&mut self) -> ! {
-        let write_file = WriteFile::new();
-        let read_nyoom = ReadNyoom::new();
-        let benchmark_flash = BenchmarkFlash::new();
-        let change_mode = ChangeMode::new();
-        let read_file = ReadFile::new();
-        let calibrate = Calibrate::new();
-        let mut serial = self.serial.lock().await;
-        let mut command_buffer = [0u8; 8];
-
-        loop {
-            if serial.read_all(&mut command_buffer).await.is_err() {
-                continue;
-            };
-            let command_id = u64::from_be_bytes(command_buffer);
-
-            if command_id == write_file.id() {
-                try_or_warn!(write_file.start(&mut serial, &self.vlfs).await);
-            } else if command_id == read_nyoom.id() {
-                try_or_warn!(read_nyoom.start(&mut serial, &self.vlfs).await);
-            } else if command_id == benchmark_flash.id() {
-                try_or_warn!(
-                    benchmark_flash
-                        .start(&mut serial, &self.vlfs, &self.timer)
-                        .await
-                );
-            } else if command_id == change_mode.id() {
-                try_or_warn!(
-                    change_mode
-                        .start(&mut serial, &self.vlfs, self.device_mngmt)
-                        .await
-                );
-            } else if command_id == read_file.id() {
-                try_or_warn!(read_file.start(&mut serial, &self.vlfs).await);
-            } else if command_id == calibrate.id() {
-                try_or_warn!(
-                    calibrate
-                        .start(
-                            &mut serial,
-                            &mut self.imu,
-                            &mut self.buzzer,
-                            self.timer,
-                            &self.vlfs
-                        )
-                        .await
-                );
-            } else {
-                info!("Unknown command: {:X}", command_id);
-            }
+        if command_id == write_file.id() {
+            try_or_warn!(write_file.start(&mut serial, fs).await);
+        } else if command_id == read_nyoom.id() {
+            try_or_warn!(read_nyoom.start(&mut serial, fs).await);
+        } else if command_id == benchmark_flash.id() {
+            try_or_warn!(
+                benchmark_flash
+                    .start(&mut serial, fs, device_manager.timer())
+                    .await
+            );
+        } else if command_id == change_mode.id() {
+            change_mode.start(&mut serial, fs, device_manager).await
+        } else if command_id == read_file.id() {
+            try_or_warn!(read_file.start(&mut serial, fs).await);
+        } else if command_id == calibrate.id() {
+            try_or_warn!(calibrate.start(&mut serial, fs, device_manager,).await);
+        } else {
+            info!("Unknown command: {:X}", command_id);
         }
     }
 }

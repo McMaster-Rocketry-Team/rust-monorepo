@@ -46,7 +46,7 @@ pub struct InteractiveCalibrator {
     state_start_timestamp: f64,
 }
 
-const minimum_sample_time: f64 = 3000.0;
+const MINIMUM_SAMPLE_TIME: f64 = 3000.0;
 
 impl Default for InteractiveCalibrator {
     fn default() -> Self {
@@ -86,7 +86,7 @@ impl InteractiveCalibrator {
 
             self.angular_acceleration_moving_avg
                 .add_sample(angular_acceleration);
-            
+
             if self.angular_acceleration_moving_avg.is_full()
                 && self
                     .angular_acceleration_moving_avg
@@ -119,7 +119,7 @@ impl InteractiveCalibrator {
             State(X, Plus, Start) => {
                 self.inner.process_x_p(reading);
                 if self.inner.x_p_count > 300
-                    && reading.timestamp - self.state_start_timestamp > minimum_sample_time
+                    && reading.timestamp - self.state_start_timestamp > MINIMUM_SAMPLE_TIME
                 {
                     new_state = Some(State(X, Plus, End));
                 }
@@ -133,7 +133,7 @@ impl InteractiveCalibrator {
             State(X, Minus, Start) => {
                 self.inner.process_x_n(reading);
                 if self.inner.x_n_count > 300
-                    && reading.timestamp - self.state_start_timestamp > minimum_sample_time
+                    && reading.timestamp - self.state_start_timestamp > MINIMUM_SAMPLE_TIME
                 {
                     new_state = Some(State(X, Minus, End));
                 }
@@ -147,7 +147,7 @@ impl InteractiveCalibrator {
             State(Y, Plus, Start) => {
                 self.inner.process_y_p(reading);
                 if self.inner.y_p_count > 300
-                    && reading.timestamp - self.state_start_timestamp > minimum_sample_time
+                    && reading.timestamp - self.state_start_timestamp > MINIMUM_SAMPLE_TIME
                 {
                     new_state = Some(State(Y, Plus, End));
                 }
@@ -161,7 +161,7 @@ impl InteractiveCalibrator {
             State(Y, Minus, Start) => {
                 self.inner.process_y_n(reading);
                 if self.inner.y_n_count > 300
-                    && reading.timestamp - self.state_start_timestamp > minimum_sample_time
+                    && reading.timestamp - self.state_start_timestamp > MINIMUM_SAMPLE_TIME
                 {
                     new_state = Some(State(Y, Minus, End));
                 }
@@ -175,7 +175,7 @@ impl InteractiveCalibrator {
             State(Z, Plus, Start) => {
                 self.inner.process_z_p(reading);
                 if self.inner.z_p_count > 300
-                    && reading.timestamp - self.state_start_timestamp > minimum_sample_time
+                    && reading.timestamp - self.state_start_timestamp > MINIMUM_SAMPLE_TIME
                 {
                     new_state = Some(State(Z, Plus, End));
                 }
@@ -189,7 +189,7 @@ impl InteractiveCalibrator {
             State(Z, Minus, Start) => {
                 self.inner.process_z_n(reading);
                 if self.inner.z_n_count > 300
-                    && reading.timestamp - self.state_start_timestamp > minimum_sample_time
+                    && reading.timestamp - self.state_start_timestamp > MINIMUM_SAMPLE_TIME
                 {
                     new_state = Some(State(Z, Minus, End));
                 }

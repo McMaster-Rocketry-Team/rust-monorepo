@@ -17,11 +17,7 @@ impl WriteFile {
         &self,
         serial: &mut T,
         vlfs: &VLFS<F, C>,
-    ) -> Result<(), ()>
-    where
-        F::Error: defmt::Format,
-        F: defmt::Format,
-    {
+    ) -> Result<(), ()> {
         let mut buffer = [0u8; 64];
         unwrap!(serial.read_all(&mut buffer[..(8 + 2 + 4)]).await);
         let file_id = u64::from_be_bytes((&buffer[0..8]).try_into().unwrap());

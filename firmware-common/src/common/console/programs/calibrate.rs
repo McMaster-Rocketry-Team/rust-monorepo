@@ -1,4 +1,4 @@
-use defmt::{info, unwrap};
+use defmt::*;
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
 
 use ferraris_calibration::interactive_calibrator::{
@@ -8,7 +8,12 @@ use ferraris_calibration::interactive_calibrator::{
 use futures::future::join;
 use vlfs::{Crc, Flash, VLFS};
 
-use crate::driver::{buzzer::Buzzer, imu::IMU, serial::Serial, timer::Timer};
+use crate::{
+    claim_devices,
+    common::device_manager::prelude::*,
+    device_manager_type,
+    driver::{buzzer::Buzzer, imu::IMU, serial::Serial, timer::Timer},
+};
 
 pub struct Calibrate {}
 
@@ -21,31 +26,27 @@ impl Calibrate {
         0x5
     }
 
-    pub async fn start<T: Serial, F: Flash, C: Crc, I: IMU, B: Buzzer, TI: Timer>(
+    pub async fn start(
         &self,
-        serial: &mut T,
-        imu: &mut I,
-        buzzer: &mut B,
-        timer: TI,
-        vlfs: &VLFS<F, C>,
-    ) -> Result<(), ()>
-    where
-        F::Error: defmt::Format,
-        F: defmt::Format,
-    {
+        serial: &mut impl Serial,
+        vlfs: &VLFS<impl Flash, impl Crc>,
+        device_manager: device_manager_type!(),
+    ) -> Result<(), ()> {
+        let timer = device_manager.timer();
+        claim_devices!(device_manager, buzzer, imu);
         let state_event = Signal::<CriticalSectionRawMutex, InteractiveCalibratorState>::new();
 
         let sound_fut = async {
             loop {
                 match state_event.wait().await {
-                    WaitingStill => self.waiting_still_sound(buzzer, timer).await,
+                    WaitingStill => self.waiting_still_sound(&mut buzzer, timer).await,
                     State(axis, direction, event) => {
-                        self.axis_sound(axis, buzzer, timer).await;
-                        self.direction_sound(direction, buzzer, timer).await;
-                        self.event_sound(event, buzzer, timer).await;
+                        self.axis_sound(axis, &mut buzzer, timer).await;
+                        self.direction_sound(direction, &mut buzzer, timer).await;
+                        self.event_sound(event, &mut buzzer, timer).await;
                     }
                     Complete => {
-                        self.complete_sound(buzzer, timer).await;
+                        self.complete_sound(&mut buzzer, timer).await;
                         break;
                     }
                     Idle => {}
@@ -73,7 +74,7 @@ impl Calibrate {
         Ok(())
     }
 
-    async fn waiting_still_sound<B: Buzzer, TI: Timer>(&self, buzzer: &mut B, timer: TI) {
+    async fn waiting_still_sound(&self, buzzer: &mut impl Buzzer, timer: impl Timer) {
         for _ in 0..2 {
             buzzer.set_frequency(1000).await;
             buzzer.set_enable(true).await;
@@ -89,7 +90,7 @@ impl Calibrate {
         }
     }
 
-    async fn axis_sound<B: Buzzer, TI: Timer>(&self, axis: Axis, buzzer: &mut B, timer: TI) {
+    async fn axis_sound(&self, axis: Axis, buzzer: &mut impl Buzzer, timer: impl Timer) {
         buzzer.set_frequency(2700).await;
         let beep_count = match axis {
             Axis::X => 1,
@@ -106,11 +107,11 @@ impl Calibrate {
         timer.sleep(250.0).await;
     }
 
-    async fn direction_sound<B: Buzzer, TI: Timer>(
+    async fn direction_sound(
         &self,
         direction: Direction,
-        buzzer: &mut B,
-        timer: TI,
+        buzzer: &mut impl Buzzer,
+        timer: impl Timer,
     ) {
         match direction {
             Direction::Plus => {
@@ -151,7 +152,7 @@ impl Calibrate {
         timer.sleep(400.0).await;
     }
 
-    async fn event_sound<B: Buzzer, TI: Timer>(&self, event: Event, buzzer: &mut B, timer: TI) {
+    async fn event_sound(&self, event: Event, buzzer: &mut impl Buzzer, timer: impl Timer) {
         buzzer.set_frequency(1500).await;
         match event {
             Event::Start => {

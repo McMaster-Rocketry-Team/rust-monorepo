@@ -9,7 +9,10 @@ where
     F: Flash,
     C: Crc,
 {
-    pub async fn open_file_for_read(&self, file_id: u64) -> Result<FileReader<F, C>, VLFSError<F>> {
+    pub async fn open_file_for_read(
+        &self,
+        file_id: u64,
+    ) -> Result<FileReader<F, C>, VLFSError<F::Error>> {
         let mut at = self.allocation_table.write().await;
         if let Some(file_entry) = self.find_file_entry_mut(&mut at.allocation_table, file_id) {
             if file_entry.opened {
@@ -85,7 +88,7 @@ where
         self.sector_read_data_length = 0;
     }
 
-    async fn read_next_page(&mut self) -> Result<VLFSReadStatus, VLFSError<F>> {
+    async fn read_next_page(&mut self) -> Result<VLFSReadStatus, VLFSError<F::Error>> {
         if let Some(current_sector_index) = self.current_sector_index {
             let is_last_page = self.current_page_index == 15;
             let mut flash = self.vlfs.flash.lock().await;
@@ -97,7 +100,7 @@ where
                 let read_result = flash
                     .read(sector_data_length_address, 8, &mut self.page_buffer)
                     .await
-                    .map_err(VLFSError::from_flash)?;
+                    .map_err(VLFSError::FlashError)?;
                 let sector_data_length = find_most_common_u16_out_of_4(read_result);
                 if let Some(sector_data_length) = sector_data_length && sector_data_length <= MAX_DATA_LENGTH_PER_SECTION as u16 {
                     self.sector_data_length = SectorDataLength::Read(sector_data_length);
@@ -121,7 +124,7 @@ where
                     let read_result = flash
                         .read(next_sector_index_address, 8, &mut self.page_buffer)
                         .await
-                        .map_err(VLFSError::from_flash)?;
+                        .map_err(VLFSError::FlashError)?;
 
                     let next_sector_index = find_most_common_u16_out_of_4(read_result).unwrap();
                     self.set_current_sector_index(next_sector_index);
@@ -163,7 +166,7 @@ where
                     &mut self.page_buffer,
                 )
                 .await
-                .map_err(VLFSError::from_flash)?;
+                .map_err(VLFSError::FlashError)?;
             self.sector_read_data_length += read_data_length as u16;
             drop(flash);
 
@@ -221,14 +224,14 @@ where
     F: Flash,
     C: Crc,
 {
-    type Error = VLFSError<F>;
+    type Error = VLFSError<F::Error>;
     type ReadStatus = VLFSReadStatus;
 
     async fn read_slice<'b>(
         &mut self,
         read_buffer: &'b mut [u8],
         length: usize,
-    ) -> Result<(&'b [u8], VLFSReadStatus), VLFSError<F>> {
+    ) -> Result<(&'b [u8], VLFSReadStatus), VLFSError<F::Error>> {
         let mut read_length = 0;
 
         while read_length < length {

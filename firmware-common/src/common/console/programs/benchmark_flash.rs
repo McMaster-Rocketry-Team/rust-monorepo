@@ -25,12 +25,8 @@ impl BenchmarkFlash {
         &self,
         _serial: &mut T,
         vlfs: &VLFS<F, C>,
-        timer: &I,
-    ) -> Result<(), ()>
-    where
-        F::Error: defmt::Format,
-        F: defmt::Format,
-    {
+        timer: I,
+    ) -> Result<(), ()> {
         let rounds = 10000usize;
         let length = rounds * 64;
 

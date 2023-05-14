@@ -110,7 +110,11 @@ where
             .is_some()
     }
 
-    pub async fn create_file(&self, file_id: u64, file_type: u16) -> Result<(), VLFSError<F>> {
+    pub async fn create_file(
+        &self,
+        file_id: u64,
+        file_type: u16,
+    ) -> Result<(), VLFSError<F::Error>> {
         let mut at = self.allocation_table.write().await;
         for file_entry in &at.allocation_table.file_entries {
             if file_entry.file_id == file_id {
@@ -128,7 +132,7 @@ where
         Ok(())
     }
 
-    pub async fn create_file_from_type(&self, file_type: u16) -> Result<u64, VLFSError<F>> {
+    pub async fn create_file_from_type(&self, file_type: u16) -> Result<u64, VLFSError<F::Error>> {
         let mut at = self.allocation_table.write().await;
         let file_id = self.rng.lock(|rng| {
             let mut rng = rng.borrow_mut();
@@ -154,7 +158,7 @@ where
         Ok(file_id)
     }
 
-    pub async fn remove_file(&self, file_id: u64) -> Result<(), VLFSError<F>> {
+    pub async fn remove_file(&self, file_id: u64) -> Result<(), VLFSError<F::Error>> {
         let mut current_sector_index: Option<u16> = None;
         let mut at = self.allocation_table.write().await;
         for i in 0..at.allocation_table.file_entries.len() {
@@ -181,7 +185,7 @@ where
             let read_result = flash
                 .read(address, 8, &mut buffer)
                 .await
-                .map_err(VLFSError::from_flash)?;
+                .map_err(VLFSError::FlashError)?;
             let next_sector_index = find_most_common_u16_out_of_4(read_result).unwrap();
             self.return_sector(sector_index).await;
             current_sector_index = if next_sector_index == 0xFFFF {
@@ -194,7 +198,7 @@ where
         Ok(())
     }
 
-    pub async fn get_file_size(&self, file_id: u64) -> Result<(usize, usize), VLFSError<F>> {
+    pub async fn get_file_size(&self, file_id: u64) -> Result<(usize, usize), VLFSError<F::Error>> {
         trace!("get file size start");
         let at = self.allocation_table.read().await;
         if let Some(file_entry) = self.find_file_entry(&at.allocation_table, file_id) {
@@ -211,7 +215,7 @@ where
                 let read_result = flash
                     .read(address, 16, &mut buffer)
                     .await
-                    .map_err(VLFSError::from_flash)?;
+                    .map_err(VLFSError::FlashError)?;
 
                 let sector_data_size =
                     find_most_common_u16_out_of_4(&read_result[..8]).unwrap() as usize; // TODO handle error

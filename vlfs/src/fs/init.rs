@@ -30,7 +30,7 @@ where
         }
     }
 
-    pub async fn init(&mut self) -> Result<(), VLFSError<F>> {
+    pub async fn init(&mut self) -> Result<(), VLFSError<F::Error>> {
         if self.read_allocation_table().await? {
             let at = self.allocation_table.read().await;
             info!(
@@ -67,7 +67,7 @@ where
         Ok(())
     }
 
-    async fn read_free_sectors(&mut self) -> Result<(), VLFSError<F>> {
+    async fn read_free_sectors(&mut self) -> Result<(), VLFSError<F::Error>> {
         let at = self.allocation_table.read().await;
         for file_entry in &at.allocation_table.file_entries {
             let mut current_sector_index = file_entry.first_sector_index;
@@ -82,7 +82,7 @@ where
                     .get_mut()
                     .read(next_sector_index_address, 8, &mut buffer)
                     .await
-                    .map_err(VLFSError::from_flash)?;
+                    .map_err(VLFSError::FlashError)?;
                 let next_sector_index = find_most_common_u16_out_of_4(&buffer[5..13]).unwrap();
                 trace!("next_sector_index: {}", next_sector_index);
                 current_sector_index = if next_sector_index == 0xFFFF {
@@ -96,7 +96,7 @@ where
         Ok(())
     }
 
-    async fn read_allocation_table(&mut self) -> Result<bool, VLFSError<F>> {
+    async fn read_allocation_table(&mut self) -> Result<bool, VLFSError<F::Error>> {
         let mut found_valid_table = false;
         let mut at = self.allocation_table.write().await;
 
@@ -111,7 +111,7 @@ where
             let read_result = reader
                 .read_slice(&mut read_buffer, 12)
                 .await
-                .map_err(VLFSError::from_flash)?
+                .map_err(VLFSError::FlashError)?
                 .0;
             let version = u32::from_be_bytes((&read_result[0..4]).try_into().unwrap());
             let sequence_number = u32::from_be_bytes((&read_result[4..8]).try_into().unwrap());
@@ -132,7 +132,7 @@ where
                 let read_result = reader
                     .read_slice(&mut read_buffer, 12)
                     .await
-                    .map_err(VLFSError::from_flash)?
+                    .map_err(VLFSError::FlashError)?
                     .0;
                 let file_id = u64::from_be_bytes((&read_result[0..8]).try_into().unwrap());
                 let file_type = u16::from_be_bytes((&read_result[8..10]).try_into().unwrap());
@@ -156,7 +156,7 @@ where
             let expected_crc = reader
                 .read_u32(&mut read_buffer)
                 .await
-                .map_err(VLFSError::from_flash)?
+                .map_err(VLFSError::FlashError)?
                 .0
                 .expect("Read from flash should always return the desired length");
             if actual_crc == expected_crc {
@@ -182,7 +182,7 @@ where
         Ok(found_valid_table)
     }
 
-    pub(super) async fn write_allocation_table(&self) -> Result<(), VLFSError<F>> {
+    pub(super) async fn write_allocation_table(&self) -> Result<(), VLFSError<F::Error>> {
         let mut at = self.allocation_table.write().await;
         at.allocation_table_index = (at.allocation_table_index + 1) % TABLE_COUNT;
         at.allocation_table.sequence_number += 1;
@@ -195,7 +195,7 @@ where
         flash
             .erase_block_32kib(at_address)
             .await
-            .map_err(VLFSError::from_flash)?;
+            .map_err(VLFSError::FlashError)?;
 
         let mut crc = self.crc.lock().await;
         let mut writer = FlashWriter::new(at_address, &mut flash, &mut crc);
@@ -203,35 +203,35 @@ where
         writer
             .extend_from_u32(VLFS_VERSION)
             .await
-            .map_err(VLFSError::from_flash)?;
+            .map_err(VLFSError::FlashError)?;
         writer
             .extend_from_u32(at.allocation_table.sequence_number)
             .await
-            .map_err(VLFSError::from_flash)?;
+            .map_err(VLFSError::FlashError)?;
         writer
             .extend_from_u32(at.allocation_table.file_entries.len() as u32)
             .await
-            .map_err(VLFSError::from_flash)?;
+            .map_err(VLFSError::FlashError)?;
 
         for file in &at.allocation_table.file_entries {
             writer
                 .extend_from_u64(file.file_id)
                 .await
-                .map_err(VLFSError::from_flash)?;
+                .map_err(VLFSError::FlashError)?;
             writer
                 .extend_from_u16(file.file_type)
                 .await
-                .map_err(VLFSError::from_flash)?;
+                .map_err(VLFSError::FlashError)?;
             if let Some(first_sector_index) = file.first_sector_index {
                 writer
                     .extend_from_u16(first_sector_index)
                     .await
-                    .map_err(VLFSError::from_flash)?;
+                    .map_err(VLFSError::FlashError)?;
             } else {
                 writer
                     .extend_from_u16(0xFFFF)
                     .await
-                    .map_err(VLFSError::from_flash)?;
+                    .map_err(VLFSError::FlashError)?;
             }
         }
 
@@ -239,8 +239,8 @@ where
         writer
             .extend_from_u32(writer.get_crc())
             .await
-            .map_err(VLFSError::from_flash)?;
-        writer.flush().await.map_err(VLFSError::from_flash)?;
+            .map_err(VLFSError::FlashError)?;
+        writer.flush().await.map_err(VLFSError::FlashError)?;
 
         Ok(())
     }

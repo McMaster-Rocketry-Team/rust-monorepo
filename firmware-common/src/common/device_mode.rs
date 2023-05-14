@@ -42,7 +42,7 @@ pub async fn read_device_mode(fs: &VLFS<impl Flash, impl Crc>) -> Option<DeviceM
 pub async fn write_device_mode<F: Flash>(
     fs: &VLFS<F, impl Crc>,
     mode: DeviceMode,
-) -> Result<(), VLFSError<F>> {
+) -> Result<(), VLFSError<F::Error>> {
     if fs.exists(DEVICE_MODE_FILE_ID).await {
         fs.remove_file(DEVICE_MODE_FILE_ID).await?;
     }

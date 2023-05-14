@@ -3,28 +3,24 @@
 #![feature(impl_trait_projections)]
 #![feature(let_chains)]
 
-use common::console::console::Console;
+use crate::common::{console::console::run_console, device_manager::prelude::*};
 use defmt::*;
-use driver::{
-    adc::ADC, arming::HardwareArming, barometer::Barometer, buzzer::Buzzer,
-    device_management::DeviceManagement, gps::GPS, imu::IMU, indicator::Indicator,
-    meg::Megnetometer, pyro::PyroChannel, rng::RNG, serial::Serial, timer::Timer, usb::USB,
-};
+use vlfs::VLFS;
+
 use futures::{
     future::{join3, select},
     pin_mut,
 };
-use lora_phy::mod_traits::RadioKind;
-use vlfs::{Crc, Flash, VLFS};
 
 use crate::{
     beacon::{beacon_receiver::beacon_receiver, beacon_sender::beacon_sender},
     common::{
-        console::programs::calibrate::Calibrate,
         device_mode::{read_device_mode, write_device_mode, DeviceMode},
         gps_parser::GPSParser,
     },
 };
+
+pub use common::device_manager::DeviceManager;
 
 mod allocator;
 mod avionics;
@@ -34,54 +30,14 @@ pub mod driver;
 mod gcm;
 mod utils;
 
-pub async fn init<
-    D: DeviceManagement,
-    T: Timer,
-    F: Flash + defmt::Format,
-    C: Crc,
-    I: IMU,
-    V: ADC,
-    A: ADC,
-    P1: PyroChannel,
-    P2: PyroChannel,
-    P3: PyroChannel,
-    ARM: HardwareArming,
-    S: Serial,
-    U: USB,
-    B: Buzzer,
-    M: Megnetometer,
-    L: RadioKind + 'static,
-    R: RNG,
-    IS: Indicator,
-    IE: Indicator,
-    BA: Barometer,
-    G: GPS,
->(
-    device_management: D,
-    timer: T,
-    mut flash: F,
-    crc: C,
-    mut imu: I,
-    _batt_voltmeter: V,
-    _batt_ammeter: A,
-    _pyro1: P1,
-    _pyro2: P2,
-    _pyro3: P3,
-    _arming_switch: ARM,
-    mut serial: S,
-    mut usb: U,
-    mut buzzer: B,
-    _meg: M,
-    radio_kind: L,
-    _rng: R,
-    mut status_indicator: IS,
-    mut error_indicator: IE,
-    _barometer: BA,
-    gps: G,
-) -> ! {
+pub async fn init(device_manager: device_manager_type!()) -> ! {
+    claim_devices!(device_manager, flash, crc);
     flash.reset().await.ok();
     let mut fs = VLFS::new(flash, crc);
     unwrap!(fs.init().await);
+
+    let timer = device_manager.timer();
+    claim_devices!(device_manager, usb);
 
     let usb_connected = {
         let timeout_fut = timer.sleep(500.0);
@@ -100,10 +56,18 @@ pub async fn init<
         }
     };
 
-    // let mut serial_console = Console::new(timer, serial, &fs, device_management);
-    let mut usb_console = Console::new(timer, usb, &fs, device_management, imu, buzzer);
+    claim_devices!(device_manager, serial);
+    let serial_console = run_console(&fs, serial, device_manager);
+    let usb_console = run_console(&fs, usb, device_manager);
 
     let main_fut = async {
+        claim_devices!(
+            device_manager,
+            status_indicator,
+            error_indicator,
+            radio_kind,
+            gps
+        );
         // let calibrate = Calibrate::new();
         // try_or_warn!(
         //     calibrate
@@ -149,9 +113,17 @@ pub async fn init<
             }
             DeviceMode::BeaconReceiver => beacon_receiver(timer, &fs, radio_kind).await,
         };
+
+        return_devices!(
+            device_manager,
+            status_indicator,
+            error_indicator,
+            radio_kind,
+            gps
+        );
     };
 
-    join3(main_fut, async {}, usb_console.run()).await;
+    join3(main_fut, serial_console, usb_console).await;
 
     defmt::panic!("wtf");
 }

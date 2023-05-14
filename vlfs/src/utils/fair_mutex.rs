@@ -2,13 +2,11 @@ use core::cell::{RefCell, UnsafeCell};
 use core::ops::{Deref, DerefMut};
 use core::task::{Poll, Waker};
 
-use core::future::{poll_fn};
-use futures::{
-    future::{join},
-};
+use core::future::poll_fn;
 use defmt::info;
-use embassy_sync::blocking_mutex::raw::{RawMutex, CriticalSectionRawMutex};
+use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, RawMutex};
 use embassy_sync::blocking_mutex::Mutex as BlockingMutex;
+use futures::future::join;
 
 use heapless::Deque;
 
@@ -107,10 +105,10 @@ where
     }
 }
 
-pub async fn fairMutexTest(){
-    let m: FairMutex::<CriticalSectionRawMutex, u32, 10> = FairMutex::new(0);
-    let task1 = async{
-        loop{
+pub async fn fairMutexTest() {
+    let m: FairMutex<CriticalSectionRawMutex, u32, 10> = FairMutex::new(0);
+    let task1 = async {
+        loop {
             info!("Task 1");
             let mut guard = m.lock().await;
             *guard += 1;
@@ -120,7 +118,7 @@ pub async fn fairMutexTest(){
         }
     };
     let task2 = async {
-        loop{
+        loop {
             info!("Task 2");
             let mut guard = m.lock().await;
             *guard += 1;

@@ -12,7 +12,9 @@ where
     F: Flash,
     C: Crc,
 {
-    pub(super) async fn claim_avaliable_sector_and_erase(&self) -> Result<u16, VLFSError<F>> {
+    pub(super) async fn claim_avaliable_sector_and_erase(
+        &self,
+    ) -> Result<u16, VLFSError<F::Error>> {
         let mut sectors_mng = self.sectors_mng.write().await;
 
         if sectors_mng.free_sectors_count == 0 {
@@ -52,7 +54,7 @@ where
                         .await
                         .erase_block_64kib((start_sector_i_unoffseted * SECTOR_SIZE) as u32)
                         .await
-                        .map_err(VLFSError::from_flash)?;
+                        .map_err(VLFSError::FlashError)?;
                     for j in 1..16 {
                         sectors_mng
                             .erase_ahead_sectors
@@ -91,7 +93,7 @@ where
                         .await
                         .erase_block_32kib((start_sector_i_unoffseted * SECTOR_SIZE) as u32)
                         .await
-                        .map_err(VLFSError::from_flash)?;
+                        .map_err(VLFSError::FlashError)?;
                     for j in 1..8 {
                         sectors_mng
                             .erase_ahead_sectors
@@ -118,7 +120,7 @@ where
                         .await
                         .erase_sector_4kib((start_sector_i_unoffseted * SECTOR_SIZE) as u32)
                         .await
-                        .map_err(VLFSError::from_flash)?;
+                        .map_err(VLFSError::FlashError)?;
                     sectors_mng.sector_map.set(start_sector_i as usize, true);
                     sectors_mng.free_sectors_count -= 1;
                     return Ok(start_sector_i_unoffseted as u16);
