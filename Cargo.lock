@@ -323,7 +323,6 @@ dependencies = [
  "nmea",
  "rand",
  "rkyv",
- "tiny-nmea",
  "vlfs",
 ]
 
