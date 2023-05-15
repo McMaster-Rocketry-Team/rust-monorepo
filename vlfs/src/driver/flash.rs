@@ -1,4 +1,5 @@
 use core::ops::{Deref, DerefMut};
+use embassy_sync::{blocking_mutex::raw::RawMutex, mutex::MutexGuard};
 
 /// A Flash driver is represented here
 pub trait Flash {
@@ -143,13 +144,15 @@ pub trait Flash {
     }
 }
 
-impl<T, U> Flash for T
+// `MutexGuard` is a type from the `embassy-sync` crate that represents a held lock on a mutex
+// This implementation of `Flash` is for a flash memory that can be accessed through a mutex
+impl<'a, M, T> Flash for MutexGuard<'a, M, T>
 where
-    U: Flash,
-    T: DerefMut + Deref<Target = U>,
+    M: RawMutex, // M is a type that implements the `RawMutex` trait
+    T: Flash, // T is a type that implements the `Flash` trait. This is the type of the wrapped object
 {
     // `Error` is the error type of the wrapped `T` object
-    type Error = U::Error;
+    type Error = T::Error;
 
     // `size` returns the total size of the flash memory, in bytes
     fn size(&self) -> u32 {

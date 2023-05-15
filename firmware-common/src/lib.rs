@@ -2,6 +2,7 @@
 #![feature(async_fn_in_trait)]
 #![feature(impl_trait_projections)]
 #![feature(let_chains)]
+#![feature(try_blocks)]
 
 use crate::common::{console::console::run_console, device_manager::prelude::*};
 use defmt::*;
@@ -14,10 +15,7 @@ use futures::{
 
 use crate::{
     beacon::{beacon_receiver::beacon_receiver, beacon_sender::beacon_sender},
-    common::{
-        device_mode::{read_device_mode, write_device_mode, DeviceMode},
-        gps_parser::GPSParser,
-    },
+    common::device_mode::{read_device_mode, write_device_mode, DeviceMode},
 };
 
 pub use common::device_manager::DeviceManager;
@@ -30,14 +28,14 @@ pub mod driver;
 mod gcm;
 mod utils;
 
-pub async fn init(device_manager: device_manager_type!()) -> ! {
-    claim_devices!(device_manager, flash, crc);
+pub async fn init(device_manager: device_manager_type!(mut)) -> ! {
+    device_manager.init().await;
+    claim_devices!(device_manager, flash, crc, usb, serial);
     flash.reset().await.ok();
     let mut fs = VLFS::new(flash, crc);
     unwrap!(fs.init().await);
 
-    let timer = device_manager.timer();
-    claim_devices!(device_manager, usb);
+    let timer = device_manager.timer;
 
     let usb_connected = {
         let timeout_fut = timer.sleep(500.0);
@@ -56,27 +54,13 @@ pub async fn init(device_manager: device_manager_type!()) -> ! {
         }
     };
 
-    claim_devices!(device_manager, serial);
     let serial_console = run_console(&fs, serial, device_manager);
     let usb_console = run_console(&fs, usb, device_manager);
 
     let main_fut = async {
-        claim_devices!(
-            device_manager,
-            status_indicator,
-            error_indicator,
-            radio_kind,
-            gps
-        );
-        // let calibrate = Calibrate::new();
-        // try_or_warn!(
-        //     calibrate
-        //         .start(&mut serial, &mut imu, &mut buzzer, timer, &fs)
-        //         .await
-        // );
-
         if usb_connected {
             info!("USB connected on boot, stopping main");
+            claim_devices!(device_manager, status_indicator, error_indicator);
             loop {
                 status_indicator.set_enable(true).await;
                 error_indicator.set_enable(false).await;
@@ -100,30 +84,12 @@ pub async fn init(device_manager: device_manager_type!()) -> ! {
         match device_mode {
             DeviceMode::Avionics => defmt::panic!("Avionics mode not implemented"),
             DeviceMode::GCM => defmt::panic!("GCM mode not implemented"),
-            DeviceMode::BeaconSender => {
-                beacon_sender(
-                    timer,
-                    &fs,
-                    GPSParser::new(gps),
-                    radio_kind,
-                    status_indicator,
-                    error_indicator,
-                )
-                .await
-            }
-            DeviceMode::BeaconReceiver => beacon_receiver(timer, &fs, radio_kind).await,
+            DeviceMode::BeaconSender => beacon_sender(&fs, device_manager, false).await,
+            DeviceMode::BeaconReceiver => beacon_receiver(&fs, device_manager).await,
         };
-
-        return_devices!(
-            device_manager,
-            status_indicator,
-            error_indicator,
-            radio_kind,
-            gps
-        );
     };
 
     join3(main_fut, serial_console, usb_console).await;
 
-    defmt::panic!("wtf");
+    defmt::unreachable!()
 }

@@ -1,57 +1,24 @@
-use core::cell::RefCell;
-
-use lora_phy::mod_traits::RadioKind;
+use defmt::warn;
+use lora_phy::{mod_traits::RadioKind, LoRa};
 use vlfs::{Crc, Flash};
 
 use crate::driver::{
-    adc::ADC, arming::HardwareArming, barometer::Barometer, buzzer::Buzzer,
-    device_management::DeviceManagement, gps::GPS, imu::IMU, indicator::Indicator,
-    meg::Megnetometer, pyro::PyroChannel, rng::RNG, serial::Serial, timer::Timer, usb::USB,
+    adc::ADC,
+    arming::HardwareArming,
+    barometer::Barometer,
+    buzzer::Buzzer,
+    device_management::DeviceManagement,
+    gps::GPS,
+    imu::IMU,
+    indicator::Indicator,
+    meg::Megnetometer,
+    pyro::PyroChannel,
+    rng::RNG,
+    serial::Serial,
+    timer::{DelayUsWrapper, Timer},
+    usb::USB,
 };
-use embassy_sync::blocking_mutex::{raw::CriticalSectionRawMutex, Mutex as BlockingMutex};
-pub struct DeviceManagerInner<
-    D: DeviceManagement,
-    F: Flash,
-    C: Crc,
-    I: IMU,
-    V: ADC,
-    A: ADC,
-    P1: PyroChannel,
-    P2: PyroChannel,
-    P3: PyroChannel,
-    ARM: HardwareArming,
-    S: Serial,
-    U: USB,
-    B: Buzzer,
-    M: Megnetometer,
-    L: RadioKind + 'static,
-    R: RNG,
-    IS: Indicator,
-    IE: Indicator,
-    BA: Barometer,
-    G: GPS,
-> {
-    pub device_management: Option<D>,
-    pub flash: Option<F>,
-    pub crc: Option<C>,
-    pub imu: Option<I>,
-    pub batt_voltmeter: Option<V>,
-    pub batt_ammeter: Option<A>,
-    pub pyro1: Option<P1>,
-    pub pyro2: Option<P2>,
-    pub pyro3: Option<P3>,
-    pub arming_switch: Option<ARM>,
-    pub serial: Option<S>,
-    pub usb: Option<U>,
-    pub buzzer: Option<B>,
-    pub meg: Option<M>,
-    pub radio_kind: Option<L>,
-    pub rng: Option<R>,
-    pub status_indicator: Option<IS>,
-    pub error_indicator: Option<IE>,
-    pub barometer: Option<BA>,
-    pub gps: Option<G>,
-}
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 
 pub struct DeviceManager<
     D: DeviceManagement,
@@ -76,13 +43,28 @@ pub struct DeviceManager<
     BA: Barometer,
     G: GPS,
 > {
-    inner: BlockingMutex<
-        CriticalSectionRawMutex,
-        RefCell<
-            DeviceManagerInner<D, F, C, I, V, A, P1, P2, P3, ARM, S, U, B, M, L, R, IS, IE, BA, G>,
-        >,
-    >,
-    timer: T,
+    pub(crate) device_management: Mutex<CriticalSectionRawMutex, D>,
+    pub(crate) flash: Mutex<CriticalSectionRawMutex, F>,
+    pub(crate) crc: Mutex<CriticalSectionRawMutex, C>,
+    pub(crate) imu: Mutex<CriticalSectionRawMutex, I>,
+    pub(crate) batt_voltmeter: Mutex<CriticalSectionRawMutex, V>,
+    pub(crate) batt_ammeter: Mutex<CriticalSectionRawMutex, A>,
+    pub(crate) pyro1: Mutex<CriticalSectionRawMutex, P1>,
+    pub(crate) pyro2: Mutex<CriticalSectionRawMutex, P2>,
+    pub(crate) pyro3: Mutex<CriticalSectionRawMutex, P3>,
+    pub(crate) arming_switch: Mutex<CriticalSectionRawMutex, ARM>,
+    pub(crate) serial: Mutex<CriticalSectionRawMutex, S>,
+    pub(crate) usb: Mutex<CriticalSectionRawMutex, U>,
+    pub(crate) buzzer: Mutex<CriticalSectionRawMutex, B>,
+    pub(crate) meg: Mutex<CriticalSectionRawMutex, M>,
+    radio_kind: Option<L>,
+    pub(crate) lora: Mutex<CriticalSectionRawMutex, Option<LoRa<L>>>,
+    pub(crate) rng: Mutex<CriticalSectionRawMutex, R>,
+    pub(crate) status_indicator: Mutex<CriticalSectionRawMutex, IS>,
+    pub(crate) error_indicator: Mutex<CriticalSectionRawMutex, IE>,
+    pub(crate) barometer: Mutex<CriticalSectionRawMutex, BA>,
+    pub(crate) gps: Mutex<CriticalSectionRawMutex, G>,
+    pub(crate) timer: T,
 }
 
 impl<
@@ -133,78 +115,52 @@ impl<
         gps: G,
     ) -> Self {
         Self {
-            inner: BlockingMutex::new(RefCell::new(DeviceManagerInner {
-                device_management: Some(device_management),
-                flash: Some(flash),
-                crc: Some(crc),
-                imu: Some(imu),
-                batt_voltmeter: Some(batt_voltmeter),
-                batt_ammeter: Some(batt_ammeter),
-                pyro1: Some(pyro1),
-                pyro2: Some(pyro2),
-                pyro3: Some(pyro3),
-                arming_switch: Some(arming_switch),
-                serial: Some(serial),
-                usb: Some(usb),
-                buzzer: Some(buzzer),
-                meg: Some(meg),
-                radio_kind: Some(radio_kind),
-                rng: Some(rng),
-                status_indicator: Some(status_indicator),
-                error_indicator: Some(error_indicator),
-                barometer: Some(barometer),
-                gps: Some(gps),
-            })),
+            device_management: Mutex::new(device_management),
+            flash: Mutex::new(flash),
+            crc: Mutex::new(crc),
+            imu: Mutex::new(imu),
+            batt_voltmeter: Mutex::new(batt_voltmeter),
+            batt_ammeter: Mutex::new(batt_ammeter),
+            pyro1: Mutex::new(pyro1),
+            pyro2: Mutex::new(pyro2),
+            pyro3: Mutex::new(pyro3),
+            arming_switch: Mutex::new(arming_switch),
+            serial: Mutex::new(serial),
+            usb: Mutex::new(usb),
+            buzzer: Mutex::new(buzzer),
+            meg: Mutex::new(meg),
+            radio_kind: Some(radio_kind),
+            lora: Mutex::new(None),
+            rng: Mutex::new(rng),
+            status_indicator: Mutex::new(status_indicator),
+            error_indicator: Mutex::new(error_indicator),
+            barometer: Mutex::new(barometer),
+            gps: Mutex::new(gps),
             timer,
         }
     }
 
-    pub fn lock<RE>(
-        &self,
-        func: impl FnOnce(
-            &mut DeviceManagerInner<
-                D,
-                F,
-                C,
-                I,
-                V,
-                A,
-                P1,
-                P2,
-                P3,
-                ARM,
-                S,
-                U,
-                B,
-                M,
-                L,
-                R,
-                IS,
-                IE,
-                BA,
-                G,
-            >,
-        ) -> RE,
-    ) -> RE {
-        self.inner.lock(|inner| func(&mut *inner.borrow_mut()))
-    }
-
-    pub fn timer(&self) -> T {
-        self.timer
+    pub async fn init(&mut self) {
+        if let Some(radio_kind) = self.radio_kind.take() {
+            match LoRa::new(radio_kind, false, &mut DelayUsWrapper(self.timer)).await {
+                Ok(lora) => {
+                    self.lora.get_mut().replace(lora);
+                }
+                Err(e) => {
+                    warn!("Failed to initialize LoRa: {:?}", e);
+                }
+            };
+        }
     }
 }
 
 #[macro_export]
 macro_rules! claim_devices {
-    ($device_manager:ident, $device:ident) => {
-        #[allow(unused_mut)]
-        let mut $device = $device_manager.lock(|devices| devices.$device.take().unwrap());
-    };
     ($device_manager:ident, $($device:ident),+) => {
-        #[allow(unused_mut)]
-        let ($(mut $device),+) = $device_manager.lock(|devices| ($(
-            devices.$device.take().unwrap(),
-        )+));
+        $(
+            #[allow(unused_mut)]
+            let mut $device = $device_manager.$device.try_lock().unwrap();
+        )+
     };
 }
 
@@ -222,28 +178,34 @@ macro_rules! try_claim_devices {
     }};
 }
 
-#[macro_export]
-macro_rules! return_devices {
-    ($device_manager:ident, $device:ident) => {
-        $device_manager.lock(|devices| {
-            devices.$device = Some($device);
-            Option::<()>::None
-        });
-    };
-    ($device_manager:ident, $($device:ident),+) => {
-        $device_manager.lock(|devices| {
-            $(
-                devices.$device = Some($device);
-            )+
-            Option::<()>::None
-        });
-    };
-}
-
 // import all the device types using `crate::common::device_manager::prelude::*;`
 #[macro_export]
 macro_rules! device_manager_type{
     () => { &DeviceManager<
+    impl DeviceManagement,
+    impl Timer,
+    impl Flash,
+    impl Crc,
+    impl IMU,
+    impl ADC,
+    impl ADC,
+    impl PyroChannel,
+    impl PyroChannel,
+    impl PyroChannel,
+    impl HardwareArming,
+    impl Serial,
+    impl USB,
+    impl Buzzer,
+    impl Megnetometer,
+    impl RadioKind + 'static,
+    impl RNG,
+    impl Indicator,
+    impl Indicator,
+    impl Barometer,
+    impl GPS,
+>};
+
+(mut) => { &mut DeviceManager<
     impl DeviceManagement,
     impl Timer,
     impl Flash,
@@ -285,5 +247,6 @@ pub mod prelude {
     pub use crate::driver::timer::Timer;
     pub use crate::driver::usb::USB;
     pub use lora_phy::mod_traits::RadioKind;
+    pub use lora_phy::LoRa;
     pub use vlfs::{Crc, Flash};
 }

@@ -1,5 +1,7 @@
 use core::ops::{Deref, DerefMut};
 
+use embassy_sync::{blocking_mutex::raw::RawMutex, mutex::MutexGuard};
+
 pub trait Crc {
     fn reset(&mut self);
 
@@ -38,10 +40,10 @@ pub trait Crc {
     }
 }
 
-impl<T, U> Crc for T
+impl<'a, M, T> Crc for MutexGuard<'a, M, T>
 where
-    U: Crc,
-    T: DerefMut + Deref<Target = U>,
+    M: RawMutex,
+    T: Crc,
 {
     fn reset(&mut self) {
         self.deref_mut().reset();

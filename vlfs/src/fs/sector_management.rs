@@ -128,7 +128,7 @@ where
             }
         }
 
-        defmt::panic!("wtf");
+        defmt::unreachable!()
     }
 
     pub(super) async fn claim_sector(&self, sector_index: u16) {

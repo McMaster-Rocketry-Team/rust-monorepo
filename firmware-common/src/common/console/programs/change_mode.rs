@@ -6,10 +6,7 @@ use crate::{
     common::device_manager::prelude::*,
     common::device_mode::{write_device_mode, DeviceMode},
     device_manager_type,
-    driver::{
-        device_management::DeviceManagement,
-        serial::Serial,
-    },
+    driver::{device_management::DeviceManagement, serial::Serial},
     try_or_warn,
 };
 

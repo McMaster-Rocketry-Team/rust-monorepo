@@ -41,7 +41,7 @@ pub async fn run_console(
         } else if command_id == benchmark_flash.id() {
             try_or_warn!(
                 benchmark_flash
-                    .start(&mut serial, fs, device_manager.timer())
+                    .start(&mut serial, fs, device_manager.timer)
                     .await
             );
         } else if command_id == change_mode.id() {

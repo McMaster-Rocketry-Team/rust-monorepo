@@ -2,22 +2,19 @@ use defmt::{info, warn};
 use lora_phy::{
     mod_params::{Bandwidth, CodingRate, SpreadingFactor},
     mod_traits::RadioKind,
-    LoRa,
 };
 use vlfs::{Crc, Flash, VLFS};
 
 use crate::{
-    allocator::HEAP,
-    beacon::beacon_data::BeaconData,
-    driver::timer::{DelayUsWrapper, Timer},
+    allocator::HEAP, beacon::beacon_data::BeaconData, claim_devices,
+    common::device_manager::prelude::*, device_manager_type, driver::timer::Timer,
 };
 use rkyv::{check_archived_root, Deserialize};
 
 #[inline(never)]
 pub async fn beacon_receiver(
-    timer: impl Timer,
     _fs: &VLFS<impl Flash, impl Crc>,
-    radio_kind: impl RadioKind + 'static,
+    device_manager: device_manager_type!(),
 ) -> ! {
     // Init 1KiB heap
     {
@@ -27,9 +24,8 @@ pub async fn beacon_receiver(
         unsafe { HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE) }
     }
 
-    let mut lora = LoRa::new(radio_kind, false, &mut DelayUsWrapper(timer))
-        .await
-        .unwrap();
+    claim_devices!(device_manager, lora);
+    let lora = lora.as_mut().unwrap();
 
     let modulation_params = lora
         .create_modulation_params(

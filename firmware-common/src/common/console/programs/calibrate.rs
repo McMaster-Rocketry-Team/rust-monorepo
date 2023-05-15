@@ -28,11 +28,11 @@ impl Calibrate {
 
     pub async fn start(
         &self,
-        serial: &mut impl Serial,
-        vlfs: &VLFS<impl Flash, impl Crc>,
+        _serial: &mut impl Serial,
+        _vlfs: &VLFS<impl Flash, impl Crc>,
         device_manager: device_manager_type!(),
     ) -> Result<(), ()> {
-        let timer = device_manager.timer();
+        let timer = device_manager.timer;
         claim_devices!(device_manager, buzzer, imu);
         let state_event = Signal::<CriticalSectionRawMutex, InteractiveCalibratorState>::new();
 
