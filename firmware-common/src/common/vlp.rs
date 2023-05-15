@@ -2,15 +2,15 @@ use heapless::Vec;
 
 #[macro_use]
 mod macros;
-mod framing;
 mod compression;
 mod encryption;
+mod framing;
 mod phy;
 
-use lora_phy::{mod_traits::RadioKind, LoRa, mod_params::{PacketParams, RadioError}};
+use lora_phy::{mod_params::RadioError, mod_traits::RadioKind, LoRa};
 use phy::VLPPhy;
 
-use self::framing::{Flags, Packet, FramingError};
+use self::framing::{Flags, FramingError, Packet};
 use defmt::warn;
 
 /// The current pVriority state of a given VLP party.
@@ -21,7 +21,7 @@ pub enum Priority {
     Driver,
     /// Local party is the listening party. Listening parties may only send packets with ACK=1 (reliable transports only).
     /// If the transport is unreliable, listening parties may not send any packets, unless a packet with HANDOFF=1 is received.
-    Listener
+    Listener,
 }
 
 #[derive(Copy, Clone, Debug, Default)]
@@ -33,7 +33,7 @@ pub struct SocketParams {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ConnectionState {
-    /// Local party is disconnected. 
+    /// Local party is disconnected.
     Disconnected,
     /// Local party is in the process of establishing a connection, with the given priority
     Establishing,
@@ -64,8 +64,7 @@ impl From<FramingError> for VLPError {
     }
 }
 
-
-pub struct VLPSocket<R: RadioKind+'static> {
+pub struct VLPSocket<R: RadioKind + 'static> {
     //TODO: Encryption, Compression
     phy: VLPPhy<R>,
     state: ConnectionState,
@@ -74,7 +73,7 @@ pub struct VLPSocket<R: RadioKind+'static> {
     next_seqnum: u16,
 }
 
-impl<R: RadioKind+'static> VLPSocket<R> {
+impl<R: RadioKind + 'static> VLPSocket<R> {
     pub async fn establish(phy: LoRa<R>, params: SocketParams) -> VLPSocket<R> {
         let phy = VLPPhy::new(phy);
         let mut _self = VLPSocket {
@@ -82,16 +81,15 @@ impl<R: RadioKind+'static> VLPSocket<R> {
             state: ConnectionState::Establishing,
             prio: Priority::Driver,
             params,
-            next_seqnum: 0
+            next_seqnum: 0,
         };
 
         let estab = Packet {
             flags: Flags::establish_with_params(&_self.params),
             seqnum: _self.next_seqnum,
-            payload: None
+            payload: None,
         };
         _self.next_seqnum += 1;
-
 
         if _self.params.reliability {
             let _ = _self.reliable_tx(&estab).await;
@@ -111,7 +109,7 @@ impl<R: RadioKind+'static> VLPSocket<R> {
             state: ConnectionState::Disconnected,
             prio: Priority::Listener,
             params: SocketParams::default(),
-            next_seqnum: 1
+            next_seqnum: 1,
         };
 
         loop {
@@ -132,7 +130,7 @@ impl<R: RadioKind+'static> VLPSocket<R> {
             let ack = Packet {
                 flags: Flags::ACK,
                 seqnum: _self.next_seqnum,
-                payload: None
+                payload: None,
             };
             _self.phy.tx(&ack.serialize()[..]).await;
             _self.next_seqnum = _self.next_seqnum.wrapping_add(1);
@@ -142,7 +140,10 @@ impl<R: RadioKind+'static> VLPSocket<R> {
         Ok(_self)
     }
 
-    pub async fn transmit(&mut self, payload: Vec<u8, 256>) -> Result<Option<Vec<u8, 256>>, VLPError> {
+    pub async fn transmit(
+        &mut self,
+        payload: Vec<u8, 256>,
+    ) -> Result<Option<Vec<u8, 256>>, VLPError> {
         if self.prio == Priority::Listener {
             return Err(VLPError::IllegalPriority(self.prio));
         }
@@ -163,13 +164,13 @@ impl<R: RadioKind+'static> VLPSocket<R> {
                     let ack = Packet {
                         flags: Flags::ACK,
                         seqnum: self.next_seqnum,
-                        payload: None
+                        payload: None,
                     };
                     self.phy.tx(&ack.serialize()[..]).await;
                     self.next_seqnum = self.next_seqnum.wrapping_add(1);
                     return Ok(packet.payload);
                 } else {
-                    return Ok(None)
+                    return Ok(None);
                 }
             }
         } else {
@@ -181,13 +182,13 @@ impl<R: RadioKind+'static> VLPSocket<R> {
 
     pub async fn handoff(&mut self) -> Result<(), VLPError> {
         if self.prio == Priority::Listener {
-            return Err(VLPError::IllegalPriority(self.prio))
+            return Err(VLPError::IllegalPriority(self.prio));
         }
 
         let packet = Packet {
             flags: Flags::HANDOFF,
             seqnum: self.next_seqnum,
-            payload: None
+            payload: None,
         };
         self.next_seqnum = self.next_seqnum.wrapping_add(1);
 
@@ -201,21 +202,25 @@ impl<R: RadioKind+'static> VLPSocket<R> {
             return Err(VLPError::IllegalPriority(self.prio));
         }
 
-        
         let packet = Packet::deserialize(self.phy.rx().await?)?;
-        if self.params.reliability && (packet.seqnum == self.next_seqnum || packet.seqnum == self.next_seqnum - 2) {
+        if self.params.reliability
+            && (packet.seqnum == self.next_seqnum || packet.seqnum == self.next_seqnum - 2)
+        {
             let ack = Packet {
                 flags: Flags::ACK,
-                seqnum: self.next_seqnum+1,
-                payload: None
+                seqnum: self.next_seqnum + 1,
+                payload: None,
             };
             self.phy.tx(&ack.serialize()[..]).await;
             self.next_seqnum = self.next_seqnum.wrapping_add(2);
         } else if self.params.reliability && packet.seqnum != self.next_seqnum {
             return Err(VLPError::InvalidSeqnum);
         } else if !self.params.reliability && packet.seqnum > self.next_seqnum {
-            warn!("VLP: {} packet(s) lost in flight.", packet.seqnum - self.next_seqnum);
-            self.next_seqnum = packet.seqnum+1; // resynchronize
+            warn!(
+                "VLP: {} packet(s) lost in flight.",
+                packet.seqnum - self.next_seqnum
+            );
+            self.next_seqnum = packet.seqnum + 1; // resynchronize
         }
 
         if packet.flags.contains(Flags::PSH) {
@@ -245,7 +250,7 @@ impl<R: RadioKind+'static> VLPSocket<R> {
                         Err(_) => self.phy.tx(&packet[..]).await,
                     }
                 }
-                Err(e) => {
+                Err(_e) => {
                     self.phy.tx(&packet[..]).await;
                 }
             }

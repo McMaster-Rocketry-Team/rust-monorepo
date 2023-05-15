@@ -7,7 +7,6 @@ use crate::driver::{
     arming::HardwareArming,
     barometer::Barometer,
     buzzer::Buzzer,
-    sys_reset::SysReset,
     gps::GPS,
     imu::IMU,
     indicator::Indicator,
@@ -15,6 +14,7 @@ use crate::driver::{
     pyro::PyroChannel,
     rng::RNG,
     serial::Serial,
+    sys_reset::SysReset,
     timer::{DelayUsWrapper, Timer},
     usb::USB,
 };
@@ -237,7 +237,6 @@ pub mod prelude {
     pub use crate::driver::arming::HardwareArming;
     pub use crate::driver::barometer::Barometer;
     pub use crate::driver::buzzer::Buzzer;
-    pub use crate::driver::sys_reset::SysReset;
     pub use crate::driver::gps::GPS;
     pub use crate::driver::imu::IMU;
     pub use crate::driver::indicator::Indicator;
@@ -245,6 +244,7 @@ pub mod prelude {
     pub use crate::driver::pyro::PyroChannel;
     pub use crate::driver::rng::RNG;
     pub use crate::driver::serial::Serial;
+    pub use crate::driver::sys_reset::SysReset;
     pub use crate::driver::timer::Timer;
     pub use crate::driver::usb::USB;
     pub use lora_phy::mod_traits::RadioKind;

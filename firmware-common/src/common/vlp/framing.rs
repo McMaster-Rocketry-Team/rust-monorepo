@@ -1,6 +1,6 @@
+use super::*;
 use bitflags::bitflags;
 use heapless::Vec;
-use super::*;
 
 bitflags! {
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -84,5 +84,5 @@ impl Packet {
 pub enum FramingError {
     SocketDisconnected,
     StateError(ConnectionState),
-    MalformedPacket(Vec<u8, 256>)
+    MalformedPacket(Vec<u8, 256>),
 }

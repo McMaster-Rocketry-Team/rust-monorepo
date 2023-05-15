@@ -1,9 +1,7 @@
 use crate::common::device_manager::prelude::*;
 use crate::{
     device_manager_type,
-    driver::{
-        buzzer::Buzzer, sys_reset::SysReset, imu::IMU, serial::Serial, timer::Timer,
-    },
+    driver::{buzzer::Buzzer, imu::IMU, serial::Serial, sys_reset::SysReset, timer::Timer},
     try_or_warn,
 };
 use defmt::info;
