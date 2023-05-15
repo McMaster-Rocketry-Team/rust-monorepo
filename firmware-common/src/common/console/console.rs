@@ -2,7 +2,7 @@ use crate::common::device_manager::prelude::*;
 use crate::{
     device_manager_type,
     driver::{
-        buzzer::Buzzer, device_management::DeviceManagement, imu::IMU, serial::Serial, timer::Timer,
+        buzzer::Buzzer, sys_reset::SysReset, imu::IMU, serial::Serial, timer::Timer,
     },
     try_or_warn,
 };

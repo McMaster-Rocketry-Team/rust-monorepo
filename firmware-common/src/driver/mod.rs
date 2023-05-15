@@ -2,7 +2,7 @@ pub mod adc;
 pub mod arming;
 pub mod barometer;
 pub mod buzzer;
-pub mod device_management;
+pub mod sys_reset;
 pub mod gps;
 pub mod imu;
 pub mod indicator;

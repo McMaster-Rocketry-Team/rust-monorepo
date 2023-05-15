@@ -7,7 +7,7 @@ use crate::driver::{
     arming::HardwareArming,
     barometer::Barometer,
     buzzer::Buzzer,
-    device_management::DeviceManagement,
+    sys_reset::SysReset,
     gps::GPS,
     imu::IMU,
     indicator::Indicator,
@@ -20,8 +20,9 @@ use crate::driver::{
 };
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 
+#[allow(dead_code)]
 pub struct DeviceManager<
-    D: DeviceManagement,
+    D: SysReset,
     T: Timer,
     F: Flash,
     C: Crc,
@@ -68,7 +69,7 @@ pub struct DeviceManager<
 }
 
 impl<
-        D: DeviceManagement,
+        D: SysReset,
         T: Timer,
         F: Flash,
         C: Crc,
@@ -182,7 +183,7 @@ macro_rules! try_claim_devices {
 #[macro_export]
 macro_rules! device_manager_type{
     () => { &DeviceManager<
-    impl DeviceManagement,
+    impl SysReset,
     impl Timer,
     impl Flash,
     impl Crc,
@@ -206,7 +207,7 @@ macro_rules! device_manager_type{
 >};
 
 (mut) => { &mut DeviceManager<
-    impl DeviceManagement,
+    impl SysReset,
     impl Timer,
     impl Flash,
     impl Crc,
@@ -236,7 +237,7 @@ pub mod prelude {
     pub use crate::driver::arming::HardwareArming;
     pub use crate::driver::barometer::Barometer;
     pub use crate::driver::buzzer::Buzzer;
-    pub use crate::driver::device_management::DeviceManagement;
+    pub use crate::driver::sys_reset::SysReset;
     pub use crate::driver::gps::GPS;
     pub use crate::driver::imu::IMU;
     pub use crate::driver::indicator::Indicator;
