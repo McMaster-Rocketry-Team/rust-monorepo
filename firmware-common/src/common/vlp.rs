@@ -7,13 +7,13 @@ mod encryption;
 mod framing;
 mod phy;
 
-use lora_phy::{mod_params::RadioError, mod_traits::RadioKind, LoRa};
+use lora_phy::mod_params::RadioError;
 use phy::VLPPhy;
 
 use self::framing::{Flags, FramingError, Packet};
 use defmt::warn;
 
-const MAX_PAYLOAD_LENGTH: usize = 222;
+pub const MAX_PAYLOAD_LENGTH: usize = 222;
 
 /// The current pVriority state of a given VLP party.
 /// As LoRa is half duplex, conflicts are avoided through coarse-grain timeslicing through the priority mechanism
@@ -143,8 +143,8 @@ impl<P: VLPPhy> VLPSocket<P> {
 
     pub async fn transmit(
         &mut self,
-        payload: Vec<u8, 222>,
-    ) -> Result<Option<Vec<u8, 222>>, VLPError> {
+        payload: Vec<u8, MAX_PAYLOAD_LENGTH>,
+    ) -> Result<Option<Vec<u8, MAX_PAYLOAD_LENGTH>>, VLPError> {
         if self.prio == Priority::Listener {
             return Err(VLPError::IllegalPriority(self.prio));
         }
@@ -159,7 +159,7 @@ impl<P: VLPPhy> VLPSocket<P> {
         if self.params.reliability {
             loop {
                 let packet = self.reliable_tx(&packet).await;
-                //TODO: Is this a good way to handle PSH|ACK from the passive party?
+                // TODO: Is this a good way to handle PSH|ACK from the passive party?
                 // They'll know that we recv'd their packet if there's no re-tx of the packet they're ACKing
                 if packet.flags.contains(Flags::PSH) {
                     let ack = Packet {
@@ -198,7 +198,7 @@ impl<P: VLPPhy> VLPSocket<P> {
         Ok(())
     }
 
-    pub async fn receive(&mut self) -> Result<Option<Vec<u8, 222>>, VLPError> {
+    pub async fn receive(&mut self) -> Result<Option<Vec<u8, MAX_PAYLOAD_LENGTH>>, VLPError> {
         if self.prio == Priority::Driver {
             return Err(VLPError::IllegalPriority(self.prio));
         }
@@ -277,8 +277,8 @@ mod tests {
     use super::*;
 
     struct MockPhy {
-        channel_a: Channel<NoopRawMutex, Vec<u8, 222>, 1>,
-        channel_b: Channel<NoopRawMutex, Vec<u8, 222>, 1>,
+        channel_a: Channel<NoopRawMutex, Vec<u8, MAX_PAYLOAD_LENGTH>, 1>,
+        channel_b: Channel<NoopRawMutex, Vec<u8, MAX_PAYLOAD_LENGTH>, 1>,
     }
 
     impl MockPhy {
@@ -307,8 +307,8 @@ mod tests {
 
     struct MockPhyParticipant<'a> {
         is_a: bool,
-        sender: Sender<'a, NoopRawMutex, Vec<u8, 222>, 1>,
-        receiver: Receiver<'a, NoopRawMutex, Vec<u8, 222>, 1>,
+        sender: Sender<'a, NoopRawMutex, Vec<u8, MAX_PAYLOAD_LENGTH>, 1>,
+        receiver: Receiver<'a, NoopRawMutex, Vec<u8, MAX_PAYLOAD_LENGTH>, 1>,
     }
 
     impl<'a> VLPPhy for MockPhyParticipant<'a> {
@@ -321,11 +321,14 @@ mod tests {
             self.sender.send(Vec::from_slice(payload).unwrap()).await;
         }
 
-        async fn rx(&mut self) -> Result<Vec<u8, 222>, RadioError> {
+        async fn rx(&mut self) -> Result<Vec<u8, MAX_PAYLOAD_LENGTH>, RadioError> {
             Ok(self.receiver.recv().await)
         }
 
-        async fn rx_with_timeout(&mut self, _timeout_ms: u32) -> Result<Vec<u8, 222>, RadioError> {
+        async fn rx_with_timeout(
+            &mut self,
+            _timeout_ms: u32,
+        ) -> Result<Vec<u8, MAX_PAYLOAD_LENGTH>, RadioError> {
             self.rx().await
         }
     }
@@ -333,10 +336,10 @@ mod tests {
     #[futures_test::test]
     async fn establish() {
         let mock_phy = MockPhy::new();
-        let (mut part_a, mut part_b) = mock_phy.get_participant();
+        let (part_a, part_b) = mock_phy.get_participant();
 
         let establish = async {
-            let mut socket = VLPSocket::establish(
+            let mut _socket = VLPSocket::establish(
                 part_a,
                 SocketParams {
                     encryption: false,
@@ -349,14 +352,14 @@ mod tests {
         };
 
         let await_establish = async {
-            let mut socket = VLPSocket::await_establish(part_b).await.unwrap();
+            let mut _socket = VLPSocket::await_establish(part_b).await.unwrap();
             println!("await_establish success!");
         };
 
         let join_fut = join(establish, await_establish);
         pin_mut!(join_fut);
         if let Either::Left(_) = select(Delay::new(Duration::from_millis(100)), join_fut).await {
-            panic!()
+            panic!("timeout")
         }
     }
 }

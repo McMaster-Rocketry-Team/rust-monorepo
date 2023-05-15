@@ -5,10 +5,15 @@ use lora_phy::{
     LoRa,
 };
 
+use super::MAX_PAYLOAD_LENGTH;
+
 pub trait VLPPhy {
     async fn tx(&mut self, payload: &[u8]);
-    async fn rx(&mut self) -> Result<Vec<u8, 222>, RadioError>;
-    async fn rx_with_timeout(&mut self, timeout_ms: u32) -> Result<Vec<u8, 222>, RadioError>;
+    async fn rx(&mut self) -> Result<Vec<u8, MAX_PAYLOAD_LENGTH>, RadioError>;
+    async fn rx_with_timeout(
+        &mut self,
+        timeout_ms: u32,
+    ) -> Result<Vec<u8, MAX_PAYLOAD_LENGTH>, RadioError>;
 }
 
 pub struct PhysicalVLPPhy<R: RadioKind + 'static> {
@@ -49,13 +54,13 @@ impl<R: RadioKind + 'static> VLPPhy for PhysicalVLPPhy<R> {
             .unwrap();
     }
 
-    async fn rx(&mut self) -> Result<Vec<u8, 222>, RadioError> {
+    async fn rx(&mut self) -> Result<Vec<u8, MAX_PAYLOAD_LENGTH>, RadioError> {
         let modulation_params = self.create_modulation_params();
         let rx_params =
             self.phy
                 .create_rx_packet_params(8, false, 255, true, false, &modulation_params)?;
 
-        let mut buf = Vec::<u8, 222>::new();
+        let mut buf = Vec::<u8, MAX_PAYLOAD_LENGTH>::new();
         self.phy
             .prepare_for_rx(
                 &modulation_params,
@@ -73,7 +78,10 @@ impl<R: RadioKind + 'static> VLPPhy for PhysicalVLPPhy<R> {
         }
     }
 
-    async fn rx_with_timeout(&mut self, timeout_ms: u32) -> Result<Vec<u8, 222>, RadioError> {
+    async fn rx_with_timeout(
+        &mut self,
+        timeout_ms: u32,
+    ) -> Result<Vec<u8, MAX_PAYLOAD_LENGTH>, RadioError> {
         let modulation_params = self.create_modulation_params();
 
         let rx_params = self
@@ -81,7 +89,7 @@ impl<R: RadioKind + 'static> VLPPhy for PhysicalVLPPhy<R> {
             .create_rx_packet_params(8, false, 255, true, false, &modulation_params)
             .unwrap();
 
-        let mut buf = Vec::<u8, 222>::new();
+        let mut buf = Vec::<u8, MAX_PAYLOAD_LENGTH>::new();
         self.phy
             .prepare_for_rx(
                 &modulation_params,
