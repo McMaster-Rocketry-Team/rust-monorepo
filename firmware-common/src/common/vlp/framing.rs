@@ -36,11 +36,11 @@ impl Flags {
 pub struct Packet {
     pub flags: Flags,
     pub seqnum: u16,
-    pub payload: Option<Vec<u8, 256>>,
+    pub payload: Option<Vec<u8, 222>>,
 }
 
 impl Packet {
-    pub fn serialize(&self) -> Vec<u8, 256> {
+    pub fn serialize(&self) -> Vec<u8, 222> {
         let mut buf = packet![self.flags.bits()];
         buf.push((self.seqnum >> 8) as u8);
         buf.push((self.seqnum & 0xff) as u8);
@@ -51,7 +51,7 @@ impl Packet {
         buf
     }
 
-    pub fn deserialize(mut packet: Vec<u8, 256>) -> Result<Packet, FramingError> {
+    pub fn deserialize(mut packet: Vec<u8, 222>) -> Result<Packet, FramingError> {
         if packet.len() < 3 {
             return Err(FramingError::MalformedPacket(packet));
         }
@@ -80,9 +80,9 @@ impl Packet {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, defmt::Format)]
 pub enum FramingError {
     SocketDisconnected,
     StateError(ConnectionState),
-    MalformedPacket(Vec<u8, 256>),
+    MalformedPacket(#[defmt(Debug2Format)] Vec<u8, 222>),
 }

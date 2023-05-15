@@ -59,7 +59,7 @@ pub async fn beacon_sender(
     let beacon_fut = async {
         let mut gps_parser = GPSParser::new(gps);
         loop {
-            while let Some(sentence) = gps_parser.update_one() {
+            while let Some((sentence,_)) = gps_parser.update_one() {
                 let mut log_str = String::<128>::new();
                 core::write!(
                     &mut log_str,

@@ -13,9 +13,11 @@ use phy::VLPPhy;
 use self::framing::{Flags, FramingError, Packet};
 use defmt::warn;
 
+const MAX_PAYLOAD_LENGTH: usize = 222;
+
 /// The current pVriority state of a given VLP party.
 /// As LoRa is half duplex, conflicts are avoided through coarse-grain timeslicing through the priority mechanism
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, defmt::Format)]
 pub enum Priority {
     /// Local party is actively driving the socket. A driving party may send any category of packet they desire.
     Driver,
@@ -24,14 +26,14 @@ pub enum Priority {
     Listener,
 }
 
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Copy, Clone, Debug, Default, defmt::Format)]
 pub struct SocketParams {
     encryption: bool,
     compression: bool,
     reliability: bool,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, defmt::Format)]
 pub enum ConnectionState {
     /// Local party is disconnected.
     Disconnected,
@@ -45,6 +47,7 @@ pub enum ConnectionState {
     AwaitingAck,
 }
 
+#[derive(defmt::Format, Debug)]
 pub enum VLPError {
     IllegalPriority(Priority),
     Phy(RadioError),
@@ -140,8 +143,8 @@ impl<P: VLPPhy> VLPSocket<P> {
 
     pub async fn transmit(
         &mut self,
-        payload: Vec<u8, 256>,
-    ) -> Result<Option<Vec<u8, 256>>, VLPError> {
+        payload: Vec<u8, 222>,
+    ) -> Result<Option<Vec<u8, 222>>, VLPError> {
         if self.prio == Priority::Listener {
             return Err(VLPError::IllegalPriority(self.prio));
         }
@@ -195,7 +198,7 @@ impl<P: VLPPhy> VLPSocket<P> {
         Ok(())
     }
 
-    pub async fn receive(&mut self) -> Result<Option<Vec<u8, 256>>, VLPError> {
+    pub async fn receive(&mut self) -> Result<Option<Vec<u8, 222>>, VLPError> {
         if self.prio == Priority::Driver {
             return Err(VLPError::IllegalPriority(self.prio));
         }
@@ -252,6 +255,108 @@ impl<P: VLPPhy> VLPSocket<P> {
                     self.phy.tx(&packet[..]).await;
                 }
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    extern crate alloc;
+
+    use core::time::Duration;
+    use embassy_sync::{
+        blocking_mutex::raw::NoopRawMutex,
+        channel::{Channel, Receiver, Sender},
+    };
+    use futures::{
+        future::{join, select, Either},
+        pin_mut,
+    };
+    use futures_timer::Delay;
+
+    use super::*;
+
+    struct MockPhy {
+        channel_a: Channel<NoopRawMutex, Vec<u8, 222>, 1>,
+        channel_b: Channel<NoopRawMutex, Vec<u8, 222>, 1>,
+    }
+
+    impl MockPhy {
+        fn new() -> Self {
+            Self {
+                channel_a: Channel::new(),
+                channel_b: Channel::new(),
+            }
+        }
+
+        fn get_participant(&self) -> (MockPhyParticipant, MockPhyParticipant) {
+            (
+                MockPhyParticipant {
+                    is_a: true,
+                    sender: self.channel_a.sender(),
+                    receiver: self.channel_b.receiver(),
+                },
+                MockPhyParticipant {
+                    is_a: false,
+                    sender: self.channel_b.sender(),
+                    receiver: self.channel_a.receiver(),
+                },
+            )
+        }
+    }
+
+    struct MockPhyParticipant<'a> {
+        is_a: bool,
+        sender: Sender<'a, NoopRawMutex, Vec<u8, 222>, 1>,
+        receiver: Receiver<'a, NoopRawMutex, Vec<u8, 222>, 1>,
+    }
+
+    impl<'a> VLPPhy for MockPhyParticipant<'a> {
+        async fn tx(&mut self, payload: &[u8]) {
+            if self.is_a {
+                println!("A --{:02X?}-> B", payload);
+            } else {
+                println!("A <-{:02X?}-- B", payload);
+            }
+            self.sender.send(Vec::from_slice(payload).unwrap()).await;
+        }
+
+        async fn rx(&mut self) -> Result<Vec<u8, 222>, RadioError> {
+            Ok(self.receiver.recv().await)
+        }
+
+        async fn rx_with_timeout(&mut self, _timeout_ms: u32) -> Result<Vec<u8, 222>, RadioError> {
+            self.rx().await
+        }
+    }
+
+    #[futures_test::test]
+    async fn establish() {
+        let mock_phy = MockPhy::new();
+        let (mut part_a, mut part_b) = mock_phy.get_participant();
+
+        let establish = async {
+            let mut socket = VLPSocket::establish(
+                part_a,
+                SocketParams {
+                    encryption: false,
+                    compression: false,
+                    reliability: true,
+                },
+            )
+            .await;
+            println!("establish success!");
+        };
+
+        let await_establish = async {
+            let mut socket = VLPSocket::await_establish(part_b).await.unwrap();
+            println!("await_establish success!");
+        };
+
+        let join_fut = join(establish, await_establish);
+        pin_mut!(join_fut);
+        if let Either::Left(_) = select(Delay::new(Duration::from_millis(100)), join_fut).await {
+            panic!()
         }
     }
 }
