@@ -44,7 +44,7 @@ impl Packet {
         let mut buf = packet![self.flags.bits()];
         buf.push((self.seqnum >> 8) as u8);
         buf.push((self.seqnum & 0xff) as u8);
-        if let Some(payload) = self.payload {
+        if let Some(payload) = &self.payload {
             buf.extend_from_slice(&payload[..]);
         }
 
