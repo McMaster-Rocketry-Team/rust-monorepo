@@ -64,18 +64,17 @@ impl From<FramingError> for VLPError {
     }
 }
 
-pub struct VLPSocket<R: RadioKind + 'static> {
+pub struct VLPSocket<P: VLPPhy> {
     //TODO: Encryption, Compression
-    phy: VLPPhy<R>,
+    phy: P,
     state: ConnectionState,
     prio: Priority,
     params: SocketParams,
     next_seqnum: u16,
 }
 
-impl<R: RadioKind + 'static> VLPSocket<R> {
-    pub async fn establish(phy: LoRa<R>, params: SocketParams) -> VLPSocket<R> {
-        let phy = VLPPhy::new(phy);
+impl<P: VLPPhy> VLPSocket<P> {
+    pub async fn establish(phy: P, params: SocketParams) -> VLPSocket<P> {
         let mut _self = VLPSocket {
             phy,
             state: ConnectionState::Establishing,
@@ -102,8 +101,7 @@ impl<R: RadioKind + 'static> VLPSocket<R> {
         _self
     }
 
-    pub async fn await_establish(phy: LoRa<R>) -> Result<VLPSocket<R>, VLPError> {
-        let phy = VLPPhy::new(phy);
+    pub async fn await_establish(phy: P) -> Result<VLPSocket<P>, VLPError> {
         let mut _self = VLPSocket {
             phy,
             state: ConnectionState::Disconnected,

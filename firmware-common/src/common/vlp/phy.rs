@@ -5,16 +5,35 @@ use lora_phy::{
     LoRa,
 };
 
-pub struct VLPPhy<R: RadioKind + 'static> {
+pub trait VLPPhy {
+    async fn tx(&mut self, payload: &[u8]);
+    async fn rx(&mut self) -> Result<Vec<u8, 256>, RadioError>;
+    async fn rx_with_timeout(&mut self, timeout_ms: u32) -> Result<Vec<u8, 256>, RadioError>;
+}
+
+pub struct PhysicalVLPPhy<R: RadioKind + 'static> {
     phy: LoRa<R>,
 }
 
-impl<R: RadioKind + 'static> VLPPhy<R> {
-    pub fn new(phy: LoRa<R>) -> VLPPhy<R> {
-        VLPPhy { phy }
+impl<R: RadioKind + 'static> PhysicalVLPPhy<R> {
+    pub fn new(phy: LoRa<R>) -> Self {
+        Self { phy }
     }
 
-    pub async fn tx(&mut self, payload: &[u8]) {
+    fn create_modulation_params(&mut self) -> ModulationParams {
+        self.phy
+            .create_modulation_params(
+                SpreadingFactor::_12,
+                Bandwidth::_250KHz,
+                CodingRate::_4_8,
+                915_000_000,
+            )
+            .unwrap()
+    }
+}
+
+impl<R: RadioKind + 'static> VLPPhy for PhysicalVLPPhy<R> {
+    async fn tx(&mut self, payload: &[u8]) {
         let modulation_params = self.create_modulation_params();
         let mut tx_params = self
             .phy
@@ -30,7 +49,7 @@ impl<R: RadioKind + 'static> VLPPhy<R> {
             .unwrap();
     }
 
-    pub async fn rx(&mut self) -> Result<Vec<u8, 256>, RadioError> {
+    async fn rx(&mut self) -> Result<Vec<u8, 256>, RadioError> {
         let modulation_params = self.create_modulation_params();
         let rx_params =
             self.phy
@@ -54,7 +73,7 @@ impl<R: RadioKind + 'static> VLPPhy<R> {
         }
     }
 
-    pub async fn rx_with_timeout(&mut self, timeout_ms: u32) -> Result<Vec<u8, 256>, RadioError> {
+    async fn rx_with_timeout(&mut self, timeout_ms: u32) -> Result<Vec<u8, 256>, RadioError> {
         let modulation_params = self.create_modulation_params();
 
         let rx_params = self
@@ -80,16 +99,5 @@ impl<R: RadioKind + 'static> VLPPhy<R> {
             Ok(_) => Ok(buf),
             Err(e) => Err(e),
         }
-    }
-
-    fn create_modulation_params(&mut self) -> ModulationParams {
-        self.phy
-            .create_modulation_params(
-                SpreadingFactor::_12,
-                Bandwidth::_250KHz,
-                CodingRate::_4_8,
-                915_000_000,
-            )
-            .unwrap()
     }
 }
