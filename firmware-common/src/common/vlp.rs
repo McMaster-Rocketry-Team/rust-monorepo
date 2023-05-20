@@ -204,7 +204,17 @@ impl<P: VLPPhy> VLPSocket<P> {
         }
 
         let packet = Packet::deserialize(self.phy.rx().await?)?;
-        if self.params.reliability
+        if packet.flags.contains(Flags::HANDOFF) {
+            // HANDOFF must be ACKed, regardless of reliability of transport
+            let ack = Packet {
+                flags: Flags::ACK | Flags::HANDOFF,
+                seqnum: packet.seqnum+1,
+                payload: None
+            };
+            self.phy.tx(&ack.serialize()[..]).await;
+            self.next_seqnum = packet.seqnum.wrapping_add(2);
+            self.prio = Priority::Driver;
+        } else if self.params.reliability
             && (packet.seqnum == self.next_seqnum || packet.seqnum == self.next_seqnum - 2)
         {
             let ack = Packet {
@@ -276,14 +286,40 @@ mod tests {
 
     use super::*;
 
+    #[inline(never)]
+    #[no_mangle]
+    fn _defmt_acquire() {}
+
+    #[inline(never)]
+    #[no_mangle]
+    fn _defmt_release() {}
+
+    #[inline(never)]
+    #[no_mangle]
+    fn _defmt_flush() {}
+
+    #[inline(never)]
+    #[no_mangle]
+    fn _defmt_write(bytes: &[u8]) {}
+
+    #[inline(never)]
+    #[no_mangle]
+    fn _defmt_timestamp(_: defmt::Formatter<'_>) {}
+
+    #[inline(never)]
+    #[no_mangle]
+    fn _defmt_panic() -> ! { loop {} }
+
     struct MockPhy {
-        channel_a: Channel<NoopRawMutex, Vec<u8, MAX_PAYLOAD_LENGTH>, 1>,
-        channel_b: Channel<NoopRawMutex, Vec<u8, MAX_PAYLOAD_LENGTH>, 1>,
+        tag: String,
+        channel_a: Channel<NoopRawMutex, Vec<u8, MAX_PAYLOAD_LENGTH>, 2>,
+        channel_b: Channel<NoopRawMutex, Vec<u8, MAX_PAYLOAD_LENGTH>, 2>,
     }
 
     impl MockPhy {
-        fn new() -> Self {
+        fn new(tag: &str) -> Self {
             Self {
+                tag: tag.to_string(),
                 channel_a: Channel::new(),
                 channel_b: Channel::new(),
             }
@@ -292,11 +328,13 @@ mod tests {
         fn get_participant(&self) -> (MockPhyParticipant, MockPhyParticipant) {
             (
                 MockPhyParticipant {
+                    tag: self.tag.clone(),
                     is_a: true,
                     sender: self.channel_a.sender(),
                     receiver: self.channel_b.receiver(),
                 },
                 MockPhyParticipant {
+                    tag: self.tag.clone(),
                     is_a: false,
                     sender: self.channel_b.sender(),
                     receiver: self.channel_a.receiver(),
@@ -306,17 +344,18 @@ mod tests {
     }
 
     struct MockPhyParticipant<'a> {
+        tag: String,
         is_a: bool,
-        sender: Sender<'a, NoopRawMutex, Vec<u8, MAX_PAYLOAD_LENGTH>, 1>,
-        receiver: Receiver<'a, NoopRawMutex, Vec<u8, MAX_PAYLOAD_LENGTH>, 1>,
+        sender: Sender<'a, NoopRawMutex, Vec<u8, MAX_PAYLOAD_LENGTH>, 2>,
+        receiver: Receiver<'a, NoopRawMutex, Vec<u8, MAX_PAYLOAD_LENGTH>, 2>,
     }
 
     impl<'a> VLPPhy for MockPhyParticipant<'a> {
         async fn tx(&mut self, payload: &[u8]) {
             if self.is_a {
-                println!("A --{:02X?}-> B", payload);
+                println!("{}: A --{:02X?}-> B", self.tag, payload);
             } else {
-                println!("A <-{:02X?}-- B", payload);
+                println!("{}: A <-{:02X?}-- B", self.tag, payload);
             }
             self.sender.send(Vec::from_slice(payload).unwrap()).await;
         }
@@ -329,13 +368,20 @@ mod tests {
             &mut self,
             _timeout_ms: u32,
         ) -> Result<Vec<u8, MAX_PAYLOAD_LENGTH>, RadioError> {
-            self.rx().await
+            let rxfut = self.rx();
+            pin_mut!(rxfut);
+            match select(Delay::new(Duration::from_millis(_timeout_ms as u64)), rxfut)
+                .await {
+                    Either::Left(_) => Err(RadioError::ReceiveTimeout),
+                    Either::Right((x, _)) => x,
+                }
         }
     }
 
+    // BEGIN RELIABLE TRANSPORT TESTS
     #[futures_test::test]
     async fn establish() {
-        let mock_phy = MockPhy::new();
+        let mock_phy = MockPhy::new("establish");
         let (part_a, part_b) = mock_phy.get_participant();
 
         let establish = async {
@@ -360,6 +406,167 @@ mod tests {
         pin_mut!(join_fut);
         if let Either::Left(_) = select(Delay::new(Duration::from_millis(100)), join_fut).await {
             panic!("timeout")
+        }
+    }
+
+    #[futures_test::test]
+    async fn establish_retransmit() {
+        let mock_phy = MockPhy::new("establish_retransmit");
+        let (part_a, part_b) = mock_phy.get_participant();
+
+
+        let estab = async {
+            let mut txsock = VLPSocket::establish(part_a, SocketParams {
+                encryption: false,
+                compression: false,
+                reliability: true
+            }).await;
+
+            println!("Unreachable");
+        };
+
+
+        pin_mut!(estab);
+        if let Either::Left(_) = select(Delay::new(Duration::from_millis(2500)), estab).await {
+            part_b.receiver.recv().await;
+            println!("First packet received");
+            part_b.receiver.recv().await;
+            println!("Second packet received");
+        }
+    }
+
+    #[futures_test::test]
+    async fn establish_and_transmit() {
+        let mock_phy = MockPhy::new("establish_and_transmit");
+        let (part_a, part_b) = mock_phy.get_participant();
+
+        let tx = VLPSocket::establish(part_a, SocketParams {
+            encryption: false,
+            compression: false,
+            reliability: true
+        });
+        pin_mut!(tx);
+
+        let rx = VLPSocket::await_establish(part_b);
+        pin_mut!(rx);
+
+
+        let (mut tx, rx) = join(tx, rx).await;
+        match rx {
+            Ok(mut rx) => {
+                let txfut = tx.transmit(packet![0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef]);
+                let rxfut = rx.receive();
+
+                let res = join(txfut, rxfut).await;
+                match res {
+                    (Ok(a), Ok(b)) => {
+                        assert!(a.is_none());
+                        assert!(b.is_some());
+                        assert_eq!(&b.unwrap()[..], &[0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef]);
+                    }
+                    _ => panic!("{:?}", res),
+                }
+            }
+            Err(e) => panic!("{:?}", e),
+        }
+    }
+
+    #[futures_test::test]
+    async fn establish_and_handoff() {
+        let mock_phy = MockPhy::new("establish_and_handoff");
+        let (part_a, part_b) = mock_phy.get_participant();
+
+        let tx = VLPSocket::establish(part_a, SocketParams {
+            encryption: false,
+            compression: false,
+            reliability: true
+        });
+        pin_mut!(tx);
+
+        let rx = VLPSocket::await_establish(part_b);
+        pin_mut!(rx);
+
+
+        let (mut tx, rx) = join(tx, rx).await;
+        match rx {
+            Ok(mut rx) => {
+                assert_eq!(tx.prio, Priority::Driver);
+                assert_eq!(rx.prio, Priority::Listener);
+                let txfut = tx.handoff();
+                let rxfut = rx.receive();
+
+                let res = join(txfut, rxfut).await;
+                match res {
+                    (Ok(_), Ok(_)) => {
+                        assert_eq!(tx.prio, Priority::Listener);
+                        assert_eq!(rx.prio, Priority::Driver);
+                    }
+                    _ => panic!("{:?}", res),
+                }
+            }
+            Err(e) => panic!("{:?}", e),
+        }
+    }
+    // END RELIABLE TRANSPORT TESTS
+
+    #[futures_test::test]
+    async fn establish_and_transmit_unreliable() {
+        let mock_phy = MockPhy::new("establish_and_transmit_unreliable");
+        let (part_a, _) = mock_phy.get_participant();
+
+        let tx = VLPSocket::establish(part_a, SocketParams {
+            encryption: false,
+            compression: false,
+            reliability: false
+        });
+        pin_mut!(tx);
+
+        match select(Delay::new(Duration::from_millis(100)), tx).await {
+            Either::Right((mut tx, _)) => {
+                let txfut = tx.transmit(packet![0xff, 0xff, 0xff]);
+                pin_mut!(txfut);
+                if let Either::Left(_) = select(Delay::new(Duration::from_millis(100)), txfut).await {
+                    panic!("Timeout transmit");
+                }
+            }
+            Either::Left(_) => panic!("Timeout")
+        }
+    }
+
+    #[futures_test::test]
+    async fn establish_and_handoff_unreliable() {
+        let mock_phy = MockPhy::new("establish_and_handoff_unreliable");
+        let (part_a, part_b) = mock_phy.get_participant();
+
+        let tx = VLPSocket::establish(part_a, SocketParams {
+            encryption: false,
+            compression: false,
+            reliability: false
+        });
+        pin_mut!(tx);
+
+        let rx = VLPSocket::await_establish(part_b);
+        pin_mut!(rx);
+
+
+        let (mut tx, rx) = join(tx, rx).await;
+        match rx {
+            Ok(mut rx) => {
+                assert_eq!(tx.prio, Priority::Driver);
+                assert_eq!(rx.prio, Priority::Listener);
+                let txfut = tx.handoff();
+                let rxfut = rx.receive();
+
+                let res = join(txfut, rxfut).await;
+                match res {
+                    (Ok(_), Ok(_)) => {
+                        assert_eq!(tx.prio, Priority::Listener);
+                        assert_eq!(rx.prio, Priority::Driver);
+                    }
+                    _ => panic!("{:?}", res),
+                }
+            }
+            Err(e) => panic!("{:?}", e),
         }
     }
 }
