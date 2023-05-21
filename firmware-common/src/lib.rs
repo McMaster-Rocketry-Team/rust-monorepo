@@ -38,18 +38,20 @@ pub async fn init(device_manager: device_manager_type!(mut)) -> ! {
     let timer = device_manager.timer;
 
     let testing_fut = async {
-        // claim_devices!(device_manager, imu);
+        claim_devices!(device_manager, meg);
         // unwrap!(imu.wait_for_power_on().await);
         // unwrap!(imu.reset().await);
         // let mut ticker = Ticker::every(timer, 1.0);
-        // let start_time = timer.now_mills();
-        // for _ in 0..100000 {
-        //     unwrap!(imu.read().await);
-        // }
-        // info!(
-        //     "Time taken: {}",
-        //     (timer.now_mills() - start_time) / 100000.0
-        // );
+        // unwrap!(meg.reset().await);
+        info!("meg resetted");
+        let start_time = timer.now_mills();
+        loop {
+            info!("meg: {}",meg.reset().await);
+        }
+        info!(
+            "Time taken: {}",
+            (timer.now_mills() - start_time) / 10.0
+        );
     };
 
     let usb_connected = {

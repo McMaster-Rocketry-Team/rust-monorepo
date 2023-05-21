@@ -25,7 +25,7 @@ impl defmt::Format for MegReading {
 }
 
 pub trait Megnetometer {
-    type Error;
+    type Error: defmt::Format;
     async fn reset(&mut self) -> Result<(), Self::Error>;
     async fn read(&mut self) -> Result<MegReading, Self::Error>;
 }
