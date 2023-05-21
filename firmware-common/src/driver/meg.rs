@@ -26,7 +26,7 @@ impl defmt::Format for MegReading {
 
 pub trait Megnetometer {
     type Error;
-    async fn reset(&mut self, power_saving: bool) -> Result<(), Self::Error>;
+    async fn reset(&mut self) -> Result<(), Self::Error>;
     async fn read(&mut self) -> Result<MegReading, Self::Error>;
 }
 
@@ -43,7 +43,7 @@ impl<T: Timer> DummyMegnetometer<T> {
 impl<T: Timer> Megnetometer for DummyMegnetometer<T> {
     type Error = ();
 
-    async fn reset(&mut self, _power_saving: bool) -> Result<(), ()> {
+    async fn reset(&mut self) -> Result<(), ()> {
         Ok(())
     }
 
