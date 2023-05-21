@@ -30,9 +30,7 @@ mod utils;
 
 pub async fn init(device_manager: device_manager_type!(mut)) -> ! {
     device_manager.init().await;
-    claim_devices!(device_manager, flash, crc, usb, serial, imu);
-    imu.wait_for_power_on().await.ok();
-    unwrap!(imu.reset().await);
+    claim_devices!(device_manager, flash, crc, usb, serial);
     flash.reset().await.ok();
     let mut fs = VLFS::new(flash, crc);
     unwrap!(fs.init().await);
