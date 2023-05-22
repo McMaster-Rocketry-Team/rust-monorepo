@@ -47,12 +47,13 @@ pub enum ConnectionState {
     AwaitingAck,
 }
 
-#[derive(defmt::Format, Debug)]
+#[derive(defmt::Format, Debug, PartialEq)]
 pub enum VLPError {
     IllegalPriority(Priority),
     Phy(RadioError),
     Framing(FramingError),
     InvalidSeqnum,
+    SessionReset,
 }
 
 impl From<RadioError> for VLPError {
@@ -86,22 +87,29 @@ impl<P: VLPPhy> VLPSocket<P> {
             next_seqnum: 0,
         };
 
+        _self.do_establish().await;
+        
+        _self
+    }
+
+    async fn do_establish(&mut self) {
+        self.next_seqnum = 0;
         let estab = Packet {
-            flags: Flags::establish_with_params(&_self.params),
-            seqnum: _self.next_seqnum,
+            flags: Flags::establish_with_params(&self.params),
+            seqnum: self.next_seqnum,
             payload: None,
         };
-        _self.next_seqnum += 1;
+        self.next_seqnum += 1;
 
-        if _self.params.reliability {
-            let _ = _self.reliable_tx(&estab).await;
+        if self.params.reliability {
+            //We are sending a handshake packet, SessionReset will never occur here
+            let _ = self.reliable_tx(&estab).await;
         } else {
-            _self.phy.tx(&estab.serialize()[..]).await;
+            self.phy.tx(&estab.serialize()[..]).await;
         }
 
-        _self.state = ConnectionState::Established;
+        self.state = ConnectionState::Established;
 
-        _self
     }
 
     pub async fn await_establish(phy: P) -> Result<VLPSocket<P>, VLPError> {
@@ -116,11 +124,22 @@ impl<P: VLPPhy> VLPSocket<P> {
         loop {
             match Packet::deserialize(_self.phy.rx().await?) {
                 Ok(packet) => {
+                    // Normal path
                     if packet.flags.contains(Flags::ESTABLISH) {
                         _self.params.compression = packet.flags.contains(Flags::COMPRESSION);
                         _self.params.encryption = packet.flags.contains(Flags::ENCRYPTION);
                         _self.params.reliability = packet.flags.contains(Flags::RELIABLE);
                         break;
+                    } else {
+                        // Anomaly: remote party believes a session to already be established.
+                        let rst = Packet {
+                            flags: Flags::RST,
+                            seqnum: packet.seqnum+1,
+                            payload: None
+                        };
+
+                        // Send RST packet, and await new handshake from remote party.
+                        _self.phy.tx(&rst.serialize()[..]).await;
                     }
                 }
                 Err(_) => continue,
@@ -148,7 +167,7 @@ impl<P: VLPPhy> VLPSocket<P> {
         if self.prio == Priority::Listener {
             return Err(VLPError::IllegalPriority(self.prio));
         }
-        let packet = Packet {
+        let mut packet = Packet {
             flags: Flags::PSH,
             seqnum: self.next_seqnum,
             payload: Some(payload),
@@ -158,20 +177,28 @@ impl<P: VLPPhy> VLPSocket<P> {
 
         if self.params.reliability {
             loop {
-                let packet = self.reliable_tx(&packet).await;
-                // TODO: Is this a good way to handle PSH|ACK from the passive party?
-                // They'll know that we recv'd their packet if there's no re-tx of the packet they're ACKing
-                if packet.flags.contains(Flags::PSH) {
-                    let ack = Packet {
-                        flags: Flags::ACK,
-                        seqnum: self.next_seqnum,
-                        payload: None,
-                    };
-                    self.phy.tx(&ack.serialize()[..]).await;
-                    self.next_seqnum = self.next_seqnum.wrapping_add(1);
-                    return Ok(packet.payload);
-                } else {
-                    return Ok(None);
+                match self.reliable_tx(&packet).await {
+                    Ok(packet) => {
+                        // TODO: Is this a good way to handle PSH|ACK from the passive party?
+                        // They'll know that we recv'd their packet if there's no re-tx of the packet they're ACKing
+                        if packet.flags.contains(Flags::PSH) {
+                            let ack = Packet {
+                                flags: Flags::ACK,
+                                seqnum: self.next_seqnum,
+                                payload: None,
+                            };
+                            self.phy.tx(&ack.serialize()[..]).await;
+                            self.next_seqnum = self.next_seqnum.wrapping_add(1);
+                            return Ok(packet.payload);
+                        } else {
+                            return Ok(None);
+                        }
+                    }
+                    Err(e) => if e == VLPError::SessionReset {
+                        self.do_establish().await;
+                        packet.seqnum = self.next_seqnum;
+                        self.next_seqnum = self.next_seqnum.wrapping_add(1);
+                    }
                 }
             }
         } else {
@@ -186,16 +213,26 @@ impl<P: VLPPhy> VLPSocket<P> {
             return Err(VLPError::IllegalPriority(self.prio));
         }
 
-        let packet = Packet {
+        let mut packet = Packet {
             flags: Flags::HANDOFF,
             seqnum: self.next_seqnum,
             payload: None,
         };
         self.next_seqnum = self.next_seqnum.wrapping_add(1);
 
-        self.reliable_tx(&packet).await;
-        self.prio = Priority::Listener;
-        Ok(())
+        loop {
+            match self.reliable_tx(&packet).await {
+                Ok(_) => {
+                    self.prio = Priority::Listener;
+                    return Ok(());
+                }
+                Err(e) => if e == VLPError::SessionReset {
+                    self.do_establish().await;
+                    packet.seqnum = self.next_seqnum;
+                    self.next_seqnum = self.next_seqnum.wrapping_add(1);
+                }
+            }
+        }
     }
 
     pub async fn receive(&mut self) -> Result<Option<Vec<u8, MAX_PAYLOAD_LENGTH>>, VLPError> {
@@ -241,7 +278,7 @@ impl<P: VLPPhy> VLPSocket<P> {
         }
     }
 
-    async fn reliable_tx(&mut self, packet: &Packet) -> Packet {
+    async fn reliable_tx(&mut self, packet: &Packet) -> Result<Packet, VLPError> {
         let packet = packet.serialize();
         self.phy.tx(&packet[..]).await;
 
@@ -253,7 +290,10 @@ impl<P: VLPPhy> VLPSocket<P> {
                             // Validate seqnum against record. Re-tx if mismatch
                             if recv.flags.contains(Flags::ACK) && recv.seqnum == self.next_seqnum {
                                 self.next_seqnum = self.next_seqnum.wrapping_add(1);
-                                return recv;
+                                return Ok(recv);
+                            } else if recv.flags.contains(Flags::RST) {
+                                // Can't handle re-establishing here because recursion
+                                return Err(VLPError::SessionReset);
                             } else {
                                 self.phy.tx(&packet[..]).await;
                             }
@@ -474,6 +514,42 @@ mod tests {
                     }
                     _ => panic!("{:?}", res),
                 }
+            }
+            Err(e) => panic!("{:?}", e),
+        }
+    }
+
+    #[futures_test::test]
+    async fn test_session_reset() {
+        let mock_phy = MockPhy::new("test_session_reset");
+        let (part_a, part_b) = mock_phy.get_participants();
+
+        let tx = VLPSocket::establish(part_a, SocketParams {
+            encryption: false,
+            compression: false,
+            reliability: true
+        });
+        pin_mut!(tx);
+
+        let rx = VLPSocket::await_establish(part_b);
+        pin_mut!(rx);
+
+        let (mut tx, rx) = join(tx, rx).await;
+        match rx {
+            Ok(mut rx) => {
+                // Session sanity check
+                let (_, buf) = join(tx.transmit(packet![0xab, 0xab, 0xab]), rx.receive()).await;
+                assert_eq!(buf, Ok(Some(packet![0xab, 0xab, 0xab])));
+
+                let newrx = async {
+                    if let Ok(mut rx) = VLPSocket::await_establish(rx.phy).await {
+                        let buf = rx.receive().await;
+                        assert_eq!(buf, Ok(Some(packet![0xff, 0xff, 0xff])));
+                    }
+                };
+                pin_mut!(newrx);
+
+                let _ = join(tx.transmit(packet![0xff, 0xff, 0xff]), newrx).await;
             }
             Err(e) => panic!("{:?}", e),
         }
