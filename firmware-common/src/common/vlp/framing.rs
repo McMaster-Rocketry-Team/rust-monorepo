@@ -10,6 +10,7 @@ bitflags! {
         const COMPRESSION = 0x20;
         const RELIABLE = 0x10;
 
+        const RST = 0x08;
         const HANDOFF = 0x04;
         const PSH = 0x02;
         const ACK = 0x01;
@@ -80,7 +81,7 @@ impl Packet {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, defmt::Format)]
+#[derive(Clone, Debug, PartialEq, Eq, defmt::Format)]
 pub enum FramingError {
     SocketDisconnected,
     StateError(ConnectionState),
