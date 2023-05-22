@@ -292,6 +292,7 @@ dependencies = [
  "approx",
  "csv",
  "defmt",
+ "either",
  "heapless",
  "libm",
  "nalgebra 0.32.2",

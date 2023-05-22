@@ -1,6 +1,8 @@
 use vlfs::io_traits::{AsyncReader, AsyncWriter};
 use vlfs::{Crc, Flash, VLFSError, VLFS};
 
+use super::files::{DEVICE_MODE_FILE_ID, DEVICE_MODE_FILE_TYPE};
+
 #[derive(Clone, Copy, defmt::Format)]
 #[repr(u8)]
 pub enum DeviceMode {
@@ -23,9 +25,6 @@ impl TryFrom<u8> for DeviceMode {
         }
     }
 }
-
-static DEVICE_MODE_FILE_ID: u64 = 0;
-static DEVICE_MODE_FILE_TYPE: u16 = 0;
 
 pub async fn read_device_mode(fs: &VLFS<impl Flash, impl Crc>) -> Option<DeviceMode> {
     if let Ok(mut reader) = fs.open_file_for_read(DEVICE_MODE_FILE_ID).await {

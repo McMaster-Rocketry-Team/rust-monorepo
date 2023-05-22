@@ -1,8 +1,11 @@
+use core::mem::replace;
+
 use crate::{
     calibrator_inner::CalibratorInner, moving_average::SingleSumSMA, CalibrationInfo, IMUReading,
 };
 
 use defmt::info;
+use either::Either;
 use nalgebra::Vector3;
 use Axis::*;
 use Direction::*;
@@ -34,12 +37,13 @@ pub enum InteractiveCalibratorState {
     Idle,
     WaitingStill,
     State(Axis, Direction, Event),
-    Complete,
+    Success,
+    Failure,
 }
 
 pub struct InteractiveCalibrator {
     state: InteractiveCalibratorState,
-    inner: CalibratorInner,
+    inner: Either<CalibratorInner, Option<CalibrationInfo>>,
     last_reading: IMUReading,
     still_gyro_threshold_squared: f64,
     angular_acceleration_moving_avg: SingleSumSMA<Vector3<f64>, 30>, // each sample is 0.1s apart, gives a 3s window
@@ -63,7 +67,7 @@ impl InteractiveCalibrator {
         let still_gyro_threshold = still_gyro_threshold.unwrap_or(0.17);
         Self {
             state: Idle,
-            inner: CalibratorInner::new(gravity, expected_angle),
+            inner: Either::Left(CalibratorInner::new(gravity, expected_angle)),
             last_reading: IMUReading::default(),
             still_gyro_threshold_squared: still_gyro_threshold * still_gyro_threshold,
             angular_acceleration_moving_avg: SingleSumSMA::new(Vector3::zeros()),
@@ -105,6 +109,7 @@ impl InteractiveCalibrator {
     // Will return Some when the state changes
     pub fn process(&mut self, reading: &IMUReading) -> Option<InteractiveCalibratorState> {
         let mut new_state = None;
+        let mut inner = self.inner.as_mut().unwrap_left();
         match self.state {
             Idle => {
                 self.last_reading = reading.clone();
@@ -117,8 +122,8 @@ impl InteractiveCalibrator {
                 }
             }
             State(X, Plus, Start) => {
-                self.inner.process_x_p(reading);
-                if self.inner.x_p_count > 300
+                inner.process_x_p(reading);
+                if inner.x_p_count > 300
                     && reading.timestamp - self.state_start_timestamp > MINIMUM_SAMPLE_TIME
                 {
                     new_state = Some(State(X, Plus, End));
@@ -131,8 +136,8 @@ impl InteractiveCalibrator {
                 }
             }
             State(X, Minus, Start) => {
-                self.inner.process_x_n(reading);
-                if self.inner.x_n_count > 300
+                inner.process_x_n(reading);
+                if inner.x_n_count > 300
                     && reading.timestamp - self.state_start_timestamp > MINIMUM_SAMPLE_TIME
                 {
                     new_state = Some(State(X, Minus, End));
@@ -145,8 +150,8 @@ impl InteractiveCalibrator {
                 }
             }
             State(Y, Plus, Start) => {
-                self.inner.process_y_p(reading);
-                if self.inner.y_p_count > 300
+                inner.process_y_p(reading);
+                if inner.y_p_count > 300
                     && reading.timestamp - self.state_start_timestamp > MINIMUM_SAMPLE_TIME
                 {
                     new_state = Some(State(Y, Plus, End));
@@ -159,8 +164,8 @@ impl InteractiveCalibrator {
                 }
             }
             State(Y, Minus, Start) => {
-                self.inner.process_y_n(reading);
-                if self.inner.y_n_count > 300
+                inner.process_y_n(reading);
+                if inner.y_n_count > 300
                     && reading.timestamp - self.state_start_timestamp > MINIMUM_SAMPLE_TIME
                 {
                     new_state = Some(State(Y, Minus, End));
@@ -173,8 +178,8 @@ impl InteractiveCalibrator {
                 }
             }
             State(Z, Plus, Start) => {
-                self.inner.process_z_p(reading);
-                if self.inner.z_p_count > 300
+                inner.process_z_p(reading);
+                if inner.z_p_count > 300
                     && reading.timestamp - self.state_start_timestamp > MINIMUM_SAMPLE_TIME
                 {
                     new_state = Some(State(Z, Plus, End));
@@ -187,8 +192,8 @@ impl InteractiveCalibrator {
                 }
             }
             State(Z, Minus, Start) => {
-                self.inner.process_z_n(reading);
-                if self.inner.z_n_count > 300
+                inner.process_z_n(reading);
+                if inner.z_n_count > 300
                     && reading.timestamp - self.state_start_timestamp > MINIMUM_SAMPLE_TIME
                 {
                     new_state = Some(State(Z, Minus, End));
@@ -200,7 +205,7 @@ impl InteractiveCalibrator {
                 }
             }
             State(X, Rotation, Start) => {
-                self.inner.process_x_rotation(reading);
+                inner.process_x_rotation(reading);
                 if self.wait_still(&reading) {
                     new_state = Some(State(X, Rotation, End));
                 }
@@ -211,7 +216,7 @@ impl InteractiveCalibrator {
                 }
             }
             State(Y, Rotation, Start) => {
-                self.inner.process_y_rotation(reading);
+                inner.process_y_rotation(reading);
                 if self.wait_still(&reading) {
                     new_state = Some(State(Y, Rotation, End));
                 }
@@ -222,12 +227,18 @@ impl InteractiveCalibrator {
                 }
             }
             State(Z, Rotation, Start) => {
-                self.inner.process_z_rotation(reading);
+                inner.process_z_rotation(reading);
                 if self.wait_still(&reading) {
-                    new_state = Some(Complete);
+                    let old_inner = replace(&mut self.inner, Either::Right(None));
+                    let cal_info = old_inner.unwrap_left().calculate();
+                    new_state = if cal_info.is_some() {
+                        Some(Success)
+                    } else {
+                        Some(Failure)
+                    };
+                    self.inner = Either::Right(cal_info);
                 }
             }
-            Complete => {}
             _ => panic!("Invalid state"),
         }
 
@@ -237,7 +248,7 @@ impl InteractiveCalibrator {
         new_state
     }
 
-    pub fn calculate(self) -> Option<CalibrationInfo> {
-        self.inner.calculate()
+    pub fn get_calibration_info(self) -> Option<CalibrationInfo> {
+        self.inner.right().unwrap_or_default()
     }
 }

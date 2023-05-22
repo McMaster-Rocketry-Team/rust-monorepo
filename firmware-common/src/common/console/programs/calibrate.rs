@@ -10,7 +10,7 @@ use vlfs::{Crc, Flash, VLFS};
 
 use crate::{
     claim_devices,
-    common::device_manager::prelude::*,
+    common::{device_manager::prelude::*, ticker::Ticker},
     device_manager_type,
     driver::{buzzer::Buzzer, imu::IMU, serial::Serial, timer::Timer},
 };
@@ -28,8 +28,8 @@ impl Calibrate {
 
     pub async fn start(
         &self,
-        _serial: &mut impl Serial,
-        _vlfs: &VLFS<impl Flash, impl Crc>,
+        serial: &mut impl Serial,
+        vlfs: &VLFS<impl Flash, impl Crc>,
         device_manager: device_manager_type!(),
     ) -> Result<(), ()> {
         let timer = device_manager.timer;
@@ -45,8 +45,12 @@ impl Calibrate {
                         self.direction_sound(direction, &mut buzzer, timer).await;
                         self.event_sound(event, &mut buzzer, timer).await;
                     }
-                    Complete => {
-                        self.complete_sound(&mut buzzer, timer).await;
+                    Success => {
+                        self.success_sound(&mut buzzer, timer).await;
+                        break;
+                    }
+                    Failure => {
+                        self.failure_sound(&mut buzzer, timer).await;
                         break;
                     }
                     Idle => {}
@@ -61,8 +65,13 @@ impl Calibrate {
                 let next_state = calibrator.process(&reading);
                 if let Some(state) = next_state {
                     state_event.signal(state);
-                    if let Complete = state {
-                        info!("{}", calibrator.calculate());
+                    if let Success = state {
+                        let cal_info = calibrator.get_calibration_info();
+
+                        serial.write(&[1]);
+                        break;
+                    } else if let Failure = state {
+                        serial.write(&[0]);
                         break;
                     }
                 }
@@ -142,9 +151,10 @@ impl Calibrate {
             }
             Direction::Rotation => {
                 buzzer.set_enable(true).await;
+                let mut ticker = Ticker::every(timer, 4.0);
                 for frequency in (2000..3500).step_by(100) {
                     buzzer.set_frequency(frequency).await;
-                    timer.sleep(4.0).await; // TODO use ticker
+                    ticker.next().await;
                 }
                 buzzer.set_enable(false).await;
             }
@@ -174,8 +184,18 @@ impl Calibrate {
         }
     }
 
-    async fn complete_sound<B: Buzzer, TI: Timer>(&self, buzzer: &mut B, timer: TI) {
+    async fn success_sound<B: Buzzer, TI: Timer>(&self, buzzer: &mut B, timer: TI) {
         for i in 0..4 {
+            buzzer.set_frequency(1000 + i * 250).await;
+            buzzer.set_enable(true).await;
+            timer.sleep(50.0).await;
+            buzzer.set_enable(false).await;
+            timer.sleep(150.0).await;
+        }
+    }
+
+    async fn failure_sound<B: Buzzer, TI: Timer>(&self, buzzer: &mut B, timer: TI) {
+        for i in (0..4).rev() {
             buzzer.set_frequency(1000 + i * 250).await;
             buzzer.set_enable(true).await;
             timer.sleep(50.0).await;

@@ -6,3 +6,4 @@ pub mod radio_kind_wrapper;
 pub mod telemetry;
 pub mod vlp;
 pub mod ticker;
+pub mod files;
