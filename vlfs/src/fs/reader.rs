@@ -11,7 +11,7 @@ where
 {
     pub async fn open_file_for_read(
         &self,
-        file_id: u64,
+        file_id: FileID,
     ) -> Result<FileReader<F, C>, VLFSError<F::Error>> {
         let mut at = self.allocation_table.write().await;
         if let Some(file_entry) = self.find_file_entry_mut(&mut at.allocation_table, file_id) {
@@ -50,7 +50,7 @@ where
     sector_data_length: SectorDataLength,
 
     sector_read_data_length: u16,
-    file_id: u64,
+    file_id: FileID,
 
     page_buffer: [u8; 5 + PAGE_SIZE],
     page_buffer_read_ahead_range: (usize, usize),
@@ -286,7 +286,7 @@ where
         if !self.closed {
             defmt::panic!(
                 "FileReader for file {:X} dropped without being closed",
-                self.file_id
+                self.file_id.0
             );
         }
     }

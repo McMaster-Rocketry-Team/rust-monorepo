@@ -128,16 +128,25 @@ where
                 continue;
             }
             let mut files: Vec<FileEntry, MAX_FILES> = Vec::<FileEntry, MAX_FILES>::new();
+            let mut max_file_id = Some(FileID(0u64));
             for _ in 0..file_count {
                 let read_result = reader
                     .read_slice(&mut read_buffer, 12)
                     .await
                     .map_err(VLFSError::FlashError)?
                     .0;
-                let file_id = u64::from_be_bytes((&read_result[0..8]).try_into().unwrap());
-                let file_type = u16::from_be_bytes((&read_result[8..10]).try_into().unwrap());
+                let file_id = u64::from_be_bytes((&read_result[0..8]).try_into().unwrap()).into();
+                let file_type =
+                    u16::from_be_bytes((&read_result[8..10]).try_into().unwrap()).into();
                 let first_sector_index =
                     u16::from_be_bytes((&read_result[10..12]).try_into().unwrap());
+                if let Some(value) = max_file_id {
+                    if file_id > value {
+                        max_file_id = Some(file_id);
+                    }
+                } else {
+                    max_file_id = Some(file_id);
+                }
                 files
                     .push(FileEntry {
                         file_id,
@@ -171,11 +180,14 @@ where
 
             if sequence_number > at.allocation_table.sequence_number {
                 found_valid_table = true;
-                at.allocation_table = AllocationTable {
-                    sequence_number,
-                    file_entries: files,
+                *at = AllocationTableWrapper {
+                    allocation_table: AllocationTable {
+                        sequence_number,
+                        file_entries: files,
+                    },
+                    allocation_table_index: i,
+                    max_file_id,
                 };
-                at.allocation_table_index = i;
             }
         }
 
@@ -215,11 +227,11 @@ where
 
         for file in &at.allocation_table.file_entries {
             writer
-                .extend_from_u64(file.file_id)
+                .extend_from_u64(file.file_id.0)
                 .await
                 .map_err(VLFSError::FlashError)?;
             writer
-                .extend_from_u16(file.file_type)
+                .extend_from_u16(file.file_type.0)
                 .await
                 .map_err(VLFSError::FlashError)?;
             if let Some(first_sector_index) = file.first_sector_index {

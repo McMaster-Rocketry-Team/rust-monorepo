@@ -8,7 +8,10 @@ use vlfs::{
     Crc, Flash, VLFS,
 };
 
-use crate::driver::{serial::Serial, timer::Timer};
+use crate::{
+    common::files::BENCHMARK_FILE_TYPE,
+    driver::{serial::Serial, timer::Timer},
+};
 
 pub struct BenchmarkFlash {}
 
@@ -44,19 +47,13 @@ impl BenchmarkFlash {
             timer.now_mills() - start_time
         };
 
-        let file_id = 10u64;
-        let file_type = 0u16;
         let mut max_64b_write_time = 0f64;
+        let file_id = unwrap!(vlfs.create_file(BENCHMARK_FILE_TYPE).await);
 
         let write_time = {
             let mut rng = SmallRng::seed_from_u64(
                 0b1010011001010000010000000111001110111101011110001100000011100000u64,
             );
-
-            if vlfs.create_file(file_id, file_type).await.is_err() {
-                unwrap!(vlfs.remove_file(file_id).await);
-                unwrap!(vlfs.create_file(file_id, file_type).await);
-            }
 
             let start_time = timer.now_mills();
 
@@ -97,6 +94,8 @@ impl BenchmarkFlash {
             file.close().await;
             timer.now_mills() - start_time - random_time
         };
+
+        vlfs.remove_file(file_id).await;
 
         info!(
             "Write speed: {}KiB/s",

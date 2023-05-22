@@ -4,7 +4,7 @@
 #![feature(let_chains)]
 #![feature(try_blocks)]
 
-use crate::common::{console::console::run_console, device_manager::prelude::*, ticker::Ticker};
+use crate::common::{console::console::run_console, device_manager::prelude::*};
 use defmt::*;
 use vlfs::VLFS;
 
@@ -43,15 +43,15 @@ pub async fn init(device_manager: device_manager_type!(mut)) -> ! {
         // unwrap!(imu.reset().await);
         // let mut ticker = Ticker::every(timer, 1.0);
         // unwrap!(meg.reset().await);
-        info!("meg resetted");
-        let start_time = timer.now_mills();
-        loop {
-            info!("meg: {}",meg.reset().await);
-        }
-        info!(
-            "Time taken: {}",
-            (timer.now_mills() - start_time) / 10.0
-        );
+        // info!("meg resetted");
+        // let start_time = timer.now_mills();
+        // loop {
+        //     info!("meg: {}",meg.reset().await);
+        // }
+        // info!(
+        //     "Time taken: {}",
+        //     (timer.now_mills() - start_time) / 10.0
+        // );
     };
 
     let usb_connected = {

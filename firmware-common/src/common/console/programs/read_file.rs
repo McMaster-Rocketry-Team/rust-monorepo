@@ -1,5 +1,5 @@
 use defmt::{unwrap, warn};
-use vlfs::{io_traits::AsyncReader, Crc, Flash, VLFSReadStatus, VLFS};
+use vlfs::{io_traits::AsyncReader, Crc, FileID, Flash, VLFSReadStatus, VLFS};
 
 use crate::driver::serial::Serial;
 
@@ -21,7 +21,7 @@ impl ReadFile {
     ) -> Result<(), ()> {
         let mut buffer = [0u8; 64];
         unwrap!(serial.read_all(&mut buffer[..8]).await);
-        let file_id = u64::from_be_bytes((&buffer[0..8]).try_into().unwrap());
+        let file_id = u64::from_be_bytes((&buffer[0..8]).try_into().unwrap()).into();
 
         let mut reader = unwrap!(vlfs.open_file_for_read(file_id).await);
         loop {

@@ -12,7 +12,9 @@ use vlfs::{io_traits::AsyncWriter, Crc, Flash, VLFS};
 use crate::{
     beacon::beacon_data::BeaconData,
     claim_devices,
-    common::{device_manager::prelude::*, gps_parser::GPSParser},
+    common::{
+        device_manager::prelude::*, files::BEACON_SENDER_LOG_FILE_TYPE, gps_parser::GPSParser,
+    },
     device_manager_type,
     driver::{
         gps::GPS,
@@ -24,9 +26,6 @@ use core::{cell::RefCell, fmt::Write};
 use embassy_sync::blocking_mutex::{raw::CriticalSectionRawMutex, Mutex as BlockingMutex};
 use futures::future::join;
 use heapless::String;
-
-static BEACON_SENDER_LOG_FILE_ID: u64 = 1;
-static BEACON_SENDER_LOG_FILE_TYPE: u16 = 1;
 
 #[inline(never)]
 pub async fn beacon_sender(
@@ -41,13 +40,8 @@ pub async fn beacon_sender(
         lora.sleep(&mut DelayUsWrapper(timer)).await.unwrap();
     }
 
-    if !fs.exists(BEACON_SENDER_LOG_FILE_ID).await {
-        unwrap!(
-            fs.create_file(BEACON_SENDER_LOG_FILE_ID, BEACON_SENDER_LOG_FILE_TYPE)
-                .await
-        );
-    }
-    let mut log_file = unwrap!(fs.open_file_for_write(BEACON_SENDER_LOG_FILE_ID).await);
+    let file_id = unwrap!(fs.create_file(BEACON_SENDER_LOG_FILE_TYPE).await);
+    let mut log_file = unwrap!(fs.open_file_for_write(file_id).await);
     log_file
         .extend_from_slice(b"\n\nBeacon Started =================\n")
         .await

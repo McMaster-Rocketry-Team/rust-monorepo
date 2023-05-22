@@ -39,16 +39,34 @@ const ALLOC_TABLES_SECTORS_USED: usize = TABLE_COUNT * 32 * 1024 / SECTOR_SIZE;
 const DATA_REGION_SECTORS: usize = SECTORS_COUNT - ALLOC_TABLES_SECTORS_USED; // must be a multiple of 16 & aligned to 16
 const SECTOR_MAP_ARRAY_SIZE: usize = DATA_REGION_SECTORS / 32;
 
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, defmt::Format)]
+pub struct FileID(pub u64);
+
+impl From<u64> for FileID {
+    fn from(v: u64) -> Self {
+        Self(v)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, defmt::Format)]
+pub struct FileType(pub u16);
+
+impl From<u16> for FileType {
+    fn from(v: u16) -> Self {
+        Self(v)
+    }
+}
+
 #[derive(Debug, Clone)]
 struct FileEntry {
-    file_id: u64,
-    file_type: u16,
+    file_id: FileID,
+    file_type: FileType,
     first_sector_index: Option<u16>, // None means the file is empty
     opened: bool,
 }
 
 impl FileEntry {
-    fn new(file_id: u64, file_type: u16) -> Self {
+    fn new(file_id: FileID, file_type: FileType) -> Self {
         Self {
             file_id,
             file_type,
@@ -76,6 +94,7 @@ impl Default for AllocationTable {
 struct AllocationTableWrapper {
     allocation_table: AllocationTable,
     allocation_table_index: usize, // which half block is the allocation table in
+    max_file_id: Option<FileID>,
 }
 
 impl Default for AllocationTableWrapper {
@@ -83,6 +102,7 @@ impl Default for AllocationTableWrapper {
         Self {
             allocation_table: AllocationTable::default(),
             allocation_table_index: TABLE_COUNT - 1,
+            max_file_id: None,
         }
     }
 }
@@ -104,61 +124,28 @@ where
     F: Flash,
     C: Crc,
 {
-    pub async fn exists(&self, file_id: u64) -> bool {
+    pub async fn exists(&self, file_id: FileID) -> bool {
         let at = self.allocation_table.read().await;
         self.find_file_entry(&at.allocation_table, file_id)
             .is_some()
     }
 
-    pub async fn create_file(
-        &self,
-        file_id: u64,
-        file_type: u16,
-    ) -> Result<(), VLFSError<F::Error>> {
+    pub async fn create_file(&self, file_type: FileType) -> Result<FileID, VLFSError<F::Error>> {
         let mut at = self.allocation_table.write().await;
-        for file_entry in &at.allocation_table.file_entries {
-            if file_entry.file_id == file_id {
-                return Err(VLFSError::FileAlreadyExists);
-            }
-        }
+        let file_id = at.max_file_id.map_or(0, |v| v.0 + 1).into();
 
         let file_entry = FileEntry::new(file_id, file_type);
         at.allocation_table
             .file_entries
             .push(file_entry)
             .map_err(|_| VLFSError::MaxFilesReached)?;
+        at.max_file_id = Some(file_id);
         drop(at);
         self.write_allocation_table().await?;
-        Ok(())
-    }
-
-    pub async fn create_file_from_type(&self, file_type: u16) -> Result<u64, VLFSError<F::Error>> {
-        let mut at = self.allocation_table.write().await;
-        let file_id = self.rng.lock(|rng| {
-            let mut rng = rng.borrow_mut();
-            let mut file_id = rng.next_u64();
-
-            while self
-                .find_file_entry(&at.allocation_table, file_id)
-                .is_some()
-            {
-                file_id = rng.next_u64();
-            }
-            file_id
-        });
-
-        let file_entry = FileEntry::new(file_id, file_type);
-        at.allocation_table
-            .file_entries
-            .push(file_entry)
-            .map_err(|_| VLFSError::MaxFilesReached)?;
-        drop(at);
-        self.write_allocation_table().await?;
-
         Ok(file_id)
     }
 
-    pub async fn remove_file(&self, file_id: u64) -> Result<(), VLFSError<F::Error>> {
+    pub async fn remove_file(&self, file_id: FileID) -> Result<(), VLFSError<F::Error>> {
         let mut current_sector_index: Option<u16> = None;
         let mut at = self.allocation_table.write().await;
         for i in 0..at.allocation_table.file_entries.len() {
@@ -198,7 +185,10 @@ where
         Ok(())
     }
 
-    pub async fn get_file_size(&self, file_id: u64) -> Result<(usize, usize), VLFSError<F::Error>> {
+    pub async fn get_file_size(
+        &self,
+        file_id: FileID,
+    ) -> Result<(usize, usize), VLFSError<F::Error>> {
         trace!("get file size start");
         let at = self.allocation_table.read().await;
         if let Some(file_entry) = self.find_file_entry(&at.allocation_table, file_id) {

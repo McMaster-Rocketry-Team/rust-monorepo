@@ -11,7 +11,7 @@ pub use fs::error::VLFSError;
 pub use fs::iter::{FilesIterator, LsFileEntry};
 pub use fs::reader::{FileReader, VLFSReadStatus};
 pub use fs::writer::FileWriter;
-pub use fs::VLFS;
+pub use fs::{FileID, FileType, VLFS};
 pub use utils::io_traits;
 
 mod driver;

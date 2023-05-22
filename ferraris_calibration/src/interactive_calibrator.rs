@@ -109,7 +109,7 @@ impl InteractiveCalibrator {
     // Will return Some when the state changes
     pub fn process(&mut self, reading: &IMUReading) -> Option<InteractiveCalibratorState> {
         let mut new_state = None;
-        let mut inner = self.inner.as_mut().unwrap_left();
+        let inner = self.inner.as_mut().unwrap_left();
         match self.state {
             Idle => {
                 self.last_reading = reading.clone();

@@ -12,7 +12,7 @@ where
 {
     pub async fn open_file_for_write(
         &self,
-        file_id: u64,
+        file_id: FileID,
     ) -> Result<FileWriter<F, C>, VLFSError<F::Error>> {
         let mut at = self.allocation_table.write().await;
         if let Some(file_entry) = self.find_file_entry_mut(&mut at.allocation_table, file_id) {
@@ -125,7 +125,7 @@ where
     buffer_offset: usize,
     sector_data_length: u16,
     current_sector_index: u16,
-    file_id: u64,
+    file_id: FileID,
 
     closed: bool,
 }
@@ -135,7 +135,7 @@ where
     F: Flash,
     C: Crc,
 {
-    fn new(vlfs: &'a VLFS<F, C>, initial_sector_index: u16, file_id: u64) -> Self {
+    fn new(vlfs: &'a VLFS<F, C>, initial_sector_index: u16, file_id: FileID) -> Self {
         FileWriter {
             vlfs,
             buffer: [0xFFu8; 5 + PAGE_SIZE],
@@ -327,7 +327,7 @@ where
         if !self.closed {
             defmt::panic!(
                 "FileWriter for file {:X} dropped without being closed",
-                self.file_id
+                self.file_id.0
             );
         }
     }

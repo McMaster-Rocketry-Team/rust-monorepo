@@ -88,7 +88,7 @@ impl<P: VLPPhy> VLPSocket<P> {
         };
 
         _self.do_establish().await;
-        
+
         _self
     }
 
@@ -109,7 +109,6 @@ impl<P: VLPPhy> VLPSocket<P> {
         }
 
         self.state = ConnectionState::Established;
-
     }
 
     pub async fn await_establish(phy: P) -> Result<VLPSocket<P>, VLPError> {
@@ -134,8 +133,8 @@ impl<P: VLPPhy> VLPSocket<P> {
                         // Anomaly: remote party believes a session to already be established.
                         let rst = Packet {
                             flags: Flags::RST,
-                            seqnum: packet.seqnum+1,
-                            payload: None
+                            seqnum: packet.seqnum + 1,
+                            payload: None,
                         };
 
                         // Send RST packet, and await new handshake from remote party.
@@ -194,10 +193,12 @@ impl<P: VLPPhy> VLPSocket<P> {
                             return Ok(None);
                         }
                     }
-                    Err(e) => if e == VLPError::SessionReset {
-                        self.do_establish().await;
-                        packet.seqnum = self.next_seqnum;
-                        self.next_seqnum = self.next_seqnum.wrapping_add(1);
+                    Err(e) => {
+                        if e == VLPError::SessionReset {
+                            self.do_establish().await;
+                            packet.seqnum = self.next_seqnum;
+                            self.next_seqnum = self.next_seqnum.wrapping_add(1);
+                        }
                     }
                 }
             }
@@ -226,10 +227,12 @@ impl<P: VLPPhy> VLPSocket<P> {
                     self.prio = Priority::Listener;
                     return Ok(());
                 }
-                Err(e) => if e == VLPError::SessionReset {
-                    self.do_establish().await;
-                    packet.seqnum = self.next_seqnum;
-                    self.next_seqnum = self.next_seqnum.wrapping_add(1);
+                Err(e) => {
+                    if e == VLPError::SessionReset {
+                        self.do_establish().await;
+                        packet.seqnum = self.next_seqnum;
+                        self.next_seqnum = self.next_seqnum.wrapping_add(1);
+                    }
                 }
             }
         }
@@ -524,11 +527,14 @@ mod tests {
         let mock_phy = MockPhy::new("test_session_reset");
         let (part_a, part_b) = mock_phy.get_participants();
 
-        let tx = VLPSocket::establish(part_a, SocketParams {
-            encryption: false,
-            compression: false,
-            reliability: true
-        });
+        let tx = VLPSocket::establish(
+            part_a,
+            SocketParams {
+                encryption: false,
+                compression: false,
+                reliability: true,
+            },
+        );
         pin_mut!(tx);
 
         let rx = VLPSocket::await_establish(part_b);

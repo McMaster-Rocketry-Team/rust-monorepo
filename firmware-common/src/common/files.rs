@@ -1,2 +1,5 @@
-pub static DEVICE_MODE_FILE_ID: u64 = 0;
-pub static DEVICE_MODE_FILE_TYPE: u16 = 0;
+use vlfs::FileType;
+
+pub static DEVICE_MODE_FILE_TYPE: FileType = FileType(0);
+pub static BEACON_SENDER_LOG_FILE_TYPE: FileType = FileType(1);
+pub static BENCHMARK_FILE_TYPE: FileType = FileType(2);

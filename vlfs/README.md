@@ -15,7 +15,7 @@
 
 # Overview
 
-VLFS is based on a file allocation table design and uses linklists to store data. Every file is indexed by a `u64` file id and a `u16` file type. To use VLFS, you need a flash that implements the [`Flash`](./src/driver/flash.rs) trait and a crc implementation that implments the [`Crc`](./src/driver/crc.rs) trait.
+VLFS is based on a file allocation table design and uses linklists to store data. Every file is indexed by a `u64` file id and a `u16` file type. The file id is automatically generated when creating a new file, and it is self incrementing. To use VLFS, you need a flash that implements the [`Flash`](./src/driver/flash.rs) trait and a crc implementation that implments the [`Crc`](./src/driver/crc.rs) trait.
 
 # Example
 
