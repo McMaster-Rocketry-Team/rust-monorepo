@@ -522,7 +522,7 @@ mod tests {
     #[futures_test::test]
     async fn test_session_reset() {
         let mock_phy = MockPhy::new("test_session_reset");
-        let (part_a, part_b) = mock_phy.get_participant();
+        let (part_a, part_b) = mock_phy.get_participants();
 
         let tx = VLPSocket::establish(part_a, SocketParams {
             encryption: false,
