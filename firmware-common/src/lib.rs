@@ -4,12 +4,12 @@
 #![feature(let_chains)]
 #![feature(try_blocks)]
 
-use crate::common::{console::console::run_console, device_manager::prelude::*};
+use crate::common::{console::console::run_console, device_manager::prelude::*, ticker::Ticker};
 use defmt::*;
 use vlfs::VLFS;
 
 use futures::{
-    future::{join3, select},
+    future::{join4, select},
     pin_mut,
 };
 
@@ -36,6 +36,23 @@ pub async fn init(device_manager: device_manager_type!(mut)) -> ! {
     unwrap!(fs.init().await);
 
     let timer = device_manager.timer;
+
+    let testing_fut = async {
+        claim_devices!(device_manager, meg);
+        // unwrap!(imu.wait_for_power_on().await);
+        // unwrap!(imu.reset().await);
+        // let mut ticker = Ticker::every(timer, 1.0);
+        // unwrap!(meg.reset().await);
+        info!("meg resetted");
+        let start_time = timer.now_mills();
+        loop {
+            info!("meg: {}",meg.reset().await);
+        }
+        info!(
+            "Time taken: {}",
+            (timer.now_mills() - start_time) / 10.0
+        );
+    };
 
     let usb_connected = {
         let timeout_fut = timer.sleep(500.0);
@@ -89,7 +106,7 @@ pub async fn init(device_manager: device_manager_type!(mut)) -> ! {
         };
     };
 
-    join3(main_fut, serial_console, usb_console).await;
+    join4(main_fut, serial_console, usb_console, testing_fut).await;
 
     defmt::unreachable!()
 }

@@ -73,7 +73,12 @@ pub async fn beacon_sender(
                 )
                 .unwrap();
                 log_file.extend_from_slice(log_str.as_bytes()).await.ok();
-                info!("{}", log_str.as_str());
+                info!(
+                    "{}",
+                    log_str
+                        .as_str()
+                        .trim_end_matches(|c| c == '\r' || c == '\n')
+                );
             }
 
             satellites_count.lock(|v| v.replace(gps_parser.nmea.satellites().len() as u32));
@@ -101,7 +106,7 @@ pub async fn beacon_sender(
                 let mut tx_params = lora
                     .create_tx_packet_params(8, false, true, false, &modulation_params)
                     .unwrap();
-                lora.prepare_for_tx(&modulation_params, 22, true)
+                lora.prepare_for_tx(&modulation_params, 12, true)
                     .await
                     .unwrap();
                 lora.tx(&modulation_params, &mut tx_params, buffer, 0xFFFFFF)
@@ -112,7 +117,12 @@ pub async fn beacon_sender(
             let mut log_str = String::<32>::new();
             core::write!(&mut log_str, "{} | Beacon send!\n", timer.now_mills()).unwrap();
             log_file.extend_from_slice(log_str.as_bytes()).await.ok();
-            info!("{}", log_str.as_str());
+            info!(
+                "{}",
+                log_str
+                    .as_str()
+                    .trim_end_matches(|c| c == '\r' || c == '\n')
+            );
 
             if let Some(lora) = &mut lora {
                 lora.sleep(&mut DelayUsWrapper(timer)).await.unwrap();

@@ -3,8 +3,9 @@ pub use ferraris_calibration::IMUReading;
 use super::timer::Timer;
 
 pub trait IMU {
-    type Error;
+    type Error: defmt::Format;
 
+    async fn wait_for_power_on(&mut self) -> Result<(), Self::Error>;
     async fn reset(&mut self) -> Result<(), Self::Error>;
     async fn read(&mut self) -> Result<IMUReading, Self::Error>;
 }
@@ -21,6 +22,10 @@ impl<T: Timer> DummyIMU<T> {
 
 impl<T: Timer> IMU for DummyIMU<T> {
     type Error = ();
+
+    async fn wait_for_power_on(&mut self) -> Result<(), ()> {
+        Ok(())
+    }
 
     async fn reset(&mut self) -> Result<(), ()> {
         Ok(())
