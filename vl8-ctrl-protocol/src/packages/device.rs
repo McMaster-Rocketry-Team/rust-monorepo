@@ -15,7 +15,6 @@ impl Package for GetDevice {
 #[derive(Archive, Deserialize, Serialize, defmt::Format, Debug)]
 #[archive(check_bytes)]
 pub struct DeviceInfo {
-    pub ack_seqnum: u32,
     pub device_id: [u8; 12],
     pub device_model: u8,
 }

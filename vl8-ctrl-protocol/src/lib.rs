@@ -7,6 +7,7 @@ pub use packages::ack::Ack;
 pub use packages::device::{DeviceInfo, GetDevice};
 pub use packages::event::{Event, PollEvent, EventPackage};
 pub use packages::pyro::{PyroCtrl};
+pub use codec::{encode_package, decode_package, DecodedPackage};
 
 mod codec;
 mod master;

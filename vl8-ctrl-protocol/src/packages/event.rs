@@ -23,8 +23,8 @@ pub enum Event {
 #[derive(Archive, Deserialize, Serialize, defmt::Format, Debug)]
 #[archive(check_bytes)]
 pub struct EventPackage {
-    events_left: u8,
-    event: Event,
+    pub events_left: u8,
+    pub event: Option<Event>,
 }
 
 impl Package for EventPackage {

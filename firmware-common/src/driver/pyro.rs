@@ -29,3 +29,13 @@ impl<T: Timer> PyroChannel for DummyPyroChannel<T> {
 
     async fn set_enable(&mut self, _enable: bool) {}
 }
+
+// new impl
+pub trait Continuity {
+    async fn wait_continuity_change(&mut self);
+    async fn read_continuity(&mut self) -> bool;
+}
+
+pub trait PyroCtrl {
+    async fn set_enable(&mut self, enable: bool);
+}
