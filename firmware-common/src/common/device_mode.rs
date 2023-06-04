@@ -42,9 +42,8 @@ pub async fn write_device_mode<F: Flash>(
     fs: &VLFS<F, impl Crc>,
     mode: DeviceMode,
 ) -> Result<(), VLFSError<F::Error>> {
-    while let Some(file_entry) = fs.files_iter(Some(DEVICE_MODE_FILE_TYPE)).await.next() {
-        fs.remove_file(file_entry.file_id).await?;
-    }
+    fs.remove_files(|file_entry| file_entry.file_type == DEVICE_MODE_FILE_TYPE)
+        .await?;
 
     let file_id = fs.create_file(DEVICE_MODE_FILE_TYPE).await?;
     let mut writer = fs.open_file_for_write(file_id).await?;

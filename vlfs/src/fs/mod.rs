@@ -1,6 +1,7 @@
 use core::cell::RefCell;
 
 use crate::driver::{crc::Crc, flash::Flash};
+use crate::LsFileEntry;
 use bitvec::prelude::*;
 use defmt::*;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
@@ -183,6 +184,60 @@ where
         }
 
         Ok(())
+    }
+
+    pub async fn remove_files<P: Fn(LsFileEntry) -> bool>(
+        &self,
+        predicate: P,
+    ) -> Result<(), VLFSError<F::Error>> {
+        let mut at = self.allocation_table.write().await;
+        let mut flash = self.flash.lock().await;
+
+        let delete_result: Result<(), VLFSError<F::Error>> = try {
+            let mut buffer = [0u8; 5 + 8];
+            let mut i = 0;
+            while let Some(file_entry) = at.allocation_table.file_entries.get(i) {
+                if predicate(file_entry.into()) {
+                    if file_entry.opened {
+                        Err(VLFSError::FileInUse)?;
+                    }
+
+                    let mut current_sector_index = file_entry.first_sector_index;
+                    drop(file_entry);
+
+                    // delete file entry
+                    at.allocation_table.file_entries.swap_remove(i);
+
+                    // update sectors list
+                    while let Some(sector_index) = current_sector_index {
+                        let address = sector_index as u32 * SECTOR_SIZE as u32;
+                        let address = address + SECTOR_SIZE as u32 - 8;
+
+                        let read_result = flash
+                            .read(address, 8, &mut buffer)
+                            .await
+                            .map_err(VLFSError::FlashError)?;
+                        let next_sector_index = find_most_common_u16_out_of_4(read_result).unwrap();
+                        self.return_sector(sector_index).await;
+                        current_sector_index = if next_sector_index == 0xFFFF {
+                            None
+                        } else {
+                            Some(next_sector_index)
+                        };
+                    }
+                } else {
+                    i += 1;
+                }
+            }
+
+            ()
+        };
+
+        drop(at);
+        drop(flash);
+        self.write_allocation_table().await?;
+
+        delete_result
     }
 
     pub async fn get_file_size(

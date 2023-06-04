@@ -6,11 +6,11 @@ use ferraris_calibration::interactive_calibrator::{
     InteractiveCalibratorState::*,
 };
 use futures::future::join;
-use vlfs::{Crc, Flash, VLFS};
+use vlfs::{io_traits::AsyncWriter, Crc, Flash, VLFS};
 
 use crate::{
     claim_devices,
-    common::{device_manager::prelude::*, ticker::Ticker},
+    common::{device_manager::prelude::*, files::CALIBRATION_FILE_TYPE, ticker::Ticker},
     device_manager_type,
     driver::{buzzer::Buzzer, imu::IMU, serial::Serial, timer::Timer},
 };
@@ -29,16 +29,18 @@ impl Calibrate {
     pub async fn start(
         &self,
         serial: &mut impl Serial,
-        vlfs: &VLFS<impl Flash, impl Crc>,
+        fs: &VLFS<impl Flash, impl Crc>,
         device_manager: device_manager_type!(),
     ) -> Result<(), ()> {
         let timer = device_manager.timer;
         claim_devices!(device_manager, buzzer, imu);
-        let state_event = Signal::<CriticalSectionRawMutex, InteractiveCalibratorState>::new();
 
-        let sound_fut = async {
-            loop {
-                match state_event.wait().await {
+        let mut calibrator = InteractiveCalibrator::default();
+        loop {
+            let reading = imu.read().await.map_err(|_| ()).unwrap();
+            let next_state = calibrator.process(&reading);
+            if let Some(state) = next_state {
+                match state {
                     WaitingStill => self.waiting_still_sound(&mut buzzer, timer).await,
                     State(axis, direction, event) => {
                         self.axis_sound(axis, &mut buzzer, timer).await;
@@ -55,30 +57,28 @@ impl Calibrate {
                     }
                     Idle => {}
                 }
-            }
-        };
 
-        let calibration_fut = async {
-            let mut calibrator = InteractiveCalibrator::default();
-            loop {
-                let reading = imu.read().await.map_err(|_| ()).unwrap();
-                let next_state = calibrator.process(&reading);
-                if let Some(state) = next_state {
-                    state_event.signal(state);
-                    if let Success = state {
-                        let cal_info = calibrator.get_calibration_info();
+                if let Success = state {
+                    let cal_info = calibrator.get_calibration_info().unwrap();
+                    unwrap!(
+                        fs.remove_files(|file_entry| file_entry.file_type == CALIBRATION_FILE_TYPE)
+                            .await
+                    );
+                    let file_id = unwrap!(fs.create_file(CALIBRATION_FILE_TYPE).await);
+                    let mut file = unwrap!(fs.open_file_for_write(file_id).await);
 
-                        serial.write(&[1]);
-                        break;
-                    } else if let Failure = state {
-                        serial.write(&[0]);
-                        break;
-                    }
+                    let mut buffer = [0u8; 132];
+                    cal_info.serialize(&mut buffer);
+                    unwrap!(file.extend_from_slice(&buffer).await);
+
+                    serial.write(&[1]);
+                    break;
+                } else if let Failure = state {
+                    serial.write(&[0]);
+                    break;
                 }
             }
-        };
-
-        join(sound_fut, calibration_fut).await;
+        }
 
         Ok(())
     }

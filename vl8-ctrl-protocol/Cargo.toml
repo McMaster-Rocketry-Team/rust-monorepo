@@ -1,0 +1,16 @@
+[package]
+name = "vl8-ctrl-protocol"
+version = "0.1.0"
+edition = "2021"
+authors = ["Pegasis <me@pegasis.site>"]
+
+[dependencies]
+rkyv = { version = "0.7.39", default-features = false, features = [
+    "size_32",
+    "validation",
+] }
+heapless = { version = "0.7.5", features = ["defmt"], default-features = false }
+defmt = "0.3"
+crc = "3.0.1"
+firmware-common = { path = "../firmware-common" }
+embassy-sync = { version = "0.2.0", features = ["defmt"] }

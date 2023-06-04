@@ -7,13 +7,7 @@ where
 {
     /// Trying to create or delete files while iterating over the files will result in a deadlock.
     ///
-    /// To avoid the deadlock, see the following example:
-    ///
-    /// ```rust
-    /// while let Some(file_entry) = fs.files_iter(Some(FileType(0))).await.next() {
-    ///     fs.remove_file(file_entry.file_id).await?;
-    /// }
-    /// ```
+    /// To delete multiple files, use [`remove_files`](Self::remove_files) instead.
     pub async fn files_iter(&self, file_type: Option<FileType>) -> FilesIterator {
         FilesIterator {
             i: 0,

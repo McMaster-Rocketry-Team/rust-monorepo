@@ -47,7 +47,7 @@ pub struct InteractiveCalibrator {
     last_reading: IMUReading,
     still_gyro_threshold_squared: f64,
     angular_acceleration_moving_avg: SingleSumSMA<Vector3<f64>, 30>, // each sample is 0.1s apart, gives a 3s window
-    state_start_timestamp: f64,
+    state_start_timestamp: Option<f64>,
 }
 
 const MINIMUM_SAMPLE_TIME: f64 = 3000.0;
@@ -71,7 +71,7 @@ impl InteractiveCalibrator {
             last_reading: IMUReading::default(),
             still_gyro_threshold_squared: still_gyro_threshold * still_gyro_threshold,
             angular_acceleration_moving_avg: SingleSumSMA::new(Vector3::zeros()),
-            state_start_timestamp: 0.0,
+            state_start_timestamp: None,
         }
     }
 
@@ -117,84 +117,104 @@ impl InteractiveCalibrator {
             }
             WaitingStill => {
                 if self.wait_still(&reading) {
-                    self.state_start_timestamp = reading.timestamp;
                     new_state = Some(State(X, Plus, Start));
                 }
             }
             State(X, Plus, Start) => {
+                if self.state_start_timestamp.is_none() {
+                    self.state_start_timestamp = Some(reading.timestamp);
+                }
+
                 inner.process_x_p(reading);
                 if inner.x_p_count > 300
-                    && reading.timestamp - self.state_start_timestamp > MINIMUM_SAMPLE_TIME
+                    && reading.timestamp - self.state_start_timestamp.unwrap() > MINIMUM_SAMPLE_TIME
                 {
                     new_state = Some(State(X, Plus, End));
                 }
             }
             State(X, Plus, End) => {
+                self.state_start_timestamp = None;
+
                 if self.wait_still(&reading) {
-                    self.state_start_timestamp = reading.timestamp;
                     new_state = Some(State(X, Minus, Start));
                 }
             }
             State(X, Minus, Start) => {
+                if self.state_start_timestamp.is_none() {
+                    self.state_start_timestamp = Some(reading.timestamp);
+                }
+
                 inner.process_x_n(reading);
                 if inner.x_n_count > 300
-                    && reading.timestamp - self.state_start_timestamp > MINIMUM_SAMPLE_TIME
+                    && reading.timestamp - self.state_start_timestamp.unwrap() > MINIMUM_SAMPLE_TIME
                 {
                     new_state = Some(State(X, Minus, End));
                 }
             }
             State(X, Minus, End) => {
                 if self.wait_still(&reading) {
-                    self.state_start_timestamp = reading.timestamp;
                     new_state = Some(State(Y, Plus, Start));
                 }
             }
             State(Y, Plus, Start) => {
+                if self.state_start_timestamp.is_none() {
+                    self.state_start_timestamp = Some(reading.timestamp);
+                }
+
                 inner.process_y_p(reading);
                 if inner.y_p_count > 300
-                    && reading.timestamp - self.state_start_timestamp > MINIMUM_SAMPLE_TIME
+                    && reading.timestamp - self.state_start_timestamp.unwrap() > MINIMUM_SAMPLE_TIME
                 {
                     new_state = Some(State(Y, Plus, End));
                 }
             }
             State(Y, Plus, End) => {
                 if self.wait_still(&reading) {
-                    self.state_start_timestamp = reading.timestamp;
                     new_state = Some(State(Y, Minus, Start));
                 }
             }
             State(Y, Minus, Start) => {
+                if self.state_start_timestamp.is_none() {
+                    self.state_start_timestamp = Some(reading.timestamp);
+                }
+
                 inner.process_y_n(reading);
                 if inner.y_n_count > 300
-                    && reading.timestamp - self.state_start_timestamp > MINIMUM_SAMPLE_TIME
+                    && reading.timestamp - self.state_start_timestamp.unwrap() > MINIMUM_SAMPLE_TIME
                 {
                     new_state = Some(State(Y, Minus, End));
                 }
             }
             State(Y, Minus, End) => {
                 if self.wait_still(&reading) {
-                    self.state_start_timestamp = reading.timestamp;
                     new_state = Some(State(Z, Plus, Start));
                 }
             }
             State(Z, Plus, Start) => {
+                if self.state_start_timestamp.is_none() {
+                    self.state_start_timestamp = Some(reading.timestamp);
+                }
+
                 inner.process_z_p(reading);
                 if inner.z_p_count > 300
-                    && reading.timestamp - self.state_start_timestamp > MINIMUM_SAMPLE_TIME
+                    && reading.timestamp - self.state_start_timestamp.unwrap() > MINIMUM_SAMPLE_TIME
                 {
                     new_state = Some(State(Z, Plus, End));
                 }
             }
             State(Z, Plus, End) => {
                 if self.wait_still(&reading) {
-                    self.state_start_timestamp = reading.timestamp;
                     new_state = Some(State(Z, Minus, Start));
                 }
             }
             State(Z, Minus, Start) => {
+                if self.state_start_timestamp.is_none() {
+                    self.state_start_timestamp = Some(reading.timestamp);
+                }
+
                 inner.process_z_n(reading);
                 if inner.z_n_count > 300
-                    && reading.timestamp - self.state_start_timestamp > MINIMUM_SAMPLE_TIME
+                    && reading.timestamp - self.state_start_timestamp.unwrap() > MINIMUM_SAMPLE_TIME
                 {
                     new_state = Some(State(Z, Minus, End));
                 }
