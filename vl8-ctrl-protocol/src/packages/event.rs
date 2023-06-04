@@ -1,6 +1,5 @@
-use rkyv::{Archive, Deserialize, Serialize};
-
 use super::Package;
+use rkyv::{Archive, Deserialize, Serialize};
 
 #[derive(Archive, Deserialize, Serialize, defmt::Format, Debug)]
 #[archive(check_bytes)]
@@ -17,7 +16,7 @@ impl Package for PollEvent {
 pub enum Event {
     Continuity { pyro_id: u8, continuity: bool },
     HardwareArming { armed: bool },
-    NMEAMessage { message: [u8; 82] },
+    NMEAMessage { message: [u8; 82], length: u8 },
 }
 
 #[derive(Archive, Deserialize, Serialize, defmt::Format, Debug)]
