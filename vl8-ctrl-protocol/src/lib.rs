@@ -1,18 +1,23 @@
 #![cfg_attr(not(test), no_std)]
 #![feature(try_blocks)]
+#![feature(async_fn_in_trait)]
+#![feature(let_chains)]
 
+pub use codec::{decode_package, encode_package, DecodedPackage};
 pub use master::{Master, RequestError};
-pub use slave::Slave;
+pub use master_drivers::{MasterGPS, MasterHarwareArming, MasterPyroContinuity, MasterPyroCtrl};
 pub use packages::ack::Ack;
 pub use packages::device::{DeviceInfo, GetDevice};
-pub use packages::event::{Event, PollEvent, EventPackage};
-pub use packages::pyro::{PyroCtrl};
-pub use codec::{encode_package, decode_package, DecodedPackage};
+pub use packages::event::{Event, EventPackage, PollEvent};
+pub use packages::pyro::PyroCtrl;
+pub use slave::Slave;
 
 mod codec;
 mod master;
-mod slave;
+mod master_drivers;
 mod packages;
+mod slave;
+mod utils;
 
 #[cfg(test)]
 mod tests {

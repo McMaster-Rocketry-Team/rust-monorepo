@@ -24,7 +24,7 @@ use crate::{
 };
 use core::{cell::RefCell, fmt::Write};
 use embassy_sync::blocking_mutex::{raw::CriticalSectionRawMutex, Mutex as BlockingMutex};
-use futures::future::join;
+use futures::future::join3;
 use heapless::String;
 
 #[inline(never)]
@@ -50,40 +50,24 @@ pub async fn beacon_sender(
     let satellites_count = BlockingMutex::<CriticalSectionRawMutex, _>::new(RefCell::new(0u32));
     let locked = BlockingMutex::<CriticalSectionRawMutex, _>::new(RefCell::new(false));
 
-    let beacon_fut = async {
-        let mut gps_parser = GPSParser::new(gps);
-        loop {
-            while let Some((sentence, _)) = gps_parser.update_one() {
-                let mut log_str = String::<128>::new();
-                core::write!(
-                    &mut log_str,
-                    "{} | NMEA received at {}: {}\n",
-                    timer.now_mills(),
-                    sentence.timestamp,
-                    sentence
-                        .sentence
-                        .as_str()
-                        .trim_end_matches(|c| c == '\r' || c == '\n')
-                )
-                .unwrap();
-                log_file.extend_from_slice(log_str.as_bytes()).await.ok();
-                info!(
-                    "{}",
-                    log_str
-                        .as_str()
-                        .trim_end_matches(|c| c == '\r' || c == '\n')
-                );
-            }
+    let gps_parser = GPSParser::new();
+    // todo log gps location to file
 
-            satellites_count.lock(|v| v.replace(gps_parser.nmea.satellites().len() as u32));
-            locked.lock(|v| v.replace(gps_parser.nmea.longitude.is_some()));
+    let gps_fut = gps_parser.run(&mut gps);
+
+    let beacon_fut = async {
+        loop {
+            let nmea = gps_parser.get_nmea();
+
+            satellites_count.lock(|v| v.replace(nmea.satellites().len() as u32));
+            locked.lock(|v| v.replace(nmea.longitude.is_some()));
 
             if let Some(lora) = &mut lora {
                 let mut serializer = BufferSerializer::new([0u8; 32]);
                 let beacon_data = BeaconData {
-                    satellite_count: Some(gps_parser.nmea.satellites().len() as u8),
-                    longitude: gps_parser.nmea.longitude.map(|v| v as f32),
-                    latitude: gps_parser.nmea.latitude.map(|v| v as f32),
+                    satellite_count: Some(nmea.satellites().len() as u8),
+                    longitude: nmea.longitude.map(|v| v as f32),
+                    latitude: nmea.latitude.map(|v| v as f32),
                 };
                 serializer.serialize_value(&beacon_data).unwrap();
                 let buffer = serializer.into_inner();
@@ -143,6 +127,6 @@ pub async fn beacon_sender(
         }
     };
 
-    join(beacon_fut, indicator_fut).await;
+    join3(beacon_fut, indicator_fut, gps_fut).await;
     defmt::unreachable!()
 }

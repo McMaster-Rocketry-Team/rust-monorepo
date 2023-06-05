@@ -7,7 +7,7 @@ use crate::driver::{
     arming::HardwareArming,
     barometer::Barometer,
     buzzer::Buzzer,
-    gps::GPS,
+    gps::{GPS, GPSCtrl},
     imu::IMU,
     indicator::Indicator,
     meg::Megnetometer,
@@ -46,6 +46,7 @@ pub struct DeviceManager<
     IE: Indicator,
     BA: Barometer,
     G: GPS,
+    GT: GPSCtrl,
 > {
     pub(crate) device_management: Mutex<CriticalSectionRawMutex, D>,
     pub(crate) flash: Mutex<CriticalSectionRawMutex, F>,
@@ -71,6 +72,7 @@ pub struct DeviceManager<
     pub(crate) error_indicator: Mutex<CriticalSectionRawMutex, IE>,
     pub(crate) barometer: Mutex<CriticalSectionRawMutex, BA>,
     pub(crate) gps: Mutex<CriticalSectionRawMutex, G>,
+    pub(crate) gps_ctrl: Mutex<CriticalSectionRawMutex, GT>,
     pub(crate) timer: T,
 }
 
@@ -99,6 +101,7 @@ impl<
         IE: Indicator,
         BA: Barometer,
         G: GPS,
+        GT: GPSCtrl,
     >
     DeviceManager<
         D,
@@ -125,6 +128,7 @@ impl<
         IE,
         BA,
         G,
+        GT,
     >
 {
     pub fn new(
@@ -148,7 +152,7 @@ impl<
         status_indicator: IS,
         error_indicator: IE,
         barometer: BA,
-        gps: G,
+        gps: (G,GT),
     ) -> Self {
         Self {
             device_management: Mutex::new(device_management),
@@ -174,7 +178,8 @@ impl<
             status_indicator: Mutex::new(status_indicator),
             error_indicator: Mutex::new(error_indicator),
             barometer: Mutex::new(barometer),
-            gps: Mutex::new(gps),
+            gps: Mutex::new(gps.0),
+            gps_ctrl: Mutex::new(gps.1),
             timer,
         }
     }
@@ -245,6 +250,7 @@ macro_rules! device_manager_type{
     impl Indicator,
     impl Barometer,
     impl GPS,
+    impl GPSCtrl,
 >};
 
 (mut) => { &mut DeviceManager<
@@ -272,6 +278,7 @@ macro_rules! device_manager_type{
     impl Indicator,
     impl Barometer,
     impl GPS,
+    impl GPSCtrl,
 >}
 }
 
@@ -281,7 +288,7 @@ pub mod prelude {
     pub use crate::driver::arming::HardwareArming;
     pub use crate::driver::barometer::Barometer;
     pub use crate::driver::buzzer::Buzzer;
-    pub use crate::driver::gps::GPS;
+    pub use crate::driver::gps::{GPS, GPSCtrl};
     pub use crate::driver::imu::IMU;
     pub use crate::driver::indicator::Indicator;
     pub use crate::driver::meg::Megnetometer;

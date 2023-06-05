@@ -1,33 +1,43 @@
+use core::cell::RefCell;
+
+use defmt::{warn, debug};
 use nmea::Nmea;
 
-use crate::driver::gps::{NmeaSentence, GPS};
+use crate::driver::gps::GPS;
+use embassy_sync::blocking_mutex::{raw::CriticalSectionRawMutex, Mutex as BlockingMutex};
 
-pub struct GPSParser<G: GPS> {
-    gps: G,
-    pub nmea: Nmea,
+pub struct GPSParser {
+    nmea: BlockingMutex<CriticalSectionRawMutex, RefCell<Nmea>>,
 }
 
-impl<G: GPS> GPSParser<G> {
-    pub fn new(gps: G) -> Self {
+impl GPSParser {
+    pub fn new() -> Self {
         Self {
-            gps,
-            nmea: Nmea::default(),
+            nmea: BlockingMutex::new(RefCell::new(Nmea::default())),
         }
     }
-    async fn reset(&mut self) {
-        self.nmea = Nmea::default();
-        self.gps.reset().await;
+
+    pub fn get_nmea(&self) -> Nmea {
+        self.nmea.lock(|nmea| nmea.borrow().clone())
     }
 
-    async fn set_enable_gps(&mut self, enable: bool) {
-        self.gps.set_enable(enable).await;
-    }
-
-    pub fn update_one(&mut self) -> Option<(NmeaSentence, bool)> {
-        while let Some(sentence) = self.gps.read_next_nmea_sentence() {
-            let success = self.nmea.parse(&sentence.sentence.as_str()).is_ok();
-            return Some((sentence, success));
+    pub async fn run(&self, gps: &mut impl GPS) -> ! {
+        loop {
+            let nmea_sentence = gps.next_nmea_sentence().await;
+            self.nmea.lock(|nmea| {
+                let success = nmea
+                    .borrow_mut()
+                    .parse(&nmea_sentence.sentence.as_str())
+                    .is_ok();
+                if !success {
+                    warn!(
+                        "Failed to parse NMEA sentence {}",
+                        &nmea_sentence.sentence.as_str()
+                    );
+                }else{
+                    debug!("GPS: {}", &nmea_sentence.sentence.as_str());
+                }
+            });
         }
-        return None;
     }
 }

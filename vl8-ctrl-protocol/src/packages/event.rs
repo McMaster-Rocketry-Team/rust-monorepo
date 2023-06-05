@@ -14,9 +14,9 @@ impl Package for PollEvent {
 #[derive(Archive, Deserialize, Serialize, defmt::Format, Debug)]
 #[archive(check_bytes)]
 pub enum Event {
-    Continuity { pyro_id: u8, continuity: bool },
+    Continuity { pyro_channel: u8, continuity: bool },
     HardwareArming { armed: bool },
-    NMEAMessage { message: [u8; 82], length: u8 },
+    NmeaSentence { sentence: [u8; 84], length: u8 },
 }
 
 #[derive(Archive, Deserialize, Serialize, defmt::Format, Debug)]

@@ -5,7 +5,7 @@ use super::Package;
 #[derive(Archive, Deserialize, Serialize, defmt::Format, Debug)]
 #[archive(check_bytes)]
 pub struct PyroCtrl {
-    pub pyro_id: u8,
+    pub pyro_channel: u8,
     pub enable: bool,
 }
 
