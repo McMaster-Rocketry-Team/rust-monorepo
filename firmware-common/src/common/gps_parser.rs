@@ -1,6 +1,6 @@
 use core::cell::RefCell;
 
-use defmt::{warn, debug};
+use defmt::{debug, warn};
 use nmea::Nmea;
 
 use crate::driver::gps::GPS;
@@ -32,10 +32,19 @@ impl GPSParser {
                 if !success {
                     warn!(
                         "Failed to parse NMEA sentence {}",
-                        &nmea_sentence.sentence.as_str()
+                        &nmea_sentence
+                            .sentence
+                            .as_str()
+                            .trim_end_matches(|c| c == '\r' || c == '\n')
                     );
-                }else{
-                    debug!("GPS: {}", &nmea_sentence.sentence.as_str());
+                } else {
+                    debug!(
+                        "GPS: {}",
+                        &nmea_sentence
+                            .sentence
+                            .as_str()
+                            .trim_end_matches(|c| c == '\r' || c == '\n')
+                    );
                 }
             });
         }

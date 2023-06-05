@@ -27,12 +27,21 @@ impl TryFrom<u8> for DeviceMode {
 }
 
 pub async fn read_device_mode(fs: &VLFS<impl Flash, impl Crc>) -> Option<DeviceMode> {
-    if let Some(LsFileEntry{file_id, file_type:_}) = fs.files_iter(Some(DEVICE_MODE_FILE_TYPE)).await.next() && let Ok(mut reader) = fs.open_file_for_read(file_id).await {
-        let mut buffer = [0u8; 1];
-        let read_result = reader.read_u8(&mut buffer).await;
-        reader.close().await;
-        if let Ok((Some(value), _)) = read_result {
-            return value.try_into().ok();
+    let mut files_iter = fs.files_iter(Some(DEVICE_MODE_FILE_TYPE)).await;
+    let file = files_iter.next();
+    drop(files_iter);
+    if let Some(LsFileEntry {
+        file_id,
+        file_type: _,
+    }) = file
+    {
+        if let Ok(mut reader) = fs.open_file_for_read(file_id).await {
+            let mut buffer = [0u8; 1];
+            let read_result = reader.read_u8(&mut buffer).await;
+            reader.close().await;
+            if let Ok((Some(value), _)) = read_result {
+                return value.try_into().ok();
+            }
         }
     }
     None

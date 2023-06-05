@@ -7,7 +7,7 @@ use crate::driver::{
     arming::HardwareArming,
     barometer::Barometer,
     buzzer::Buzzer,
-    gps::{GPS, GPSCtrl},
+    gps::{GPSCtrl, GPS},
     imu::IMU,
     indicator::Indicator,
     meg::Megnetometer,
@@ -152,7 +152,7 @@ impl<
         status_indicator: IS,
         error_indicator: IE,
         barometer: BA,
-        gps: (G,GT),
+        gps: (G, GT),
     ) -> Self {
         Self {
             device_management: Mutex::new(device_management),
@@ -288,7 +288,7 @@ pub mod prelude {
     pub use crate::driver::arming::HardwareArming;
     pub use crate::driver::barometer::Barometer;
     pub use crate::driver::buzzer::Buzzer;
-    pub use crate::driver::gps::{GPS, GPSCtrl};
+    pub use crate::driver::gps::{GPSCtrl, GPS};
     pub use crate::driver::imu::IMU;
     pub use crate::driver::indicator::Indicator;
     pub use crate::driver::meg::Megnetometer;

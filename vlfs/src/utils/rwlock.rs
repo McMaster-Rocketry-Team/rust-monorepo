@@ -3,9 +3,11 @@ use core::future::poll_fn;
 use core::ops::{Deref, DerefMut};
 use core::task::Poll;
 
+use defmt::Format;
 use embassy_sync::blocking_mutex::Mutex as BlockingMutex;
 use embassy_sync::{blocking_mutex::raw::RawMutex, waitqueue::MultiWakerRegistration};
 
+#[derive(Format)]
 enum LockedState {
     Unlocked,
     ReadLocked(usize),

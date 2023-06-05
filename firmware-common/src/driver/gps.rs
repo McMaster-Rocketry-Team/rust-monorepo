@@ -41,15 +41,13 @@ impl<T: Timer> GPS for DummyGPS<T> {
     }
 }
 
-
 pub trait GPSCtrl {
     async fn reset(&mut self);
 
     async fn set_enable(&mut self, enable: bool);
 }
 
-pub struct DummyGPSCtrl {
-}
+pub struct DummyGPSCtrl {}
 
 impl GPSCtrl for DummyGPSCtrl {
     async fn reset(&mut self) {}

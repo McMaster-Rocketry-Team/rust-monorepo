@@ -18,6 +18,7 @@ mod master_drivers;
 mod packages;
 mod slave;
 mod utils;
+mod multi_waker;
 
 #[cfg(test)]
 mod tests {

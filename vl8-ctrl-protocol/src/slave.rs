@@ -40,7 +40,7 @@ impl<S: Serial> Slave<S> {
         });
     }
 
-    pub async fn respond(&self, package: impl Package, buffer: & mut [u8]) -> Result<(), S::Error> {
+    pub async fn respond(&self, package: impl Package, buffer: &mut [u8]) -> Result<(), S::Error> {
         let mut serial = self.serial.lock().await;
         let encoded = encode_package(buffer, package);
         serial.write(encoded).await

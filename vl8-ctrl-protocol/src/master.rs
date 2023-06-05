@@ -2,10 +2,10 @@ use core::cell::RefCell;
 
 use defmt::{info, warn, Format};
 use embassy_sync::blocking_mutex::Mutex as BlockingMutex;
-use embassy_sync::waitqueue::MultiWakerRegistration;
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 use firmware_common::driver::{serial::Serial, timer::Timer};
 
+use crate::multi_waker::MultiWakerRegistration;
 use crate::{
     codec::{decode_package, encode_package, DecodePackageError, DecodedPackage},
     packages::Package,
@@ -54,7 +54,7 @@ impl<S: Serial, T: Timer> Master<S, T> {
         let len = match run_with_timeout(self.timer, 50.0, serial.read(&mut buffer)).await {
             Ok(Ok(len)) => len,
             Ok(Err(e)) => return Err(RequestError::SerialError(e)),
-            Err(_) => return Err(RequestError::Timeout)
+            Err(_) => return Err(RequestError::Timeout),
         };
 
         decode_package(&buffer[..len]).map_err(RequestError::PackageError)
