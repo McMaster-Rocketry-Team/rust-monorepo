@@ -1,6 +1,6 @@
 use core::cell::RefCell;
 
-use defmt::{warn, Format};
+use defmt::{info, warn, Format};
 use embassy_sync::blocking_mutex::Mutex as BlockingMutex;
 use embassy_sync::waitqueue::MultiWakerRegistration;
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
@@ -51,11 +51,12 @@ impl<S: Serial, T: Timer> Master<S, T> {
             .await
             .map_err(RequestError::SerialError)?;
 
-        let len = match run_with_timeout(self.timer, 2.0, serial.read(&mut buffer)).await {
+        let len = match run_with_timeout(self.timer, 50.0, serial.read(&mut buffer)).await {
             Ok(Ok(len)) => len,
             Ok(Err(e)) => return Err(RequestError::SerialError(e)),
-            Err(_) => return Err(RequestError::Timeout),
+            Err(_) => return Err(RequestError::Timeout)
         };
+
         decode_package(&buffer[..len]).map_err(RequestError::PackageError)
     }
 
@@ -85,8 +86,17 @@ impl<S: Serial, T: Timer> Master<S, T> {
         }
     }
 
-    pub async fn pyro_ctrl(&self, pyro_channel: u8, enable: bool) -> Result<(), RequestError<S::Error>> {
-        let response = self.request(PyroCtrl { pyro_channel, enable }).await?;
+    pub async fn pyro_ctrl(
+        &self,
+        pyro_channel: u8,
+        enable: bool,
+    ) -> Result<(), RequestError<S::Error>> {
+        let response = self
+            .request(PyroCtrl {
+                pyro_channel,
+                enable,
+            })
+            .await?;
         match response {
             DecodedPackage::Ack(_) => Ok(()),
             _ => Err(RequestError::ProtocolError),

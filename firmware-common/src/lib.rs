@@ -97,6 +97,9 @@ pub async fn init(device_manager: device_manager_type!(mut)) -> ! {
             try_or_warn!(write_device_mode(&fs, device_mode).await);
         }
 
+        info!("Starting in mode BeaconSender without LoRa");
+        beacon_sender(&fs, device_manager, false).await;
+
         info!("Starting in mode {}", device_mode);
         match device_mode {
             DeviceMode::Avionics => defmt::panic!("Avionics mode not implemented"),

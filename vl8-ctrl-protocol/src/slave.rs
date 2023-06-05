@@ -1,7 +1,7 @@
 use core::cell::RefCell;
 use core::future::Future;
 
-use defmt::{unwrap, warn};
+use defmt::{info, unwrap, warn};
 use embassy_sync::blocking_mutex::Mutex as BlockingMutex;
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 use firmware_common::driver::serial::Serial;
@@ -34,16 +34,15 @@ impl<S: Serial> Slave<S> {
 
             if events.is_full() {
                 events.pop_front();
-                warn!("Event queue is full, dropping oldest event");
+                // warn!("Event queue is full, dropping oldest event");
             }
             events.push_back(event).unwrap();
         });
     }
 
-    pub async fn respond(&self, package: impl Package) -> Result<(), S::Error> {
+    pub async fn respond(&self, package: impl Package, buffer: & mut [u8]) -> Result<(), S::Error> {
         let mut serial = self.serial.lock().await;
-        let mut buffer = [0u8; 128];
-        let encoded = encode_package(&mut buffer, package);
+        let encoded = encode_package(buffer, package);
         serial.write(encoded).await
     }
 
@@ -77,6 +76,7 @@ impl<S: Serial> Slave<S> {
                             unwrap!(serial.write(encoded).await);
                         }
                         package => {
+                            info!("Got package: {}", package);
                             return package;
                         }
                     },
