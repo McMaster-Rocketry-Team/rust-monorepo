@@ -4,7 +4,10 @@
 #![feature(let_chains)]
 #![feature(try_blocks)]
 
-use crate::common::{console::console::run_console, device_manager::prelude::*};
+use crate::{
+    common::{console::console::run_console, device_manager::prelude::*},
+    ground_test::gcm::ground_test_gcm,
+};
 use defmt::*;
 use vlfs::VLFS;
 
@@ -19,6 +22,7 @@ use crate::{
 };
 
 pub use common::device_manager::DeviceManager;
+use ground_test::avionics::ground_test_avionics;
 
 mod allocator;
 mod avionics;
@@ -26,6 +30,7 @@ mod beacon;
 mod common;
 pub mod driver;
 mod gcm;
+mod ground_test;
 mod utils;
 
 pub async fn init(device_manager: device_manager_type!(mut)) -> ! {
@@ -97,6 +102,9 @@ pub async fn init(device_manager: device_manager_type!(mut)) -> ! {
             try_or_warn!(write_device_mode(&fs, device_mode).await);
         }
 
+        info!("Starting in mode GROUND TEST");
+        // ground_test_avionics(device_manager).await;
+        ground_test_gcm(device_manager).await;
         info!("Starting in mode BeaconSender without LoRa");
         beacon_sender(&fs, device_manager, false).await;
 

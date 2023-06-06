@@ -13,9 +13,7 @@ where
         &self,
         file_id: FileID,
     ) -> Result<FileReader<F, C>, VLFSError<F::Error>> {
-        info!("1");
         let mut at = self.allocation_table.write().await;
-        info!("2");
         if let Some(file_entry) = self.find_file_entry_mut(&mut at.allocation_table, file_id) {
             if file_entry.opened {
                 return Err(VLFSError::FileInUse);

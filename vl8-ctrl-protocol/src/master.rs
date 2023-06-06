@@ -6,6 +6,8 @@ use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 use firmware_common::driver::{serial::Serial, timer::Timer};
 
 use crate::multi_waker::MultiWakerRegistration;
+use crate::packages::continuity::{ContinuityInfo, GetContinuity};
+use crate::packages::hardware_arming::{GetHardwareArming, HardwareArmingInfo};
 use crate::{
     codec::{decode_package, encode_package, DecodePackageError, DecodedPackage},
     packages::Package,
@@ -39,25 +41,43 @@ impl<S: Serial, T: Timer> Master<S, T> {
         }
     }
 
-    pub async fn request(
+    async fn request_once(
         &self,
-        package: impl Package,
+        serial: &mut impl Serial<Error = S::Error>,
+        encoded_package: &[u8],
+        buffer: &mut [u8],
     ) -> Result<DecodedPackage, RequestError<S::Error>> {
-        let mut buffer = [0u8; 128];
-        let mut serial = self.serial.lock().await;
-        let encoded = encode_package(&mut buffer, package);
         serial
-            .write(encoded)
+            .write(encoded_package)
             .await
             .map_err(RequestError::SerialError)?;
 
-        let len = match run_with_timeout(self.timer, 50.0, serial.read(&mut buffer)).await {
+        let len = match run_with_timeout(self.timer, 30.0, serial.read(buffer)).await {
             Ok(Ok(len)) => len,
             Ok(Err(e)) => return Err(RequestError::SerialError(e)),
             Err(_) => return Err(RequestError::Timeout),
         };
 
         decode_package(&buffer[..len]).map_err(RequestError::PackageError)
+    }
+
+    pub async fn request(
+        &self,
+        package: impl Package,
+    ) -> Result<DecodedPackage, RequestError<S::Error>> {
+        let mut buffer = [0u8; 128];
+        let mut serial = self.serial.lock().await;
+        let encoded = encode_package(&mut buffer, package).clone();
+        let mut buffer = [0u8; 128];
+
+        let mut i = 0u32;
+        loop {
+            let result = self.request_once(&mut serial, encoded, &mut buffer).await;
+            if result.is_ok() || i > 3 {
+                return result;
+            }
+            i += 1;
+        }
     }
 
     pub async fn poll_event(&self) -> Result<u8, RequestError<S::Error>> {
@@ -68,10 +88,10 @@ impl<S: Serial, T: Timer> Master<S, T> {
                     self.last_event.lock(|last_event| {
                         let mut last_event = last_event.borrow_mut();
                         if last_event.is_some() {
-                            warn!(
-                                "Received a new event but the previous one was not consumed: {}",
-                                last_event.take().unwrap()
-                            );
+                            // warn!(
+                            //     "Received a new event but the previous one was not consumed: {}",
+                            //     last_event.take().unwrap()
+                            // );
                         }
                         *last_event = event_package.event;
                     });
@@ -107,6 +127,26 @@ impl<S: Serial, T: Timer> Master<S, T> {
         let response = self.request(GetDevice {}).await?;
         match response {
             DecodedPackage::DeviceInfo(device_info) => Ok(device_info),
+            _ => Err(RequestError::ProtocolError),
+        }
+    }
+
+    pub async fn get_continuity(&self, channel: u8) -> Result<bool, RequestError<S::Error>> {
+        let response = self
+            .request(GetContinuity {
+                pyro_channel: channel,
+            })
+            .await?;
+        match response {
+            DecodedPackage::ContinuityInfo(ContinuityInfo { continuity }) => Ok(continuity),
+            _ => Err(RequestError::ProtocolError),
+        }
+    }
+
+    pub async fn get_hardware_arming(&self) -> Result<bool, RequestError<S::Error>> {
+        let response = self.request(GetHardwareArming {}).await?;
+        match response {
+            DecodedPackage::HardwareArmingInfo(HardwareArmingInfo { armed }) => Ok(armed),
             _ => Err(RequestError::ProtocolError),
         }
     }

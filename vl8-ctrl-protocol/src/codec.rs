@@ -7,8 +7,10 @@ use rkyv::{
 
 use crate::packages::{
     ack::Ack,
+    continuity::{ContinuityInfo, GetContinuity},
     device::{DeviceInfo, GetDevice},
     event::{EventPackage, PollEvent},
+    hardware_arming::{GetHardwareArming, HardwareArmingInfo},
     pyro::PyroCtrl,
     Package,
 };
@@ -34,6 +36,10 @@ pub enum DecodedPackage {
     PyroCtrl(PyroCtrl),
     PollEvent(PollEvent),
     EventPackage(EventPackage),
+    GetContinuity(GetContinuity),
+    ContinuityInfo(ContinuityInfo),
+    GetHardwareArming(GetHardwareArming),
+    HardwareArmingInfo(HardwareArmingInfo),
 }
 
 #[derive(defmt::Format, Debug)]
@@ -81,6 +87,26 @@ pub fn decode_package(buffer: &[u8]) -> Result<DecodedPackage, DecodePackageErro
     } else if package_id == EventPackage::get_id() {
         let archived = unsafe { archived_root::<EventPackage>(&buffer[2..]) };
         return Ok(DecodedPackage::EventPackage(
+            archived.deserialize(&mut rkyv::Infallible).unwrap(),
+        ));
+    } else if package_id == GetContinuity::get_id() {
+        let archived = unsafe { archived_root::<GetContinuity>(&buffer[2..]) };
+        return Ok(DecodedPackage::GetContinuity(
+            archived.deserialize(&mut rkyv::Infallible).unwrap(),
+        ));
+    } else if package_id == ContinuityInfo::get_id() {
+        let archived = unsafe { archived_root::<ContinuityInfo>(&buffer[2..]) };
+        return Ok(DecodedPackage::ContinuityInfo(
+            archived.deserialize(&mut rkyv::Infallible).unwrap(),
+        ));
+    } else if package_id == GetHardwareArming::get_id() {
+        let archived = unsafe { archived_root::<GetHardwareArming>(&buffer[2..]) };
+        return Ok(DecodedPackage::GetHardwareArming(
+            archived.deserialize(&mut rkyv::Infallible).unwrap(),
+        ));
+    } else if package_id == HardwareArmingInfo::get_id() {
+        let archived = unsafe { archived_root::<HardwareArmingInfo>(&buffer[2..]) };
+        return Ok(DecodedPackage::HardwareArmingInfo(
             archived.deserialize(&mut rkyv::Infallible).unwrap(),
         ));
     }

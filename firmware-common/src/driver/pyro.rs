@@ -2,7 +2,7 @@ use super::timer::Timer;
 
 pub trait Continuity {
     type Error: defmt::Format;
-    async fn wait_continuity_change(&mut self);
+    async fn wait_continuity_change(&mut self) -> Result<bool, Self::Error>;
     async fn read_continuity(&mut self) -> Result<bool, Self::Error>;
 }
 
@@ -24,7 +24,7 @@ impl<T: Timer> DummyContinuity<T> {
 impl<T: Timer> Continuity for DummyContinuity<T> {
     type Error = ();
 
-    async fn wait_continuity_change(&mut self) {
+    async fn wait_continuity_change(&mut self) -> Result<bool, Self::Error> {
         loop {
             self.timer.sleep(1000.0).await;
         }

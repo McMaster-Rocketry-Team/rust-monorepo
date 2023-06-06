@@ -34,7 +34,6 @@ impl<'a, S: Serial, T: Timer> PyroCtrlDriver for MasterPyroCtrl<'a, S, T> {
 pub struct MasterPyroContinuity<'a, S: Serial, T: Timer> {
     master: &'a Master<S, T>,
     pyro_channel: u8,
-    continuity: bool,
 }
 
 impl<'a, S: Serial, T: Timer> MasterPyroContinuity<'a, S, T> {
@@ -42,16 +41,15 @@ impl<'a, S: Serial, T: Timer> MasterPyroContinuity<'a, S, T> {
         Self {
             master,
             pyro_channel,
-            continuity: false,
         }
     }
 }
 
 impl<'a, S: Serial, T: Timer> ContinuityDriver for MasterPyroContinuity<'a, S, T> {
-    type Error = ();
+    type Error = RequestError<S::Error>;
 
-    async fn wait_continuity_change(&mut self) {
-        poll_fn(|cx| {
+    async fn wait_continuity_change(&mut self) -> Result<bool, RequestError<S::Error>> {
+        Ok(poll_fn(|cx| {
             let result = self.master.last_event.lock(|last_event| {
                 let mut last_event = last_event.borrow_mut();
 
@@ -62,9 +60,8 @@ impl<'a, S: Serial, T: Timer> ContinuityDriver for MasterPyroContinuity<'a, S, T
                 &&
                 pyro_channel == self.pyro_channel
                 {
-                        self.continuity = continuity;
                         last_event.take();
-                        return Poll::Ready(());
+                        return Poll::Ready(continuity);
                 }
 
                 return Poll::Pending;
@@ -80,38 +77,34 @@ impl<'a, S: Serial, T: Timer> ContinuityDriver for MasterPyroContinuity<'a, S, T
 
             result
         })
-        .await;
+        .await)
     }
 
-    async fn read_continuity(&mut self) -> Result<bool, ()> {
-        Ok(self.continuity)
+    async fn read_continuity(&mut self) -> Result<bool, RequestError<S::Error>> {
+        self.master.get_continuity(self.pyro_channel).await
     }
 }
 
 pub struct MasterHarwareArming<'a, S: Serial, T: Timer> {
     master: &'a Master<S, T>,
-    armed: bool,
 }
 
 impl<'a, S: Serial, T: Timer> MasterHarwareArming<'a, S, T> {
     pub fn new(master: &'a Master<S, T>) -> Self {
-        Self {
-            master,
-            armed: false,
-        }
+        Self { master }
     }
 }
 
 impl<'a, S: Serial, T: Timer> ArmingDriver for MasterHarwareArming<'a, S, T> {
-    async fn wait_arming_change(&mut self) {
-        poll_fn(|cx| {
+    type Error = RequestError<S::Error>;
+    async fn wait_arming_change(&mut self) -> Result<bool, RequestError<S::Error>> {
+        Ok(poll_fn(|cx| {
             let result = self.master.last_event.lock(|last_event| {
                 let mut last_event = last_event.borrow_mut();
 
                 if let Some(Event::HardwareArming { armed }) = *last_event {
-                    self.armed = armed;
                     last_event.take();
-                    return Poll::Ready(());
+                    return Poll::Ready(armed);
                 }
 
                 return Poll::Pending;
@@ -127,11 +120,11 @@ impl<'a, S: Serial, T: Timer> ArmingDriver for MasterHarwareArming<'a, S, T> {
 
             result
         })
-        .await;
+        .await)
     }
 
-    async fn read_arming(&mut self) -> bool {
-        self.armed
+    async fn read_arming(&mut self) -> Result<bool, RequestError<S::Error>> {
+        self.master.get_hardware_arming().await
     }
 }
 

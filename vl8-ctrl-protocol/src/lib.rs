@@ -7,6 +7,7 @@ pub use codec::{decode_package, encode_package, DecodedPackage};
 pub use master::{Master, RequestError};
 pub use master_drivers::{MasterGPS, MasterHarwareArming, MasterPyroContinuity, MasterPyroCtrl};
 pub use packages::ack::Ack;
+pub use packages::continuity::ContinuityInfo;
 pub use packages::device::{DeviceInfo, GetDevice};
 pub use packages::event::{Event, EventPackage, PollEvent};
 pub use packages::pyro::PyroCtrl;
@@ -15,10 +16,10 @@ pub use slave::Slave;
 mod codec;
 mod master;
 mod master_drivers;
+mod multi_waker;
 mod packages;
 mod slave;
 mod utils;
-mod multi_waker;
 
 #[cfg(test)]
 mod tests {

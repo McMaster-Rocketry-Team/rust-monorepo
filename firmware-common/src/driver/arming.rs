@@ -1,8 +1,9 @@
 use super::timer::Timer;
 
 pub trait HardwareArming {
-    async fn wait_arming_change(&mut self);
-    async fn read_arming(&mut self) -> bool;
+    type Error: defmt::Format;
+    async fn wait_arming_change(&mut self) -> Result<bool, Self::Error>;
+    async fn read_arming(&mut self) -> Result<bool, Self::Error>;
 }
 
 pub struct DummyHardwareArming<T: Timer> {
@@ -16,13 +17,15 @@ impl<T: Timer> DummyHardwareArming<T> {
 }
 
 impl<T: Timer> HardwareArming for DummyHardwareArming<T> {
-    async fn wait_arming_change(&mut self) {
+    type Error = ();
+
+    async fn wait_arming_change(&mut self) -> Result<bool, Self::Error> {
         loop {
             self.timer.sleep(1000.0).await;
         }
     }
 
-    async fn read_arming(&mut self) -> bool {
-        true
+    async fn read_arming(&mut self) -> Result<bool, Self::Error> {
+        Ok(true)
     }
 }
