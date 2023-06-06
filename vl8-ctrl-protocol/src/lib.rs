@@ -10,6 +10,7 @@ pub use packages::ack::Ack;
 pub use packages::continuity::ContinuityInfo;
 pub use packages::device::{DeviceInfo, GetDevice};
 pub use packages::event::{Event, EventPackage, PollEvent};
+pub use packages::hardware_arming::HardwareArmingInfo;
 pub use packages::pyro::PyroCtrl;
 pub use slave::Slave;
 

@@ -51,6 +51,15 @@ impl<'a, S: Serial, T: Timer> MasterPyroContinuity<'a, S, T> {
     }
 
     pub async fn run(&self) -> ! {
+        match self.master.get_continuity(self.pyro_channel).await {
+            Ok(continuity) => {
+                self.continuity.lock(|c| *c.borrow_mut() = continuity);
+                self.signal.signal(continuity);
+            }
+            Err(e) => {
+                defmt::error!("Error getting initial continuity: {:?}", e);
+            }
+        }
         poll_fn::<(), _>(|cx| {
             self.master.last_event.lock(|last_event| {
                 let mut last_event = last_event.borrow_mut();
@@ -101,6 +110,15 @@ impl<'a, S: Serial, T: Timer> MasterHardwareArming<'a, S, T> {
     }
 
     pub async fn run(&self) -> ! {
+        match self.master.get_hardware_arming().await {
+            Ok(armed) => {
+                self.armed.lock(|c| *c.borrow_mut() = armed);
+                self.signal.signal(armed);
+            }
+            Err(e) => {
+                defmt::error!("Error getting initial hardware arming: {:?}", e);
+            }
+        }
         poll_fn::<(), _>(|cx| {
             self.master.last_event.lock(|last_event| {
                 let mut last_event = last_event.borrow_mut();

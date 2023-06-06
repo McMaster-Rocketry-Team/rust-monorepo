@@ -1,7 +1,7 @@
 use core::cell::RefCell;
 use core::task::Waker;
 
-use defmt::{info, warn, Format};
+use defmt::{warn, Format};
 use embassy_sync::blocking_mutex::Mutex as BlockingMutex;
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 use firmware_common::driver::{serial::Serial, timer::Timer};
@@ -87,14 +87,7 @@ impl<S: Serial, T: Timer> Master<S, T> {
             DecodedPackage::EventPackage(event_package) => {
                 if event_package.event.is_some() {
                     self.last_event.lock(|last_event| {
-                        let mut last_event = last_event.borrow_mut();
-                        if last_event.is_some() {
-                            // warn!(
-                            //     "Received a new event but the previous one was not consumed: {}",
-                            //     last_event.take().unwrap()
-                            // );
-                        }
-                        *last_event = event_package.event;
+                        *last_event.borrow_mut() = event_package.event;
                     });
                     self.wakers_reg.lock(|reg| {
                         reg.borrow_mut().wake();
@@ -107,7 +100,15 @@ impl<S: Serial, T: Timer> Master<S, T> {
         }
     }
 
-    pub async fn pyro_ctrl(
+    pub async fn get_device(&self) -> Result<DeviceInfo, RequestError<S::Error>> {
+        let response = self.request(GetDevice {}).await?;
+        match response {
+            DecodedPackage::DeviceInfo(device_info) => Ok(device_info),
+            _ => Err(RequestError::ProtocolError),
+        }
+    }
+
+    pub(crate) async fn pyro_ctrl(
         &self,
         pyro_channel: u8,
         enable: bool,
@@ -124,15 +125,7 @@ impl<S: Serial, T: Timer> Master<S, T> {
         }
     }
 
-    pub async fn get_device(&self) -> Result<DeviceInfo, RequestError<S::Error>> {
-        let response = self.request(GetDevice {}).await?;
-        match response {
-            DecodedPackage::DeviceInfo(device_info) => Ok(device_info),
-            _ => Err(RequestError::ProtocolError),
-        }
-    }
-
-    pub async fn get_continuity(&self, channel: u8) -> Result<bool, RequestError<S::Error>> {
+    pub(crate) async fn get_continuity(&self, channel: u8) -> Result<bool, RequestError<S::Error>> {
         let response = self
             .request(GetContinuity {
                 pyro_channel: channel,
@@ -144,7 +137,7 @@ impl<S: Serial, T: Timer> Master<S, T> {
         }
     }
 
-    pub async fn get_hardware_arming(&self) -> Result<bool, RequestError<S::Error>> {
+    pub(crate) async fn get_hardware_arming(&self) -> Result<bool, RequestError<S::Error>> {
         let response = self.request(GetHardwareArming {}).await?;
         match response {
             DecodedPackage::HardwareArmingInfo(HardwareArmingInfo { armed }) => Ok(armed),
@@ -152,7 +145,7 @@ impl<S: Serial, T: Timer> Master<S, T> {
         }
     }
 
-    pub(crate) fn register_waker(&self, waker:&Waker) {
+    pub(crate) fn register_waker(&self, waker: &Waker) {
         self.wakers_reg.lock(|reg| {
             if let Err(_) = reg.borrow_mut().register(waker) {
                 warn!("Failed to register waker");
