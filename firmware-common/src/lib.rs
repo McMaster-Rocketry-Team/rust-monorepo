@@ -31,7 +31,7 @@ mod common;
 pub mod driver;
 mod gcm;
 mod ground_test;
-mod utils;
+pub mod utils;
 
 pub async fn init(device_manager: device_manager_type!(mut)) -> ! {
     device_manager.init().await;

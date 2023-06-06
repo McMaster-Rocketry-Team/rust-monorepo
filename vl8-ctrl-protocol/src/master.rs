@@ -1,4 +1,5 @@
 use core::cell::RefCell;
+use core::task::Waker;
 
 use defmt::{info, warn, Format};
 use embassy_sync::blocking_mutex::Mutex as BlockingMutex;
@@ -149,5 +150,13 @@ impl<S: Serial, T: Timer> Master<S, T> {
             DecodedPackage::HardwareArmingInfo(HardwareArmingInfo { armed }) => Ok(armed),
             _ => Err(RequestError::ProtocolError),
         }
+    }
+
+    pub(crate) fn register_waker(&self, waker:&Waker) {
+        self.wakers_reg.lock(|reg| {
+            if let Err(_) = reg.borrow_mut().register(waker) {
+                warn!("Failed to register waker");
+            }
+        });
     }
 }
