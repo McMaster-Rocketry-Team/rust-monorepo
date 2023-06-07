@@ -4,10 +4,7 @@
 #![feature(let_chains)]
 #![feature(try_blocks)]
 
-use crate::{
-    common::{console::console::run_console, device_manager::prelude::*},
-    ground_test::gcm::ground_test_gcm,
-};
+use crate::common::{console::console::run_console, device_manager::prelude::*};
 use defmt::*;
 use vlfs::VLFS;
 
@@ -18,11 +15,11 @@ use futures::{
 
 use crate::{
     beacon::{beacon_receiver::beacon_receiver, beacon_sender::beacon_sender},
-    common::device_mode::{read_device_mode, write_device_mode, DeviceMode},
+    common::device_mode::{read_device_mode, write_device_mode},
 };
-
+use crate::gcm::gcm_main;
 pub use common::device_manager::DeviceManager;
-use ground_test::avionics::ground_test_avionics;
+pub use common::device_mode::DeviceMode;
 
 mod allocator;
 mod avionics;
@@ -33,7 +30,10 @@ mod gcm;
 mod ground_test;
 pub mod utils;
 
-pub async fn init(device_manager: device_manager_type!(mut)) -> ! {
+pub async fn init(
+    device_manager: device_manager_type!(mut),
+    device_mode_overwrite: Option<DeviceMode>,
+) -> ! {
     device_manager.init().await;
     claim_devices!(device_manager, flash, crc, usb, serial);
     flash.reset().await.ok();
@@ -93,25 +93,28 @@ pub async fn init(device_manager: device_manager_type!(mut)) -> ! {
             }
         }
 
-        let mut device_mode = DeviceMode::BeaconSender;
-        if let Some(device_mode_) = read_device_mode(&fs).await {
-            info!("Read device mode from disk: {}", device_mode_);
-            device_mode = device_mode_;
+        let device_mode = if let Some(device_mode_overwrite) = device_mode_overwrite {
+            info!("Using device mode overwrite: {:?}", device_mode_overwrite);
+            device_mode_overwrite
         } else {
-            info!("No device mode file found, creating one");
-            try_or_warn!(write_device_mode(&fs, device_mode).await);
-        }
+            if let Some(device_mode_) = read_device_mode(&fs).await {
+                info!("Read device mode from disk: {}", device_mode_);
+                device_mode_
+            } else {
+                info!("No device mode file found, creating one");
+                try_or_warn!(write_device_mode(&fs, DeviceMode::Avionics).await);
+                DeviceMode::Avionics
+            }
+        };
 
-        info!("Starting in mode GROUND TEST");
+        // info!("Starting in mode GROUND TEST");
         // ground_test_avionics(device_manager).await;
-        ground_test_gcm(device_manager).await;
-        info!("Starting in mode BeaconSender without LoRa");
-        beacon_sender(&fs, device_manager, false).await;
+        // ground_test_gcm(device_manager).await;
 
         info!("Starting in mode {}", device_mode);
         match device_mode {
             DeviceMode::Avionics => defmt::panic!("Avionics mode not implemented"),
-            DeviceMode::GCM => defmt::panic!("GCM mode not implemented"),
+            DeviceMode::GCM => gcm_main(&fs, device_manager).await,
             DeviceMode::BeaconSender => beacon_sender(&fs, device_manager, false).await,
             DeviceMode::BeaconReceiver => beacon_receiver(&fs, device_manager).await,
         };
