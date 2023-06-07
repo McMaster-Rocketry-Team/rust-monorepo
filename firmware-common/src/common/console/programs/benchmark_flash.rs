@@ -117,7 +117,11 @@ impl BenchmarkFlash {
             max_64b_write_time
         );
         info!(
-            "Erase time: {}x64K: each {}ms   {}x32K: each {}ms   {}x4K: each {}ms",
+            "Flash 256 bytes program time: mean: {}ms",
+            stat.write_256b_total_time_ms / stat.write_256b_count as f64
+        );
+        info!(
+            "Erase time: {}x64K: each {}ms,  {}x32K: each {}ms,  {}x4K: each {}ms",
             stat.erase_block_64kib_count,
             stat.erase_block_64kib_total_time_ms / stat.erase_block_64kib_count as f64,
             stat.erase_block_32kib_count,
