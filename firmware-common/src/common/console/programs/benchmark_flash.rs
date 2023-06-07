@@ -5,12 +5,13 @@ use defmt::*;
 use rand::{rngs::SmallRng, RngCore, SeedableRng};
 use vlfs::{
     io_traits::{AsyncReader, AsyncWriter},
-    Crc, Flash, VLFS,
+    Crc, Flash, StatFlash, VLFS,
 };
 
 use crate::{
     common::files::BENCHMARK_FILE_TYPE,
     driver::{serial::Serial, timer::Timer},
+    try_or_warn,
 };
 
 pub struct BenchmarkFlash {}
@@ -26,10 +27,12 @@ impl BenchmarkFlash {
 
     pub async fn start<T: Serial, F: Flash, C: Crc, I: Timer>(
         &self,
-        _serial: &mut T,
+        serial: &mut T,
         vlfs: &VLFS<F, C>,
+        stat_flash: &StatFlash,
         timer: I,
     ) -> Result<(), ()> {
+        stat_flash.reset_stat();
         let rounds = 10000usize;
         let length = rounds * 64;
 
@@ -95,22 +98,47 @@ impl BenchmarkFlash {
             timer.now_mills() - start_time - random_time
         };
 
-        vlfs.remove_file(file_id).await;
+        try_or_warn!(vlfs.remove_file(file_id).await);
+
+        let stat = stat_flash.get_stat();
 
         info!(
             "Write speed: {}KiB/s",
             (length as f32 / 1024.0) / (write_time as f32 / 1000.0)
         );
         info!(
+            "Read speed: {}KiB/s",
+            (length as f32 / 1024.0) / (read_time as f32 / 1000.0)
+        );
+
+        info!(
             "64 bytes writing time: mean: {}ms, max: {}ms",
             (write_time as f32) / (rounds as f32),
             max_64b_write_time
         );
-
         info!(
-            "Read speed: {}KiB/s",
-            (length as f32 / 1024.0) / (read_time as f32 / 1000.0)
+            "Erase time: {}x64K: each {}ms   {}x32K: each {}ms   {}x4K: each {}ms",
+            stat.erase_block_64kib_count,
+            stat.erase_block_64kib_total_time_ms / stat.erase_block_64kib_count as f64,
+            stat.erase_block_32kib_count,
+            stat.erase_block_32kib_total_time_ms / stat.erase_block_32kib_count as f64,
+            stat.erase_sector_4kib_count,
+            stat.erase_sector_4kib_total_time_ms / stat.erase_sector_4kib_count as f64
         );
+
+        let total_erase_time = stat.erase_block_64kib_total_time_ms
+            + stat.erase_block_32kib_total_time_ms
+            + stat.erase_sector_4kib_total_time_ms;
+        info!(
+            "Total erase time: {}ms,  Total write time: {}ms,  Total read time: {}ms",
+            total_erase_time, stat.write_256b_total_time_ms, stat.read_4kib_total_time_ms
+        );
+        info!(
+            "Erase / write ratio: {}",
+            total_erase_time / stat.write_256b_total_time_ms
+        );
+
+        try_or_warn!(serial.write(&[0]).await);
 
         Ok(())
     }

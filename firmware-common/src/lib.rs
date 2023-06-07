@@ -6,21 +6,21 @@
 
 use crate::common::{console::console::run_console, device_manager::prelude::*};
 use defmt::*;
-use vlfs::VLFS;
+use vlfs::{StatFlash, VLFS};
 
 use futures::{
     future::{join4, select},
     pin_mut,
 };
 
+use crate::driver::timer::VLFSTimerWrapper;
+use crate::gcm::gcm_main;
 use crate::{
     beacon::{beacon_receiver::beacon_receiver, beacon_sender::beacon_sender},
     common::device_mode::{read_device_mode, write_device_mode},
 };
-use crate::gcm::gcm_main;
 pub use common::device_manager::DeviceManager;
 pub use common::device_mode::DeviceMode;
-
 mod allocator;
 mod avionics;
 mod beacon;
@@ -36,11 +36,13 @@ pub async fn init(
 ) -> ! {
     device_manager.init().await;
     claim_devices!(device_manager, flash, crc, usb, serial);
+    let timer = device_manager.timer;
+
+    let stat_flash = StatFlash::new();
+    let mut flash = stat_flash.get_flash(flash, VLFSTimerWrapper(timer));
     flash.reset().await.ok();
     let mut fs = VLFS::new(flash, crc);
     unwrap!(fs.init().await);
-
-    let timer = device_manager.timer;
 
     let testing_fut = async {
         claim_devices!(device_manager, meg);
@@ -76,8 +78,8 @@ pub async fn init(
         }
     };
 
-    let serial_console = run_console(&fs, serial, device_manager);
-    let usb_console = run_console(&fs, usb, device_manager);
+    let serial_console = run_console(&fs, serial, &stat_flash, device_manager);
+    let usb_console = run_console(&fs, usb, &stat_flash, device_manager);
 
     let main_fut = async {
         if usb_connected {

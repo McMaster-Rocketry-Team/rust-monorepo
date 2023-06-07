@@ -1,6 +1,6 @@
 use defmt::warn;
 use lora_phy::{mod_traits::RadioKind, LoRa};
-use vlfs::{Crc, Flash};
+use vlfs::{Crc, Flash, StatFlash};
 
 use crate::driver::{
     adc::ADC,

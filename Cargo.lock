@@ -1223,6 +1223,7 @@ dependencies = [
  "futures-timer",
  "futures-util",
  "heapless",
+ "paste",
  "rand",
  "static_cell",
 ]

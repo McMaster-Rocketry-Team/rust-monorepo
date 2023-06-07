@@ -6,7 +6,7 @@ use crate::{
 };
 use defmt::info;
 
-use vlfs::{Crc, Flash, VLFS};
+use vlfs::{Crc, Flash, StatFlash, VLFS};
 
 use super::programs::{
     benchmark_flash::BenchmarkFlash, calibrate::Calibrate, change_mode::ChangeMode,
@@ -16,10 +16,11 @@ use super::programs::{
 pub async fn run_console(
     fs: &VLFS<impl Flash, impl Crc>,
     mut serial: impl Serial,
+    stat_flash: &StatFlash,
     device_manager: device_manager_type!(),
 ) -> ! {
     let write_file = WriteFile::new();
-    let read_nyoom = ReadNyoom::new();
+    let read_nyoom: ReadNyoom = ReadNyoom::new();
     let benchmark_flash = BenchmarkFlash::new();
     let change_mode = ChangeMode::new();
     let read_file = ReadFile::new();
@@ -39,7 +40,7 @@ pub async fn run_console(
         } else if command_id == benchmark_flash.id() {
             try_or_warn!(
                 benchmark_flash
-                    .start(&mut serial, fs, device_manager.timer)
+                    .start(&mut serial, fs, stat_flash, device_manager.timer)
                     .await
             );
         } else if command_id == change_mode.id() {
