@@ -29,6 +29,8 @@ pub async fn ground_test_gcm(device_manager: device_manager_type!()) -> ! {
         .create_rx_packet_params(8, false, 255, true, false, &modulation_params)
         .unwrap();
 
+    let mut count = 0u8;
+
     loop {
         lora.prepare_for_rx(
             &modulation_params,
@@ -55,16 +57,20 @@ pub async fn ground_test_gcm(device_manager: device_manager_type!()) -> ! {
                         .create_tx_packet_params(8, false, true, false, &modulation_params)
                         .unwrap();
 
-                    lora.prepare_for_tx(&modulation_params, -9, true)
-                        .await
-                        .unwrap();
-                    lora.tx(&modulation_params, &mut tx_params, b"VLF3 fire", 0xFFFFFF)
-                        .await
-                        .unwrap();
+                    count += 1;
+                    info!("{}/3", count);
+                    if count == 3 {
+                        lora.prepare_for_tx(&modulation_params, -9, true)
+                            .await
+                            .unwrap();
+                        lora.tx(&modulation_params, &mut tx_params, b"VLF3 fire", 0xFFFFFF)
+                            .await
+                            .unwrap();
 
-                    info!("Sent fire message");
-                    loop {
-                        timer.sleep(1000.0).await;
+                        info!("Sent fire message");
+                        loop {
+                            timer.sleep(1000.0).await;
+                        }
                     }
                 }
             }

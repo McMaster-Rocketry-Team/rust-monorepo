@@ -10,6 +10,8 @@ pub enum DeviceMode {
     GCM = 2,
     BeaconSender = 3,
     BeaconReceiver = 4,
+    GroundTestAvionics = 5,
+    GroundTestGCM = 6,
 }
 
 impl TryFrom<u8> for DeviceMode {
@@ -21,6 +23,8 @@ impl TryFrom<u8> for DeviceMode {
             2 => Ok(DeviceMode::GCM),
             3 => Ok(DeviceMode::BeaconSender),
             4 => Ok(DeviceMode::BeaconReceiver),
+            5 => Ok(DeviceMode::GroundTestAvionics),
+            6 => Ok(DeviceMode::GroundTestGCM),
             _ => Err(()),
         }
     }

@@ -4,10 +4,12 @@
 #![feature(let_chains)]
 #![feature(try_blocks)]
 
+pub use driver::async_erase_flash::AsyncEraseFlash;
 pub use driver::crc::Crc;
 pub use driver::dummy_crc::DummyCrc;
 pub use driver::dummy_flash::DummyFlash;
 pub use driver::flash::Flash;
+pub use driver::managed_erase_flash::{ManagedEraseFlash, EraseTune};
 pub use driver::stat_flash::{Stat, StatFlash, StatFlashFlash};
 pub use driver::timer::Timer;
 pub use fs::error::VLFSError;

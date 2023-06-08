@@ -4,7 +4,7 @@
 #![feature(let_chains)]
 #![feature(try_blocks)]
 
-use crate::common::{console::console::run_console, device_manager::prelude::*};
+use crate::{common::{console::console::run_console, device_manager::prelude::*}, ground_test::gcm::ground_test_gcm};
 use defmt::*;
 use vlfs::{StatFlash, VLFS};
 
@@ -19,6 +19,7 @@ use crate::{
     beacon::{beacon_receiver::beacon_receiver, beacon_sender::beacon_sender},
     common::device_mode::{read_device_mode, write_device_mode},
 };
+use crate::ground_test::avionics::ground_test_avionics;
 pub use common::device_manager::DeviceManager;
 pub use common::device_mode::DeviceMode;
 mod allocator;
@@ -119,6 +120,8 @@ pub async fn init(
             DeviceMode::GCM => gcm_main(&fs, device_manager).await,
             DeviceMode::BeaconSender => beacon_sender(&fs, device_manager, false).await,
             DeviceMode::BeaconReceiver => beacon_receiver(&fs, device_manager).await,
+            DeviceMode::GroundTestAvionics =>  ground_test_avionics(device_manager).await,
+            DeviceMode::GroundTestGCM =>  ground_test_gcm(device_manager).await,
         };
     };
 
