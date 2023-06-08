@@ -39,16 +39,16 @@ pub async fn ground_test_avionics(device_manager: device_manager_type!()) -> ! {
 
     let avionics_fut = async {
         loop {
-            let mut lora_message = String::<30>::new();
+            let mut lora_message = String::<50>::new();
             match pyro1_cont.read_continuity().await {
                 Ok(true) => lora_message.push_str("Pyro 1: Cont | ").unwrap(),
                 Ok(false) => lora_message.push_str("Pyro 1: No Cont | ").unwrap(),
                 Err(_) => lora_message.push_str("Pyro 1: Error | ").unwrap(),
             };
             match pyro2_cont.read_continuity().await {
-                Ok(true) => lora_message.push_str("Pyro 2: Cont | ").unwrap(),
-                Ok(false) => lora_message.push_str("Pyro 2: No Cont | ").unwrap(),
-                Err(_) => lora_message.push_str("Pyro 2: Error | ").unwrap(),
+                Ok(true) => lora_message.push_str("Pyro 2: Cont").unwrap(),
+                Ok(false) => lora_message.push_str("Pyro 2: No Cont").unwrap(),
+                Err(_) => lora_message.push_str("Pyro 2: Error").unwrap(),
             };
 
             info!("{}", lora_message.as_str());
