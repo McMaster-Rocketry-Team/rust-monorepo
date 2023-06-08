@@ -1,5 +1,3 @@
-use core::str::FromStr;
-
 use defmt::{info, unwrap};
 use futures::future::join;
 use lora_phy::mod_params::{Bandwidth, CodingRate, SpreadingFactor};
@@ -22,6 +20,8 @@ pub async fn ground_test_avionics(device_manager: device_manager_type!()) -> ! {
         lora,
         pyro1_cont,
         pyro1_ctrl,
+        pyro2_cont,
+        pyro2_ctrl,
         status_indicator
     );
     let lora = lora.as_mut().unwrap();
@@ -39,11 +39,18 @@ pub async fn ground_test_avionics(device_manager: device_manager_type!()) -> ! {
 
     let avionics_fut = async {
         loop {
-            let lora_message: String<20> = match pyro1_cont.read_continuity().await {
-                Ok(true) => String::from_str("Cont: OK").unwrap(),
-                Ok(false) => String::from_str("Cont: None").unwrap(),
-                Err(_) => String::from_str("Cont: Err").unwrap(),
+            let mut lora_message = String::<30>::new();
+            match pyro1_cont.read_continuity().await {
+                Ok(true) => lora_message.push_str("Pyro 1: Cont | ").unwrap(),
+                Ok(false) => lora_message.push_str("Pyro 1: No Cont | ").unwrap(),
+                Err(_) => lora_message.push_str("Pyro 1: Error | ").unwrap(),
             };
+            match pyro2_cont.read_continuity().await {
+                Ok(true) => lora_message.push_str("Pyro 2: Cont | ").unwrap(),
+                Ok(false) => lora_message.push_str("Pyro 2: No Cont | ").unwrap(),
+                Err(_) => lora_message.push_str("Pyro 2: Error | ").unwrap(),
+            };
+
             info!("{}", lora_message.as_str());
 
             let modulation_params = lora
@@ -92,11 +99,16 @@ pub async fn ground_test_avionics(device_manager: device_manager_type!()) -> ! {
                         received_len, status.snr, status.rssi
                     );
                     let rx_buffer = &rx_buffer[..(received_len as usize)];
-                    if rx_buffer == b"VLF3 fire" {
+                    if rx_buffer == b"VLF3 fire 1" {
                         info!("Firing pyro 1");
                         unwrap!(pyro1_ctrl.set_enable(true).await);
                         timer.sleep(1000.0).await;
                         unwrap!(pyro1_ctrl.set_enable(false).await);
+                    } else if rx_buffer == b"VLF3 fire 2" {
+                        info!("Firing pyro 2");
+                        unwrap!(pyro2_ctrl.set_enable(true).await);
+                        timer.sleep(1000.0).await;
+                        unwrap!(pyro2_ctrl.set_enable(false).await);
                     }
                 }
                 Ok(Err(lora_error)) => {
