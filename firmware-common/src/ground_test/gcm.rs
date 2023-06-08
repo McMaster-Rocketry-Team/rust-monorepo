@@ -63,7 +63,7 @@ pub async fn ground_test_gcm(device_manager: device_manager_type!()) -> ! {
                         lora.prepare_for_tx(&modulation_params, -9, true)
                             .await
                             .unwrap();
-                        lora.tx(&modulation_params, &mut tx_params, b"VLF3 fire", 0xFFFFFF)
+                        lora.tx(&modulation_params, &mut tx_params, b"VLF3 fire 1", 0xFFFFFF)
                             .await
                             .unwrap();
 
