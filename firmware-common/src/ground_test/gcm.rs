@@ -1,3 +1,5 @@
+use core::str::FromStr;
+
 use defmt::info;
 use lora_phy::mod_params::{Bandwidth, CodingRate, SpreadingFactor};
 
@@ -8,6 +10,7 @@ use crate::{
     device_manager_type,
     driver::{gps::GPS, indicator::Indicator, timer::Timer},
 };
+use heapless::String;
 
 #[inline(never)]
 pub async fn ground_test_gcm(device_manager: device_manager_type!()) -> ! {
@@ -51,8 +54,8 @@ pub async fn ground_test_gcm(device_manager: device_manager_type!()) -> ! {
                     received_len, status.snr, status.rssi
                 );
                 let rx_buffer = &rx_buffer[..(received_len as usize)];
-                if rx_buffer.starts_with(b"Cont: ") {
-                    info!("Received continuity message");
+                if rx_buffer.starts_with(b"Pyro 1: ") {
+                    info!("Received continuity message: {}", core::str::from_utf8(rx_buffer).unwrap());
                     let mut tx_params = lora
                         .create_tx_packet_params(8, false, true, false, &modulation_params)
                         .unwrap();
