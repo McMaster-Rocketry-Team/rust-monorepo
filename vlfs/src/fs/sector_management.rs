@@ -221,30 +221,34 @@ where
                 mem::swap(&mut *erase_ahead_sectors, &mut *async_erase_ahead_sectors);
             };
 
-            let async_erase_region = self.claim_erase_region(&mut sectors_mng).await.unwrap(); // TODO: handle error
-
-            // If using ManagedEraseFlash,
-            // this call will start an erase in the background and return immediately.
-            self.erase(async_erase_region, true, &mut sectors_mng)
-                .await?;
+            if let Ok(async_erase_region) = self.claim_erase_region(&mut sectors_mng).await {
+                // If using ManagedEraseFlash,
+                // this call will start an erase in the background and return immediately.
+                self.erase(async_erase_region, true, &mut sectors_mng)
+                    .await?;
+            }
         } else {
             // both erase_ahead_sectors and async_erase_ahead_sectors are empty
-            let current_erase_region = self.claim_erase_region(&mut sectors_mng).await.unwrap(); // TODO: handle error
-            let async_erase_region = self.claim_erase_region(&mut sectors_mng).await.unwrap(); // TODO: handle error
+            if let Ok(current_erase_region) = self.claim_erase_region(&mut sectors_mng).await {
+                // If using ManagedEraseFlash,
+                // this call will start an erase in the background and return immediately.
+                self.erase(current_erase_region, false, &mut sectors_mng)
+                    .await?;
 
-            // If using ManagedEraseFlash,
-            // this call will start an erase in the background and return immediately.
-            self.erase(current_erase_region, false, &mut sectors_mng)
-                .await?;
-
-            // If using ManagedEraseFlash,
-            // this call will wait for the `current_erase_region` erase to finish,
-            // then start an erase for `async_erase_region` in the background and return immediately.
-            self.erase(async_erase_region, true, &mut sectors_mng)
-                .await?;
+                if let Ok(async_erase_region) = self.claim_erase_region(&mut sectors_mng).await {
+                    // If using ManagedEraseFlash,
+                    // this call will wait for the `current_erase_region` erase to finish,
+                    // then start an erase for `async_erase_region` in the background and return immediately.
+                    self.erase(async_erase_region, true, &mut sectors_mng)
+                        .await?;
+                }
+            }
         }
 
-        return Ok(sectors_mng.erase_ahead_sectors.pop().unwrap());
+        sectors_mng
+            .erase_ahead_sectors
+            .pop()
+            .ok_or_else(|| VLFSError::DeviceFull)
     }
 
     pub(super) async fn claim_sector(&self, sector_index_unoffsetted: u16) {
