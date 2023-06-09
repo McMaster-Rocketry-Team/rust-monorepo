@@ -18,12 +18,7 @@ where
     pub fn new(flash: F, crc: C) -> Self {
         Self {
             allocation_table: RwLock::new(AllocationTableWrapper::default()),
-            sectors_mng: RwLock::new(SectorsMng {
-                sector_map: BitArray::<_, Lsb0>::new([0u32; SECTOR_MAP_ARRAY_SIZE]),
-                erase_ahead_sectors: Vec::new(),
-                free_sectors_count: (SECTORS_COUNT - ALLOC_TABLES_SECTORS_USED) as u32,
-                rng: SmallRng::seed_from_u64(0),
-            }),
+            sectors_mng: RwLock::new(SectorsMng::new()),
             flash: Mutex::new(flash),
             crc: Mutex::new(crc),
             rng: BlockingMutex::new(RefCell::new(SmallRng::seed_from_u64(0))),
@@ -42,9 +37,9 @@ where
 
             let sectors_mng = self.sectors_mng.read().await;
             let total_sectors = SECTORS_COUNT - ALLOC_TABLES_SECTORS_USED;
-            let used_sectors = total_sectors - sectors_mng.free_sectors_count as usize;
+            let used_sectors = total_sectors - sectors_mng.sector_map.free_sectors_count as usize;
             let free_space =
-                (sectors_mng.free_sectors_count as usize * MAX_SECTOR_DATA_SIZE) / 1024;
+                (sectors_mng.sector_map.free_sectors_count as usize * MAX_SECTOR_DATA_SIZE) / 1024;
             info!(
                 "{} out of {} sectors used, avaliable space: {}KiB",
                 used_sectors, total_sectors, free_space,
@@ -56,7 +51,7 @@ where
 
         let crc = self.crc.get_mut();
         let mut sectors_mng = self.sectors_mng.write().await;
-        let crc = crc.calculate_u32(&sectors_mng.sector_map.data);
+        let crc = crc.calculate_u32(&sectors_mng.sector_map.map_4k.data);
         sectors_mng.rng = SmallRng::seed_from_u64(crc as u64 + ((crc as u64) << 32));
 
         self.rng.lock(|rng| {

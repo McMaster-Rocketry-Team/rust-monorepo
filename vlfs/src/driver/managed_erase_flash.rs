@@ -5,7 +5,7 @@ use crate::{Flash, Timer};
 use super::async_erase_flash::AsyncEraseFlash;
 
 pub struct EraseTune {
-    erase_ms_every_write_256b: f64,
+    pub erase_ms_every_write_256b: f64,
 }
 
 enum EraseState {
@@ -45,6 +45,36 @@ impl<AF: AsyncEraseFlash, T: Timer> ManagedEraseFlash<AF, T> {
                 Ok(())
             }
         }
+    }
+
+    async fn suspend_erase(&mut self) -> Result<(), AF::Error> {
+        if let EraseState::Erasing {
+            ref range,
+            suspended: false,
+        } = self.erase_state
+        {
+            self.flash.suspend_erase().await?;
+            self.erase_state = EraseState::Erasing {
+                range: range.clone(),
+                suspended: true,
+            };
+        }
+        Ok(())
+    }
+
+    async fn resume_erase(&mut self) -> Result<(), AF::Error> {
+        if let EraseState::Erasing {
+            ref range,
+            suspended: true,
+        } = self.erase_state
+        {
+            self.flash.resume_erase().await?;
+            self.erase_state = EraseState::Erasing {
+                range: range.clone(),
+                suspended: false,
+            };
+        }
+        Ok(())
     }
 }
 
@@ -98,11 +128,7 @@ impl<AF: AsyncEraseFlash, T: Timer> Flash for ManagedEraseFlash<AF, T> {
                 self.wait_prev_erase().await?;
             } else if !suspended {
                 // if the address is not in the range of the current erase operation, suspend it
-                self.flash.suspend_erase().await?;
-                self.erase_state = EraseState::Erasing {
-                    range: range.clone(),
-                    suspended: true,
-                };
+                self.suspend_erase().await?;
             }
         }
 
@@ -116,42 +142,31 @@ impl<AF: AsyncEraseFlash, T: Timer> Flash for ManagedEraseFlash<AF, T> {
         address: u32,
         write_buffer: &'b mut [u8],
     ) -> Result<(), Self::Error> {
-        if let EraseState::Erasing { range, suspended } = &self.erase_state {
+        if let EraseState::Erasing {
+            range,
+            suspended: _,
+        } = &self.erase_state
+        {
             if range.contains(&address) {
                 self.wait_prev_erase().await?;
             } else {
-                if !*suspended {
-                    self.flash.suspend_erase().await?;
-                    self.erase_state = EraseState::Erasing {
-                        range: range.clone(),
-                        suspended: true,
-                    };
-                }
-
-                // if *suspended {
-                //     self.flash.resume_erase().await?;
-                // }
-                // self.timer.sleep(self.tune.erase_ms_every_write_256b).await;
-                // if self.flash.erase_finished().await? {
-                //     self.erase_state = EraseState::Idle;
-                // } else {
-                //     self.flash.suspend_erase().await?;
-                //     self.erase_state = EraseState::Erasing {
-                //         range: range.clone(),
-                //         suspended: true,
-                //     };
-                // }
+                self.suspend_erase().await?;
             }
         }
 
         let result = self.flash.write_256b(address, write_buffer).await;
 
-        if let EraseState::Erasing { range, suspended:true } = &self.erase_state {
-            self.flash.resume_erase().await?;
-            self.erase_state = EraseState::Erasing {
-                range: range.clone(),
-                suspended: false,
-            };
+        if let EraseState::Erasing {
+            range: _,
+            suspended: true,
+        } = &self.erase_state
+        {
+            self.resume_erase().await?;
+            self.timer.sleep(self.tune.erase_ms_every_write_256b).await;
+
+            if !self.flash.is_busy().await? {
+                self.erase_state = EraseState::Idle;
+            }
         }
 
         result

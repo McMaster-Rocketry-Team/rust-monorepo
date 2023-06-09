@@ -38,7 +38,7 @@ const TABLE_COUNT: usize = 4;
 const MAX_SECTOR_DATA_SIZE: usize = 4016;
 const ALLOC_TABLES_SECTORS_USED: usize = TABLE_COUNT * 32 * 1024 / SECTOR_SIZE;
 const DATA_REGION_SECTORS: usize = SECTORS_COUNT - ALLOC_TABLES_SECTORS_USED; // must be a multiple of 16 & aligned to 16
-const SECTOR_MAP_ARRAY_SIZE: usize = DATA_REGION_SECTORS / 32;
+
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, defmt::Format)]
 pub struct FileID(pub u64);
