@@ -5,6 +5,7 @@ pub enum FlightCoreEvent {
     DeployMain,
     DeployDrogue,
     Landed,
+    DidNotReachMinApogee,
 }
 
 pub trait FlightCoreEventDispatcher {

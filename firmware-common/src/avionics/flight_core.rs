@@ -30,8 +30,8 @@ pub struct Config {
     pub drogue_chute_delay_ms: f64,
     pub main_chute_delay_ms: f64,
     pub main_chute_altitude_agl: f32,
-    pub main_chute_minimum_time_ms: f64,      // TODO
-    pub main_chute_minimum_altitude_agl: f32, // TODO
+    pub main_chute_minimum_time_ms: f64,
+    pub main_chute_minimum_altitude_agl: f32,
 }
 
 pub enum FlightCoreState {
@@ -52,6 +52,7 @@ pub enum FlightCoreState {
     },
     DrogueChute {
         launch_altitude: f32,
+        launch_timestamp: f64,
         deploy_time: f64,
     },
     MainChute {
@@ -302,27 +303,36 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
                 launch_altitude,
             } => {
                 // apogee detection
-                if self.eskf.velocity.z_up_to_y_up().y <= 0.0
-                    && snapshot.timestamp - *launch_timestamp > 4000.0
-                {
+                if self.eskf.velocity.z_up_to_y_up().y <= 0.0 {
                     self.event_dispatcher.dispatch(FlightCoreEvent::Apogee);
                     self.state = FlightCoreState::DrogueChute {
                         deploy_time: snapshot.timestamp + self.config.drogue_chute_delay_ms,
                         launch_altitude: *launch_altitude,
+                        launch_timestamp: *launch_timestamp,
                     };
                 }
             }
             FlightCoreState::DrogueChute {
                 deploy_time,
                 launch_altitude,
+                launch_timestamp,
             } => {
-                if snapshot.timestamp >= *deploy_time {
-                    self.event_dispatcher
-                        .dispatch(FlightCoreEvent::DeployDrogue);
-                    self.state = FlightCoreState::MainChute {
-                        deploy_time: None,
-                        launch_altitude: *launch_altitude,
-                    };
+                let altitude_agl = self.eskf.position.z_up_to_y_up().y - *launch_altitude;
+                if altitude_agl < self.config.main_chute_minimum_altitude_agl {
+                    self.event_dispatcher.dispatch(FlightCoreEvent::DidNotReachMinApogee);
+                    self.state = FlightCoreState::Landed {};
+                } else {
+                    if snapshot.timestamp >= *deploy_time
+                        && snapshot.timestamp - *launch_timestamp
+                            >= self.config.main_chute_minimum_time_ms
+                    {
+                        self.event_dispatcher
+                            .dispatch(FlightCoreEvent::DeployDrogue);
+                        self.state = FlightCoreState::MainChute {
+                            deploy_time: None,
+                            launch_altitude: *launch_altitude,
+                        };
+                    }
                 }
             }
             FlightCoreState::MainChute {
