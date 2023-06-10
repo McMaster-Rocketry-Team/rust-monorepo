@@ -55,7 +55,6 @@ where
         }
 
         sum / Divisor::from_usize(num_samples).unwrap()
-
     }
 
     pub fn is_full(&self) -> bool {

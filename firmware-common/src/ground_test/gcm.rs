@@ -55,7 +55,10 @@ pub async fn ground_test_gcm(device_manager: device_manager_type!()) -> ! {
                 );
                 let rx_buffer = &rx_buffer[..(received_len as usize)];
                 if rx_buffer.starts_with(b"Pyro 1: ") {
-                    info!("Received continuity message: {}", core::str::from_utf8(rx_buffer).unwrap());
+                    info!(
+                        "Received continuity message: {}",
+                        core::str::from_utf8(rx_buffer).unwrap()
+                    );
                     let mut tx_params = lora
                         .create_tx_packet_params(8, false, true, false, &modulation_params)
                         .unwrap();

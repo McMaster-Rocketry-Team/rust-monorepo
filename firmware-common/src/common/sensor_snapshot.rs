@@ -10,7 +10,12 @@ pub struct SensorSnapshot {
     pub gps_location: GPSLocation,
     pub imu_reading: IMUReading,
     pub baro_reading: BaroReading,
-    pub pyro1_continuity: bool,
-    pub pyro2_continuity: bool,
-    pub pyro3_continuity: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct PartialSensorSnapshot {
+    pub timestamp: f64, // ms
+    pub imu_reading: IMUReading,
+    pub gps_location: Option<GPSLocation>,
+    pub baro_reading: Option<BaroReading>,
 }

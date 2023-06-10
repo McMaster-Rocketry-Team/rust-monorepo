@@ -50,7 +50,7 @@ pub async fn beacon_sender(
     let satellites_count = BlockingMutex::<CriticalSectionRawMutex, _>::new(RefCell::new(0u32));
     let locked = BlockingMutex::<CriticalSectionRawMutex, _>::new(RefCell::new(false));
 
-    let gps_parser = GPSParser::new();
+    let gps_parser = GPSParser::new(timer);
     // todo log gps location to file
 
     let gps_fut = gps_parser.run(&mut gps);

@@ -9,7 +9,7 @@ pub struct BaroFilterOutput {
 
 #[derive(Clone)]
 pub struct BaroReadingFilter {
-    history: Deque<BaroReading, 4>,
+    history: Deque<BaroReading, 2>,
     ignore_pressure_end_time: f64,
     baro_reading_hold: Option<BaroReading>,
 }
@@ -30,7 +30,7 @@ impl BaroReadingFilter {
         self.history.push_back(baro_reading.clone()).unwrap();
 
         if !self.history.is_full() {
-            return BaroFilterOutput{
+            return BaroFilterOutput {
                 should_ignore: false,
                 baro_reading: baro_reading.clone(),
             };
@@ -45,15 +45,19 @@ impl BaroReadingFilter {
         }
 
         if baro_reading.timestamp < self.ignore_pressure_end_time {
-            return BaroFilterOutput{
+            return BaroFilterOutput {
                 should_ignore: true,
                 baro_reading: baro_reading.clone(),
             };
         } else {
-            return BaroFilterOutput{
+            return BaroFilterOutput {
                 should_ignore: false,
                 baro_reading: self.baro_reading_hold.take().unwrap(),
             };
         }
+    }
+
+    pub fn last_reading(&self) -> Option<BaroReading> {
+        self.history.back().map(|r| r.clone())
     }
 }

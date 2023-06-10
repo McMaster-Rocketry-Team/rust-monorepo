@@ -4,11 +4,12 @@ use chrono::{NaiveDate, NaiveTime};
 use defmt::{debug, warn};
 use nmea::Nmea;
 
-use crate::driver::gps::GPS;
+use crate::driver::{gps::GPS, timer::Timer};
 use embassy_sync::blocking_mutex::{raw::CriticalSectionRawMutex, Mutex as BlockingMutex};
 
 #[derive(Debug, Clone)]
 pub struct GPSLocation {
+    pub timestamp: f64,
     pub fix_time: Option<NaiveTime>,
     pub fix_date: Option<NaiveDate>,
     pub latitude: Option<f64>,
@@ -22,9 +23,10 @@ pub struct GPSLocation {
     pub pdop: Option<f32>,
 }
 
-impl<T: Deref<Target = Nmea>> From<T> for GPSLocation {
-    fn from(value: T) -> Self {
+impl<T: Deref<Target = Nmea>> From<(f64, T)> for GPSLocation {
+    fn from((timestamp, value): (f64, T)) -> Self {
         Self {
+            timestamp,
             fix_time: value.fix_time,
             fix_date: value.fix_date,
             latitude: value.latitude,
@@ -40,19 +42,22 @@ impl<T: Deref<Target = Nmea>> From<T> for GPSLocation {
     }
 }
 
-pub struct GPSParser {
+pub struct GPSParser<T: Timer> {
     nmea: BlockingMutex<CriticalSectionRawMutex, RefCell<Nmea>>,
+    timer: T,
 }
 
-impl GPSParser {
-    pub fn new() -> Self {
+impl<T: Timer> GPSParser<T> {
+    pub fn new(timer: T) -> Self {
         Self {
             nmea: BlockingMutex::new(RefCell::new(Nmea::default())),
+            timer,
         }
     }
 
     pub fn get_nmea(&self) -> GPSLocation {
-        self.nmea.lock(|nmea| nmea.borrow().into())
+        self.nmea
+            .lock(|nmea| (self.timer.now_mills(), nmea.borrow()).into())
     }
 
     pub async fn run(&self, gps: &mut impl GPS) -> ! {
