@@ -4,15 +4,6 @@ use crate::{
     calibration_info::CalibrationInfo, calibrator_inner::CalibratorInner, imu_reading::IMUReading,
 };
 
-pub struct XPlus {}
-pub struct XMinus {}
-pub struct YPlus {}
-pub struct YMinus {}
-pub struct ZPlus {}
-pub struct ZMinus {}
-pub struct XRotation {}
-pub struct YRotation {}
-pub struct ZRotation {}
 pub struct Calibrator<S> {
     phantom: PhantomData<S>,
     inner: CalibratorInner,
@@ -25,83 +16,41 @@ pub fn new_calibrator(gravity: Option<f64>, expected_angle: Option<f64>) -> Cali
     }
 }
 
-impl Calibrator<XPlus> {
-    pub fn process(&mut self, reading: &IMUReading) {
-        self.inner.process_x_p(reading);
-    }
+macro_rules! impl_type_state {
+    ($state: ident, $method: ident, $next_state: ident) => {
+        pub struct $state {}
 
-    pub fn next(self) -> Calibrator<XMinus> {
-        Calibrator {
-            phantom: PhantomData,
-            inner: self.inner,
+        impl Calibrator<$state> {
+            pub fn process(&mut self, reading: &IMUReading) {
+                self.inner.$method(reading);
+            }
+
+            pub fn next(self) -> Calibrator<$next_state> {
+                Calibrator {
+                    phantom: PhantomData,
+                    inner: self.inner,
+                }
+            }
         }
-    }
+    };
 }
 
-impl Calibrator<XMinus> {
-    pub fn process(&mut self, reading: &IMUReading) {
-        self.inner.process_x_n(reading);
-    }
+impl_type_state!(XPlus, process_x_p, XPlusVariance);
+impl_type_state!(XPlusVariance, process_x_p_variance, XMinus);
+impl_type_state!(XMinus, process_x_n, XMinusVariance);
+impl_type_state!(XMinusVariance, process_x_n_variance, YPlus);
+impl_type_state!(YPlus, process_y_p, YPlusVariance);
+impl_type_state!(YPlusVariance, process_y_p_variance, YMinus);
+impl_type_state!(YMinus, process_y_n, YMinusVariance);
+impl_type_state!(YMinusVariance, process_y_n_variance, ZPlus);
+impl_type_state!(ZPlus, process_z_p, ZPlusVariance);
+impl_type_state!(ZPlusVariance, process_z_p_variance, ZMinus);
+impl_type_state!(ZMinus, process_z_n, ZMinusVariance);
+impl_type_state!(ZMinusVariance, process_z_n_variance, XRotation);
 
-    pub fn next(self) -> Calibrator<YPlus> {
-        Calibrator {
-            phantom: PhantomData,
-            inner: self.inner,
-        }
-    }
-}
-
-impl Calibrator<YPlus> {
-    pub fn process(&mut self, reading: &IMUReading) {
-        self.inner.process_y_p(reading);
-    }
-
-    pub fn next(self) -> Calibrator<YMinus> {
-        Calibrator {
-            phantom: PhantomData,
-            inner: self.inner,
-        }
-    }
-}
-
-impl Calibrator<YMinus> {
-    pub fn process(&mut self, reading: &IMUReading) {
-        self.inner.process_y_n(reading);
-    }
-
-    pub fn next(self) -> Calibrator<ZPlus> {
-        Calibrator {
-            phantom: PhantomData,
-            inner: self.inner,
-        }
-    }
-}
-
-impl Calibrator<ZPlus> {
-    pub fn process(&mut self, reading: &IMUReading) {
-        self.inner.process_z_p(reading);
-    }
-
-    pub fn next(self) -> Calibrator<ZMinus> {
-        Calibrator {
-            phantom: PhantomData,
-            inner: self.inner,
-        }
-    }
-}
-
-impl Calibrator<ZMinus> {
-    pub fn process(&mut self, reading: &IMUReading) {
-        self.inner.process_z_n(reading);
-    }
-
-    pub fn next(self) -> Calibrator<XRotation> {
-        Calibrator {
-            phantom: PhantomData,
-            inner: self.inner,
-        }
-    }
-}
+pub struct XRotation {}
+pub struct YRotation {}
+pub struct ZRotation {}
 
 impl Calibrator<XRotation> {
     pub fn process(&mut self, reading: &IMUReading) {
@@ -179,7 +128,21 @@ mod tests {
             calibrator.process(imu_reading);
         }
         let mut calibrator = calibrator.next();
+        for imu_reading in &read_file("./calibration_data/x_plus.csv") {
+            calibrator.process(imu_reading);
+        }
+        let mut calibrator = calibrator.next();
+
         for imu_reading in &read_file("./calibration_data/x_minus.csv") {
+            calibrator.process(imu_reading);
+        }
+        let mut calibrator = calibrator.next();
+        for imu_reading in &read_file("./calibration_data/x_minus.csv") {
+            calibrator.process(imu_reading);
+        }
+        let mut calibrator = calibrator.next();
+
+        for imu_reading in &read_file("./calibration_data/y_plus.csv") {
             calibrator.process(imu_reading);
         }
         let mut calibrator = calibrator.next();
@@ -187,7 +150,17 @@ mod tests {
             calibrator.process(imu_reading);
         }
         let mut calibrator = calibrator.next();
+
         for imu_reading in &read_file("./calibration_data/y_minus.csv") {
+            calibrator.process(imu_reading);
+        }
+        let mut calibrator = calibrator.next();
+        for imu_reading in &read_file("./calibration_data/y_minus.csv") {
+            calibrator.process(imu_reading);
+        }
+        let mut calibrator = calibrator.next();
+
+        for imu_reading in &read_file("./calibration_data/z_plus.csv") {
             calibrator.process(imu_reading);
         }
         let mut calibrator = calibrator.next();
@@ -195,10 +168,16 @@ mod tests {
             calibrator.process(imu_reading);
         }
         let mut calibrator = calibrator.next();
+
         for imu_reading in &read_file("./calibration_data/z_minus.csv") {
             calibrator.process(imu_reading);
         }
         let mut calibrator = calibrator.next();
+        for imu_reading in &read_file("./calibration_data/z_minus.csv") {
+            calibrator.process(imu_reading);
+        }
+        let mut calibrator = calibrator.next();
+
         for imu_reading in &read_file("./calibration_data/gyro_x.csv") {
             calibrator.process(imu_reading);
         }
@@ -275,6 +254,16 @@ mod tests {
                 -7.9426161,
             ),
             epsilon = 0.05
+        );
+        assert_abs_diff_eq!(
+            cal_info.acc_variance,
+            Vector3::new(0.00069620233, 0.00049620867, 0.0009553565),
+            epsilon = 0.01
+        );
+        assert_abs_diff_eq!(
+            cal_info.gyro_variance,
+            Vector3::new(0.17576145, 0.07144321, 0.12894574),
+            epsilon = 0.01
         );
     }
 }

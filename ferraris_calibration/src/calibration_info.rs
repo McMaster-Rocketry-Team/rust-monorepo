@@ -16,6 +16,8 @@ pub struct CalibrationInfo {
     pub(crate) b_g: Vector3<f32>,
     pub(crate) acc_mat: Matrix3<f32>,
     pub(crate) gyro_mat: Matrix3<f32>,
+    pub(crate) acc_variance: Vector3<f32>,
+    pub(crate) gyro_variance: Vector3<f32>,
 }
 
 impl defmt::Format for CalibrationInfo {
@@ -98,6 +100,20 @@ impl defmt::Format for CalibrationInfo {
             self.gyro_mat.m32,
             self.gyro_mat.m33
         );
+        defmt::write!(
+            fmt,
+            "    acc_var   [{}, {}, {}],\n",
+            self.acc_variance.x,
+            self.acc_variance.y,
+            self.acc_variance.z
+        );
+        defmt::write!(
+            fmt,
+            "    gyro_var   [{}, {}, {}],\n",
+            self.gyro_variance.x,
+            self.gyro_variance.y,
+            self.gyro_variance.z
+        );
         defmt::write!(fmt, "}}");
     }
 }
@@ -110,6 +126,8 @@ impl CalibrationInfo {
         b_g: Vector3<f32>,
         acc_mat: Matrix3<f32>,
         gyro_mat: Matrix3<f32>,
+        acc_variance: Vector3<f32>,
+        gyro_variance: Vector3<f32>,
     ) -> Self {
         Self {
             b_a,
@@ -117,6 +135,8 @@ impl CalibrationInfo {
             b_g,
             acc_mat,
             gyro_mat,
+            acc_variance,
+            gyro_variance,
         }
     }
 
@@ -129,6 +149,8 @@ impl CalibrationInfo {
         R_g: Matrix3<f32>,
         K_ga: Matrix3<f32>,
         b_g: Vector3<f32>,
+        acc_variance: Vector3<f32>,
+        gyro_variance: Vector3<f32>,
     ) -> Option<Self> {
         Some(Self {
             b_a,
@@ -136,6 +158,8 @@ impl CalibrationInfo {
             b_g,
             acc_mat: R_a.try_inverse()? * K_a.try_inverse()?,
             gyro_mat: R_g.try_inverse()? * K_g.try_inverse()?,
+            acc_variance,
+            gyro_variance,
         })
     }
 
@@ -176,7 +200,7 @@ impl CalibrationInfo {
 
     // workaround until getting rkyv working
     // WARNING: this is not endian-safe
-    pub fn serialize(&self, buffer: &mut [u8; 132]) {
+    pub fn serialize(&self, buffer: &mut [u8; 156]) {
         unsafe {
             (&mut buffer[0..12]).copy_from_slice(core::slice::from_raw_parts(
                 self.b_a.as_ptr() as *const u8,
@@ -198,12 +222,20 @@ impl CalibrationInfo {
                 self.gyro_mat.as_ptr() as *const u8,
                 36,
             ));
+            (&mut buffer[132..144]).copy_from_slice(core::slice::from_raw_parts(
+                self.acc_variance.as_ptr() as *const u8,
+                12,
+            ));
+            (&mut buffer[144..156]).copy_from_slice(core::slice::from_raw_parts(
+                self.gyro_variance.as_ptr() as *const u8,
+                12,
+            ));
         }
     }
 
     // workaround until getting rkyv working
     // WARNING: this is not endian-safe
-    pub fn deserialize(buffer: [u8; 132]) -> Self {
+    pub fn deserialize(buffer: [u8; 156]) -> Self {
         unsafe {
             Self {
                 b_a: Vector3::from_column_slice(core::slice::from_raw_parts(
@@ -225,6 +257,14 @@ impl CalibrationInfo {
                 gyro_mat: Matrix3::from_column_slice(core::slice::from_raw_parts(
                     buffer[96..132].as_ptr() as *const f32,
                     9,
+                )),
+                acc_variance: Vector3::from_column_slice(core::slice::from_raw_parts(
+                    buffer[132..144].as_ptr() as *const f32,
+                    3,
+                )),
+                gyro_variance: Vector3::from_column_slice(core::slice::from_raw_parts(
+                    buffer[144..156].as_ptr() as *const f32,
+                    3,
                 )),
             }
         }
@@ -304,6 +344,8 @@ mod tests {
                 0.17122412951449306,
                 -0.36269792946025897,
             ),
+            Vector3::new(0.1, 0.2, 0.3),
+            Vector3::new(0.4, 0.5, 0.6),
         )
         .unwrap()
     }
@@ -335,7 +377,7 @@ mod tests {
     #[test]
     fn serialization() {
         let cal_info = create_cal_info();
-        let mut buffer = [0u8; 132];
+        let mut buffer = [0u8; 156];
         cal_info.serialize(&mut buffer);
         let deserialized = CalibrationInfo::deserialize(buffer);
         assert_eq!(cal_info, deserialized);

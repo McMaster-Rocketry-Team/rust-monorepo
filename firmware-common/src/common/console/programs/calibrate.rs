@@ -1,11 +1,8 @@
 use defmt::*;
-use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
 
 use ferraris_calibration::interactive_calibrator::{
-    Axis, Direction, Event, InteractiveCalibrator, InteractiveCalibratorState,
-    InteractiveCalibratorState::*,
+    Axis, Direction, Event, InteractiveCalibrator, InteractiveCalibratorState::*,
 };
-use futures::future::join;
 use vlfs::{io_traits::AsyncWriter, Crc, Flash, VLFS};
 
 use crate::{
@@ -42,11 +39,12 @@ impl Calibrate {
             if let Some(state) = next_state {
                 match state {
                     WaitingStill => self.waiting_still_sound(&mut buzzer, timer).await,
-                    State(axis, direction, event) => {
+                    State(axis, direction, event) if event != Event::Variance => {
                         self.axis_sound(axis, &mut buzzer, timer).await;
                         self.direction_sound(direction, &mut buzzer, timer).await;
                         self.event_sound(event, &mut buzzer, timer).await;
                     }
+                    State(_, _, _) => {}
                     Success => {
                         self.success_sound(&mut buzzer, timer).await;
                         break;
@@ -67,7 +65,7 @@ impl Calibrate {
                     let file_id = unwrap!(fs.create_file(CALIBRATION_FILE_TYPE).await);
                     let mut file = unwrap!(fs.open_file_for_write(file_id).await);
 
-                    let mut buffer = [0u8; 132];
+                    let mut buffer = [0u8; 156];
                     cal_info.serialize(&mut buffer);
                     unwrap!(file.extend_from_slice(&buffer).await);
 
@@ -181,6 +179,7 @@ impl Calibrate {
                 timer.sleep(250.0).await;
                 buzzer.set_enable(false).await;
             }
+            Event::Variance => {}
         }
     }
 

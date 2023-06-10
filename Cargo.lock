@@ -307,9 +307,11 @@ dependencies = [
  "csv",
  "defmt",
  "either",
+ "ferraris-calibration",
  "heapless",
  "libm",
  "nalgebra 0.32.2",
+ "paste",
  "rkyv",
 ]
 

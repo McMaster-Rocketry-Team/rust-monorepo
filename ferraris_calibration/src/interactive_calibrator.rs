@@ -7,6 +7,7 @@ use crate::{
 use defmt::info;
 use either::Either;
 use nalgebra::Vector3;
+use paste::paste;
 use Axis::*;
 use Direction::*;
 use Event::*;
@@ -29,6 +30,7 @@ pub enum Direction {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Event {
     Start,
+    Variance,
     End,
 }
 
@@ -56,6 +58,24 @@ impl Default for InteractiveCalibrator {
     fn default() -> Self {
         Self::new(None, None, None)
     }
+}
+
+macro_rules! arm_process {
+    ($self: ident, $method: ident, $reading: expr, $inner: ident, $new_state: ident, $next: expr) => {{
+        paste! {
+            if $self.state_start_timestamp.is_none() {
+                $self.state_start_timestamp = Some($reading.timestamp);
+            }
+
+            $inner.[<process_ $method>]($reading);
+            if $inner.[<$method _count>] > 300
+                && $reading.timestamp - $self.state_start_timestamp.unwrap() > MINIMUM_SAMPLE_TIME
+            {
+                $self.state_start_timestamp = None;
+                $new_state = Some($next);
+            }
+        }
+    }};
 }
 
 impl InteractiveCalibrator {
@@ -120,105 +140,127 @@ impl InteractiveCalibrator {
                     new_state = Some(State(X, Plus, Start));
                 }
             }
-            State(X, Plus, Start) => {
-                if self.state_start_timestamp.is_none() {
-                    self.state_start_timestamp = Some(reading.timestamp);
-                }
-
-                inner.process_x_p(reading);
-                if inner.x_p_count > 300
-                    && reading.timestamp - self.state_start_timestamp.unwrap() > MINIMUM_SAMPLE_TIME
-                {
-                    new_state = Some(State(X, Plus, End));
-                }
-            }
+            State(X, Plus, Start) => arm_process!(
+                self,
+                x_n,
+                reading,
+                inner,
+                new_state,
+                State(X, Plus, Variance)
+            ),
+            State(X, Plus, Variance) => arm_process!(
+                self,
+                x_n_variance,
+                reading,
+                inner,
+                new_state,
+                State(X, Plus, End)
+            ),
             State(X, Plus, End) => {
-                self.state_start_timestamp = None;
-
                 if self.wait_still(&reading) {
                     new_state = Some(State(X, Minus, Start));
                 }
             }
-            State(X, Minus, Start) => {
-                if self.state_start_timestamp.is_none() {
-                    self.state_start_timestamp = Some(reading.timestamp);
-                }
-
-                inner.process_x_n(reading);
-                if inner.x_n_count > 300
-                    && reading.timestamp - self.state_start_timestamp.unwrap() > MINIMUM_SAMPLE_TIME
-                {
-                    new_state = Some(State(X, Minus, End));
-                }
-            }
+            State(X, Minus, Start) => arm_process!(
+                self,
+                x_n,
+                reading,
+                inner,
+                new_state,
+                State(X, Minus, Variance)
+            ),
+            State(X, Minus, Variance) => arm_process!(
+                self,
+                x_n_variance,
+                reading,
+                inner,
+                new_state,
+                State(X, Minus, End)
+            ),
             State(X, Minus, End) => {
                 if self.wait_still(&reading) {
                     new_state = Some(State(Y, Plus, Start));
                 }
             }
-            State(Y, Plus, Start) => {
-                if self.state_start_timestamp.is_none() {
-                    self.state_start_timestamp = Some(reading.timestamp);
-                }
-
-                inner.process_y_p(reading);
-                if inner.y_p_count > 300
-                    && reading.timestamp - self.state_start_timestamp.unwrap() > MINIMUM_SAMPLE_TIME
-                {
-                    new_state = Some(State(Y, Plus, End));
-                }
-            }
+            State(Y, Plus, Start) => arm_process!(
+                self,
+                y_n,
+                reading,
+                inner,
+                new_state,
+                State(Y, Plus, Variance)
+            ),
+            State(Y, Plus, Variance) => arm_process!(
+                self,
+                y_n_variance,
+                reading,
+                inner,
+                new_state,
+                State(Y, Plus, End)
+            ),
             State(Y, Plus, End) => {
                 if self.wait_still(&reading) {
                     new_state = Some(State(Y, Minus, Start));
                 }
             }
-            State(Y, Minus, Start) => {
-                if self.state_start_timestamp.is_none() {
-                    self.state_start_timestamp = Some(reading.timestamp);
-                }
-
-                inner.process_y_n(reading);
-                if inner.y_n_count > 300
-                    && reading.timestamp - self.state_start_timestamp.unwrap() > MINIMUM_SAMPLE_TIME
-                {
-                    new_state = Some(State(Y, Minus, End));
-                }
-            }
+            State(Y, Minus, Start) => arm_process!(
+                self,
+                y_n,
+                reading,
+                inner,
+                new_state,
+                State(Y, Minus, Variance)
+            ),
+            State(Y, Minus, Variance) => arm_process!(
+                self,
+                y_n_variance,
+                reading,
+                inner,
+                new_state,
+                State(Y, Minus, End)
+            ),
             State(Y, Minus, End) => {
                 if self.wait_still(&reading) {
                     new_state = Some(State(Z, Plus, Start));
                 }
             }
-            State(Z, Plus, Start) => {
-                if self.state_start_timestamp.is_none() {
-                    self.state_start_timestamp = Some(reading.timestamp);
-                }
-
-                inner.process_z_p(reading);
-                if inner.z_p_count > 300
-                    && reading.timestamp - self.state_start_timestamp.unwrap() > MINIMUM_SAMPLE_TIME
-                {
-                    new_state = Some(State(Z, Plus, End));
-                }
-            }
+            State(Z, Plus, Start) => arm_process!(
+                self,
+                z_n,
+                reading,
+                inner,
+                new_state,
+                State(Z, Plus, Variance)
+            ),
+            State(Z, Plus, Variance) => arm_process!(
+                self,
+                z_n_variance,
+                reading,
+                inner,
+                new_state,
+                State(Z, Plus, End)
+            ),
             State(Z, Plus, End) => {
                 if self.wait_still(&reading) {
                     new_state = Some(State(Z, Minus, Start));
                 }
             }
-            State(Z, Minus, Start) => {
-                if self.state_start_timestamp.is_none() {
-                    self.state_start_timestamp = Some(reading.timestamp);
-                }
-
-                inner.process_z_n(reading);
-                if inner.z_n_count > 300
-                    && reading.timestamp - self.state_start_timestamp.unwrap() > MINIMUM_SAMPLE_TIME
-                {
-                    new_state = Some(State(Z, Minus, End));
-                }
-            }
+            State(Z, Minus, Start) => arm_process!(
+                self,
+                z_n,
+                reading,
+                inner,
+                new_state,
+                State(Z, Minus, Variance)
+            ),
+            State(Z, Minus, Variance) => arm_process!(
+                self,
+                z_n_variance,
+                reading,
+                inner,
+                new_state,
+                State(Z, Minus, End)
+            ),
             State(Z, Minus, End) => {
                 if self.wait_still(&reading) {
                     new_state = Some(State(X, Rotation, Start));

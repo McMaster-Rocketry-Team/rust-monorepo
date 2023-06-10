@@ -18,7 +18,9 @@ nalgebra = { version = "0.32.2", default-features = false, features = ["libm"]}
 defmt = { version = "0.3", optional = true }
 libm = "0.2.6"
 either = { version = "1.8.1", default-features = false }
+paste = "1.0.12"
 
 [dev-dependencies]
 approx = "0.5.1"
 csv = "1.2"
+ferraris-calibration = { path = ".", default-features = false, features = ["defmt"] }
