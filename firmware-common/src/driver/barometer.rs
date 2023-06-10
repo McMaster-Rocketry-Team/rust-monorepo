@@ -1,10 +1,21 @@
 use super::timer::Timer;
+use libm::powf;
 
-#[derive(defmt::Format, Debug)]
+#[derive(defmt::Format, Debug, Clone)]
 pub struct BaroReading {
-    pub timestamp: u64,   // ms
+    pub timestamp: f64,   // ms
     pub temperature: f32, // C
     pub pressure: f32,    // Pa
+}
+
+impl BaroReading {
+    pub fn altitude(&self) -> f32 {
+        // see https://github.com/pimoroni/bmp280-python/blob/master/library/bmp280/__init__.py
+        let air_pressure_hpa = self.pressure / 100.0;
+        return ((powf(1013.25 / air_pressure_hpa, 1.0 / 5.257) - 1.0)
+            * (self.temperature + 273.15))
+            / 0.0065;
+    }
 }
 
 pub trait Barometer {
@@ -33,7 +44,7 @@ impl<T: Timer> Barometer for DummyBarometer<T> {
     async fn read(&mut self) -> Result<BaroReading, ()> {
         self.timer.sleep(1.0).await;
         Ok(BaroReading {
-            timestamp: 0,
+            timestamp: 0.0,
             temperature: 0.0,
             pressure: 0.0,
         })

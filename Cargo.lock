@@ -25,6 +25,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "android-tzdata"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e999941b234f3131b00bc13c22d06e8c5ff726d1b6318ac7eb276997bbb4fef0"
+
+[[package]]
 name = "anyhow"
 version = "1.0.70"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -141,11 +147,11 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
 name = "chrono"
-version = "0.4.24"
+version = "0.4.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4e3c5919066adf22df73762e50cffcde3a758f2a848b113b586d1f86728b673b"
+checksum = "ec837a71355b28f6556dbd569b37b3f363091c0bd4b2e735674521b4c5fd9bc5"
 dependencies = [
- "num-integer",
+ "android-tzdata",
  "num-traits",
 ]
 
@@ -277,6 +283,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "eskf"
+version = "0.2.0"
+dependencies = [
+ "libm",
+ "nalgebra 0.32.2",
+]
+
+[[package]]
 name = "fastrand"
 version = "1.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -306,11 +320,13 @@ dependencies = [
  "ahrs",
  "bitflags 2.2.1",
  "bitvec",
+ "chrono",
  "critical-section",
  "defmt",
  "embassy-sync",
  "embedded-alloc",
  "embedded-hal-async",
+ "eskf",
  "ferraris-calibration",
  "futures",
  "futures-executor",
@@ -318,10 +334,12 @@ dependencies = [
  "futures-timer",
  "futures-util",
  "heapless",
+ "libm",
  "lora-phy",
  "micromath",
  "nalgebra 0.32.2",
  "nmea",
+ "num-traits",
  "rand",
  "rkyv",
  "vlfs",
@@ -574,9 +592,9 @@ checksum = "3304a64d199bb964be99741b7a14d26972741915b3649639149b2479bb46f4b5"
 
 [[package]]
 name = "libm"
-version = "0.2.6"
+version = "0.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "348108ab3fba42ec82ff6e9564fc4ca0247bdccdc68dd8af9764bbc79c3c8ffb"
+checksum = "f7012b1bbb0719e1097c47611d3898568c546d597c2e74d66f6087edd5233ff4"
 
 [[package]]
 name = "linked_list_allocator"

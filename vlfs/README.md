@@ -6,7 +6,7 @@
 
 - `#[no_std]` support
 - No allocation
-- Power-loss resilience: at most 256 bytes of unflushed data will be lost (see TODO)
+- Power-loss resilience: at most 252 bytes of unflushed data will be lost (see TODO)
 - Dynamic wear leveling
 - Bounded RAM/ROM
 - Bounded execution time
@@ -26,12 +26,11 @@ VLFS is based on a file allocation table design and uses linklists to store data
 
 NOR flash (W25Q512JV) on 16MHz SPI bus:
 
-- Average sequential write speed: 113KiB/s
+- Average sequential write speed: 121KiB/s
   - 64 bytes writing time:
     - mean: 0.5ms
-    - stddev: 7.2ms
-    - max: 241.6ms
-- Average sequential read speed: 630KiB/s
+    - max: 2.5ms
+- Average sequential read speed: 597KiB/s
 
 # Notes
 
@@ -55,7 +54,6 @@ Note: Multiple allocation tables are used for wear-leveling purpose.
 
 # Long-term Todo
 
-- Support erase suspend / resume
 - Use constant generics to support different sizes of flash (tried it before but crashed the compiler)
 - Host application for creating / reading VLFS images
 - Use driver traits from `async_embedded_traits`

@@ -7,3 +7,5 @@ pub mod radio_kind_wrapper;
 pub mod telemetry;
 pub mod ticker;
 pub mod vlp;
+pub mod sensor_snapshot;
+pub mod moving_average;
