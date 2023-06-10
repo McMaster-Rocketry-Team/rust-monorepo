@@ -242,7 +242,6 @@ where
             }
         }
 
-        info!("CRC: {}", writer.get_crc());
         writer
             .extend_from_u32(writer.get_crc())
             .await

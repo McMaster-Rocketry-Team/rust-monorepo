@@ -1,4 +1,4 @@
-use defmt::unwrap;
+use defmt::{info, unwrap};
 use vlfs::{Crc, Flash, VLFS};
 
 use crate::{
@@ -30,6 +30,7 @@ impl ChangeMode {
         let mut buffer = [0u8; 1];
         unwrap!(serial.read(&mut buffer).await);
         let new_device_mode = DeviceMode::try_from(buffer[0]).unwrap();
+        info!("Changing device mode to {:?}", new_device_mode);
         try_or_warn!(write_device_mode(vlfs, new_device_mode).await);
 
         claim_devices!(device_manager, device_management);
