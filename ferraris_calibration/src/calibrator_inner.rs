@@ -1,4 +1,4 @@
-use libm::sqrt;
+use libm::{sqrt, sqrtf};
 use nalgebra::{Matrix3, Vector3};
 
 use crate::{CalibrationInfo, IMUReading};
@@ -418,33 +418,53 @@ impl CalibratorInner {
 
         let R_g = K_g.try_inverse()? * multiplied;
 
-        let mut acc_variance = (self.acc_x_p_variance_sum
-            + self.acc_y_p_variance_sum
-            + self.acc_z_p_variance_sum
-            + self.acc_x_n_variance_sum
-            + self.acc_y_n_variance_sum
-            + self.acc_z_n_variance_sum)
-            / (self.x_p_variance_count
-                + self.y_p_variance_count
-                + self.z_p_variance_count
-                + self.x_n_variance_count
-                + self.y_n_variance_count
-                + self.z_n_variance_count) as f64;
-        acc_variance.iter_mut().for_each(|x| *x = sqrt(*x));
+        let cal_info = CalibrationInfo::from_raw(
+            K_a.cast(),
+            R_a.cast(),
+            b_a.cast(),
+            K_g.cast(),
+            R_g.cast(),
+            K_ga.cast(),
+            b_g.cast(),
+            Vector3::zeros(),
+            Vector3::zeros(),
+        )?;
 
-        let mut gyro_variance = (self.gyro_x_p_variance_sum
-            + self.gyro_y_p_variance_sum
-            + self.gyro_z_p_variance_sum
-            + self.gyro_x_n_variance_sum
-            + self.gyro_y_n_variance_sum
-            + self.gyro_z_n_variance_sum)
-            / (self.x_p_variance_count
-                + self.y_p_variance_count
-                + self.z_p_variance_count
-                + self.x_n_variance_count
-                + self.y_n_variance_count
-                + self.z_n_variance_count) as f64;
-        gyro_variance.iter_mut().for_each(|x| *x = sqrt(*x));
+        let variance_avg_reading = IMUReading {
+            timestamp: 0.0,
+            acc: ((self.acc_x_p_variance_sum
+                + self.acc_y_p_variance_sum
+                + self.acc_z_p_variance_sum
+                + self.acc_x_n_variance_sum
+                + self.acc_y_n_variance_sum
+                + self.acc_z_n_variance_sum)
+                / (self.x_p_variance_count
+                    + self.y_p_variance_count
+                    + self.z_p_variance_count
+                    + self.x_n_variance_count
+                    + self.y_n_variance_count
+                    + self.z_n_variance_count) as f64)
+                .cast()
+                .into(),
+            gyro: ((self.gyro_x_p_variance_sum
+                + self.gyro_y_p_variance_sum
+                + self.gyro_z_p_variance_sum
+                + self.gyro_x_n_variance_sum
+                + self.gyro_y_n_variance_sum
+                + self.gyro_z_n_variance_sum)
+                / (self.x_p_variance_count
+                    + self.y_p_variance_count
+                    + self.z_p_variance_count
+                    + self.x_n_variance_count
+                    + self.y_n_variance_count
+                    + self.z_n_variance_count) as f64)
+                .cast()
+                .into(),
+        };
+        let variance_avg_reading = cal_info.apply_calibration(&variance_avg_reading);
+
+        let acc_variance: Vector3<f32> = variance_avg_reading.acc.map(|x| sqrtf(x)).into();
+        let gyro_variance: Vector3<f32> = variance_avg_reading.gyro.map(|x| sqrtf(x)).into();
 
         CalibrationInfo::from_raw(
             K_a.cast(),
@@ -454,8 +474,8 @@ impl CalibratorInner {
             R_g.cast(),
             K_ga.cast(),
             b_g.cast(),
-            acc_variance.cast(),
-            gyro_variance.cast(),
+            acc_variance,
+            gyro_variance,
         )
     }
 }

@@ -5,11 +5,15 @@
 #![feature(try_blocks)]
 
 use crate::{
-    common::{console::console::run_console, device_manager::prelude::*},
+    common::{
+        console::console::run_console, device_manager::prelude::*, files::CALIBRATION_FILE_TYPE,
+        ticker::Ticker,
+    },
     ground_test::gcm::ground_test_gcm,
 };
 use defmt::*;
-use vlfs::{StatFlash, VLFS};
+use ferraris_calibration::CalibrationInfo;
+use vlfs::{io_traits::AsyncReader, StatFlash, VLFS};
 
 use futures::{
     future::{join4, select},
@@ -49,15 +53,29 @@ pub async fn init(
     unwrap!(fs.init().await);
 
     let testing_fut = async {
-        claim_devices!(device_manager, meg);
+        for file_entry in fs.files_iter(None).await {
+            info!("{}", file_entry);
+        }
+        if let Some(calibration_file) = fs.files_iter(Some(CALIBRATION_FILE_TYPE)).await.next() {
+            info!("Calibration file found, id: {}", calibration_file.file_id);
+            let mut file = unwrap!(fs.open_file_for_read(calibration_file.file_id).await);
+            let mut buffer = [0u8; 156];
+            unwrap!(file.read_slice(&mut buffer, 156).await);
+            let cal_info = CalibrationInfo::deserialize(buffer);
+            info!("{}", cal_info);
+        } else {
+            info!("No calibration file found");
+        }
+        // claim_devices!(device_manager, imu);
         // unwrap!(imu.wait_for_power_on().await);
         // unwrap!(imu.reset().await);
-        // let mut ticker = Ticker::every(timer, 1.0);
+        // let mut ticker = Ticker::every(timer, 100.0);
         // unwrap!(meg.reset().await);
         // info!("meg resetted");
         // let start_time = timer.now_mills();
         // loop {
-        //     info!("meg: {}",meg.reset().await);
+        //     info!("imu: {}", imu.read().await);
+        //     ticker.next().await;
         // }
         // info!(
         //     "Time taken: {}",

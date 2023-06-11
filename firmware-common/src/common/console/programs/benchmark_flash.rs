@@ -32,6 +32,7 @@ impl BenchmarkFlash {
         stat_flash: &StatFlash,
         timer: I,
     ) -> Result<(), ()> {
+        info!("Benchmarking flash");
         stat_flash.reset_stat();
         let rounds = 10000usize;
         let length = rounds * 64;
@@ -51,6 +52,10 @@ impl BenchmarkFlash {
         };
 
         let mut max_64b_write_time = 0f64;
+        unwrap!(
+            vlfs.remove_files(|file_entry| file_entry.file_type == BENCHMARK_FILE_TYPE)
+                .await
+        );
         let file_id = unwrap!(vlfs.create_file(BENCHMARK_FILE_TYPE).await);
 
         let write_time = {

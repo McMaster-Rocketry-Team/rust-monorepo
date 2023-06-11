@@ -17,7 +17,7 @@ where
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, defmt::Format)]
 pub struct LsFileEntry {
     pub file_id: FileID,
     pub file_type: FileType,

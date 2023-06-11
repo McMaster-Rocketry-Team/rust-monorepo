@@ -31,8 +31,11 @@ impl Calibrate {
     ) -> Result<(), ()> {
         let timer = device_manager.timer;
         claim_devices!(device_manager, buzzer, imu);
+        // TODO move this to main
+        unwrap!(imu.wait_for_power_on().await);
+        unwrap!(imu.reset().await);
 
-        let mut calibrator = InteractiveCalibrator::default();
+        let mut calibrator = InteractiveCalibrator::new(Some(0.05), None, None);
         loop {
             let reading = imu.read().await.map_err(|_| ()).unwrap();
             let next_state = calibrator.process(&reading);
@@ -58,6 +61,7 @@ impl Calibrate {
 
                 if let Success = state {
                     let cal_info = calibrator.get_calibration_info().unwrap();
+                    info!("{}", cal_info);
                     unwrap!(
                         fs.remove_files(|file_entry| file_entry.file_type == CALIBRATION_FILE_TYPE)
                             .await
@@ -68,11 +72,12 @@ impl Calibrate {
                     let mut buffer = [0u8; 156];
                     cal_info.serialize(&mut buffer);
                     unwrap!(file.extend_from_slice(&buffer).await);
+                    unwrap!(file.close().await);
 
-                    serial.write(&[1]);
+                    unwrap!(serial.write(&[1]).await);
                     break;
                 } else if let Failure = state {
-                    serial.write(&[0]);
+                    unwrap!(serial.write(&[0]).await);
                     break;
                 }
             }

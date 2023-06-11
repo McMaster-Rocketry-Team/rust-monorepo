@@ -14,7 +14,7 @@ impl defmt::Format for MegReading {
         let mut message = String::<128>::new();
         core::write!(
             &mut message,
-            "MegReading {{ {:.2} {:.2} {:.2} }}",
+            "MegReading {{ {:.5} {:.5} {:.5} }}",
             self.meg.x,
             self.meg.y,
             self.meg.z,

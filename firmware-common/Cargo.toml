@@ -16,10 +16,10 @@ rkyv = { version = "0.7.39", default-features = false, features = [
     "validation",
 ] }
 nalgebra = { version = "0.32.2", default-features = false }
-ahrs = { version = "0.6.0", default-features = false }
+ahrs = { version = "0.6.0", default-features = false, features = ["field_access"] }
 futures = { version = "0.3.17", default-features = false, features = [
     "async-await",
-] }
+] } 
 vlfs = { path = "../vlfs" }
 rand = { version = "0.8.5", features = ["small_rng"], default-features = false }
 micromath = { version = "2.0.0", features = [
