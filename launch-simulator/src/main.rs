@@ -1,3 +1,8 @@
+#![feature(async_fn_in_trait)]
+#![feature(impl_trait_projections)]
+#![feature(let_chains)]
+#![feature(try_blocks)]
+
 use bevy::prelude::*;
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use bevy_rapier3d::prelude::*;

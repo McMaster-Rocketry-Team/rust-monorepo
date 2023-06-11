@@ -12,3 +12,4 @@ pub mod serial;
 pub mod sys_reset;
 pub mod timer;
 pub mod usb;
+pub mod debugger;

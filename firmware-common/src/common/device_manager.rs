@@ -7,6 +7,7 @@ use crate::driver::{
     arming::HardwareArming,
     barometer::Barometer,
     buzzer::Buzzer,
+    debugger::Debugger,
     gps::{GPSCtrl, GPS},
     imu::IMU,
     indicator::Indicator,
@@ -22,6 +23,7 @@ use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 
 #[allow(dead_code)]
 pub struct DeviceManager<
+    DB: Debugger,
     D: SysReset,
     T: Timer,
     F: Flash,
@@ -74,9 +76,11 @@ pub struct DeviceManager<
     pub(crate) gps: Mutex<CriticalSectionRawMutex, G>,
     pub(crate) gps_ctrl: Mutex<CriticalSectionRawMutex, GT>,
     pub(crate) timer: T,
+    pub(crate) debugger: DB,
 }
 
 impl<
+        DB: Debugger,
         D: SysReset,
         T: Timer,
         F: Flash,
@@ -104,6 +108,7 @@ impl<
         GT: GPSCtrl,
     >
     DeviceManager<
+        DB,
         D,
         T,
         F,
@@ -153,8 +158,10 @@ impl<
         error_indicator: IE,
         barometer: BA,
         gps: (G, GT),
+        debugger: DB,
     ) -> Self {
         Self {
+            debugger,
             device_management: Mutex::new(device_management),
             flash: Mutex::new(flash),
             crc: Mutex::new(crc),
@@ -226,6 +233,7 @@ macro_rules! try_claim_devices {
 #[macro_export]
 macro_rules! device_manager_type{
     () => { &DeviceManager<
+    impl Debugger,
     impl SysReset,
     impl Timer,
     impl Flash,
@@ -254,6 +262,7 @@ macro_rules! device_manager_type{
 >};
 
 (mut) => { &mut DeviceManager<
+    impl Debugger,
     impl SysReset,
     impl Timer,
     impl Flash,
@@ -288,6 +297,7 @@ pub mod prelude {
     pub use crate::driver::arming::HardwareArming;
     pub use crate::driver::barometer::Barometer;
     pub use crate::driver::buzzer::Buzzer;
+    pub use crate::driver::debugger::Debugger;
     pub use crate::driver::gps::{GPSCtrl, GPS};
     pub use crate::driver::imu::IMU;
     pub use crate::driver::indicator::Indicator;

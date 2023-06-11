@@ -9,7 +9,7 @@ use crate::{
     claim_devices,
     common::{device_manager::prelude::*, files::CALIBRATION_FILE_TYPE, ticker::Ticker},
     device_manager_type,
-    driver::{buzzer::Buzzer, imu::IMU, serial::Serial, timer::Timer},
+    driver::{buzzer::Buzzer, imu::IMU, serial::Serial, timer::Timer, debugger::DebuggerEvent},
 };
 
 pub struct Calibrate {}
@@ -30,16 +30,19 @@ impl Calibrate {
         device_manager: device_manager_type!(),
     ) -> Result<(), ()> {
         let timer = device_manager.timer;
+        let debugger = device_manager.debugger;
         claim_devices!(device_manager, buzzer, imu);
         // TODO move this to main
         unwrap!(imu.wait_for_power_on().await);
         unwrap!(imu.reset().await);
 
+        debugger.dispatch(DebuggerEvent::CalibrationStart);
         let mut calibrator = InteractiveCalibrator::new(Some(0.05), None, None);
         loop {
             let reading = imu.read().await.map_err(|_| ()).unwrap();
             let next_state = calibrator.process(&reading);
             if let Some(state) = next_state {
+                debugger.dispatch(DebuggerEvent::Calibrating(state));
                 match state {
                     WaitingStill => self.waiting_still_sound(&mut buzzer, timer).await,
                     State(axis, direction, event) if event != Event::Variance => {
