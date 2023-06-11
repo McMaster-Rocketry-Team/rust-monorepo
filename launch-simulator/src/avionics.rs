@@ -22,7 +22,7 @@ use firmware_common::{
     },
     init, DeviceManager,
 };
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::{Arc, Barrier}};
 use std::thread;
 use vlfs::DummyCrc;
 use vlfs_host::FileFlash;
@@ -32,8 +32,10 @@ pub fn start_avionics_thread(
     imu: VirtualIMU,
     serial: VirtualSerial,
     debugger: Debugger,
+    ready_barrier: Arc<Barrier>
 ) {
     thread::spawn(move || {
+        ready_barrier.wait();
         avionics(flash_file_name, imu, serial, debugger);
     });
 }

@@ -1,7 +1,9 @@
+use bevy::prelude::Component;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 
 use firmware_common::driver::serial::Serial;
 
+#[derive(Component)]
 pub struct VirtualSerial {
     tx: UnboundedSender<Vec<u8>>,
     rx: UnboundedReceiver<Vec<u8>>,
