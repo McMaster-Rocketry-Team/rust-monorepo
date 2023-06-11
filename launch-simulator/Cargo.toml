@@ -17,3 +17,5 @@ critical-section = { version = "1.1", features = ["std"] }
 rodio = "0.17.1"
 nalgebra = "0.32.2"
 bevy_egui = "0.20.3"
+rand_distr = "0.4.3"
+rand = "0.8.5"

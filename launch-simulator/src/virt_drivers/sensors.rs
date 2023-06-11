@@ -3,6 +3,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use bevy::prelude::{Component, Transform};
 use bevy_rapier3d::prelude::Velocity;
 use firmware_common::driver::imu::{IMUReading, IMU};
+use rand;
+use rand_distr::{Distribution, Normal};
 use tokio::sync::watch::{self, Receiver, Sender};
 
 #[derive(Component)]
@@ -10,6 +12,8 @@ pub struct SensorSender {
     tx: Sender<SensorSnapshot>,
     last_state: Option<(f64, Velocity, Transform)>,
     ready: bool,
+    acc_normal: Normal<f32>,
+    gyro_normal: Normal<f32>,
 }
 
 impl SensorSender {
@@ -18,6 +22,8 @@ impl SensorSender {
             tx,
             last_state: None,
             ready: false,
+            acc_normal: Normal::new(0.0, 0.5).unwrap(),
+            gyro_normal: Normal::new(0.0, 0.2).unwrap(),
         }
     }
 
@@ -41,10 +47,20 @@ impl SensorSender {
 
         let gyro = velocity.angvel;
 
+        let mut rng = rand::thread_rng();
+
         let imu_reading = IMUReading {
             timestamp: now,
-            acc: acceleration.into(),
-            gyro: gyro.into(),
+            acc: [
+                acceleration.x + self.acc_normal.sample(&mut rng),
+                acceleration.y + self.acc_normal.sample(&mut rng),
+                acceleration.z + self.acc_normal.sample(&mut rng),
+            ],
+            gyro: [
+                gyro.x + self.gyro_normal.sample(&mut rng),
+                gyro.y + self.gyro_normal.sample(&mut rng),
+                gyro.z + self.gyro_normal.sample(&mut rng),
+            ],
         };
 
         self.tx.send(SensorSnapshot { imu_reading }).unwrap();

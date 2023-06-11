@@ -24,8 +24,6 @@ mod avionics;
 mod virt_drivers;
 
 fn main() {
-    // serial_b.blocking_write(&[0, 0, 0, 0, 0, 0, 0, 5]);
-
     App::new()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
