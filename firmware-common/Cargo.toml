@@ -29,7 +29,7 @@ lora-phy = "1.0.2"
 embedded-alloc = "0.5.0"
 embedded-hal-async = "0.2.0-alpha.1"
 nmea = { version = "0.4.0", default-features = false }
-ferraris-calibration = { path = "../ferraris_calibration", features = [
+ferraris-calibration = { path = "../ferraris-calibration", features = [
     "defmt",
 ] }
 bitflags = "2.2.1"

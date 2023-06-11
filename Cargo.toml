@@ -1,3 +1,3 @@
 [workspace]
 
-members = ["tiny-nmea", "firmware-common", "nyoom", "vlfs", "ferraris_calibration", "vl8-ctrl-protocol"]
+members = ["tiny-nmea", "firmware-common", "nyoom", "vlfs", "ferraris-calibration", "vl8-ctrl-protocol", "launch-simulator"]
