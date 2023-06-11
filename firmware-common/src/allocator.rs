@@ -1,8 +1,8 @@
 use embedded_alloc::Heap;
 
-#[cfg(not(test))]
+#[cfg(all(not(test), feature = "global-allocator"))]
 #[global_allocator]
 pub(crate) static HEAP: Heap = Heap::empty();
 
-#[cfg(test)]
+#[cfg(not(all(not(test), feature = "global-allocator")))]
 pub(crate) static HEAP: Heap = Heap::empty();

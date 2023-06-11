@@ -9,8 +9,9 @@ edition = "2021"
 bevy = { version = "0.10.1", features = ["dynamic_linking"] }
 bevy_panorbit_camera = "0.5.1"
 bevy_rapier3d = { version = "0.21.0", features = ["debug-render-3d"] }
-firmware-common = { path = "../firmware-common" }
+firmware-common = { path = "../firmware-common", default-features = false }
 tokio = { version = "1.28.2", features = ["full"] }
 vlfs = { path = "../vlfs" }
 vlfs-host = { path = "../vlfs-host" }
 critical-section = { version = "1.1", features = ["std"] }
+rodio = "0.17.1"

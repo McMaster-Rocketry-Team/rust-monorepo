@@ -1,5 +1,6 @@
 use crate::virt_drivers::{
-    debugger::Debugger, sensors::VirtualIMU, serial::VirtualSerial, timer::TokioTimer,
+    buzzer::SpeakerBuzzer, debugger::Debugger, sensors::VirtualIMU, serial::VirtualSerial,
+    timer::TokioTimer,
 };
 use firmware_common::{
     driver::{
@@ -19,7 +20,7 @@ use firmware_common::{
         sys_reset::PanicSysReset,
         usb::DummyUSB,
     },
-    init, DeviceManager, DeviceMode,
+    init, DeviceManager,
 };
 use std::path::PathBuf;
 use std::thread;
@@ -59,7 +60,7 @@ async fn avionics(
         DummyHardwareArming::new(timer),
         serial,
         DummyUSB::new(timer),
-        DummyBuzzer {},
+        SpeakerBuzzer::new(),
         DummyMegnetometer::new(timer),
         DummyRadioKind {},
         DummyRNG {},

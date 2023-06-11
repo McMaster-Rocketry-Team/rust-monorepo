@@ -6,7 +6,7 @@ pub struct TokioTimer {}
 
 impl TimerDriver for TokioTimer {
     async fn sleep(&self, ms: f64) {
-        sleep(Duration::from_micros((ms / 1000.0) as u64)).await;
+        sleep(Duration::from_secs_f64(ms / 1000.0)).await;
     }
 
     fn now_mills(&self) -> f64 {

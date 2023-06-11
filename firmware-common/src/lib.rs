@@ -5,9 +5,9 @@
 #![feature(try_blocks)]
 
 use crate::{
+    avionics::avionics_main,
     common::{
         console::console::run_console, device_manager::prelude::*, files::CALIBRATION_FILE_TYPE,
-        ticker::Ticker,
     },
     ground_test::gcm::ground_test_gcm,
 };
@@ -137,7 +137,7 @@ pub async fn init(
 
         info!("Starting in mode {}", device_mode);
         match device_mode {
-            DeviceMode::Avionics => defmt::panic!("Avionics mode not implemented"),
+            DeviceMode::Avionics => avionics_main(&fs, device_manager).await,
             DeviceMode::GCM => gcm_main(&fs, device_manager).await,
             DeviceMode::BeaconSender => beacon_sender(&fs, device_manager, false).await,
             DeviceMode::BeaconReceiver => beacon_receiver(&fs, device_manager).await,

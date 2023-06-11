@@ -4,7 +4,6 @@ pub use ferraris_calibration::interactive_calibrator::{
 
 #[derive(Debug, Clone)]
 pub enum DebuggerEvent {
-    CalibrationStart,
     Calibrating(InteractiveCalibratorState),
 }
 

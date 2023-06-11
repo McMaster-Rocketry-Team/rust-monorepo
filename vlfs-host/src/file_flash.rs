@@ -27,7 +27,7 @@ impl From<RandomAccessError> for RandomAccessErrorWrapper {
     }
 }
 
-// WARNING: This implementation is not compatible with flash dumps from the real hardware!
+// This implementation should be compatible with the dump from a real hardware, not tested yet.
 impl Flash for FileFlash {
     type Error = RandomAccessErrorWrapper;
 

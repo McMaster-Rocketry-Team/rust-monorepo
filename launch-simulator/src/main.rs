@@ -7,17 +7,26 @@ use avionics::start_avionics_thread;
 use bevy::prelude::*;
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use bevy_rapier3d::prelude::*;
-use virt_drivers::{debugger::create_debugger, serial::create_virtual_serial, sensors::create_sensors};
+use virt_drivers::{
+    debugger::create_debugger, sensors::create_sensors, serial::create_virtual_serial,
+};
 
 mod avionics;
 mod virt_drivers;
 
 fn main() {
     let (debugger, debugger_rx) = create_debugger();
-    let (serial_a,serial_b) = create_virtual_serial();
+    let (serial_a, mut serial_b) = create_virtual_serial();
     let (sensor_tx, imu) = create_sensors();
 
-    start_avionics_thread("./avionics.fl".into(), imu, serial_a, debugger);
+    start_avionics_thread(
+        "./launch-simulator/avionics.fl".into(),
+        imu,
+        serial_a,
+        debugger,
+    );
+
+    serial_b.blocking_write(&[0, 0, 0, 0, 0, 0, 0, 5]);
 
     App::new()
         .add_plugins(DefaultPlugins)
@@ -66,9 +75,9 @@ fn setup_physics(mut commands: Commands) {
 
 fn print_body_velocity(q: Query<(&Velocity, &Transform)>) {
     for (vel, pos) in q.iter() {
-        println!("velocity: {}", vel.linvel);
-        println!("gyro: {}", vel.angvel);
-        println!("position: {}", pos.translation);
-        println!("orientation: {}", pos.rotation);
+        // println!("velocity: {}", vel.linvel);
+        // println!("gyro: {}", vel.angvel);
+        // println!("position: {}", pos.translation);
+        // println!("orientation: {}", pos.rotation);
     }
 }

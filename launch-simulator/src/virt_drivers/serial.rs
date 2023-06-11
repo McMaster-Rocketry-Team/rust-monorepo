@@ -16,7 +16,17 @@ pub fn create_virtual_serial() -> (VirtualSerial, VirtualSerial) {
     )
 }
 
-impl Serial for VirtualSerial{
+impl VirtualSerial {
+    pub fn blocking_write(&mut self, data: &[u8]) {
+        self.tx.send(Vec::from(data)).unwrap();
+    }
+
+    pub fn try_read(&mut self) -> Option<Vec<u8>> {
+        self.rx.try_recv().ok()
+    }
+}
+
+impl Serial for VirtualSerial {
     type Error = ();
 
     async fn write(&mut self, data: &[u8]) -> Result<(), ()> {
@@ -25,9 +35,13 @@ impl Serial for VirtualSerial{
     }
 
     async fn read(&mut self, buffer: &mut [u8]) -> Result<usize, ()> {
-        self.rx.recv().await.map(|data| {
-            buffer[..data.len()].copy_from_slice(&data);
-            data.len()
-        }).ok_or(())
+        self.rx
+            .recv()
+            .await
+            .map(|data| {
+                buffer[..data.len()].copy_from_slice(&data);
+                data.len()
+            })
+            .ok_or(())
     }
 }
