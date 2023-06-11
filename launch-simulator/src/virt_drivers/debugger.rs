@@ -5,6 +5,12 @@ use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 #[derive(Component)]
 pub struct DebuggerReceiver(UnboundedReceiver<DebuggerEvent>);
 
+impl DebuggerReceiver {
+    pub fn try_recv(&mut self) -> Option<DebuggerEvent> {
+        self.0.try_recv().ok()
+    }
+}
+
 #[derive(Clone)]
 pub struct Debugger {
     tx: UnboundedSender<DebuggerEvent>,

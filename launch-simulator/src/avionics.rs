@@ -7,7 +7,6 @@ use firmware_common::{
         adc::DummyADC,
         arming::DummyHardwareArming,
         barometer::DummyBarometer,
-        buzzer::DummyBuzzer,
         debugger::Debugger as DebuggerDriver,
         dummy_radio_kind::DummyRadioKind,
         gps::{DummyGPS, DummyGPSCtrl},
