@@ -36,7 +36,7 @@ NOR flash (W25Q512JV) on 16MHz SPI bus:
 
 - To change the maximum supported flash size, update `SECTORS_COUNT` in [./src/fs/mod.rs](./src/fs/mod.rs). Reducing sectors count reduces the  required memory.
 - Flash's erase methods must set all the erased bits to 1 - VLFS relies on this assuption.
-- CRC implementations must not produce 0xFFFF for [0u32; 252] or [0u32; 236] - VLFS relies on this assuption.
+- CRC implementations must not produce 0xFFFF for [0u32; 252] or [0u32; 236] - VLFS relies on this assuption. // TODO check again
 - If CRC functionalities is not desired, a CRC implementation that always produces 0 can be used.
 
 # Disk Layout

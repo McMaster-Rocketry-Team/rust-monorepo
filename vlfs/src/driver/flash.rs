@@ -1,11 +1,11 @@
-use core::ops::{Deref, DerefMut};
+use core::{ops::{Deref, DerefMut}, fmt::Debug};
 use embassy_sync::{blocking_mutex::raw::RawMutex, mutex::MutexGuard};
 
 /// A Flash driver is represented here
 pub trait Flash {
     // Error type that will be returned by the flash driver.
     // This type must implement the defmt::Format trait.
-    type Error: defmt::Format;
+    type Error: defmt::Format + Debug;
 
     // This function returns the size of the flash memory in bytes.
     fn size(&self) -> u32;

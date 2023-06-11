@@ -1,4 +1,4 @@
-#[derive(defmt::Format)]
+#[derive(defmt::Format, Debug)]
 pub enum VLFSError<FlashError: defmt::Format> {
     FlashError(FlashError),
     FileAlreadyExists,
