@@ -2430,9 +2430,11 @@ dependencies = [
  "bevy",
  "bevy_panorbit_camera",
  "bevy_rapier3d",
+ "critical-section",
  "firmware-common",
  "tokio",
  "vlfs",
+ "vlfs-host",
 ]
 
 [[package]]
@@ -4165,7 +4167,6 @@ dependencies = [
  "defmt",
  "random-access-disk",
  "random-access-storage",
- "static_cell",
  "tempfile",
  "tokio",
  "vlfs",

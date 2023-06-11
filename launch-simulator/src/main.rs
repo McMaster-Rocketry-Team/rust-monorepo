@@ -3,13 +3,22 @@
 #![feature(let_chains)]
 #![feature(try_blocks)]
 
+use avionics::start_avionics_thread;
 use bevy::prelude::*;
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use bevy_rapier3d::prelude::*;
+use virt_drivers::{debugger::create_debugger, serial::create_virtual_serial, sensors::create_sensors};
 
+mod avionics;
 mod virt_drivers;
 
 fn main() {
+    let (debugger, debugger_rx) = create_debugger();
+    let (serial_a,serial_b) = create_virtual_serial();
+    let (sensor_tx, imu) = create_sensors();
+
+    start_avionics_thread("./avionics.fl".into(), imu, serial_a, debugger);
+
     App::new()
         .add_plugins(DefaultPlugins)
         .add_plugin(RapierPhysicsPlugin::<NoUserData>::default())

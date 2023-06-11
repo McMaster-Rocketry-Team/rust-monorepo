@@ -2,7 +2,7 @@ use firmware_common::driver::timer::Timer as TimerDriver;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::time::{sleep, Duration};
 #[derive(Copy, Clone)]
-struct TokioTimer {}
+pub struct TokioTimer {}
 
 impl TimerDriver for TokioTimer {
     async fn sleep(&self, ms: f64) {

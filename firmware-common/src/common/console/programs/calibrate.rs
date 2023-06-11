@@ -30,7 +30,7 @@ impl Calibrate {
         device_manager: device_manager_type!(),
     ) -> Result<(), ()> {
         let timer = device_manager.timer;
-        let debugger = device_manager.debugger;
+        let debugger = device_manager.debugger.clone();
         claim_devices!(device_manager, buzzer, imu);
         // TODO move this to main
         unwrap!(imu.wait_for_power_on().await);

@@ -8,11 +8,11 @@ pub enum DebuggerEvent {
     Calibrating(InteractiveCalibratorState),
 }
 
-pub trait Debugger: Copy {
+pub trait Debugger: Clone {
     fn dispatch(&self, event: DebuggerEvent);
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct DummyDebugger {}
 
 impl Debugger for DummyDebugger {
