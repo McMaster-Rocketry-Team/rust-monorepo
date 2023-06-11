@@ -1,3 +1,9 @@
 [workspace]
-
 members = ["tiny-nmea", "firmware-common", "nyoom", "vlfs", "ferraris-calibration", "vl8-ctrl-protocol", "launch-simulator"]
+resolver = "2"
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
