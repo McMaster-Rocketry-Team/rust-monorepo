@@ -7,6 +7,8 @@ use bevy::prelude::*;
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use bevy_rapier3d::prelude::*;
 
+mod virt_drivers;
+
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)

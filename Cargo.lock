@@ -2431,6 +2431,7 @@ dependencies = [
  "bevy_panorbit_camera",
  "bevy_rapier3d",
  "firmware-common",
+ "tokio",
  "vlfs",
 ]
 
