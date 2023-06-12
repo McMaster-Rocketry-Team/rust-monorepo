@@ -142,7 +142,7 @@ impl InteractiveCalibrator {
             }
             State(X, Plus, Start) => arm_process!(
                 self,
-                x_n,
+                x_p,
                 reading,
                 inner,
                 new_state,
@@ -150,7 +150,7 @@ impl InteractiveCalibrator {
             ),
             State(X, Plus, Variance) => arm_process!(
                 self,
-                x_n_variance,
+                x_p_variance,
                 reading,
                 inner,
                 new_state,
@@ -184,7 +184,7 @@ impl InteractiveCalibrator {
             }
             State(Y, Plus, Start) => arm_process!(
                 self,
-                y_n,
+                y_p,
                 reading,
                 inner,
                 new_state,
@@ -192,7 +192,7 @@ impl InteractiveCalibrator {
             ),
             State(Y, Plus, Variance) => arm_process!(
                 self,
-                y_n_variance,
+                y_p_variance,
                 reading,
                 inner,
                 new_state,
@@ -226,7 +226,7 @@ impl InteractiveCalibrator {
             }
             State(Z, Plus, Start) => arm_process!(
                 self,
-                z_n,
+                z_p,
                 reading,
                 inner,
                 new_state,
@@ -234,7 +234,7 @@ impl InteractiveCalibrator {
             ),
             State(Z, Plus, Variance) => arm_process!(
                 self,
-                z_n_variance,
+                z_p_variance,
                 reading,
                 inner,
                 new_state,

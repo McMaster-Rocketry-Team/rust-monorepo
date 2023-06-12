@@ -64,6 +64,7 @@ impl Calibrate {
 
                 if let Success = state {
                     let cal_info = calibrator.get_calibration_info().unwrap();
+                    debugger.dispatch(DebuggerEvent::CalInfo(cal_info.clone()));
                     info!("{}", cal_info);
                     unwrap!(
                         fs.remove_files(|file_entry| file_entry.file_type == CALIBRATION_FILE_TYPE)

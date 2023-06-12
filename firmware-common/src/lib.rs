@@ -9,6 +9,7 @@ use crate::{
     common::{
         console::console::run_console, device_manager::prelude::*, files::CALIBRATION_FILE_TYPE,
     },
+    driver::debugger::DebuggerEvent,
     ground_test::gcm::ground_test_gcm,
 };
 use defmt::*;
@@ -53,15 +54,20 @@ pub async fn init(
     unwrap!(fs.init().await);
 
     let testing_fut = async {
-        for file_entry in fs.files_iter(None).await {
-            info!("{}", file_entry);
-        }
-        if let Some(calibration_file) = fs.files_iter(Some(CALIBRATION_FILE_TYPE)).await.next() {
+        let mut iter = fs.files_iter(Some(CALIBRATION_FILE_TYPE)).await;
+        let calibration_file = iter.next();
+        drop(iter);
+        if let Some(calibration_file) = calibration_file {
             info!("Calibration file found, id: {}", calibration_file.file_id);
             let mut file = unwrap!(fs.open_file_for_read(calibration_file.file_id).await);
             let mut buffer = [0u8; 156];
             unwrap!(file.read_slice(&mut buffer, 156).await);
+            file.close().await;
             let cal_info = CalibrationInfo::deserialize(buffer);
+            device_manager
+                .debugger
+                .clone()
+                .dispatch(DebuggerEvent::CalInfo(cal_info.clone()));
             info!("{}", cal_info);
         } else {
             info!("No calibration file found");

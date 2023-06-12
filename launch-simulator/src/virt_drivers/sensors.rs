@@ -73,6 +73,8 @@ impl SensorSender {
         let acc = quat * acc;
         let gyro = quat * gyro;
 
+        // println!("acc: {} | gyro: {}", format_vec(acc), format_vec(gyro));
+
         let imu_reading = IMUReading {
             timestamp: now,
             acc: acc.into(),
@@ -119,4 +121,22 @@ impl IMU for VirtualIMU {
     async fn read(&mut self) -> Result<IMUReading, Self::Error> {
         Ok(self.rx.borrow().imu_reading.clone())
     }
+}
+
+fn format_float(num: f32) -> String {
+    let sign = if num.is_sign_positive() { " " } else { "-" };
+    let abs_num = num.abs();
+    let int_part = abs_num.trunc() as u32;
+    let frac_part = ((abs_num - int_part as f32) * 100.0).round() as u32;
+
+    format!("{}{:02}.{:02}", sign, int_part, frac_part)
+}
+
+fn format_vec(vec: Vector3<f32>) -> String {
+    format!(
+        "[{}, {}, {}]",
+        format_float(vec.x),
+        format_float(vec.y),
+        format_float(vec.z)
+    )
 }
