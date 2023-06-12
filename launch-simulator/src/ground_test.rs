@@ -24,7 +24,7 @@ pub fn create_ground_test(
                 ))
                 .insert(Restitution::coefficient(0.1))
                 .insert(Damping {
-                    linear_damping: 0.5,
+                    linear_damping: 0.01,
                     angular_damping: 2.0,
                 })
                 .insert(TransformBundle::from(transform.clone().with_translation(
@@ -54,7 +54,7 @@ pub fn create_ground_test(
                 ))
                 .insert(Restitution::coefficient(0.1))
                 .insert(Damping {
-                    linear_damping: 0.5,
+                    linear_damping: 0.01,
                     angular_damping: 2.0,
                 })
                 .insert(TransformBundle::from(transform.clone().with_translation(
@@ -87,7 +87,7 @@ pub fn create_ground_test(
                 ))
                 .insert(Restitution::coefficient(0.1))
                 .insert(Damping {
-                    linear_damping: 0.5,
+                    linear_damping: 0.01,
                     angular_damping: 2.0,
                 })
                 .insert(TransformBundle::from(transform.clone().with_translation(

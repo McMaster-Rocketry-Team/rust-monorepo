@@ -7,7 +7,7 @@ use firmware_common::driver::debugger::{Axis, DebuggerEvent, Direction, Event};
 use nalgebra::{UnitQuaternion, Vector3};
 
 use crate::{
-    keyframe::{AnimationBuilder, AnimationPlayer, KeyFrame},
+    keyframe::{AnimationBuilder, AnimationPlayer, Translation3DKeyFrame},
     AvionicsMarker, AVIONICS_X_LEN, AVIONICS_Y_LEN, AVIONICS_Z_LEN,
 };
 
@@ -30,27 +30,27 @@ pub fn calibration_system(
 
                 let animation = AnimationBuilder::new()
                     .add_keyframe(
-                        KeyFrame::new(
+                        Translation3DKeyFrame::new(
                             UnitQuaternion::from_euler_angles(0.0, 0.0, 0.0),
                             transform.translation.into(),
                         ),
                         1.0,
                     )
                     .add_keyframe(
-                        KeyFrame::new(
+                        Translation3DKeyFrame::new(
                             UnitQuaternion::from_euler_angles(0.0, 0.0, 0.0),
                             Vector3::new(0.0, 0.1, 0.0),
                         ),
                         1.0,
                     )
                     .add_keyframe(
-                        KeyFrame::new(
+                        Translation3DKeyFrame::new(
                             UnitQuaternion::from_axis_angle(&Vector3::z_axis(), PI / 2.0),
                             Vector3::new(0.0, 0.1, 0.0),
                         ),
                         1.0,
                     )
-                    .finish(KeyFrame::new(
+                    .finish(Translation3DKeyFrame::new(
                         UnitQuaternion::from_axis_angle(&Vector3::z_axis(), PI / 2.0),
                         Vector3::new(0.0, AVIONICS_X_LEN / 2.0, 0.0),
                     ));
@@ -77,34 +77,34 @@ pub fn calibration_system(
                 let transform = avionics_transform.clone();
                 let animation = AnimationBuilder::new()
                     .add_keyframe(
-                        KeyFrame::new(
+                        Translation3DKeyFrame::new(
                             UnitQuaternion::from_axis_angle(&Vector3::z_axis(), PI / 2.0),
                             transform.translation.into(),
                         ),
                         1.0,
                     )
                     .add_keyframe(
-                        KeyFrame::new(
+                        Translation3DKeyFrame::new(
                             UnitQuaternion::from_axis_angle(&Vector3::z_axis(), PI / 2.0),
                             Vector3::new(0.0, 0.1, 0.0),
                         ),
                         1.0,
                     )
                     .add_keyframe(
-                        KeyFrame::new(
+                        Translation3DKeyFrame::new(
                             UnitQuaternion::from_axis_angle(&Vector3::z_axis(), 0.0),
                             Vector3::new(0.0, 0.1, 0.0),
                         ),
                         1.0,
                     )
                     .add_keyframe(
-                        KeyFrame::new(
+                        Translation3DKeyFrame::new(
                             UnitQuaternion::from_axis_angle(&Vector3::z_axis(), -PI / 2.0),
                             Vector3::new(0.0, 0.1, 0.0),
                         ),
                         1.0,
                     )
-                    .finish(KeyFrame::new(
+                    .finish(Translation3DKeyFrame::new(
                         UnitQuaternion::from_axis_angle(&Vector3::z_axis(), -PI / 2.0),
                         Vector3::new(0.0, AVIONICS_X_LEN / 2.0, 0.0),
                     ));
@@ -131,27 +131,27 @@ pub fn calibration_system(
                 let transform = avionics_transform.clone();
                 let animation = AnimationBuilder::new()
                     .add_keyframe(
-                        KeyFrame::new(
+                        Translation3DKeyFrame::new(
                             UnitQuaternion::from_axis_angle(&Vector3::z_axis(), -PI / 2.0),
                             transform.translation.into(),
                         ),
                         1.0,
                     )
                     .add_keyframe(
-                        KeyFrame::new(
+                        Translation3DKeyFrame::new(
                             UnitQuaternion::from_axis_angle(&Vector3::z_axis(), -PI / 2.0),
                             Vector3::new(0.0, 0.1, 0.0),
                         ),
                         1.0,
                     )
                     .add_keyframe(
-                        KeyFrame::new(
+                        Translation3DKeyFrame::new(
                             UnitQuaternion::from_axis_angle(&Vector3::z_axis(), 0.0),
                             Vector3::new(0.0, 0.1, 0.0),
                         ),
                         1.0,
                     )
-                    .finish(KeyFrame::new(
+                    .finish(Translation3DKeyFrame::new(
                         UnitQuaternion::from_axis_angle(&Vector3::z_axis(), 0.0),
                         Vector3::new(0.0, AVIONICS_Y_LEN / 2.0, 0.0),
                     ));
@@ -178,34 +178,34 @@ pub fn calibration_system(
                 let transform = avionics_transform.clone();
                 let animation = AnimationBuilder::new()
                     .add_keyframe(
-                        KeyFrame::new(
+                        Translation3DKeyFrame::new(
                             UnitQuaternion::from_axis_angle(&Vector3::z_axis(), 0.0),
                             transform.translation.into(),
                         ),
                         1.0,
                     )
                     .add_keyframe(
-                        KeyFrame::new(
+                        Translation3DKeyFrame::new(
                             UnitQuaternion::from_axis_angle(&Vector3::z_axis(), 0.0),
                             Vector3::new(0.0, 0.1, 0.0),
                         ),
                         1.0,
                     )
                     .add_keyframe(
-                        KeyFrame::new(
+                        Translation3DKeyFrame::new(
                             UnitQuaternion::from_axis_angle(&Vector3::z_axis(), PI / 2.0),
                             Vector3::new(0.0, 0.1, 0.0),
                         ),
                         1.0,
                     )
                     .add_keyframe(
-                        KeyFrame::new(
+                        Translation3DKeyFrame::new(
                             UnitQuaternion::from_axis_angle(&Vector3::z_axis(), PI),
                             Vector3::new(0.0, 0.1, 0.0),
                         ),
                         1.0,
                     )
-                    .finish(KeyFrame::new(
+                    .finish(Translation3DKeyFrame::new(
                         UnitQuaternion::from_axis_angle(&Vector3::z_axis(), PI),
                         Vector3::new(0.0, AVIONICS_Y_LEN / 2.0, 0.0),
                     ));
@@ -233,7 +233,7 @@ pub fn calibration_system(
                 let rotation_offset = UnitQuaternion::from_axis_angle(&Vector3::z_axis(), PI);
                 let animation = AnimationBuilder::new()
                     .add_keyframe(
-                        KeyFrame::new(
+                        Translation3DKeyFrame::new(
                             UnitQuaternion::from_axis_angle(&Vector3::x_axis(), 0.0)
                                 * rotation_offset,
                             transform.translation.into(),
@@ -241,7 +241,7 @@ pub fn calibration_system(
                         1.0,
                     )
                     .add_keyframe(
-                        KeyFrame::new(
+                        Translation3DKeyFrame::new(
                             UnitQuaternion::from_axis_angle(&Vector3::x_axis(), 0.0)
                                 * rotation_offset,
                             Vector3::new(0.0, 0.1, 0.0),
@@ -249,14 +249,14 @@ pub fn calibration_system(
                         1.0,
                     )
                     .add_keyframe(
-                        KeyFrame::new(
+                        Translation3DKeyFrame::new(
                             UnitQuaternion::from_axis_angle(&Vector3::x_axis(), -PI / 2.0)
                                 * rotation_offset,
                             Vector3::new(0.0, 0.1, 0.0),
                         ),
                         1.0,
                     )
-                    .finish(KeyFrame::new(
+                    .finish(Translation3DKeyFrame::new(
                         UnitQuaternion::from_axis_angle(&Vector3::x_axis(), -PI / 2.0)
                             * rotation_offset,
                         Vector3::new(0.0, AVIONICS_Z_LEN / 2.0, 0.0),
@@ -285,7 +285,7 @@ pub fn calibration_system(
                 let rotation_offset = UnitQuaternion::from_axis_angle(&Vector3::z_axis(), PI);
                 let animation = AnimationBuilder::new()
                     .add_keyframe(
-                        KeyFrame::new(
+                        Translation3DKeyFrame::new(
                             UnitQuaternion::from_axis_angle(&Vector3::x_axis(), -PI / 2.0)
                                 * rotation_offset,
                             transform.translation.into(),
@@ -293,7 +293,7 @@ pub fn calibration_system(
                         1.0,
                     )
                     .add_keyframe(
-                        KeyFrame::new(
+                        Translation3DKeyFrame::new(
                             UnitQuaternion::from_axis_angle(&Vector3::x_axis(), -PI / 2.0)
                                 * rotation_offset,
                             Vector3::new(0.0, 0.1, 0.0),
@@ -301,7 +301,7 @@ pub fn calibration_system(
                         1.0,
                     )
                     .add_keyframe(
-                        KeyFrame::new(
+                        Translation3DKeyFrame::new(
                             UnitQuaternion::from_axis_angle(&Vector3::x_axis(), 0.0)
                                 * rotation_offset,
                             Vector3::new(0.0, 0.1, 0.0),
@@ -309,14 +309,14 @@ pub fn calibration_system(
                         1.0,
                     )
                     .add_keyframe(
-                        KeyFrame::new(
+                        Translation3DKeyFrame::new(
                             UnitQuaternion::from_axis_angle(&Vector3::x_axis(), PI / 2.0)
                                 * rotation_offset,
                             Vector3::new(0.0, 0.1, 0.0),
                         ),
                         1.0,
                     )
-                    .finish(KeyFrame::new(
+                    .finish(Translation3DKeyFrame::new(
                         UnitQuaternion::from_axis_angle(&Vector3::x_axis(), PI / 2.0)
                             * rotation_offset,
                         Vector3::new(0.0, AVIONICS_Z_LEN / 2.0, 0.0),
@@ -346,7 +346,7 @@ pub fn calibration_system(
                     * UnitQuaternion::from_axis_angle(&Vector3::z_axis(), PI);
                 let animation = AnimationBuilder::new()
                     .add_keyframe(
-                        KeyFrame::new(
+                        Translation3DKeyFrame::new(
                             UnitQuaternion::from_axis_angle(&Vector3::z_axis(), 0.0)
                                 * rotation_offset,
                             transform.translation.into(),
@@ -354,7 +354,7 @@ pub fn calibration_system(
                         1.0,
                     )
                     .add_keyframe(
-                        KeyFrame::new(
+                        Translation3DKeyFrame::new(
                             UnitQuaternion::from_axis_angle(&Vector3::z_axis(), 0.0)
                                 * rotation_offset,
                             Vector3::new(0.0, 0.1, 0.0),
@@ -362,14 +362,14 @@ pub fn calibration_system(
                         1.0,
                     )
                     .add_keyframe(
-                        KeyFrame::new(
+                        Translation3DKeyFrame::new(
                             UnitQuaternion::from_axis_angle(&Vector3::z_axis(), -PI / 2.0)
                                 * rotation_offset,
                             Vector3::new(0.0, 0.1, 0.0),
                         ),
                         1.0,
                     )
-                    .finish(KeyFrame::new(
+                    .finish(Translation3DKeyFrame::new(
                         UnitQuaternion::from_axis_angle(&Vector3::z_axis(), -PI / 2.0)
                             * rotation_offset,
                         Vector3::new(0.0, AVIONICS_X_LEN / 2.0, 0.0),
@@ -401,7 +401,7 @@ pub fn calibration_system(
                         * UnitQuaternion::from_axis_angle(&Vector3::z_axis(), PI);
                 let animation = AnimationBuilder::new()
                     .add_keyframe(
-                        KeyFrame::new(
+                        Translation3DKeyFrame::new(
                             UnitQuaternion::from_axis_angle(&Vector3::y_axis(), 0.0)
                                 * rotation_offset,
                             transform.translation.into(),
@@ -409,7 +409,7 @@ pub fn calibration_system(
                         1.0,
                     )
                     .add_keyframe(
-                        KeyFrame::new(
+                        Translation3DKeyFrame::new(
                             UnitQuaternion::from_axis_angle(&Vector3::y_axis(), -PI / 2.0)
                                 * rotation_offset,
                             transform.translation.into(),
@@ -417,7 +417,7 @@ pub fn calibration_system(
                         1.0,
                     )
                     .add_keyframe(
-                        KeyFrame::new(
+                        Translation3DKeyFrame::new(
                             UnitQuaternion::from_axis_angle(&Vector3::y_axis(), -PI)
                                 * rotation_offset,
                             transform.translation.into(),
@@ -425,14 +425,14 @@ pub fn calibration_system(
                         1.0,
                     )
                     .add_keyframe(
-                        KeyFrame::new(
+                        Translation3DKeyFrame::new(
                             UnitQuaternion::from_axis_angle(&Vector3::y_axis(), -PI / 2.0 * 3.0)
                                 * rotation_offset,
                             transform.translation.into(),
                         ),
                         1.0,
                     )
-                    .finish(KeyFrame::new(
+                    .finish(Translation3DKeyFrame::new(
                         UnitQuaternion::from_axis_angle(&Vector3::y_axis(), 0.0) * rotation_offset,
                         transform.translation.into(),
                     ));
@@ -463,7 +463,7 @@ pub fn calibration_system(
                         * UnitQuaternion::from_axis_angle(&Vector3::z_axis(), PI);
                 let animation = AnimationBuilder::new()
                     .add_keyframe(
-                        KeyFrame::new(
+                        Translation3DKeyFrame::new(
                             UnitQuaternion::from_axis_angle(&Vector3::x_axis(), 0.0)
                                 * rotation_offset,
                             transform.translation.into(),
@@ -471,7 +471,7 @@ pub fn calibration_system(
                         1.0,
                     )
                     .add_keyframe(
-                        KeyFrame::new(
+                        Translation3DKeyFrame::new(
                             UnitQuaternion::from_axis_angle(&Vector3::x_axis(), 0.0)
                                 * rotation_offset,
                             Vector3::new(0.0, 0.1, 0.0),
@@ -479,14 +479,14 @@ pub fn calibration_system(
                         1.0,
                     )
                     .add_keyframe(
-                        KeyFrame::new(
+                        Translation3DKeyFrame::new(
                             UnitQuaternion::from_axis_angle(&Vector3::x_axis(), PI / 2.0)
                                 * rotation_offset,
                             Vector3::new(0.0, 0.1, 0.0),
                         ),
                         1.0,
                     )
-                    .finish(KeyFrame::new(
+                    .finish(Translation3DKeyFrame::new(
                         UnitQuaternion::from_axis_angle(&Vector3::x_axis(), PI / 2.0)
                             * rotation_offset,
                         Vector3::new(0.0, AVIONICS_Y_LEN / 2.0, 0.0),
@@ -518,7 +518,7 @@ pub fn calibration_system(
                     * UnitQuaternion::from_axis_angle(&Vector3::z_axis(), PI);
                 let animation = AnimationBuilder::new()
                     .add_keyframe(
-                        KeyFrame::new(
+                        Translation3DKeyFrame::new(
                             UnitQuaternion::from_axis_angle(&Vector3::y_axis(), 0.0)
                                 * rotation_offset,
                             transform.translation.into(),
@@ -526,7 +526,7 @@ pub fn calibration_system(
                         1.0,
                     )
                     .add_keyframe(
-                        KeyFrame::new(
+                        Translation3DKeyFrame::new(
                             UnitQuaternion::from_axis_angle(&Vector3::y_axis(), -PI / 2.0)
                                 * rotation_offset,
                             transform.translation.into(),
@@ -534,7 +534,7 @@ pub fn calibration_system(
                         1.0,
                     )
                     .add_keyframe(
-                        KeyFrame::new(
+                        Translation3DKeyFrame::new(
                             UnitQuaternion::from_axis_angle(&Vector3::y_axis(), -PI)
                                 * rotation_offset,
                             transform.translation.into(),
@@ -542,14 +542,14 @@ pub fn calibration_system(
                         1.0,
                     )
                     .add_keyframe(
-                        KeyFrame::new(
+                        Translation3DKeyFrame::new(
                             UnitQuaternion::from_axis_angle(&Vector3::y_axis(), -PI / 2.0 * 3.0)
                                 * rotation_offset,
                             transform.translation.into(),
                         ),
                         1.0,
                     )
-                    .finish(KeyFrame::new(
+                    .finish(Translation3DKeyFrame::new(
                         UnitQuaternion::from_axis_angle(&Vector3::y_axis(), 0.0) * rotation_offset,
                         transform.translation.into(),
                     ));
@@ -580,7 +580,7 @@ pub fn calibration_system(
                     * UnitQuaternion::from_axis_angle(&Vector3::z_axis(), PI);
                 let animation = AnimationBuilder::new()
                     .add_keyframe(
-                        KeyFrame::new(
+                        Translation3DKeyFrame::new(
                             UnitQuaternion::from_axis_angle(&Vector3::z_axis(), 0.0)
                                 * rotation_offset,
                             transform.translation.into(),
@@ -588,7 +588,7 @@ pub fn calibration_system(
                         1.0,
                     )
                     .add_keyframe(
-                        KeyFrame::new(
+                        Translation3DKeyFrame::new(
                             UnitQuaternion::from_axis_angle(&Vector3::z_axis(), 0.0)
                                 * rotation_offset,
                             Vector3::new(0.0, 0.1, 0.0),
@@ -596,14 +596,14 @@ pub fn calibration_system(
                         1.0,
                     )
                     .add_keyframe(
-                        KeyFrame::new(
+                        Translation3DKeyFrame::new(
                             UnitQuaternion::from_axis_angle(&Vector3::z_axis(), -PI / 2.0)
                                 * rotation_offset,
                             Vector3::new(0.0, 0.1, 0.0),
                         ),
                         1.0,
                     )
-                    .finish(KeyFrame::new(
+                    .finish(Translation3DKeyFrame::new(
                         UnitQuaternion::from_axis_angle(&Vector3::z_axis(), -PI / 2.0)
                             * rotation_offset,
                         Vector3::new(0.0, AVIONICS_Z_LEN / 2.0, 0.0),
@@ -637,7 +637,7 @@ pub fn calibration_system(
                         * UnitQuaternion::from_axis_angle(&Vector3::z_axis(), PI);
                 let animation = AnimationBuilder::new()
                     .add_keyframe(
-                        KeyFrame::new(
+                        Translation3DKeyFrame::new(
                             UnitQuaternion::from_axis_angle(&Vector3::y_axis(), 0.0)
                                 * rotation_offset,
                             transform.translation.into(),
@@ -645,7 +645,7 @@ pub fn calibration_system(
                         1.0,
                     )
                     .add_keyframe(
-                        KeyFrame::new(
+                        Translation3DKeyFrame::new(
                             UnitQuaternion::from_axis_angle(&Vector3::y_axis(), -PI / 2.0)
                                 * rotation_offset,
                             transform.translation.into(),
@@ -653,7 +653,7 @@ pub fn calibration_system(
                         1.0,
                     )
                     .add_keyframe(
-                        KeyFrame::new(
+                        Translation3DKeyFrame::new(
                             UnitQuaternion::from_axis_angle(&Vector3::y_axis(), -PI)
                                 * rotation_offset,
                             transform.translation.into(),
@@ -661,14 +661,14 @@ pub fn calibration_system(
                         1.0,
                     )
                     .add_keyframe(
-                        KeyFrame::new(
+                        Translation3DKeyFrame::new(
                             UnitQuaternion::from_axis_angle(&Vector3::y_axis(), -PI / 2.0 * 3.0)
                                 * rotation_offset,
                             transform.translation.into(),
                         ),
                         1.0,
                     )
-                    .finish(KeyFrame::new(
+                    .finish(Translation3DKeyFrame::new(
                         UnitQuaternion::from_axis_angle(&Vector3::y_axis(), 0.0) * rotation_offset,
                         transform.translation.into(),
                     ));
@@ -698,21 +698,21 @@ pub fn calibration_system(
 
                 let animation = AnimationBuilder::new()
                     .add_keyframe(
-                        KeyFrame::new(rotation_offset, transform.translation.into()),
+                        Translation3DKeyFrame::new(rotation_offset, transform.translation.into()),
                         1.0,
                     )
                     .add_keyframe(
-                        KeyFrame::new(rotation_offset, Vector3::new(0.0, 0.1, 0.0)),
+                        Translation3DKeyFrame::new(rotation_offset, Vector3::new(0.0, 0.1, 0.0)),
                         1.0,
                     )
                     .add_keyframe(
-                        KeyFrame::new(
+                        Translation3DKeyFrame::new(
                             UnitQuaternion::from_axis_angle(&Vector3::z_axis(), 0.0),
                             Vector3::new(0.0, 0.1, 0.0),
                         ),
                         1.0,
                     )
-                    .finish(KeyFrame::new(
+                    .finish(Translation3DKeyFrame::new(
                         UnitQuaternion::from_axis_angle(&Vector3::z_axis(), 0.0),
                         Vector3::new(0.0, AVIONICS_Y_LEN / 2.0, 0.0),
                     ));

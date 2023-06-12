@@ -1,5 +1,6 @@
 use crate::RocketEvent;
 use bevy::prelude::*;
+use bevy_panorbit_camera::PanOrbitCamera;
 use bevy_rapier3d::prelude::*;
 
 pub fn rocket_chute_system(
@@ -61,6 +62,17 @@ pub fn rocket_chute_system(
                 });
             }
         }
+    }
+}
+
+pub fn rocket_camera_tracking(
+    body_tube_transform: Query<&Transform, With<RocketMarker::BodyTube>>,
+    mut camera: Query<&mut PanOrbitCamera>,
+) {
+    if let Some(body_tube_transform) = body_tube_transform.iter().next() {
+        let mut camera = camera.iter_mut().next().unwrap();
+        camera.focus = body_tube_transform.translation;
+        camera.force_update = true;
     }
 }
 

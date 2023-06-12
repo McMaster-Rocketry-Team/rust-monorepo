@@ -17,8 +17,9 @@ use bevy_rapier3d::prelude::*;
 use firmware_common::driver::debugger::DebuggerEvent;
 use ground_test::create_ground_test;
 use keyframe::animation_system;
-use launch::create_launch;
-use rocket::rocket_chute_system;
+use launch::{create_launch, ignition_handler};
+use motor::{motor_ignitor, motor_system};
+use rocket::{rocket_chute_system, rocket_camera_tracking};
 use virt_drivers::{
     debugger::{create_debugger, DebuggerReceiver},
     sensors::{create_sensors, SensorSender},
@@ -29,9 +30,10 @@ mod avionics;
 mod calibration_system;
 mod ground_test;
 mod keyframe;
+mod launch;
+mod motor;
 mod rocket;
 mod virt_drivers;
-mod launch;
 
 pub const AVIONICS_X_LEN: f32 = 0.04;
 pub const AVIONICS_Y_LEN: f32 = 0.02;
@@ -67,6 +69,10 @@ fn main() {
         .add_system(create_ground_test)
         .add_system(rocket_chute_system)
         .add_system(create_launch)
+        .add_system(ignition_handler)
+        .add_system(motor_ignitor)
+        .add_system(motor_system)
+        .add_system(rocket_camera_tracking)
         .run();
 }
 
@@ -164,7 +170,9 @@ fn ui_system(
         if ui.button("Setup Rocket").clicked() {
             ev_ui.send(UIEvent::SetupLaunch);
         }
-        if ui.button("Ignition").clicked() {}
+        if ui.button("Ignition").clicked() {
+            ev_ui.send(UIEvent::Ignition);
+        }
     });
 }
 
@@ -179,6 +187,8 @@ fn virtual_sensors(
 
     let mut sensor_tx = sensor_tx.iter_mut().next().unwrap();
     sensor_tx.update_state(*vel, *pos);
+
+    println!("altitude: {}", pos.translation.y);
 
     let mut ready_barrier = ready_barrier.iter_mut().next().unwrap();
     if sensor_tx.is_ready() && ready_barrier.0.is_some() {
@@ -197,7 +207,6 @@ fn debugger_receiver(
     }
 }
 
-
 #[derive(Component)]
 pub struct AvionicsMarker;
 
@@ -207,6 +216,7 @@ struct ReadyBarrier(Option<Arc<Barrier>>);
 pub enum UIEvent {
     SetupGroundTest,
     SetupLaunch,
+    Ignition,
 }
 
 pub enum RocketEvent {
