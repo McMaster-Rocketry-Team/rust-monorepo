@@ -16,8 +16,8 @@ pub fn rocket_chute_system(
             motor_tube_entity.iter_mut().next().unwrap();
         match event {
             RocketEvent::EjectMainChute => {
-                let impulse = Vec3::new(0.0, 20.0, 0.0);
-                let impulse = nose_cone_transform.rotation.inverse() * impulse;
+                let impulse = Vec3::new(0.0, 15.0, 0.0);
+                let impulse = nose_cone_transform.rotation * impulse;
                 let rope_joint = RopeJointBuilder::new()
                     .local_anchor1(Vec3::new(0.0, 0.0, 0.0))
                     .local_anchor2(Vec3::new(0.0, 0.0, 0.0))
@@ -27,19 +27,19 @@ pub fn rocket_chute_system(
                     .entity(nose_cone_entity)
                     .remove::<ImpulseJoint>()
                     .insert(ExternalImpulse {
-                        impulse: -impulse,
+                        impulse: impulse,
                         torque_impulse: Vec3::ZERO,
                     })
                     .insert(ImpulseJoint::new(body_tube_entity, rope_joint));
 
                 commands.entity(body_tube_entity).insert(ExternalImpulse {
-                    impulse: impulse,
+                    impulse: -impulse,
                     torque_impulse: Vec3::ZERO,
                 });
             }
             RocketEvent::EjectDrogueChute => {
-                let impulse = Vec3::new(0.0, 30.0, 0.0);
-                let impulse = motor_tube_transform.rotation.inverse() * impulse;
+                let impulse = Vec3::new(0.0, 35.0, 0.0);
+                let impulse = motor_tube_transform.rotation * impulse;
 
                 let rope_joint = RopeJointBuilder::new()
                     .local_anchor1(Vec3::new(0.0, 0.0, 0.0))
@@ -50,13 +50,13 @@ pub fn rocket_chute_system(
                     .entity(motor_tube_entity)
                     .remove::<ImpulseJoint>()
                     .insert(ExternalImpulse {
-                        impulse: impulse,
+                        impulse: -impulse,
                         torque_impulse: Vec3::ZERO,
                     })
                     .insert(ImpulseJoint::new(body_tube_entity, rope_joint));
 
                 commands.entity(body_tube_entity).insert(ExternalImpulse {
-                    impulse: -impulse,
+                    impulse: impulse,
                     torque_impulse: Vec3::ZERO,
                 });
             }

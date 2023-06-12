@@ -3,7 +3,7 @@ use std::f32::consts::PI;
 use bevy::prelude::*;
 use bevy_rapier3d::prelude::*;
 
-use crate::{AvionicsMarker, UIEvent, rocket::RocketMarker};
+use crate::{rocket::RocketMarker, AvionicsMarker, UIEvent};
 
 pub fn create_ground_test(
     mut commands: Commands,
@@ -24,8 +24,8 @@ pub fn create_ground_test(
                 ))
                 .insert(Restitution::coefficient(0.1))
                 .insert(Damping {
-                    linear_damping: 0.0,
-                    angular_damping: 0.2,
+                    linear_damping: 0.5,
+                    angular_damping: 2.0,
                 })
                 .insert(TransformBundle::from(transform.clone().with_translation(
                     Vec3::new(0.0, ROCKET_DIAMETER / 2.0 + 0.5, 1.0),
@@ -34,8 +34,7 @@ pub fn create_ground_test(
                     linvel: Vec3::ZERO,
                     angvel: Vec3::ZERO,
                 })
-                .insert(ColliderMassProperties::Density(0.0))
-                .insert(AdditionalMassProperties::Mass(BODY_TUBE_MASS))
+                .insert(ColliderMassProperties::Mass(BODY_TUBE_MASS))
                 .insert(RocketMarker::BodyTube)
                 .insert(AvionicsMarker)
                 .id();
@@ -55,8 +54,8 @@ pub fn create_ground_test(
                 ))
                 .insert(Restitution::coefficient(0.1))
                 .insert(Damping {
-                    linear_damping: 0.0,
-                    angular_damping: 0.2,
+                    linear_damping: 0.5,
+                    angular_damping: 2.0,
                 })
                 .insert(TransformBundle::from(transform.clone().with_translation(
                     Vec3::new(
@@ -65,8 +64,11 @@ pub fn create_ground_test(
                         1.0,
                     ),
                 )))
-                .insert(ColliderMassProperties::Density(0.0))
-                .insert(AdditionalMassProperties::Mass(NOSE_CONE_MASS))
+                .insert(Velocity {
+                    linvel: Vec3::ZERO,
+                    angvel: Vec3::ZERO,
+                })
+                .insert(ColliderMassProperties::Mass(NOSE_CONE_MASS))
                 .insert(RocketMarker::NoseCone)
                 .insert(ImpulseJoint::new(body_tube, nose_cone_body_joint));
 
@@ -85,8 +87,8 @@ pub fn create_ground_test(
                 ))
                 .insert(Restitution::coefficient(0.1))
                 .insert(Damping {
-                    linear_damping: 0.0,
-                    angular_damping: 0.2,
+                    linear_damping: 0.5,
+                    angular_damping: 2.0,
                 })
                 .insert(TransformBundle::from(transform.clone().with_translation(
                     Vec3::new(
@@ -95,8 +97,11 @@ pub fn create_ground_test(
                         1.0,
                     ),
                 )))
-                .insert(ColliderMassProperties::Density(0.0))
-                .insert(AdditionalMassProperties::Mass(MOTOR_TUBE_MASS))
+                .insert(Velocity {
+                    linvel: Vec3::ZERO,
+                    angvel: Vec3::ZERO,
+                })
+                .insert(ColliderMassProperties::Mass(MOTOR_TUBE_MASS))
                 .insert(RocketMarker::MotorTube)
                 .insert(ImpulseJoint::new(body_tube, motor_body_joint));
 

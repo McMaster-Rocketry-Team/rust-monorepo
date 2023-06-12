@@ -55,7 +55,7 @@ pub fn calibration_system(
                         Vector3::new(0.0, AVIONICS_X_LEN / 2.0, 0.0),
                     ));
 
-                let player = AnimationPlayer::new(animation);
+                let player = AnimationPlayer::new(animation, true);
 
                 // avionics mount
                 commands
@@ -109,7 +109,7 @@ pub fn calibration_system(
                         Vector3::new(0.0, AVIONICS_X_LEN / 2.0, 0.0),
                     ));
 
-                let player = AnimationPlayer::new(animation);
+                let player = AnimationPlayer::new(animation, true);
 
                 // avionics mount
                 commands
@@ -156,7 +156,7 @@ pub fn calibration_system(
                         Vector3::new(0.0, AVIONICS_Y_LEN / 2.0, 0.0),
                     ));
 
-                let player = AnimationPlayer::new(animation);
+                let player = AnimationPlayer::new(animation, true);
 
                 // avionics mount
                 commands
@@ -210,7 +210,7 @@ pub fn calibration_system(
                         Vector3::new(0.0, AVIONICS_Y_LEN / 2.0, 0.0),
                     ));
 
-                let player = AnimationPlayer::new(animation);
+                let player = AnimationPlayer::new(animation, true);
 
                 // avionics mount
                 commands
@@ -262,7 +262,7 @@ pub fn calibration_system(
                         Vector3::new(0.0, AVIONICS_Z_LEN / 2.0, 0.0),
                     ));
 
-                let player = AnimationPlayer::new(animation);
+                let player = AnimationPlayer::new(animation, true);
 
                 // avionics mount
                 commands
@@ -322,7 +322,7 @@ pub fn calibration_system(
                         Vector3::new(0.0, AVIONICS_Z_LEN / 2.0, 0.0),
                     ));
 
-                let player = AnimationPlayer::new(animation);
+                let player = AnimationPlayer::new(animation, true);
 
                 // avionics mount
                 commands
@@ -375,7 +375,7 @@ pub fn calibration_system(
                         Vector3::new(0.0, AVIONICS_X_LEN / 2.0, 0.0),
                     ));
 
-                let player = AnimationPlayer::new(animation);
+                let player = AnimationPlayer::new(animation, true);
 
                 // avionics mount
                 commands
@@ -437,7 +437,7 @@ pub fn calibration_system(
                         transform.translation.into(),
                     ));
 
-                let player = AnimationPlayer::new(animation);
+                let player = AnimationPlayer::new(animation, true);
 
                 // avionics mount
                 commands
@@ -492,7 +492,7 @@ pub fn calibration_system(
                         Vector3::new(0.0, AVIONICS_Y_LEN / 2.0, 0.0),
                     ));
 
-                let player = AnimationPlayer::new(animation);
+                let player = AnimationPlayer::new(animation, true);
 
                 // avionics mount
                 commands
@@ -554,7 +554,7 @@ pub fn calibration_system(
                         transform.translation.into(),
                     ));
 
-                let player = AnimationPlayer::new(animation);
+                let player = AnimationPlayer::new(animation, true);
 
                 // avionics mount
                 commands
@@ -609,7 +609,7 @@ pub fn calibration_system(
                         Vector3::new(0.0, AVIONICS_Z_LEN / 2.0, 0.0),
                     ));
 
-                let player = AnimationPlayer::new(animation);
+                let player = AnimationPlayer::new(animation, true);
 
                 // avionics mount
                 commands
@@ -673,7 +673,7 @@ pub fn calibration_system(
                         transform.translation.into(),
                     ));
 
-                let player = AnimationPlayer::new(animation);
+                let player = AnimationPlayer::new(animation, true);
 
                 // avionics mount
                 commands
@@ -717,7 +717,7 @@ pub fn calibration_system(
                         Vector3::new(0.0, AVIONICS_Y_LEN / 2.0, 0.0),
                     ));
 
-                let player = AnimationPlayer::new(animation);
+                let player = AnimationPlayer::new(animation, true);
 
                 // avionics mount
                 commands

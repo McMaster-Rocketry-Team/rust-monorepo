@@ -16,7 +16,8 @@ use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use bevy_rapier3d::prelude::*;
 use firmware_common::driver::debugger::DebuggerEvent;
 use ground_test::create_ground_test;
-use keyframe::AnimationPlayer;
+use keyframe::animation_system;
+use launch::create_launch;
 use rocket::rocket_chute_system;
 use virt_drivers::{
     debugger::{create_debugger, DebuggerReceiver},
@@ -30,6 +31,7 @@ mod ground_test;
 mod keyframe;
 mod rocket;
 mod virt_drivers;
+mod launch;
 
 pub const AVIONICS_X_LEN: f32 = 0.04;
 pub const AVIONICS_Y_LEN: f32 = 0.02;
@@ -61,9 +63,10 @@ fn main() {
         .add_system(virtual_sensors)
         .add_system(debugger_receiver)
         .add_system(calibration_system::calibration_system)
-        .add_system(avionics_animation_system)
+        .add_system(animation_system)
         .add_system(create_ground_test)
         .add_system(rocket_chute_system)
+        .add_system(create_launch)
         .run();
 }
 
@@ -158,7 +161,9 @@ fn ui_system(
         }
         ui.add_space(8.0);
         ui.heading("Launch");
-        if ui.button("Setup Rocket").clicked() {}
+        if ui.button("Setup Rocket").clicked() {
+            ev_ui.send(UIEvent::SetupLaunch);
+        }
         if ui.button("Ignition").clicked() {}
     });
 }
@@ -192,20 +197,6 @@ fn debugger_receiver(
     }
 }
 
-fn avionics_animation_system(
-    time: Res<Time>,
-    mut commands: Commands,
-    mut animated_entity: Query<(Entity, &mut AnimationPlayer, &mut Transform)>,
-) {
-    for (entity, mut animation_player, mut transform) in animated_entity.iter_mut() {
-        if let Some((orientation, translation)) = animation_player.update(time.delta_seconds()) {
-            transform.rotation = orientation.into();
-            transform.translation = translation.into();
-        } else {
-            commands.entity(entity).despawn();
-        }
-    }
-}
 
 #[derive(Component)]
 pub struct AvionicsMarker;
@@ -215,6 +206,7 @@ struct ReadyBarrier(Option<Arc<Barrier>>);
 
 pub enum UIEvent {
     SetupGroundTest,
+    SetupLaunch,
 }
 
 pub enum RocketEvent {

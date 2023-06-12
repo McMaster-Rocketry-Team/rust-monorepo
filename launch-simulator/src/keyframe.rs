@@ -1,4 +1,4 @@
-use bevy::prelude::Component;
+use bevy::prelude::*;
 use nalgebra::{UnitQuaternion, Vector3};
 
 pub struct KeyFrame {
@@ -33,7 +33,7 @@ impl AnimationBuilder {
         }
     }
 
-    pub fn add_keyframe(mut self, keyframe: KeyFrame, duration: f32)-> Self {
+    pub fn add_keyframe(mut self, keyframe: KeyFrame, duration: f32) -> Self {
         self.durations.push(duration);
         self.keyframes.push(keyframe);
         self
@@ -52,13 +52,15 @@ impl AnimationBuilder {
 pub struct AnimationPlayer {
     animation: Animation,
     time: f32,
+    delete_entity_on_finish: bool,
 }
 
 impl AnimationPlayer {
-    pub fn new(animation: Animation) -> Self {
+    pub fn new(animation: Animation, delete_entity_on_finish: bool) -> Self {
         Self {
             animation,
             time: 0.0,
+            delete_entity_on_finish,
         }
     }
 
@@ -81,5 +83,20 @@ impl AnimationPlayer {
             .slerp(&next_keyframe.orientation, ratio);
         let translation = keyframe.translation.lerp(&next_keyframe.translation, ratio);
         Some((orientation, translation))
+    }
+}
+
+pub fn animation_system(
+    time: Res<Time>,
+    mut commands: Commands,
+    mut animated_entity: Query<(Entity, &mut AnimationPlayer, &mut Transform)>,
+) {
+    for (entity, mut animation_player, mut transform) in animated_entity.iter_mut() {
+        if let Some((orientation, translation)) = animation_player.update(time.delta_seconds()) {
+            transform.rotation = orientation.into();
+            transform.translation = translation.into();
+        } else if animation_player.delete_entity_on_finish {
+            commands.entity(entity).despawn();
+        }
     }
 }
