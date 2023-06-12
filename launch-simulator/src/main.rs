@@ -513,6 +513,401 @@ fn calibration_system(
                     .insert(ImpulseJoint::new(avionics_entity, joint))
                     .insert(player);
             }
+            DebuggerEvent::Calibrating(CalibratorState::State(
+                Axis::Z,
+                Direction::Minus,
+                Event::End,
+            )) => {
+                let joint = FixedJointBuilder::new()
+                    .local_anchor1(Vec3::new(0.0, 0.0, 0.0))
+                    .local_anchor2(Vec3::new(0.0, 0.0, 0.0));
+
+                let transform = avionics_transform.clone();
+                let rotation_offset = UnitQuaternion::from_axis_angle(&Vector3::x_axis(), PI / 2.0)
+                    * UnitQuaternion::from_axis_angle(&Vector3::z_axis(), PI);
+                let animation = AnimationBuilder::new()
+                    .add_keyframe(
+                        KeyFrame::new(
+                            UnitQuaternion::from_axis_angle(&Vector3::z_axis(), 0.0)
+                                * rotation_offset,
+                            transform.translation.into(),
+                        ),
+                        1.0,
+                    )
+                    .add_keyframe(
+                        KeyFrame::new(
+                            UnitQuaternion::from_axis_angle(&Vector3::z_axis(), 0.0)
+                                * rotation_offset,
+                            Vector3::new(0.0, 0.1, 0.0),
+                        ),
+                        1.0,
+                    )
+                    .add_keyframe(
+                        KeyFrame::new(
+                            UnitQuaternion::from_axis_angle(&Vector3::z_axis(), -PI / 2.0)
+                                * rotation_offset,
+                            Vector3::new(0.0, 0.1, 0.0),
+                        ),
+                        1.0,
+                    )
+                    .finish(KeyFrame::new(
+                        UnitQuaternion::from_axis_angle(&Vector3::z_axis(), -PI / 2.0)
+                            * rotation_offset,
+                        Vector3::new(0.0, AVIONICS_X_LEN / 2.0, 0.0),
+                    ));
+
+                let player = AnimationPlayer::new(animation);
+
+                // avionics mount
+                commands
+                    .spawn(RigidBody::KinematicPositionBased)
+                    .insert(AvionicsHolderMarker)
+                    .insert(TransformBundle::from(transform))
+                    .insert(ImpulseJoint::new(avionics_entity, joint))
+                    .insert(player);
+            }
+            DebuggerEvent::Calibrating(CalibratorState::State(
+                Axis::X,
+                Direction::Rotation,
+                Event::Start,
+            )) => {
+                let joint = FixedJointBuilder::new()
+                    .local_anchor1(Vec3::new(0.0, 0.0, 0.0))
+                    .local_anchor2(Vec3::new(0.0, 0.0, 0.0));
+
+                let transform = avionics_transform.clone();
+                let rotation_offset =
+                    UnitQuaternion::from_axis_angle(&Vector3::z_axis(), -PI / 2.0)
+                        * UnitQuaternion::from_axis_angle(&Vector3::x_axis(), PI / 2.0)
+                        * UnitQuaternion::from_axis_angle(&Vector3::z_axis(), PI);
+                let animation = AnimationBuilder::new()
+                    .add_keyframe(
+                        KeyFrame::new(
+                            UnitQuaternion::from_axis_angle(&Vector3::y_axis(), 0.0)
+                                * rotation_offset,
+                            transform.translation.into(),
+                        ),
+                        1.0,
+                    )
+                    .add_keyframe(
+                        KeyFrame::new(
+                            UnitQuaternion::from_axis_angle(&Vector3::y_axis(), -PI / 2.0)
+                                * rotation_offset,
+                            transform.translation.into(),
+                        ),
+                        1.0,
+                    )
+                    .add_keyframe(
+                        KeyFrame::new(
+                            UnitQuaternion::from_axis_angle(&Vector3::y_axis(), -PI)
+                                * rotation_offset,
+                            transform.translation.into(),
+                        ),
+                        1.0,
+                    )
+                    .add_keyframe(
+                        KeyFrame::new(
+                            UnitQuaternion::from_axis_angle(&Vector3::y_axis(), -PI / 2.0 * 3.0)
+                                * rotation_offset,
+                            transform.translation.into(),
+                        ),
+                        1.0,
+                    )
+                    .finish(KeyFrame::new(
+                        UnitQuaternion::from_axis_angle(&Vector3::y_axis(), 0.0) * rotation_offset,
+                        transform.translation.into(),
+                    ));
+
+                let player = AnimationPlayer::new(animation);
+
+                // avionics mount
+                commands
+                    .spawn(RigidBody::KinematicPositionBased)
+                    .insert(AvionicsHolderMarker)
+                    .insert(TransformBundle::from(transform))
+                    .insert(ImpulseJoint::new(avionics_entity, joint))
+                    .insert(player);
+            }
+            DebuggerEvent::Calibrating(CalibratorState::State(
+                Axis::X,
+                Direction::Rotation,
+                Event::End,
+            )) => {
+                let joint = FixedJointBuilder::new()
+                    .local_anchor1(Vec3::new(0.0, 0.0, 0.0))
+                    .local_anchor2(Vec3::new(0.0, 0.0, 0.0));
+
+                let transform = avionics_transform.clone();
+                let rotation_offset =
+                    UnitQuaternion::from_axis_angle(&Vector3::z_axis(), -PI / 2.0)
+                        * UnitQuaternion::from_axis_angle(&Vector3::x_axis(), PI / 2.0)
+                        * UnitQuaternion::from_axis_angle(&Vector3::z_axis(), PI);
+                let animation = AnimationBuilder::new()
+                    .add_keyframe(
+                        KeyFrame::new(
+                            UnitQuaternion::from_axis_angle(&Vector3::x_axis(), 0.0)
+                                * rotation_offset,
+                            transform.translation.into(),
+                        ),
+                        1.0,
+                    )
+                    .add_keyframe(
+                        KeyFrame::new(
+                            UnitQuaternion::from_axis_angle(&Vector3::x_axis(), 0.0)
+                                * rotation_offset,
+                            Vector3::new(0.0, 0.1, 0.0),
+                        ),
+                        1.0,
+                    )
+                    .add_keyframe(
+                        KeyFrame::new(
+                            UnitQuaternion::from_axis_angle(&Vector3::x_axis(), PI / 2.0)
+                                * rotation_offset,
+                            Vector3::new(0.0, 0.1, 0.0),
+                        ),
+                        1.0,
+                    )
+                    .finish(KeyFrame::new(
+                        UnitQuaternion::from_axis_angle(&Vector3::x_axis(), PI / 2.0)
+                            * rotation_offset,
+                        Vector3::new(0.0, AVIONICS_Y_LEN / 2.0, 0.0),
+                    ));
+
+                let player = AnimationPlayer::new(animation);
+
+                // avionics mount
+                commands
+                    .spawn(RigidBody::KinematicPositionBased)
+                    .insert(AvionicsHolderMarker)
+                    .insert(TransformBundle::from(transform))
+                    .insert(ImpulseJoint::new(avionics_entity, joint))
+                    .insert(player);
+            }
+            DebuggerEvent::Calibrating(CalibratorState::State(
+                Axis::Y,
+                Direction::Rotation,
+                Event::Start,
+            )) => {
+                let joint = FixedJointBuilder::new()
+                    .local_anchor1(Vec3::new(0.0, 0.0, 0.0))
+                    .local_anchor2(Vec3::new(0.0, 0.0, 0.0));
+
+                let transform = avionics_transform.clone();
+                let rotation_offset = UnitQuaternion::from_axis_angle(&Vector3::x_axis(), PI / 2.0)
+                    * UnitQuaternion::from_axis_angle(&Vector3::z_axis(), -PI / 2.0)
+                    * UnitQuaternion::from_axis_angle(&Vector3::x_axis(), PI / 2.0)
+                    * UnitQuaternion::from_axis_angle(&Vector3::z_axis(), PI);
+                let animation = AnimationBuilder::new()
+                    .add_keyframe(
+                        KeyFrame::new(
+                            UnitQuaternion::from_axis_angle(&Vector3::y_axis(), 0.0)
+                                * rotation_offset,
+                            transform.translation.into(),
+                        ),
+                        1.0,
+                    )
+                    .add_keyframe(
+                        KeyFrame::new(
+                            UnitQuaternion::from_axis_angle(&Vector3::y_axis(), -PI / 2.0)
+                                * rotation_offset,
+                            transform.translation.into(),
+                        ),
+                        1.0,
+                    )
+                    .add_keyframe(
+                        KeyFrame::new(
+                            UnitQuaternion::from_axis_angle(&Vector3::y_axis(), -PI)
+                                * rotation_offset,
+                            transform.translation.into(),
+                        ),
+                        1.0,
+                    )
+                    .add_keyframe(
+                        KeyFrame::new(
+                            UnitQuaternion::from_axis_angle(&Vector3::y_axis(), -PI / 2.0 * 3.0)
+                                * rotation_offset,
+                            transform.translation.into(),
+                        ),
+                        1.0,
+                    )
+                    .finish(KeyFrame::new(
+                        UnitQuaternion::from_axis_angle(&Vector3::y_axis(), 0.0) * rotation_offset,
+                        transform.translation.into(),
+                    ));
+
+                let player = AnimationPlayer::new(animation);
+
+                // avionics mount
+                commands
+                    .spawn(RigidBody::KinematicPositionBased)
+                    .insert(AvionicsHolderMarker)
+                    .insert(TransformBundle::from(transform))
+                    .insert(ImpulseJoint::new(avionics_entity, joint))
+                    .insert(player);
+            }
+            DebuggerEvent::Calibrating(CalibratorState::State(
+                Axis::Y,
+                Direction::Rotation,
+                Event::End,
+            )) => {
+                let joint = FixedJointBuilder::new()
+                    .local_anchor1(Vec3::new(0.0, 0.0, 0.0))
+                    .local_anchor2(Vec3::new(0.0, 0.0, 0.0));
+
+                let transform = avionics_transform.clone();
+                let rotation_offset = UnitQuaternion::from_axis_angle(&Vector3::x_axis(), PI / 2.0)
+                    * UnitQuaternion::from_axis_angle(&Vector3::z_axis(), -PI / 2.0)
+                    * UnitQuaternion::from_axis_angle(&Vector3::x_axis(), PI / 2.0)
+                    * UnitQuaternion::from_axis_angle(&Vector3::z_axis(), PI);
+                let animation = AnimationBuilder::new()
+                    .add_keyframe(
+                        KeyFrame::new(
+                            UnitQuaternion::from_axis_angle(&Vector3::z_axis(), 0.0)
+                                * rotation_offset,
+                            transform.translation.into(),
+                        ),
+                        1.0,
+                    )
+                    .add_keyframe(
+                        KeyFrame::new(
+                            UnitQuaternion::from_axis_angle(&Vector3::z_axis(), 0.0)
+                                * rotation_offset,
+                            Vector3::new(0.0, 0.1, 0.0),
+                        ),
+                        1.0,
+                    )
+                    .add_keyframe(
+                        KeyFrame::new(
+                            UnitQuaternion::from_axis_angle(&Vector3::z_axis(), -PI / 2.0)
+                                * rotation_offset,
+                            Vector3::new(0.0, 0.1, 0.0),
+                        ),
+                        1.0,
+                    )
+                    .finish(KeyFrame::new(
+                        UnitQuaternion::from_axis_angle(&Vector3::z_axis(), -PI / 2.0)
+                            * rotation_offset,
+                        Vector3::new(0.0, AVIONICS_Z_LEN / 2.0, 0.0),
+                    ));
+
+                let player = AnimationPlayer::new(animation);
+
+                // avionics mount
+                commands
+                    .spawn(RigidBody::KinematicPositionBased)
+                    .insert(AvionicsHolderMarker)
+                    .insert(TransformBundle::from(transform))
+                    .insert(ImpulseJoint::new(avionics_entity, joint))
+                    .insert(player);
+            }
+            DebuggerEvent::Calibrating(CalibratorState::State(
+                Axis::Z,
+                Direction::Rotation,
+                Event::Start,
+            )) => {
+                let joint = FixedJointBuilder::new()
+                    .local_anchor1(Vec3::new(0.0, 0.0, 0.0))
+                    .local_anchor2(Vec3::new(0.0, 0.0, 0.0));
+
+                let transform = avionics_transform.clone();
+                let rotation_offset =
+                    UnitQuaternion::from_axis_angle(&Vector3::z_axis(), -PI / 2.0)
+                        * UnitQuaternion::from_axis_angle(&Vector3::x_axis(), PI / 2.0)
+                        * UnitQuaternion::from_axis_angle(&Vector3::z_axis(), -PI / 2.0)
+                        * UnitQuaternion::from_axis_angle(&Vector3::x_axis(), PI / 2.0)
+                        * UnitQuaternion::from_axis_angle(&Vector3::z_axis(), PI);
+                let animation = AnimationBuilder::new()
+                    .add_keyframe(
+                        KeyFrame::new(
+                            UnitQuaternion::from_axis_angle(&Vector3::y_axis(), 0.0)
+                                * rotation_offset,
+                            transform.translation.into(),
+                        ),
+                        1.0,
+                    )
+                    .add_keyframe(
+                        KeyFrame::new(
+                            UnitQuaternion::from_axis_angle(&Vector3::y_axis(), -PI / 2.0)
+                                * rotation_offset,
+                            transform.translation.into(),
+                        ),
+                        1.0,
+                    )
+                    .add_keyframe(
+                        KeyFrame::new(
+                            UnitQuaternion::from_axis_angle(&Vector3::y_axis(), -PI)
+                                * rotation_offset,
+                            transform.translation.into(),
+                        ),
+                        1.0,
+                    )
+                    .add_keyframe(
+                        KeyFrame::new(
+                            UnitQuaternion::from_axis_angle(&Vector3::y_axis(), -PI / 2.0 * 3.0)
+                                * rotation_offset,
+                            transform.translation.into(),
+                        ),
+                        1.0,
+                    )
+                    .finish(KeyFrame::new(
+                        UnitQuaternion::from_axis_angle(&Vector3::y_axis(), 0.0) * rotation_offset,
+                        transform.translation.into(),
+                    ));
+
+                let player = AnimationPlayer::new(animation);
+
+                // avionics mount
+                commands
+                    .spawn(RigidBody::KinematicPositionBased)
+                    .insert(AvionicsHolderMarker)
+                    .insert(TransformBundle::from(transform))
+                    .insert(ImpulseJoint::new(avionics_entity, joint))
+                    .insert(player);
+            }
+            DebuggerEvent::Calibrating(CalibratorState::Success | CalibratorState::Failure) => {
+                let joint = FixedJointBuilder::new()
+                    .local_anchor1(Vec3::new(0.0, 0.0, 0.0))
+                    .local_anchor2(Vec3::new(0.0, 0.0, 0.0));
+
+                let transform = avionics_transform.clone();
+                let rotation_offset =
+                    UnitQuaternion::from_axis_angle(&Vector3::z_axis(), -PI / 2.0)
+                        * UnitQuaternion::from_axis_angle(&Vector3::x_axis(), PI / 2.0)
+                        * UnitQuaternion::from_axis_angle(&Vector3::z_axis(), -PI / 2.0)
+                        * UnitQuaternion::from_axis_angle(&Vector3::x_axis(), PI / 2.0)
+                        * UnitQuaternion::from_axis_angle(&Vector3::z_axis(), PI);
+
+                let animation = AnimationBuilder::new()
+                    .add_keyframe(
+                        KeyFrame::new(rotation_offset, transform.translation.into()),
+                        1.0,
+                    )
+                    .add_keyframe(
+                        KeyFrame::new(rotation_offset, Vector3::new(0.0, 0.1, 0.0)),
+                        1.0,
+                    )
+                    .add_keyframe(
+                        KeyFrame::new(
+                            UnitQuaternion::from_axis_angle(&Vector3::z_axis(), 0.0),
+                            Vector3::new(0.0, 0.1, 0.0),
+                        ),
+                        1.0,
+                    )
+                    .finish(KeyFrame::new(
+                        UnitQuaternion::from_axis_angle(&Vector3::z_axis(), 0.0),
+                        Vector3::new(0.0, AVIONICS_Y_LEN / 2.0, 0.0),
+                    ));
+
+                let player = AnimationPlayer::new(animation);
+
+                // avionics mount
+                commands
+                    .spawn(RigidBody::KinematicPositionBased)
+                    .insert(AvionicsHolderMarker)
+                    .insert(TransformBundle::from(transform))
+                    .insert(ImpulseJoint::new(avionics_entity, joint))
+                    .insert(player);
+            }
             _ => {}
         }
     }

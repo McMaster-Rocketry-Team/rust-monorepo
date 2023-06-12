@@ -48,7 +48,7 @@ pub struct InteractiveCalibrator {
     inner: Either<CalibratorInner, Option<CalibrationInfo>>,
     last_reading: IMUReading,
     still_gyro_threshold_squared: f64,
-    angular_acceleration_moving_avg: SingleSumSMA<Vector3<f64>, 30>, // each sample is 0.1s apart, gives a 3s window
+    angular_acceleration_moving_avg: SingleSumSMA<Vector3<f64>, 50>, // each sample is 0.1s apart, gives a 5s window
     state_start_timestamp: Option<f64>,
 }
 

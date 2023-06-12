@@ -43,7 +43,6 @@ impl Calibrate {
             let reading = imu.read().await.map_err(|_| ()).unwrap();
             let next_state = calibrator.process(&reading);
             if let Some(state) = next_state {
-                debugger.dispatch(DebuggerEvent::Calibrating(state));
                 match state {
                     WaitingStill => self.waiting_still_sound(&mut buzzer, timer).await,
                     State(axis, direction, event) if event != Event::Variance => {
@@ -54,14 +53,14 @@ impl Calibrate {
                     State(_, _, _) => {}
                     Success => {
                         self.success_sound(&mut buzzer, timer).await;
-                        break;
                     }
                     Failure => {
                         self.failure_sound(&mut buzzer, timer).await;
-                        break;
                     }
                     Idle => {}
                 }
+
+                debugger.dispatch(DebuggerEvent::Calibrating(state));
 
                 if let Success = state {
                     let cal_info = calibrator.get_calibration_info().unwrap();

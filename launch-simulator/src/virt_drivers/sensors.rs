@@ -1,4 +1,7 @@
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::{
+    f32::consts::PI,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use bevy::prelude::{Component, Transform};
 use bevy_rapier3d::prelude::Velocity;
@@ -24,7 +27,7 @@ impl SensorSender {
             last_state: None,
             ready: false,
             acc_normal: Normal::new(0.0, 0.3).unwrap(),
-            gyro_normal: Normal::new(0.0, 0.2).unwrap(),
+            gyro_normal: Normal::new(0.0, 0.1).unwrap(),
         }
     }
 
@@ -58,9 +61,9 @@ impl SensorSender {
         );
 
         let gyro = Vector3::new(
-            gyro.x + self.gyro_normal.sample(&mut rng),
-            gyro.y + self.gyro_normal.sample(&mut rng),
-            gyro.z + self.gyro_normal.sample(&mut rng),
+            gyro.x / PI * 180.0 + self.gyro_normal.sample(&mut rng),
+            gyro.y / PI * 180.0 + self.gyro_normal.sample(&mut rng),
+            gyro.z / PI * 180.0 + self.gyro_normal.sample(&mut rng),
         );
 
         // convert to local frame
