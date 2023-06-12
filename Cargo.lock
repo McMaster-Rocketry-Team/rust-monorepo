@@ -770,8 +770,7 @@ checksum = "0c4b88451d4c5a353bff67dbaa937b6886efd26ae114769c17f2b35099c7a4de"
 [[package]]
 name = "bevy_rapier3d"
 version = "0.21.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b4bce8074f19467fd55ab172ae6c11fca3ca28f66804590ab10c930bd5e9cd24"
+source = "git+https://github.com/robertdodd/bevy_rapier.git?branch=feature/add-rope-joint#d8ef7a494acd33e286545b1aa8835e1c924f108f"
 dependencies = [
  "bevy",
  "bitflags 1.3.2",

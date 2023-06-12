@@ -8,7 +8,9 @@ edition = "2021"
 [dependencies]
 bevy = { version = "0.10.1" }
 bevy_panorbit_camera = "0.5.1"
-bevy_rapier3d = { version = "0.21.0", features = ["debug-render-3d"] }
+bevy_rapier3d = { git = "https://github.com/robertdodd/bevy_rapier.git", branch = "feature/add-rope-joint", features = [
+    "debug-render-3d",
+] }
 firmware-common = { path = "../firmware-common", default-features = false }
 tokio = { version = "1.28.2", features = ["full"] }
 vlfs = { path = "../vlfs" }

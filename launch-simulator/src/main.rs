@@ -15,7 +15,9 @@ use bevy_egui::{egui, EguiContexts, EguiPlugin};
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use bevy_rapier3d::prelude::*;
 use firmware_common::driver::debugger::DebuggerEvent;
+use ground_test::create_ground_test;
 use keyframe::AnimationPlayer;
+use rocket::rocket_chute_system;
 use virt_drivers::{
     debugger::{create_debugger, DebuggerReceiver},
     sensors::{create_sensors, SensorSender},
@@ -24,7 +26,9 @@ use virt_drivers::{
 
 mod avionics;
 mod calibration_system;
+mod ground_test;
 mod keyframe;
+mod rocket;
 mod virt_drivers;
 
 pub const AVIONICS_X_LEN: f32 = 0.04;
@@ -48,6 +52,8 @@ fn main() {
         .add_plugin(RapierDebugRenderPlugin::default())
         .add_plugin(PanOrbitCameraPlugin)
         .add_event::<DebuggerEvent>()
+        .add_event::<UIEvent>()
+        .add_event::<RocketEvent>()
         .add_startup_system(setup_graphics)
         .add_startup_system(setup_physics)
         .add_startup_system(setup_virtual_avionics)
@@ -56,6 +62,8 @@ fn main() {
         .add_system(debugger_receiver)
         .add_system(calibration_system::calibration_system)
         .add_system(avionics_animation_system)
+        .add_system(create_ground_test)
+        .add_system(rocket_chute_system)
         .run();
 }
 
@@ -74,16 +82,12 @@ fn setup_physics(mut commands: Commands) {
     // floor
     commands
         .spawn(Collider::cuboid(5.0, 0.1, 5.0))
+        .insert(Restitution::coefficient(0.1))
         .insert(TransformBundle::from(Transform::from_xyz(0.0, -0.1, 0.0)));
 
     // avionics
     commands
         .spawn(RigidBody::Dynamic)
-        .insert(Sleeping {
-            linear_threshold: -1.0,
-            angular_threshold: -1.0,
-            sleeping: false,
-        })
         .insert(Velocity {
             linvel: Vec3::ZERO,
             angvel: Vec3::ZERO,
@@ -93,7 +97,7 @@ fn setup_physics(mut commands: Commands) {
             AVIONICS_Y_LEN / 2.0,
             AVIONICS_Z_LEN / 2.0,
         ))
-        .insert(Restitution::coefficient(0.7))
+        .insert(Restitution::coefficient(0.1))
         .insert(TransformBundle::from(Transform::from_xyz(0.0, 0.1, 0.0)))
         .insert(AvionicsMarker);
 
@@ -128,16 +132,34 @@ fn setup_virtual_avionics(mut commands: Commands) {
     );
 }
 
-fn ui_system(mut contexts: EguiContexts, mut serial: Query<&mut VirtualSerial>) {
+fn ui_system(
+    mut contexts: EguiContexts,
+    mut ev_ui: EventWriter<UIEvent>,
+    mut ev_rocket: EventWriter<RocketEvent>,
+    mut serial: Query<&mut VirtualSerial>,
+) {
     let mut serial = serial.iter_mut().next().unwrap();
     egui::Window::new("Controls").show(contexts.ctx_mut(), |ui| {
+        ui.heading("Preparation");
         if ui.button("Calibrate").clicked() {
             println!("calibrate");
             serial.blocking_write(&[0, 0, 0, 0, 0, 0, 0, 5]);
         }
+        ui.add_space(8.0);
+        ui.heading("Ground Test");
         if ui.button("Setup Rocket").clicked() {
-            
+            ev_ui.send(UIEvent::SetupGroundTest);
         }
+        if ui.button("Eject Main Chute").clicked() {
+            ev_rocket.send(RocketEvent::EjectMainChute);
+        }
+        if ui.button("Eject Drogue Chute").clicked() {
+            ev_rocket.send(RocketEvent::EjectDrogueChute);
+        }
+        ui.add_space(8.0);
+        ui.heading("Launch");
+        if ui.button("Setup Rocket").clicked() {}
+        if ui.button("Ignition").clicked() {}
     });
 }
 
@@ -190,3 +212,12 @@ pub struct AvionicsMarker;
 
 #[derive(Component)]
 struct ReadyBarrier(Option<Arc<Barrier>>);
+
+pub enum UIEvent {
+    SetupGroundTest,
+}
+
+pub enum RocketEvent {
+    EjectMainChute,
+    EjectDrogueChute,
+}
