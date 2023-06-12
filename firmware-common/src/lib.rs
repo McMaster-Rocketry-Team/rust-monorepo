@@ -54,6 +54,7 @@ pub async fn init(
     unwrap!(fs.init().await);
 
     let testing_fut = async {
+        let debugger = device_manager.debugger.clone();
         let mut iter = fs.files_iter(Some(CALIBRATION_FILE_TYPE)).await;
         let calibration_file = iter.next();
         drop(iter);
@@ -61,14 +62,16 @@ pub async fn init(
             info!("Calibration file found, id: {}", calibration_file.file_id);
             let mut file = unwrap!(fs.open_file_for_read(calibration_file.file_id).await);
             let mut buffer = [0u8; 156];
-            unwrap!(file.read_slice(&mut buffer, 156).await);
+            match file.read_slice(&mut buffer, 156).await {
+                Ok((buffer, status)) => {
+                    debugger.dispatch(DebuggerEvent::VLFSReadStatus(buffer.len(), status));
+                    let cal_info = CalibrationInfo::deserialize(buffer.try_into().unwrap());
+                    debugger.dispatch(DebuggerEvent::CalInfo(cal_info.clone()));
+                    info!("{}", cal_info);
+                }
+                Err(_) => defmt::panic!(),
+            }
             file.close().await;
-            let cal_info = CalibrationInfo::deserialize(buffer);
-            device_manager
-                .debugger
-                .clone()
-                .dispatch(DebuggerEvent::CalInfo(cal_info.clone()));
-            info!("{}", cal_info);
         } else {
             info!("No calibration file found");
         }

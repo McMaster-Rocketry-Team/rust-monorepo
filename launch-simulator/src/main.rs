@@ -135,6 +135,9 @@ fn ui_system(mut contexts: EguiContexts, mut serial: Query<&mut VirtualSerial>) 
             println!("calibrate");
             serial.blocking_write(&[0, 0, 0, 0, 0, 0, 0, 5]);
         }
+        if ui.button("Setup Rocket").clicked() {
+            
+        }
     });
 }
 

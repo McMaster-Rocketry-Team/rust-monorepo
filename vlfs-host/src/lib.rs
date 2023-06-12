@@ -10,7 +10,10 @@ mod file_flash;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use vlfs::{DummyCrc, VLFS, FileType, io_traits::{AsyncWriter, AsyncReader}};
+    use vlfs::{
+        io_traits::{AsyncReader, AsyncWriter},
+        DummyCrc, FileType, VLFS,
+    };
 
     #[tokio::test]
     async fn it_works() {
@@ -19,20 +22,31 @@ mod tests {
             .unwrap()
             .into_temp_path()
             .to_path_buf();
-        let flash = FileFlash::new(path).await.unwrap();
-        let mut vlfs = VLFS::new(flash, DummyCrc {});
-        vlfs.init().await.unwrap();
 
-        let file_id = vlfs.create_file(FileType(0)).await.unwrap();
-        let mut file = vlfs.open_file_for_write(file_id).await.unwrap();
-        file.extend_from_slice(b"Hello, world!").await.unwrap();
-        file.close().await.unwrap();
+        let file_id = {
+            let flash = FileFlash::new(path.clone()).await.unwrap();
+            let mut vlfs = VLFS::new(flash, DummyCrc {});
+            vlfs.init().await.unwrap();
 
-        let mut file = vlfs.open_file_for_read(file_id).await.unwrap();
-        let mut buffer = [0u8; 32];
-        let (buffer, _) = file.read_all(&mut buffer).await.unwrap();
-        file.close().await;
+            let file_id = vlfs.create_file(FileType(0)).await.unwrap();
+            let mut file = vlfs.open_file_for_write(file_id).await.unwrap();
+            file.extend_from_slice(&[10u8; 156]).await.unwrap();
+            file.close().await.unwrap();
 
-        assert_eq!(buffer, b"Hello, world!");
+            file_id
+        };
+
+        {
+            let flash = FileFlash::new(path.clone()).await.unwrap();
+            let mut vlfs = VLFS::new(flash, DummyCrc {});
+            vlfs.init().await.unwrap();
+
+            let mut file = vlfs.open_file_for_read(file_id).await.unwrap();
+            let mut buffer = [0u8; 156];
+            let (buffer, _) = file.read_all(&mut buffer).await.unwrap();
+            file.close().await;
+
+            assert_eq!(buffer, [10u8; 156]);
+        }
     }
 }

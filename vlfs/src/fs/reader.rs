@@ -33,6 +33,7 @@ enum SectorDataLength {
 }
 
 #[derive(defmt::Format)]
+#[derive(Debug, Clone)]
 pub enum VLFSReadStatus {
     Ok,
     EndOfFile,

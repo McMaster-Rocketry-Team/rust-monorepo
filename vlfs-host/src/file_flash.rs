@@ -40,17 +40,20 @@ impl Flash for FileFlash {
     }
 
     async fn erase_sector_4kib(&mut self, address: u32) -> Result<(), Self::Error> {
-        self.rad.write(address as u64, &[0u8; 4 * 1024]).await?;
+        self.rad.write(address as u64, &[0xFFu8; 4 * 1024]).await?;
+        self.rad.sync_all().await?;
         Ok(())
     }
 
     async fn erase_block_32kib(&mut self, address: u32) -> Result<(), Self::Error> {
-        self.rad.write(address as u64, &[0u8; 32 * 1024]).await?;
+        self.rad.write(address as u64, &[0xFFu8; 32 * 1024]).await?;
+        self.rad.sync_all().await?;
         Ok(())
     }
 
     async fn erase_block_64kib(&mut self, address: u32) -> Result<(), Self::Error> {
-        self.rad.write(address as u64, &[0u8; 64 * 1024]).await?;
+        self.rad.write(address as u64, &[0xFFu8; 64 * 1024]).await?;
+        self.rad.sync_all().await?;
         Ok(())
     }
 
@@ -71,6 +74,7 @@ impl Flash for FileFlash {
         write_buffer: &'b mut [u8],
     ) -> Result<(), Self::Error> {
         self.rad.write(address as u64, &write_buffer[5..]).await?;
+        self.rad.sync_all().await?;
         Ok(())
     }
 }
