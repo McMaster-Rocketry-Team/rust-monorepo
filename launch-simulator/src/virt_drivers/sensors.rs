@@ -5,7 +5,10 @@ use std::{
 
 use bevy::prelude::{Component, Transform};
 use bevy_rapier3d::prelude::Velocity;
-use firmware_common::driver::imu::{IMUReading, IMU};
+use firmware_common::driver::{
+    barometer::BaroReading,
+    imu::{IMUReading, IMU},
+};
 use nalgebra::{UnitQuaternion, Vector3};
 use rand;
 use rand_distr::{Distribution, Normal};
@@ -95,6 +98,7 @@ impl SensorSender {
 #[derive(Clone, Default, Debug)]
 pub struct SensorSnapshot {
     imu_reading: IMUReading,
+    // baro_reading: BaroReading,
 }
 
 pub fn create_sensors() -> (SensorSender, VirtualIMU) {

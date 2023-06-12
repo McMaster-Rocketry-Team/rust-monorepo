@@ -1788,6 +1788,7 @@ dependencies = [
 [[package]]
 name = "eskf"
 version = "0.2.0"
+source = "git+https://github.com/PegasisForever/eskf-rs.git#e48928010eb3691c869360cf9a1ef3080d6e2bba"
 dependencies = [
  "libm",
  "nalgebra 0.32.2",

@@ -1,7 +1,7 @@
 use super::timer::Timer;
 use libm::powf;
 
-#[derive(defmt::Format, Debug, Clone)]
+#[derive(defmt::Format, Debug, Clone, Default)]
 pub struct BaroReading {
     pub timestamp: f64,   // ms
     pub temperature: f32, // C

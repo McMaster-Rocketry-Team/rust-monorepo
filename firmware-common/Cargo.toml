@@ -39,7 +39,7 @@ ferraris-calibration = { path = "../ferraris-calibration", features = [
 bitflags = "2.2.1"
 chrono = { version = "0.4.26", default-features = false }
 num-traits = { version = "0.2.15", default-features = false }
-eskf = { path = "../../eskf-rs", version = "0.2.0", default-features = false }
+eskf = { git = "https://github.com/PegasisForever/eskf-rs.git", default-features = false }
 libm = "0.2.7"
 
 [dev-dependencies]

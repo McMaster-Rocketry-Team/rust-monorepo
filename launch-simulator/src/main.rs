@@ -214,7 +214,7 @@ fn debugger_receiver(
 ) {
     let mut debugger_receiver = debugger_receiver.iter_mut().next().unwrap();
     while let Some(event) = debugger_receiver.try_recv() {
-        println!("debugger: {:?}", event);
+        info!("debugger: {:?}", event);
         ev_debugger.send(event);
     }
 }
