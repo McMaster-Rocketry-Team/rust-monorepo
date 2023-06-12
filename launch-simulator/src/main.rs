@@ -7,7 +7,7 @@ use std::sync::{Arc, Barrier};
 
 use avionics::start_avionics_thread;
 use bevy::{
-    diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
+    log::{Level, LogPlugin},
     prelude::*,
     window::PresentMode,
 };
@@ -19,13 +19,12 @@ use ground_test::create_ground_test;
 use keyframe::animation_system;
 use launch::{create_launch, ignition_handler};
 use motor::{motor_ignitor, motor_system};
-use rocket::{rocket_chute_system, rocket_camera_tracking};
+use rocket::{rocket_camera_tracking, rocket_chute_system};
 use virt_drivers::{
     debugger::{create_debugger, DebuggerReceiver},
     sensors::{create_sensors, SensorSender},
     serial::{create_virtual_serial, VirtualSerial},
 };
-
 mod avionics;
 mod calibration_system;
 mod ground_test;
@@ -41,17 +40,22 @@ pub const AVIONICS_Z_LEN: f32 = 0.05;
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(Window {
-                title: "Launch Simulator".into(),
-                present_mode: PresentMode::Immediate,
-                ..default()
-            }),
-            ..default()
-        }))
+        .add_plugins(
+            DefaultPlugins
+                .set(WindowPlugin {
+                    primary_window: Some(Window {
+                        title: "Launch Simulator".into(),
+                        present_mode: PresentMode::Immediate,
+                        ..default()
+                    }),
+                    ..default()
+                })
+                .set(LogPlugin {
+                    level: Level::INFO,
+                    filter: "wgpu=error,launch_simulator=trace,firmware_common=trace".to_string(),
+                }),
+        )
         .add_plugin(EguiPlugin)
-        .add_plugin(LogDiagnosticsPlugin::default())
-        .add_plugin(FrameTimeDiagnosticsPlugin::default())
         .add_plugin(RapierPhysicsPlugin::<NoUserData>::default())
         .add_plugin(RapierDebugRenderPlugin::default())
         .add_plugin(PanOrbitCameraPlugin)
@@ -143,12 +147,22 @@ fn setup_virtual_avionics(mut commands: Commands) {
 
 fn ui_system(
     mut contexts: EguiContexts,
+    time: Res<Time>,
     mut ev_ui: EventWriter<UIEvent>,
     mut ev_rocket: EventWriter<RocketEvent>,
     mut serial: Query<&mut VirtualSerial>,
+    avionics_transform: Query<&Transform, With<AvionicsMarker>>,
 ) {
     let mut serial = serial.iter_mut().next().unwrap();
+    let avionics_transform = avionics_transform.iter().next().unwrap();
     egui::Window::new("Controls").show(contexts.ctx_mut(), |ui| {
+        ui.label(format!("FPS: {:.2}", 1.0 / time.delta_seconds_f64()));
+        ui.label(format!(
+            "Position: ({:.2}, {:.2}, {:.2})",
+            avionics_transform.translation.x,
+            avionics_transform.translation.y,
+            avionics_transform.translation.z
+        ));
         ui.heading("Preparation");
         if ui.button("Calibrate").clicked() {
             println!("calibrate");
@@ -187,8 +201,6 @@ fn virtual_sensors(
 
     let mut sensor_tx = sensor_tx.iter_mut().next().unwrap();
     sensor_tx.update_state(*vel, *pos);
-
-    println!("altitude: {}", pos.translation.y);
 
     let mut ready_barrier = ready_barrier.iter_mut().next().unwrap();
     if sensor_tx.is_ready() && ready_barrier.0.is_some() {

@@ -4,6 +4,8 @@
 #![feature(let_chains)]
 #![feature(try_blocks)]
 
+mod fmt;
+
 use crate::{
     avionics::avionics_main,
     common::{
@@ -54,26 +56,23 @@ pub async fn init(
     unwrap!(fs.init().await);
 
     let testing_fut = async {
-        let debugger = device_manager.debugger.clone();
         let mut iter = fs.files_iter(Some(CALIBRATION_FILE_TYPE)).await;
         let calibration_file = iter.next();
         drop(iter);
         if let Some(calibration_file) = calibration_file {
-            info!("Calibration file found, id: {}", calibration_file.file_id);
+            log_info!("Calibration file found, id: {:?}", calibration_file.file_id);
             let mut file = unwrap!(fs.open_file_for_read(calibration_file.file_id).await);
             let mut buffer = [0u8; 156];
             match file.read_slice(&mut buffer, 156).await {
-                Ok((buffer, status)) => {
-                    debugger.dispatch(DebuggerEvent::VLFSReadStatus(buffer.len(), status));
+                Ok((buffer, _)) => {
                     let cal_info = CalibrationInfo::deserialize(buffer.try_into().unwrap());
-                    debugger.dispatch(DebuggerEvent::CalInfo(cal_info.clone()));
-                    info!("{}", cal_info);
+                    log_info!("{:?}", cal_info);
                 }
                 Err(_) => defmt::panic!(),
             }
             file.close().await;
         } else {
-            info!("No calibration file found");
+            log_info!("No calibration file found");
         }
         // claim_devices!(device_manager, imu);
         // unwrap!(imu.wait_for_power_on().await);

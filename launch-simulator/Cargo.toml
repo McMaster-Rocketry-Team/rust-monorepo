@@ -11,7 +11,9 @@ bevy_panorbit_camera = "0.5.1"
 bevy_rapier3d = { git = "https://github.com/robertdodd/bevy_rapier.git", branch = "feature/add-rope-joint", features = [
     "debug-render-3d",
 ] }
-firmware-common = { path = "../firmware-common", default-features = false }
+firmware-common = { path = "../firmware-common", default-features = false, features = [
+    "log",
+] }
 tokio = { version = "1.28.2", features = ["full"] }
 vlfs = { path = "../vlfs" }
 vlfs-host = { path = "../vlfs-host" }

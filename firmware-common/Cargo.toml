@@ -7,11 +7,13 @@ edition = "2021"
 [features]
 default = ["global-allocator"]
 global-allocator = []
+log = ["dep:log"]
 
 [dependencies]
 embassy-sync = { version = "0.2.0", default-features = false }
 bitvec = { version = "1.0.1", default-features = false }
 defmt = "0.3"
+log = { version = "0.4", optional = true }
 heapless = { version = "0.7.5", features = ["defmt"], default-features = false }
 rkyv = { version = "0.7.39", default-features = false, features = [
     "size_32",
