@@ -3,7 +3,10 @@
 #![feature(let_chains)]
 #![feature(try_blocks)]
 
-use std::sync::{Arc, Barrier};
+use std::{
+    f32::consts::PI,
+    sync::{Arc, Barrier},
+};
 
 use avionics::start_avionics_thread;
 use bevy::{
@@ -14,17 +17,25 @@ use bevy::{
 use bevy_egui::{egui, EguiContexts, EguiPlugin};
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use bevy_rapier3d::prelude::*;
-use firmware_common::driver::debugger::DebuggerEvent;
 use firmware_common::driver::debugger::InteractiveCalibratorState as CalibratorState;
-use nalgebra::UnitQuaternion;
+use firmware_common::driver::debugger::{Axis, DebuggerEvent, Direction, Event};
+use keyframe::AnimationPlayer;
+use nalgebra::{UnitQuaternion, Vector3};
 use virt_drivers::{
     debugger::{create_debugger, DebuggerReceiver},
     sensors::{create_sensors, SensorSender},
     serial::{create_virtual_serial, VirtualSerial},
 };
 
+use crate::keyframe::{AnimationBuilder, KeyFrame};
+
 mod avionics;
+mod keyframe;
 mod virt_drivers;
+
+const AVIONICS_X_LEN: f32 = 0.04;
+const AVIONICS_Y_LEN: f32 = 0.02;
+const AVIONICS_Z_LEN: f32 = 0.05;
 
 fn main() {
     App::new()
@@ -47,11 +58,11 @@ fn main() {
         .add_startup_system(setup_graphics)
         .add_startup_system(setup_physics)
         .add_startup_system(setup_virtual_avionics)
-        .add_startup_system(setup_interpolation)
         .add_system(ui_system)
         .add_system(virtual_sensors)
         .add_system(debugger_receiver)
         .add_system(calibration_system)
+        .add_system(avionics_animation_system)
         .run();
 }
 
@@ -84,7 +95,11 @@ fn setup_physics(mut commands: Commands) {
             linvel: Vec3::ZERO,
             angvel: Vec3::ZERO,
         })
-        .insert(Collider::cuboid(0.04 / 2.0, 0.02 / 2.0, 0.05 / 2.0))
+        .insert(Collider::cuboid(
+            AVIONICS_X_LEN / 2.0,
+            AVIONICS_Y_LEN / 2.0,
+            AVIONICS_Z_LEN / 2.0,
+        ))
         .insert(Restitution::coefficient(0.7))
         .insert(TransformBundle::from(Transform::from_xyz(0.0, 0.1, 0.0)))
         .insert(AvionicsMarker);
@@ -120,10 +135,6 @@ fn setup_virtual_avionics(mut commands: Commands) {
     );
 }
 
-fn setup_interpolation(mut commands: Commands) {
-    commands.spawn(OrientationInterpolation::default());
-}
-
 fn ui_system(mut contexts: EguiContexts, mut serial: Query<&mut VirtualSerial>) {
     let mut serial = serial.iter_mut().next().unwrap();
     egui::Window::new("Controls").show(contexts.ctx_mut(), |ui| {
@@ -136,12 +147,12 @@ fn ui_system(mut contexts: EguiContexts, mut serial: Query<&mut VirtualSerial>) 
 
 fn virtual_sensors(
     (state, mut ready_barrier, mut sensor_tx): (
-        Query<(&Velocity, &Transform, With<AvionicsMarker>)>,
+        Query<(&Velocity, &Transform), With<AvionicsMarker>>,
         Query<&mut ReadyBarrier>,
         Query<&mut SensorSender>,
     ),
 ) {
-    let (vel, pos, _) = state.iter().next().unwrap();
+    let (vel, pos) = state.iter().next().unwrap();
 
     let mut sensor_tx = sensor_tx.iter_mut().next().unwrap();
     sensor_tx.update_state(*vel, *pos);
@@ -163,6 +174,24 @@ fn debugger_receiver(
     }
 }
 
+fn avionics_animation_system(
+    time: Res<Time>,
+    mut commands: Commands,
+    mut avionics_holder: Query<
+        (Entity, &mut AnimationPlayer, &mut Transform),
+        With<AvionicsHolderMarker>,
+    >,
+) {
+    if let Some((entity, mut animation_player, mut transform)) = avionics_holder.iter_mut().next() {
+        if let Some((orientation, translation)) = animation_player.update(time.delta_seconds()) {
+            transform.rotation = orientation.into();
+            transform.translation = translation.into();
+        } else {
+            commands.entity(entity).despawn();
+        }
+    }
+}
+
 fn calibration_system(
     mut commands: Commands,
     mut ev_debugger: EventReader<DebuggerEvent>,
@@ -174,18 +203,315 @@ fn calibration_system(
     for ev in ev_debugger.iter() {
         match ev {
             DebuggerEvent::Calibrating(CalibratorState::WaitingStill) => {
-                println!("creating joint");
-                let joint = PrismaticJointBuilder::new(Vec3::X)
+                let joint = FixedJointBuilder::new()
                     .local_anchor1(Vec3::new(0.0, 0.0, 0.0))
                     .local_anchor2(Vec3::new(0.0, 0.0, 0.0));
 
                 let transform = avionics_transform.clone();
+
+                let animation = AnimationBuilder::new()
+                    .add_keyframe(
+                        KeyFrame::new(
+                            UnitQuaternion::from_euler_angles(0.0, 0.0, 0.0),
+                            transform.translation.into(),
+                        ),
+                        1.0,
+                    )
+                    .add_keyframe(
+                        KeyFrame::new(
+                            UnitQuaternion::from_euler_angles(0.0, 0.0, 0.0),
+                            Vector3::new(0.0, 0.1, 0.0),
+                        ),
+                        1.0,
+                    )
+                    .add_keyframe(
+                        KeyFrame::new(
+                            UnitQuaternion::from_axis_angle(&Vector3::z_axis(), PI / 2.0),
+                            Vector3::new(0.0, 0.1, 0.0),
+                        ),
+                        1.0,
+                    )
+                    .finish(KeyFrame::new(
+                        UnitQuaternion::from_axis_angle(&Vector3::z_axis(), PI / 2.0),
+                        Vector3::new(0.0, AVIONICS_X_LEN / 2.0, 0.0),
+                    ));
+
+                let player = AnimationPlayer::new(animation);
+
                 // avionics mount
                 commands
                     .spawn(RigidBody::KinematicPositionBased)
                     .insert(AvionicsHolderMarker)
                     .insert(TransformBundle::from(transform))
-                    .insert(ImpulseJoint::new(avionics_entity, joint));
+                    .insert(ImpulseJoint::new(avionics_entity, joint))
+                    .insert(player);
+            }
+            DebuggerEvent::Calibrating(CalibratorState::State(
+                Axis::X,
+                Direction::Plus,
+                Event::End,
+            )) => {
+                let joint = FixedJointBuilder::new()
+                    .local_anchor1(Vec3::new(0.0, 0.0, 0.0))
+                    .local_anchor2(Vec3::new(0.0, 0.0, 0.0));
+
+                let transform = avionics_transform.clone();
+                let animation = AnimationBuilder::new()
+                    .add_keyframe(
+                        KeyFrame::new(
+                            UnitQuaternion::from_axis_angle(&Vector3::z_axis(), PI / 2.0),
+                            transform.translation.into(),
+                        ),
+                        1.0,
+                    )
+                    .add_keyframe(
+                        KeyFrame::new(
+                            UnitQuaternion::from_axis_angle(&Vector3::z_axis(), PI / 2.0),
+                            Vector3::new(0.0, 0.1, 0.0),
+                        ),
+                        1.0,
+                    )
+                    .add_keyframe(
+                        KeyFrame::new(
+                            UnitQuaternion::from_axis_angle(&Vector3::z_axis(), 0.0),
+                            Vector3::new(0.0, 0.1, 0.0),
+                        ),
+                        1.0,
+                    )
+                    .add_keyframe(
+                        KeyFrame::new(
+                            UnitQuaternion::from_axis_angle(&Vector3::z_axis(), -PI / 2.0),
+                            Vector3::new(0.0, 0.1, 0.0),
+                        ),
+                        1.0,
+                    )
+                    .finish(KeyFrame::new(
+                        UnitQuaternion::from_axis_angle(&Vector3::z_axis(), -PI / 2.0),
+                        Vector3::new(0.0, AVIONICS_X_LEN / 2.0, 0.0),
+                    ));
+
+                let player = AnimationPlayer::new(animation);
+
+                // avionics mount
+                commands
+                    .spawn(RigidBody::KinematicPositionBased)
+                    .insert(AvionicsHolderMarker)
+                    .insert(TransformBundle::from(transform))
+                    .insert(ImpulseJoint::new(avionics_entity, joint))
+                    .insert(player);
+            }
+            DebuggerEvent::Calibrating(CalibratorState::State(
+                Axis::X,
+                Direction::Minus,
+                Event::End,
+            )) => {
+                let joint = FixedJointBuilder::new()
+                    .local_anchor1(Vec3::new(0.0, 0.0, 0.0))
+                    .local_anchor2(Vec3::new(0.0, 0.0, 0.0));
+
+                let transform = avionics_transform.clone();
+                let animation = AnimationBuilder::new()
+                    .add_keyframe(
+                        KeyFrame::new(
+                            UnitQuaternion::from_axis_angle(&Vector3::z_axis(), -PI / 2.0),
+                            transform.translation.into(),
+                        ),
+                        1.0,
+                    )
+                    .add_keyframe(
+                        KeyFrame::new(
+                            UnitQuaternion::from_axis_angle(&Vector3::z_axis(), -PI / 2.0),
+                            Vector3::new(0.0, 0.1, 0.0),
+                        ),
+                        1.0,
+                    )
+                    .add_keyframe(
+                        KeyFrame::new(
+                            UnitQuaternion::from_axis_angle(&Vector3::z_axis(), 0.0),
+                            Vector3::new(0.0, 0.1, 0.0),
+                        ),
+                        1.0,
+                    )
+                    .finish(KeyFrame::new(
+                        UnitQuaternion::from_axis_angle(&Vector3::z_axis(), 0.0),
+                        Vector3::new(0.0, AVIONICS_Y_LEN / 2.0, 0.0),
+                    ));
+
+                let player = AnimationPlayer::new(animation);
+
+                // avionics mount
+                commands
+                    .spawn(RigidBody::KinematicPositionBased)
+                    .insert(AvionicsHolderMarker)
+                    .insert(TransformBundle::from(transform))
+                    .insert(ImpulseJoint::new(avionics_entity, joint))
+                    .insert(player);
+            }
+            DebuggerEvent::Calibrating(CalibratorState::State(
+                Axis::Y,
+                Direction::Plus,
+                Event::End,
+            )) => {
+                let joint = FixedJointBuilder::new()
+                    .local_anchor1(Vec3::new(0.0, 0.0, 0.0))
+                    .local_anchor2(Vec3::new(0.0, 0.0, 0.0));
+
+                let transform = avionics_transform.clone();
+                let animation = AnimationBuilder::new()
+                    .add_keyframe(
+                        KeyFrame::new(
+                            UnitQuaternion::from_axis_angle(&Vector3::z_axis(), 0.0),
+                            transform.translation.into(),
+                        ),
+                        1.0,
+                    )
+                    .add_keyframe(
+                        KeyFrame::new(
+                            UnitQuaternion::from_axis_angle(&Vector3::z_axis(), 0.0),
+                            Vector3::new(0.0, 0.1, 0.0),
+                        ),
+                        1.0,
+                    )
+                    .add_keyframe(
+                        KeyFrame::new(
+                            UnitQuaternion::from_axis_angle(&Vector3::z_axis(), PI / 2.0),
+                            Vector3::new(0.0, 0.1, 0.0),
+                        ),
+                        1.0,
+                    )
+                    .add_keyframe(
+                        KeyFrame::new(
+                            UnitQuaternion::from_axis_angle(&Vector3::z_axis(), PI),
+                            Vector3::new(0.0, 0.1, 0.0),
+                        ),
+                        1.0,
+                    )
+                    .finish(KeyFrame::new(
+                        UnitQuaternion::from_axis_angle(&Vector3::z_axis(), PI),
+                        Vector3::new(0.0, AVIONICS_Y_LEN / 2.0, 0.0),
+                    ));
+
+                let player = AnimationPlayer::new(animation);
+
+                // avionics mount
+                commands
+                    .spawn(RigidBody::KinematicPositionBased)
+                    .insert(AvionicsHolderMarker)
+                    .insert(TransformBundle::from(transform))
+                    .insert(ImpulseJoint::new(avionics_entity, joint))
+                    .insert(player);
+            }
+            DebuggerEvent::Calibrating(CalibratorState::State(
+                Axis::Y,
+                Direction::Minus,
+                Event::End,
+            )) => {
+                let joint = FixedJointBuilder::new()
+                    .local_anchor1(Vec3::new(0.0, 0.0, 0.0))
+                    .local_anchor2(Vec3::new(0.0, 0.0, 0.0));
+
+                let transform = avionics_transform.clone();
+                let rotation_offset = UnitQuaternion::from_axis_angle(&Vector3::z_axis(), PI);
+                let animation = AnimationBuilder::new()
+                    .add_keyframe(
+                        KeyFrame::new(
+                            UnitQuaternion::from_axis_angle(&Vector3::x_axis(), 0.0)
+                                * rotation_offset,
+                            transform.translation.into(),
+                        ),
+                        1.0,
+                    )
+                    .add_keyframe(
+                        KeyFrame::new(
+                            UnitQuaternion::from_axis_angle(&Vector3::x_axis(), 0.0)
+                                * rotation_offset,
+                            Vector3::new(0.0, 0.1, 0.0),
+                        ),
+                        1.0,
+                    )
+                    .add_keyframe(
+                        KeyFrame::new(
+                            UnitQuaternion::from_axis_angle(&Vector3::x_axis(), -PI / 2.0)
+                                * rotation_offset,
+                            Vector3::new(0.0, 0.1, 0.0),
+                        ),
+                        1.0,
+                    )
+                    .finish(KeyFrame::new(
+                        UnitQuaternion::from_axis_angle(&Vector3::x_axis(), -PI / 2.0)
+                            * rotation_offset,
+                        Vector3::new(0.0, AVIONICS_Z_LEN / 2.0, 0.0),
+                    ));
+
+                let player = AnimationPlayer::new(animation);
+
+                // avionics mount
+                commands
+                    .spawn(RigidBody::KinematicPositionBased)
+                    .insert(AvionicsHolderMarker)
+                    .insert(TransformBundle::from(transform))
+                    .insert(ImpulseJoint::new(avionics_entity, joint))
+                    .insert(player);
+            }
+            DebuggerEvent::Calibrating(CalibratorState::State(
+                Axis::Z,
+                Direction::Plus,
+                Event::End,
+            )) => {
+                let joint = FixedJointBuilder::new()
+                    .local_anchor1(Vec3::new(0.0, 0.0, 0.0))
+                    .local_anchor2(Vec3::new(0.0, 0.0, 0.0));
+
+                let transform = avionics_transform.clone();
+                let rotation_offset = UnitQuaternion::from_axis_angle(&Vector3::z_axis(), PI);
+                let animation = AnimationBuilder::new()
+                    .add_keyframe(
+                        KeyFrame::new(
+                            UnitQuaternion::from_axis_angle(&Vector3::x_axis(), -PI / 2.0)
+                                * rotation_offset,
+                            transform.translation.into(),
+                        ),
+                        1.0,
+                    )
+                    .add_keyframe(
+                        KeyFrame::new(
+                            UnitQuaternion::from_axis_angle(&Vector3::x_axis(), -PI / 2.0)
+                                * rotation_offset,
+                            Vector3::new(0.0, 0.1, 0.0),
+                        ),
+                        1.0,
+                    )
+                    .add_keyframe(
+                        KeyFrame::new(
+                            UnitQuaternion::from_axis_angle(&Vector3::x_axis(), 0.0)
+                                * rotation_offset,
+                            Vector3::new(0.0, 0.1, 0.0),
+                        ),
+                        1.0,
+                    )
+                    .add_keyframe(
+                        KeyFrame::new(
+                            UnitQuaternion::from_axis_angle(&Vector3::x_axis(), PI / 2.0)
+                                * rotation_offset,
+                            Vector3::new(0.0, 0.1, 0.0),
+                        ),
+                        1.0,
+                    )
+                    .finish(KeyFrame::new(
+                        UnitQuaternion::from_axis_angle(&Vector3::x_axis(), PI / 2.0)
+                            * rotation_offset,
+                        Vector3::new(0.0, AVIONICS_Z_LEN / 2.0, 0.0),
+                    ));
+
+                let player = AnimationPlayer::new(animation);
+
+                // avionics mount
+                commands
+                    .spawn(RigidBody::KinematicPositionBased)
+                    .insert(AvionicsHolderMarker)
+                    .insert(TransformBundle::from(transform))
+                    .insert(ImpulseJoint::new(avionics_entity, joint))
+                    .insert(player);
             }
             _ => {}
         }
@@ -200,12 +526,3 @@ struct AvionicsHolderMarker;
 
 #[derive(Component)]
 struct ReadyBarrier(Option<Arc<Barrier>>);
-
-#[derive(Component, Default)]
-struct OrientationInterpolation {
-    start: UnitQuaternion<f32>,
-    end: UnitQuaternion<f32>,
-    start_time: f64,
-    end_time: f64,
-    finished: bool,
-}

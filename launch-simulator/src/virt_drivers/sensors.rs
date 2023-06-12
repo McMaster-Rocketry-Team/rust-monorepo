@@ -3,6 +3,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use bevy::prelude::{Component, Transform};
 use bevy_rapier3d::prelude::Velocity;
 use firmware_common::driver::imu::{IMUReading, IMU};
+use nalgebra::{UnitQuaternion, Vector3};
 use rand;
 use rand_distr::{Distribution, Normal};
 use tokio::sync::watch::{self, Receiver, Sender};
@@ -22,7 +23,7 @@ impl SensorSender {
             tx,
             last_state: None,
             ready: false,
-            acc_normal: Normal::new(0.0, 0.5).unwrap(),
+            acc_normal: Normal::new(0.0, 0.3).unwrap(),
             gyro_normal: Normal::new(0.0, 0.2).unwrap(),
         }
     }
@@ -49,18 +50,30 @@ impl SensorSender {
 
         let mut rng = rand::thread_rng();
 
+        // these are world frame
+        let acc = Vector3::new(
+            acceleration.x + self.acc_normal.sample(&mut rng),
+            acceleration.y + self.acc_normal.sample(&mut rng) + 9.81,
+            acceleration.z + self.acc_normal.sample(&mut rng),
+        );
+
+        let gyro = Vector3::new(
+            gyro.x + self.gyro_normal.sample(&mut rng),
+            gyro.y + self.gyro_normal.sample(&mut rng),
+            gyro.z + self.gyro_normal.sample(&mut rng),
+        );
+
+        // convert to local frame
+        let quat: UnitQuaternion<f32> = transform.rotation.into();
+        let quat = quat.inverse();
+
+        let acc = quat * acc;
+        let gyro = quat * gyro;
+
         let imu_reading = IMUReading {
             timestamp: now,
-            acc: [
-                acceleration.x + self.acc_normal.sample(&mut rng),
-                acceleration.y + self.acc_normal.sample(&mut rng),
-                acceleration.z + self.acc_normal.sample(&mut rng),
-            ],
-            gyro: [
-                gyro.x + self.gyro_normal.sample(&mut rng),
-                gyro.y + self.gyro_normal.sample(&mut rng),
-                gyro.z + self.gyro_normal.sample(&mut rng),
-            ],
+            acc: acc.into(),
+            gyro: gyro.into(),
         };
 
         self.tx.send(SensorSnapshot { imu_reading }).unwrap();
