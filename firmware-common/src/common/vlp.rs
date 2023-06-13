@@ -2,6 +2,7 @@ use heapless::Vec;
 
 #[macro_use]
 mod macros;
+pub mod application_layer;
 mod compression;
 mod encryption;
 mod framing;
