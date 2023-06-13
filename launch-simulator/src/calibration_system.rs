@@ -3,7 +3,7 @@ use std::f32::consts::PI;
 use bevy::prelude::*;
 use bevy_rapier3d::prelude::*;
 use firmware_common::driver::debugger::InteractiveCalibratorState as CalibratorState;
-use firmware_common::driver::debugger::{Axis, DebuggerEvent, Direction, Event};
+use firmware_common::driver::debugger::{Axis, DebuggerTargetEvent, Direction, Event};
 use nalgebra::{UnitQuaternion, Vector3};
 
 use crate::{
@@ -13,7 +13,7 @@ use crate::{
 
 pub fn calibration_system(
     mut commands: Commands,
-    mut ev_debugger: EventReader<DebuggerEvent>,
+    mut ev_debugger: EventReader<DebuggerTargetEvent>,
     avionics_transform: Query<&Transform, With<AvionicsMarker>>,
     avionics_entity: Query<Entity, With<AvionicsMarker>>,
 ) {
@@ -21,7 +21,7 @@ pub fn calibration_system(
     let avionics_entity = avionics_entity.iter().next().unwrap();
     for ev in ev_debugger.iter() {
         match ev {
-            DebuggerEvent::Calibrating(CalibratorState::WaitingStill) => {
+            DebuggerTargetEvent::Calibrating(CalibratorState::WaitingStill) => {
                 let joint = FixedJointBuilder::new()
                     .local_anchor1(Vec3::new(0.0, 0.0, 0.0))
                     .local_anchor2(Vec3::new(0.0, 0.0, 0.0));
@@ -65,7 +65,7 @@ pub fn calibration_system(
                     .insert(ImpulseJoint::new(avionics_entity, joint))
                     .insert(player);
             }
-            DebuggerEvent::Calibrating(CalibratorState::State(
+            DebuggerTargetEvent::Calibrating(CalibratorState::State(
                 Axis::X,
                 Direction::Plus,
                 Event::End,
@@ -119,7 +119,7 @@ pub fn calibration_system(
                     .insert(ImpulseJoint::new(avionics_entity, joint))
                     .insert(player);
             }
-            DebuggerEvent::Calibrating(CalibratorState::State(
+            DebuggerTargetEvent::Calibrating(CalibratorState::State(
                 Axis::X,
                 Direction::Minus,
                 Event::End,
@@ -166,7 +166,7 @@ pub fn calibration_system(
                     .insert(ImpulseJoint::new(avionics_entity, joint))
                     .insert(player);
             }
-            DebuggerEvent::Calibrating(CalibratorState::State(
+            DebuggerTargetEvent::Calibrating(CalibratorState::State(
                 Axis::Y,
                 Direction::Plus,
                 Event::End,
@@ -220,7 +220,7 @@ pub fn calibration_system(
                     .insert(ImpulseJoint::new(avionics_entity, joint))
                     .insert(player);
             }
-            DebuggerEvent::Calibrating(CalibratorState::State(
+            DebuggerTargetEvent::Calibrating(CalibratorState::State(
                 Axis::Y,
                 Direction::Minus,
                 Event::End,
@@ -272,7 +272,7 @@ pub fn calibration_system(
                     .insert(ImpulseJoint::new(avionics_entity, joint))
                     .insert(player);
             }
-            DebuggerEvent::Calibrating(CalibratorState::State(
+            DebuggerTargetEvent::Calibrating(CalibratorState::State(
                 Axis::Z,
                 Direction::Plus,
                 Event::End,
@@ -332,7 +332,7 @@ pub fn calibration_system(
                     .insert(ImpulseJoint::new(avionics_entity, joint))
                     .insert(player);
             }
-            DebuggerEvent::Calibrating(CalibratorState::State(
+            DebuggerTargetEvent::Calibrating(CalibratorState::State(
                 Axis::Z,
                 Direction::Minus,
                 Event::End,
@@ -385,7 +385,7 @@ pub fn calibration_system(
                     .insert(ImpulseJoint::new(avionics_entity, joint))
                     .insert(player);
             }
-            DebuggerEvent::Calibrating(CalibratorState::State(
+            DebuggerTargetEvent::Calibrating(CalibratorState::State(
                 Axis::X,
                 Direction::Rotation,
                 Event::Start,
@@ -447,7 +447,7 @@ pub fn calibration_system(
                     .insert(ImpulseJoint::new(avionics_entity, joint))
                     .insert(player);
             }
-            DebuggerEvent::Calibrating(CalibratorState::State(
+            DebuggerTargetEvent::Calibrating(CalibratorState::State(
                 Axis::X,
                 Direction::Rotation,
                 Event::End,
@@ -502,7 +502,7 @@ pub fn calibration_system(
                     .insert(ImpulseJoint::new(avionics_entity, joint))
                     .insert(player);
             }
-            DebuggerEvent::Calibrating(CalibratorState::State(
+            DebuggerTargetEvent::Calibrating(CalibratorState::State(
                 Axis::Y,
                 Direction::Rotation,
                 Event::Start,
@@ -564,7 +564,7 @@ pub fn calibration_system(
                     .insert(ImpulseJoint::new(avionics_entity, joint))
                     .insert(player);
             }
-            DebuggerEvent::Calibrating(CalibratorState::State(
+            DebuggerTargetEvent::Calibrating(CalibratorState::State(
                 Axis::Y,
                 Direction::Rotation,
                 Event::End,
@@ -619,7 +619,7 @@ pub fn calibration_system(
                     .insert(ImpulseJoint::new(avionics_entity, joint))
                     .insert(player);
             }
-            DebuggerEvent::Calibrating(CalibratorState::State(
+            DebuggerTargetEvent::Calibrating(CalibratorState::State(
                 Axis::Z,
                 Direction::Rotation,
                 Event::Start,
@@ -683,7 +683,9 @@ pub fn calibration_system(
                     .insert(ImpulseJoint::new(avionics_entity, joint))
                     .insert(player);
             }
-            DebuggerEvent::Calibrating(CalibratorState::Success | CalibratorState::Failure) => {
+            DebuggerTargetEvent::Calibrating(
+                CalibratorState::Success | CalibratorState::Failure,
+            ) => {
                 let joint = FixedJointBuilder::new()
                     .local_anchor1(Vec3::new(0.0, 0.0, 0.0))
                     .local_anchor2(Vec3::new(0.0, 0.0, 0.0));

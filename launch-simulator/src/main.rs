@@ -14,14 +14,14 @@ use bevy::{
 use bevy_egui::{egui, EguiContexts, EguiPlugin};
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use bevy_rapier3d::prelude::*;
-use firmware_common::driver::debugger::DebuggerEvent;
+use firmware_common::driver::debugger::DebuggerTargetEvent;
 use ground_test::create_ground_test;
 use keyframe::animation_system;
 use launch::{create_launch, ignition_handler};
 use motor::{motor_ignitor, motor_system};
 use rocket::{rocket_camera_tracking, rocket_chute_system};
 use virt_drivers::{
-    debugger::{create_debugger, DebuggerReceiver},
+    debugger::{create_debugger, DebuggerHost},
     sensors::{create_sensors, SensorSender},
     serial::{create_virtual_serial, VirtualSerial},
 };
@@ -59,7 +59,7 @@ fn main() {
         .add_plugin(RapierPhysicsPlugin::<NoUserData>::default())
         .add_plugin(RapierDebugRenderPlugin::default())
         .add_plugin(PanOrbitCameraPlugin)
-        .add_event::<DebuggerEvent>()
+        .add_event::<DebuggerTargetEvent>()
         .add_event::<UIEvent>()
         .add_event::<RocketEvent>()
         .add_startup_system(setup_graphics)
@@ -209,8 +209,8 @@ fn virtual_sensors(
 }
 
 fn debugger_receiver(
-    mut debugger_receiver: Query<&mut DebuggerReceiver>,
-    mut ev_debugger: EventWriter<DebuggerEvent>,
+    mut debugger_receiver: Query<&mut DebuggerHost>,
+    mut ev_debugger: EventWriter<DebuggerTargetEvent>,
 ) {
     let mut debugger_receiver = debugger_receiver.iter_mut().next().unwrap();
     while let Some(event) = debugger_receiver.try_recv() {

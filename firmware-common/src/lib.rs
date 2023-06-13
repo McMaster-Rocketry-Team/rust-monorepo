@@ -11,7 +11,7 @@ use crate::{
     common::{
         console::console::run_console, device_manager::prelude::*, files::CALIBRATION_FILE_TYPE,
     },
-    driver::debugger::DebuggerEvent,
+    driver::debugger::DebuggerTargetEvent,
     ground_test::gcm::ground_test_gcm,
 };
 use defmt::*;

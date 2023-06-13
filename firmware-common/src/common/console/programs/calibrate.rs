@@ -9,7 +9,9 @@ use crate::{
     claim_devices,
     common::{device_manager::prelude::*, files::CALIBRATION_FILE_TYPE, ticker::Ticker},
     device_manager_type,
-    driver::{buzzer::Buzzer, debugger::DebuggerEvent, imu::IMU, serial::Serial, timer::Timer},
+    driver::{
+        buzzer::Buzzer, debugger::DebuggerTargetEvent, imu::IMU, serial::Serial, timer::Timer,
+    },
 };
 
 pub struct Calibrate {}
@@ -60,7 +62,7 @@ impl Calibrate {
                     Idle => {}
                 }
 
-                debugger.dispatch(DebuggerEvent::Calibrating(state));
+                debugger.dispatch(DebuggerTargetEvent::Calibrating(state));
 
                 if let Success = state {
                     let cal_info = calibrator.get_calibration_info().unwrap();

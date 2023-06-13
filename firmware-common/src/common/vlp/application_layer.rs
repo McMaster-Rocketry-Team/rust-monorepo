@@ -6,6 +6,7 @@ pub trait RadioApplicationLayer {
     async fn receive(&mut self, timeout_ms: f64) -> Result<ApplicationLayerPackage, Self::Error>;
 }
 
+#[derive(Debug, Clone, defmt::Format)]
 pub enum ApplicationLayerPackage {
     // stand the rocket vertically so VLF can know which angle it is mounted at
     RocketVerticalCalibration,
