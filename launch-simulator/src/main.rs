@@ -14,16 +14,17 @@ use bevy::{
 use bevy_egui::{egui, EguiContexts, EguiPlugin};
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use bevy_rapier3d::prelude::*;
-use firmware_common::driver::debugger::DebuggerTargetEvent;
+use firmware_common::driver::debugger::{ApplicationLayerPackage, DebuggerTargetEvent};
 use ground_test::create_ground_test;
 use keyframe::animation_system;
 use launch::{create_launch, ignition_handler};
 use motor::{motor_ignitor, motor_system};
-use rocket::{rocket_camera_tracking, rocket_chute_system};
+use rocket::{rocket_camera_tracking, rocket_chute_system, rocket_pyro_receiver_system};
 use virt_drivers::{
     debugger::{create_debugger, DebuggerHost},
+    pyro::create_pyro,
     sensors::{create_sensors, SensorSender},
-    serial::{create_virtual_serial, VirtualSerial},
+    serial::{create_virtual_serial, VirtualSerial}, arming::create_hardware_arming,
 };
 mod avionics;
 mod calibration_system;
@@ -77,6 +78,7 @@ fn main() {
         .add_system(motor_ignitor)
         .add_system(motor_system)
         .add_system(rocket_camera_tracking)
+        .add_system(rocket_pyro_receiver_system)
         .run();
 }
 
@@ -126,14 +128,20 @@ fn setup_physics(mut commands: Commands) {
 }
 
 fn setup_virtual_avionics(mut commands: Commands) {
-    let (debugger, debugger_rx) = create_debugger();
+    let (debugger, debugger_host) = create_debugger();
     let (serial_a, serial_b) = create_virtual_serial();
     let (sensor_tx, imu) = create_sensors();
+    let (arming, arming_ctrl) = create_hardware_arming();
+    let (pyro_1, pyro_1_receiver) = create_pyro(1);
+    let (pyro_2, pyro_2_receiver) = create_pyro(2);
     let ready_barrier = Arc::new(Barrier::new(2));
 
-    commands.spawn(debugger_rx);
+    commands.spawn(debugger_host);
+    commands.spawn(arming_ctrl);
     commands.spawn(serial_b);
     commands.spawn(sensor_tx);
+    commands.spawn(pyro_1_receiver);
+    commands.spawn(pyro_2_receiver);
     commands.spawn(ReadyBarrier(Some(ready_barrier.clone())));
 
     start_avionics_thread(
@@ -141,6 +149,9 @@ fn setup_virtual_avionics(mut commands: Commands) {
         imu,
         serial_a,
         debugger,
+        arming,
+        pyro_1,
+        pyro_2,
         ready_barrier,
     );
 }
@@ -151,9 +162,11 @@ fn ui_system(
     mut ev_ui: EventWriter<UIEvent>,
     mut ev_rocket: EventWriter<RocketEvent>,
     mut serial: Query<&mut VirtualSerial>,
+    mut debugger_host: Query<&mut DebuggerHost>,
     avionics_transform: Query<&Transform, With<AvionicsMarker>>,
 ) {
     let mut serial = serial.iter_mut().next().unwrap();
+    let mut debugger_host = debugger_host.iter_mut().next().unwrap();
     let avionics_transform = avionics_transform.iter().next().unwrap();
     egui::Window::new("Controls").show(contexts.ctx_mut(), |ui| {
         ui.label(format!("FPS: {:.2}", 1.0 / time.delta_seconds_f64()));
@@ -183,6 +196,9 @@ fn ui_system(
         ui.heading("Launch");
         if ui.button("Setup Rocket").clicked() {
             ev_ui.send(UIEvent::SetupLaunch);
+        }
+        if ui.button("Vertical Calibration").clicked() {
+            debugger_host.send(ApplicationLayerPackage::VerticalCalibration);
         }
         if ui.button("Ignition").clicked() {
             ev_ui.send(UIEvent::Ignition);

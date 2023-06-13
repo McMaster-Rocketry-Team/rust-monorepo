@@ -1,7 +1,22 @@
-use crate::RocketEvent;
+use crate::{virt_drivers::pyro::PyroReceiver, RocketEvent};
 use bevy::prelude::*;
 use bevy_panorbit_camera::PanOrbitCamera;
 use bevy_rapier3d::prelude::*;
+
+pub fn rocket_pyro_receiver_system(
+    mut ev_rocket: EventWriter<RocketEvent>,
+    mut pyro_receivers: Query<&mut PyroReceiver>,
+) {
+    for mut pyro_receiver in pyro_receivers.iter_mut() {
+        if pyro_receiver.try_recv().is_some() {
+            if pyro_receiver.pyro_channel == 1 {
+                ev_rocket.send(RocketEvent::EjectMainChute);
+            } else {
+                ev_rocket.send(RocketEvent::EjectDrogueChute);
+            }
+        }
+    }
+}
 
 pub fn rocket_chute_system(
     mut commands: Commands,
@@ -76,6 +91,7 @@ pub fn rocket_camera_tracking(
     }
 }
 
+#[allow(non_snake_case)]
 pub mod RocketMarker {
     use bevy::prelude::Component;
 

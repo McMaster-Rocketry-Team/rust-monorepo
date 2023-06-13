@@ -1,11 +1,11 @@
 use crate::virt_drivers::{
-    buzzer::SpeakerBuzzer, debugger::Debugger, sensors::VirtualIMU, serial::VirtualSerial,
-    timer::TokioTimer,
+    arming::VirtualHardwareArming, buzzer::SpeakerBuzzer, debugger::Debugger, pyro::VirtualPyro,
+    sensors::VirtualIMU, serial::VirtualSerial, timer::TokioTimer,
 };
 use firmware_common::{
     driver::{
         adc::DummyADC,
-        arming::DummyHardwareArming,
+        arming::HardwareArming,
         barometer::DummyBarometer,
         debugger::Debugger as DebuggerDriver,
         dummy_radio_kind::DummyRadioKind,
@@ -13,7 +13,7 @@ use firmware_common::{
         imu::IMU,
         indicator::DummyIndicator,
         meg::DummyMegnetometer,
-        pyro::{DummyContinuity, DummyPyroCtrl},
+        pyro::{DummyContinuity, DummyPyroCtrl, PyroCtrl},
         rng::DummyRNG,
         serial::Serial,
         sys_reset::PanicSysReset,
@@ -21,8 +21,11 @@ use firmware_common::{
     },
     init, DeviceManager,
 };
-use std::{path::PathBuf, sync::{Arc, Barrier}};
 use std::thread;
+use std::{
+    path::PathBuf,
+    sync::{Arc, Barrier},
+};
 use vlfs::DummyCrc;
 use vlfs_host::FileFlash;
 
@@ -31,11 +34,22 @@ pub fn start_avionics_thread(
     imu: VirtualIMU,
     serial: VirtualSerial,
     debugger: Debugger,
-    ready_barrier: Arc<Barrier>
+    arming: VirtualHardwareArming,
+    pyro_1: VirtualPyro,
+    pyro_2: VirtualPyro,
+    ready_barrier: Arc<Barrier>,
 ) {
     thread::spawn(move || {
         ready_barrier.wait();
-        avionics(flash_file_name, imu, serial, debugger);
+        avionics(
+            flash_file_name,
+            imu,
+            serial,
+            arming,
+            pyro_1,
+            pyro_2,
+            debugger,
+        );
     });
 }
 
@@ -44,6 +58,9 @@ async fn avionics(
     flash_file_name: PathBuf,
     imu: impl IMU,
     serial: impl Serial,
+    arming: impl HardwareArming,
+    pyro_1: impl PyroCtrl,
+    pyro_2: impl PyroCtrl,
     debugger: impl DebuggerDriver,
 ) {
     let timer = TokioTimer {};
@@ -55,10 +72,10 @@ async fn avionics(
         imu,
         DummyADC::new(timer),
         DummyADC::new(timer),
+        (DummyContinuity::new(timer), pyro_1),
+        (DummyContinuity::new(timer), pyro_2),
         (DummyContinuity::new(timer), DummyPyroCtrl {}),
-        (DummyContinuity::new(timer), DummyPyroCtrl {}),
-        (DummyContinuity::new(timer), DummyPyroCtrl {}),
-        DummyHardwareArming::new(timer),
+        arming,
         serial,
         DummyUSB::new(timer),
         SpeakerBuzzer::new(),
