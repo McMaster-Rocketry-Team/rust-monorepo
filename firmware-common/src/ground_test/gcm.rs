@@ -1,5 +1,3 @@
-use core::str::FromStr;
-
 use defmt::info;
 use lora_phy::mod_params::{Bandwidth, CodingRate, SpreadingFactor};
 
@@ -10,7 +8,6 @@ use crate::{
     device_manager_type,
     driver::{gps::GPS, indicator::Indicator, timer::Timer},
 };
-use heapless::String;
 
 #[inline(never)]
 pub async fn ground_test_gcm(device_manager: device_manager_type!()) -> ! {

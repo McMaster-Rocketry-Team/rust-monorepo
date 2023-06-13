@@ -7,7 +7,7 @@ use crate::driver::{
     arming::HardwareArming,
     barometer::Barometer,
     buzzer::Buzzer,
-    debugger::{Debugger, RadioApplicationLayer},
+    debugger::{Debugger, RadioApplicationClient},
     gps::{GPSCtrl, GPS},
     imu::IMU,
     indicator::Indicator,
@@ -205,7 +205,7 @@ impl<
     }
 
     // TODO get application layer from lora
-    pub async fn get_radio_application_layer(&self) -> Option<impl RadioApplicationLayer> {
+    pub async fn get_radio_application_layer(&self) -> Option<impl RadioApplicationClient> {
         self.debugger.get_vlp_application_layer()
     }
 }

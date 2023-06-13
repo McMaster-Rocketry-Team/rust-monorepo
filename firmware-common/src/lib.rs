@@ -6,22 +6,17 @@
 
 mod fmt;
 
+use futures::join;
+
 use crate::{
     avionics::avionics_main,
-    common::{
-        console::console::run_console, device_manager::prelude::*, files::CALIBRATION_FILE_TYPE,
-    },
-    driver::debugger::DebuggerTargetEvent,
+    common::{console::console::run_console, device_manager::prelude::*},
     ground_test::gcm::ground_test_gcm,
 };
 use defmt::*;
-use ferraris_calibration::CalibrationInfo;
-use vlfs::{io_traits::AsyncReader, StatFlash, VLFS};
+use vlfs::{StatFlash, VLFS};
 
-use futures::{
-    future::{join4, select},
-    pin_mut,
-};
+use futures::{future::select, pin_mut};
 
 use crate::driver::timer::VLFSTimerWrapper;
 use crate::gcm::gcm_main;
@@ -54,42 +49,6 @@ pub async fn init(
     flash.reset().await.ok();
     let mut fs = VLFS::new(flash, crc);
     unwrap!(fs.init().await);
-
-    let testing_fut = async {
-        let mut iter = fs.files_iter(Some(CALIBRATION_FILE_TYPE)).await;
-        let calibration_file = iter.next();
-        drop(iter);
-        if let Some(calibration_file) = calibration_file {
-            log_info!("Calibration file found, id: {:?}", calibration_file.file_id);
-            let mut file = unwrap!(fs.open_file_for_read(calibration_file.file_id).await);
-            let mut buffer = [0u8; 156];
-            match file.read_slice(&mut buffer, 156).await {
-                Ok((buffer, _)) => {
-                    let cal_info = CalibrationInfo::deserialize(buffer.try_into().unwrap());
-                    log_info!("{:?}", cal_info);
-                }
-                Err(_) => defmt::panic!(),
-            }
-            file.close().await;
-        } else {
-            log_info!("No calibration file found");
-        }
-        // claim_devices!(device_manager, imu);
-        // unwrap!(imu.wait_for_power_on().await);
-        // unwrap!(imu.reset().await);
-        // let mut ticker = Ticker::every(timer, 100.0);
-        // unwrap!(meg.reset().await);
-        // info!("meg resetted");
-        // let start_time = timer.now_mills();
-        // loop {
-        //     info!("imu: {}", imu.read().await);
-        //     ticker.next().await;
-        // }
-        // info!(
-        //     "Time taken: {}",
-        //     (timer.now_mills() - start_time) / 10.0
-        // );
-    };
 
     let usb_connected = {
         let timeout_fut = timer.sleep(500.0);
@@ -154,7 +113,10 @@ pub async fn init(
         };
     };
 
-    join4(main_fut, serial_console, usb_console, testing_fut).await;
+    #[allow(unreachable_code)]
+    {
+        join!(main_fut, serial_console, usb_console);
+    }
 
     defmt::unreachable!()
 }

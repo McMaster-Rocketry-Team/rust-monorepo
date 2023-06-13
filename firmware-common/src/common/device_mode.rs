@@ -1,4 +1,3 @@
-use defmt::info;
 use vlfs::io_traits::{AsyncReader, AsyncWriter};
 use vlfs::{Crc, Flash, LsFileEntry, VLFSError, VLFS};
 

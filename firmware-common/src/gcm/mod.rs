@@ -27,4 +27,5 @@ use embassy_sync::blocking_mutex::{raw::CriticalSectionRawMutex, Mutex as Blocki
 use futures::future::join3;
 use heapless::String;
 
+#[inline(never)]
 pub async fn gcm_main(fs: &VLFS<impl Flash, impl Crc>, device_manager: device_manager_type!()) {}

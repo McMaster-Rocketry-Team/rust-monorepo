@@ -1,16 +1,19 @@
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 use bevy::prelude::Component;
-use firmware_common::driver::debugger::{
-    ApplicationLayerPackage, Debugger as DebuggerDriver, DebuggerTargetEvent, RadioApplicationLayer,
+use embassy_sync::{
+    blocking_mutex::raw::RawMutex,
+    channel::{Receiver, Sender},
 };
+use firmware_common::driver::debugger::{
+    ApplicationLayerRxPackage, ApplicationLayerTxPackage, Debugger as DebuggerDriver,
+    DebuggerTargetEvent, RadioApplicationClient,
+};
+use tokio::join;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
-use tokio::time::timeout;
-
 #[derive(Component)]
 pub struct DebuggerHost {
-    tx: UnboundedSender<ApplicationLayerPackage>,
+    tx: UnboundedSender<ApplicationLayerRxPackage>,
     rx: UnboundedReceiver<DebuggerTargetEvent>,
 }
 
@@ -19,7 +22,7 @@ impl DebuggerHost {
         self.rx.try_recv().ok()
     }
 
-    pub fn send(&mut self, package: ApplicationLayerPackage) {
+    pub fn send(&mut self, package: ApplicationLayerRxPackage) {
         self.tx.send(package).unwrap();
     }
 }
@@ -27,7 +30,7 @@ impl DebuggerHost {
 #[derive(Clone)]
 pub struct Debugger {
     tx: UnboundedSender<DebuggerTargetEvent>,
-    rx: Arc<Mutex<Option<UnboundedReceiver<ApplicationLayerPackage>>>>,
+    rx: Arc<Mutex<Option<UnboundedReceiver<ApplicationLayerRxPackage>>>>,
 }
 
 impl DebuggerDriver for Debugger {
@@ -51,33 +54,40 @@ impl DebuggerDriver for Debugger {
 
 pub struct DebuggerApplicationLayer {
     tx: UnboundedSender<DebuggerTargetEvent>,
-    rx: UnboundedReceiver<ApplicationLayerPackage>,
+    rx: UnboundedReceiver<ApplicationLayerRxPackage>,
 }
 
-impl RadioApplicationLayer for DebuggerApplicationLayer {
+impl RadioApplicationClient for DebuggerApplicationLayer {
     type Error = ();
 
-    async fn send(&mut self, package: ApplicationLayerPackage) -> Result<(), Self::Error> {
-        self.tx
-            .send(DebuggerTargetEvent::ApplicationLayerPackage(package))
-            .unwrap();
-        Ok(())
-    }
+    async fn run<'a, 'b, R: RawMutex, const N: usize, const M: usize>(
+        &mut self,
+        radio_tx: Receiver<'a, R, ApplicationLayerTxPackage, N>,
+        radio_rx: Sender<'b, R, ApplicationLayerRxPackage, M>,
+    ) -> ! {
+        let send_fut = async {
+            loop {
+                let package = radio_tx.recv().await;
+                self.tx
+                    .send(DebuggerTargetEvent::ApplicationLayerPackage(package))
+                    .unwrap();
+            }
+        };
+        let recev_fut = async {
+            loop {
+                let package = self.rx.recv().await.unwrap();
+                radio_rx.send(package).await;
+            }
+        };
 
-    async fn receive(&mut self, timeout_ms: f64) -> Result<ApplicationLayerPackage, Self::Error> {
-        if let Ok(Some(package)) =
-            timeout(Duration::from_millis(timeout_ms as u64), self.rx.recv()).await
-        {
-            Ok(package)
-        } else {
-            Err(())
-        }
+        join!(send_fut, recev_fut);
+        unreachable!()
     }
 }
 
 pub fn create_debugger() -> (Debugger, DebuggerHost) {
     let (tx, rx) = unbounded_channel::<DebuggerTargetEvent>();
-    let (package_tx, package_rx) = unbounded_channel::<ApplicationLayerPackage>();
+    let (package_tx, package_rx) = unbounded_channel::<ApplicationLayerRxPackage>();
     (
         Debugger {
             tx,

@@ -6,7 +6,7 @@ use crate::common::gps_parser::GPSLocation;
 use crate::common::moving_average::NoSumSMA;
 use crate::common::sensor_snapshot::PartialSensorSnapshot;
 use eskf::ESKF;
-use ferraris_calibration::IMUReading;
+use ferraris_calibration::CalibrationInfo;
 use heapless::Deque;
 use nalgebra::Matrix3;
 use nalgebra::Point3;
@@ -26,12 +26,32 @@ pub struct Variances {
     pub baro_altemeter: f32,
 }
 
+impl Variances {
+    pub fn from_imu_cal_info(imu_cal_info: &CalibrationInfo, baro_altemeter_var: f32) -> Self {
+        Self {
+            acc: imu_cal_info.acc_variance,
+            gyro: imu_cal_info.gyro_variance,
+            baro_altemeter: baro_altemeter_var,
+        }
+    }
+}
+
+impl Default for Variances {
+    fn default() -> Self {
+        Self {
+            acc: Vector3::new(0.3, 0.3, 0.3),
+            gyro: Vector3::new(0.3, 0.3, 0.3),
+            baro_altemeter: 2.0,
+        }
+    }
+}
+
 pub struct Config {
+    pub drogue_chute_minimum_time_ms: f64,
+    pub drogue_chute_minimum_altitude_agl: f32,
     pub drogue_chute_delay_ms: f64,
     pub main_chute_delay_ms: f64,
     pub main_chute_altitude_agl: f32,
-    pub main_chute_minimum_time_ms: f64,
-    pub main_chute_minimum_altitude_agl: f32,
 }
 
 pub enum FlightCoreState {
@@ -99,11 +119,10 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
     pub fn new(
         config: Config,
         event_dispatcher: D,
-        rocket_upright_imu_reading: IMUReading,
+        rocket_upright_acc: Vector3<f32>,
         variances: Variances,
     ) -> Self {
-        let upright_gravity_vector = Vector3::from(rocket_upright_imu_reading.acc);
-        let sky_vector = -upright_gravity_vector.normalize();
+        let sky_vector = -rocket_upright_acc.normalize();
         let plus_y_vector = Vector3::<f32>::new(0.0, 1.0, 0.0);
         Self {
             event_dispatcher,
@@ -318,13 +337,14 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
                 launch_timestamp,
             } => {
                 let altitude_agl = self.eskf.position.z_up_to_y_up().y - *launch_altitude;
-                if altitude_agl < self.config.main_chute_minimum_altitude_agl {
-                    self.event_dispatcher.dispatch(FlightCoreEvent::DidNotReachMinApogee);
+                if altitude_agl < self.config.drogue_chute_minimum_altitude_agl {
+                    self.event_dispatcher
+                        .dispatch(FlightCoreEvent::DidNotReachMinApogee);
                     self.state = FlightCoreState::Landed {};
                 } else {
                     if snapshot.timestamp >= *deploy_time
                         && snapshot.timestamp - *launch_timestamp
-                            >= self.config.main_chute_minimum_time_ms
+                            >= self.config.drogue_chute_minimum_time_ms
                     {
                         self.event_dispatcher
                             .dispatch(FlightCoreEvent::DeployDrogue);

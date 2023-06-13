@@ -16,8 +16,8 @@ pub struct CalibrationInfo {
     pub(crate) b_g: Vector3<f32>,
     pub(crate) acc_mat: Matrix3<f32>,
     pub(crate) gyro_mat: Matrix3<f32>,
-    pub(crate) acc_variance: Vector3<f32>,
-    pub(crate) gyro_variance: Vector3<f32>,
+    pub acc_variance: Vector3<f32>,
+    pub gyro_variance: Vector3<f32>,
 }
 
 impl defmt::Format for CalibrationInfo {

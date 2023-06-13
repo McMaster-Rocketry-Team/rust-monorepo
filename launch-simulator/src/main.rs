@@ -14,7 +14,7 @@ use bevy::{
 use bevy_egui::{egui, EguiContexts, EguiPlugin};
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use bevy_rapier3d::prelude::*;
-use firmware_common::driver::debugger::{ApplicationLayerPackage, DebuggerTargetEvent};
+use firmware_common::driver::debugger::{ApplicationLayerRxPackage, DebuggerTargetEvent};
 use ground_test::create_ground_test;
 use keyframe::animation_system;
 use launch::{create_launch, ignition_handler};
@@ -205,7 +205,7 @@ fn ui_system(
             ev_ui.send(UIEvent::SetupLaunch);
         }
         if ui.button("Vertical Calibration").clicked() {
-            debugger_host.send(ApplicationLayerPackage::VerticalCalibration);
+            debugger_host.send(ApplicationLayerRxPackage::VerticalCalibration);
         }
         ui.toggle_value(&mut arming_state, "Arming");
         if ui.button("Ignition").clicked() {

@@ -15,6 +15,13 @@ where
             file_type,
         }
     }
+
+    pub async fn find_file_by_type(&self, file_type: FileType) -> Option<LsFileEntry> {
+        let mut iter = self.files_iter(Some(file_type)).await;
+        let file = iter.next();
+        drop(iter);
+        file
+    }
 }
 
 #[derive(Debug, Clone, defmt::Format)]

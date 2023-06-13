@@ -1,4 +1,11 @@
-pub use crate::common::vlp::application_layer::{ApplicationLayerPackage, RadioApplicationLayer};
+pub use crate::common::vlp::application_layer::RadioApplicationClient;
+pub use crate::common::vlp::application_layer::{
+    ApplicationLayerRxPackage, ApplicationLayerTxPackage,
+};
+use embassy_sync::{
+    blocking_mutex::raw::RawMutex,
+    channel::{Receiver, Sender},
+};
 pub use ferraris_calibration::interactive_calibrator::{
     Axis, Direction, Event, InteractiveCalibratorState,
 };
@@ -7,11 +14,11 @@ pub use ferraris_calibration::CalibrationInfo;
 #[derive(Debug, Clone)]
 pub enum DebuggerTargetEvent {
     Calibrating(InteractiveCalibratorState),
-    ApplicationLayerPackage(ApplicationLayerPackage),
+    ApplicationLayerPackage(ApplicationLayerTxPackage),
 }
 
 pub trait Debugger: Clone {
-    type ApplicationLayer: RadioApplicationLayer;
+    type ApplicationLayer: RadioApplicationClient;
     fn dispatch(&self, event: DebuggerTargetEvent);
     fn get_vlp_application_layer(&self) -> Option<Self::ApplicationLayer>;
 }
@@ -29,14 +36,14 @@ impl Debugger for DummyDebugger {
 
 pub struct DummyApplicationLayer {}
 
-impl RadioApplicationLayer for DummyApplicationLayer {
+impl RadioApplicationClient for DummyApplicationLayer {
     type Error = ();
 
-    async fn send(&mut self, _package: ApplicationLayerPackage) -> Result<(), Self::Error> {
-        unimplemented!()
-    }
-
-    async fn receive(&mut self, _timeout_ms: f64) -> Result<ApplicationLayerPackage, Self::Error> {
+    async fn run<'a, 'b, R: RawMutex, const N: usize, const M: usize>(
+        &mut self,
+        _radio_tx: Receiver<'a, R, ApplicationLayerTxPackage, N>,
+        _radio_rx: Sender<'b, R, ApplicationLayerRxPackage, M>,
+    ) -> ! {
         unimplemented!()
     }
 }

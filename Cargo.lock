@@ -2621,6 +2621,7 @@ dependencies = [
  "bevy_panorbit_camera",
  "bevy_rapier3d",
  "critical-section",
+ "embassy-sync",
  "firmware-common",
  "nalgebra 0.32.2",
  "rand",
