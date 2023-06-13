@@ -33,7 +33,7 @@ impl ChangeMode {
         info!("Changing device mode to {:?}", new_device_mode);
         try_or_warn!(write_device_mode(vlfs, new_device_mode).await);
 
-        claim_devices!(device_manager, device_management);
-        device_management.reset()
+        claim_devices!(device_manager, sys_reset);
+        sys_reset.reset()
     }
 }

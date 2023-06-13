@@ -21,10 +21,11 @@ use launch::{create_launch, ignition_handler};
 use motor::{motor_ignitor, motor_system};
 use rocket::{rocket_camera_tracking, rocket_chute_system, rocket_pyro_receiver_system};
 use virt_drivers::{
+    arming::{create_hardware_arming, VirtualHardwareArmingController},
     debugger::{create_debugger, DebuggerHost},
     pyro::create_pyro,
     sensors::{create_sensors, SensorSender},
-    serial::{create_virtual_serial, VirtualSerial}, arming::create_hardware_arming,
+    serial::{create_virtual_serial, VirtualSerial},
 };
 mod avionics;
 mod calibration_system;
@@ -60,6 +61,7 @@ fn main() {
         .add_plugin(RapierPhysicsPlugin::<NoUserData>::default())
         .add_plugin(RapierDebugRenderPlugin::default())
         .add_plugin(PanOrbitCameraPlugin)
+        .add_state::<ArmingState>()
         .add_event::<DebuggerTargetEvent>()
         .add_event::<UIEvent>()
         .add_event::<RocketEvent>()
@@ -162,11 +164,16 @@ fn ui_system(
     mut ev_ui: EventWriter<UIEvent>,
     mut ev_rocket: EventWriter<RocketEvent>,
     mut serial: Query<&mut VirtualSerial>,
+    mut arming_ctrl: Query<&mut VirtualHardwareArmingController>,
     mut debugger_host: Query<&mut DebuggerHost>,
+    mut s_arming_state: ResMut<State<ArmingState>>,
     avionics_transform: Query<&Transform, With<AvionicsMarker>>,
 ) {
+    let arming_state_before: bool = s_arming_state.as_mut().0.into();
+    let mut arming_state = arming_state_before;
     let mut serial = serial.iter_mut().next().unwrap();
     let mut debugger_host = debugger_host.iter_mut().next().unwrap();
+    let mut arming_ctrl = arming_ctrl.iter_mut().next().unwrap();
     let avionics_transform = avionics_transform.iter().next().unwrap();
     egui::Window::new("Controls").show(contexts.ctx_mut(), |ui| {
         ui.label(format!("FPS: {:.2}", 1.0 / time.delta_seconds_f64()));
@@ -200,10 +207,42 @@ fn ui_system(
         if ui.button("Vertical Calibration").clicked() {
             debugger_host.send(ApplicationLayerPackage::VerticalCalibration);
         }
+        ui.toggle_value(&mut arming_state, "Arming");
         if ui.button("Ignition").clicked() {
             ev_ui.send(UIEvent::Ignition);
         }
     });
+
+    if arming_state != arming_state_before {
+        arming_ctrl.set_arming(arming_state);
+        *s_arming_state = State(ArmingState::from(arming_state));
+    }
+}
+
+#[derive(States, Default, Debug, Clone, Copy, Hash, PartialEq, Eq)]
+enum ArmingState {
+    Armed,
+    #[default]
+    Disarmed,
+}
+
+impl From<bool> for ArmingState {
+    fn from(arming: bool) -> Self {
+        if arming {
+            ArmingState::Armed
+        } else {
+            ArmingState::Disarmed
+        }
+    }
+}
+
+impl Into<bool> for ArmingState {
+    fn into(self) -> bool {
+        match self {
+            ArmingState::Armed => true,
+            ArmingState::Disarmed => false,
+        }
+    }
 }
 
 fn virtual_sensors(

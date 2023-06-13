@@ -1,13 +1,13 @@
 use defmt::warn;
 use lora_phy::{mod_traits::RadioKind, LoRa};
-use vlfs::{Crc, Flash, StatFlash};
+use vlfs::{Crc, Flash};
 
 use crate::driver::{
     adc::ADC,
     arming::HardwareArming,
     barometer::Barometer,
     buzzer::Buzzer,
-    debugger::Debugger,
+    debugger::{Debugger, RadioApplicationLayer},
     gps::{GPSCtrl, GPS},
     imu::IMU,
     indicator::Indicator,
@@ -50,7 +50,7 @@ pub struct DeviceManager<
     G: GPS,
     GT: GPSCtrl,
 > {
-    pub(crate) device_management: Mutex<CriticalSectionRawMutex, D>,
+    pub(crate) sys_reset: Mutex<CriticalSectionRawMutex, D>,
     pub(crate) flash: Mutex<CriticalSectionRawMutex, F>,
     pub(crate) crc: Mutex<CriticalSectionRawMutex, C>,
     pub(crate) imu: Mutex<CriticalSectionRawMutex, I>,
@@ -137,7 +137,7 @@ impl<
     >
 {
     pub fn new(
-        device_management: D,
+        sys_reset: D,
         timer: T,
         flash: F,
         crc: C,
@@ -162,7 +162,7 @@ impl<
     ) -> Self {
         Self {
             debugger,
-            device_management: Mutex::new(device_management),
+            sys_reset: Mutex::new(sys_reset),
             flash: Mutex::new(flash),
             crc: Mutex::new(crc),
             imu: Mutex::new(imu),
@@ -202,6 +202,11 @@ impl<
                 }
             };
         }
+    }
+
+    // TODO get application layer from lora
+    pub async fn get_radio_application_layer(&self) -> Option<impl RadioApplicationLayer> {
+        self.debugger.get_vlp_application_layer()
     }
 }
 

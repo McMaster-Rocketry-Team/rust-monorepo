@@ -1,36 +1,30 @@
-use defmt::{info, unwrap};
-use lora_phy::{
-    mod_params::{Bandwidth, CodingRate, SpreadingFactor},
-    mod_traits::RadioKind,
-};
-use rkyv::{
-    ser::{serializers::BufferSerializer, Serializer},
-    Archive,
-};
-use vlfs::{io_traits::AsyncWriter, Crc, Flash, VLFS};
+use lora_phy::mod_traits::RadioKind;
+use vlfs::{Crc, Flash, VLFS};
 
 use crate::{
-    beacon::beacon_data::BeaconData,
     claim_devices,
-    common::{
-        device_manager::prelude::*, files::BEACON_SENDER_LOG_FILE_TYPE, gps_parser::GPSParser,
-    },
+    common::device_manager::prelude::*,
     device_manager_type,
-    driver::{
-        gps::GPS,
-        indicator::Indicator,
-        timer::{DelayUsWrapper, Timer},
-    },
+    driver::{gps::GPS, indicator::Indicator, timer::Timer},
 };
-use core::{cell::RefCell, fmt::Write};
-use embassy_sync::blocking_mutex::{raw::CriticalSectionRawMutex, Mutex as BlockingMutex};
-use futures::future::join3;
-use heapless::String;
 
 pub mod baro_reading_filter;
 pub mod flight_core;
 pub mod flight_core_event;
 
-pub async fn avionics_main(fs: &VLFS<impl Flash, impl Crc>, device_manager: device_manager_type!()){
+pub async fn avionics_main(
+    fs: &VLFS<impl Flash, impl Crc>,
+    device_manager: device_manager_type!(),
+) {
+    let timer = device_manager.timer;
+    claim_devices!(device_manager, buzzer);
 
+    buzzer.play(2000, 50.0).await;
+    timer.sleep(150.0).await;
+    buzzer.play(2000, 50.0).await;
+    timer.sleep(150.0).await;
+    buzzer.play(3000, 50.0).await;
+    timer.sleep(150.0).await;
+    buzzer.play(3000, 50.0).await;
+    timer.sleep(150.0).await;
 }
