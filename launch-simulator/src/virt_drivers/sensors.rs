@@ -3,6 +3,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+use bevy::log::info;
 use bevy::prelude::{Component, Transform};
 use bevy_rapier3d::prelude::Velocity;
 use firmware_common::driver::{
@@ -13,7 +14,6 @@ use nalgebra::{UnitQuaternion, Vector3};
 use rand;
 use rand_distr::{Distribution, Normal};
 use tokio::sync::watch::{self, Receiver, Sender};
-
 #[derive(Component)]
 pub struct SensorSender {
     tx: Sender<SensorSnapshot>,
@@ -48,9 +48,10 @@ impl SensorSender {
 
         let now = self.now_mills();
         let last_velocity = self.last_state.unwrap().1.linvel;
+
         let new_velocity = velocity.linvel;
         let acceleration =
-            (new_velocity - last_velocity) / (now - self.last_state.unwrap().0) as f32;
+            (new_velocity - last_velocity) / ((now - self.last_state.unwrap().0) / 1000.0) as f32;
 
         let gyro = velocity.angvel;
 

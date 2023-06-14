@@ -224,6 +224,7 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
                         .unwrap();
                 }
 
+                log_info!("acc_y_moving_average: {}", acc_y_moving_average.get_average());
                 // launch detection
                 if snapshot_history.is_full() && acc_y_moving_average.get_average() < -50.0 {
                     // backtrack 500ms to calculate launch angle

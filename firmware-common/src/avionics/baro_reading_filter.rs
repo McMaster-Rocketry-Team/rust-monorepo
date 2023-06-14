@@ -47,12 +47,12 @@ impl BaroReadingFilter {
         if baro_reading.timestamp < self.ignore_pressure_end_time {
             return BaroFilterOutput {
                 should_ignore: true,
-                baro_reading: baro_reading.clone(),
+                baro_reading: self.baro_reading_hold.clone().unwrap(),
             };
         } else {
             return BaroFilterOutput {
                 should_ignore: false,
-                baro_reading: self.baro_reading_hold.take().unwrap(),
+                baro_reading: baro_reading.clone(),
             };
         }
     }
