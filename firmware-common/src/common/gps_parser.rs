@@ -44,6 +44,7 @@ impl<T: Deref<Target = Nmea>> From<(f64, T)> for GPSLocation {
 
 pub struct GPSParser<T: Timer> {
     nmea: BlockingMutex<CriticalSectionRawMutex, RefCell<Nmea>>,
+    updated: BlockingMutex<CriticalSectionRawMutex, RefCell<bool>>,
     timer: T,
 }
 
@@ -51,13 +52,21 @@ impl<T: Timer> GPSParser<T> {
     pub fn new(timer: T) -> Self {
         Self {
             nmea: BlockingMutex::new(RefCell::new(Nmea::default())),
+            updated: BlockingMutex::new(RefCell::new(false)),
             timer,
         }
     }
 
     pub fn get_nmea(&self) -> GPSLocation {
+        self.updated.lock(|updated| {
+            *updated.borrow_mut() = false;
+        });
         self.nmea
             .lock(|nmea| (self.timer.now_mills(), nmea.borrow()).into())
+    }
+
+    pub fn get_updated(&self) -> bool {
+        self.updated.lock(|updated| *updated.borrow())
     }
 
     pub async fn run(&self, gps: &mut impl GPS) -> ! {
@@ -77,6 +86,9 @@ impl<T: Timer> GPSParser<T> {
                             .trim_end_matches(|c| c == '\r' || c == '\n')
                     );
                 } else {
+                    self.updated.lock(|updated| {
+                        *updated.borrow_mut() = true;
+                    });
                     debug!(
                         "GPS: {}",
                         &nmea_sentence

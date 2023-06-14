@@ -21,14 +21,14 @@ use crate::{
     },
     claim_devices,
     common::{
-        device_manager::prelude::*, files::CALIBRATION_FILE_TYPE,
+        device_manager::prelude::*, files::CALIBRATION_FILE_TYPE, gps_parser::GPSParser,
         imu_calibration_file::read_imu_calibration_file, sensor_snapshot::PartialSensorSnapshot,
         ticker::Ticker,
     },
     device_manager_type,
     driver::{
         barometer::BaroReading,
-        debugger::{ApplicationLayerRxPackage, ApplicationLayerTxPackage, RadioApplicationClient},
+        debugger::{ApplicationLayerRxPackage, ApplicationLayerTxPackage, RadioApplicationClient, DebuggerTargetEvent},
         gps::GPS,
         indicator::Indicator,
         timer::Timer,
@@ -60,12 +60,14 @@ pub async fn avionics_main(
 
     let buzzer = Mutex::<NoopRawMutex, _>::new(buzzer);
 
-    claim_devices!(device_manager, arming_switch, imu, barometer);
+    claim_devices!(device_manager, arming_switch, imu, barometer, gps);
     unwrap!(imu.wait_for_power_on().await);
     unwrap!(imu.reset().await);
     unwrap!(barometer.reset().await);
 
     let imu = Mutex::<NoopRawMutex, _>::new(imu);
+
+    let gps_parser = GPSParser::new(timer);
 
     let cal_info = read_imu_calibration_file(fs).await;
 
@@ -77,6 +79,8 @@ pub async fn avionics_main(
     let radio_rx = Channel::<CriticalSectionRawMutex, ApplicationLayerRxPackage, 3>::new();
 
     let flight_core_events = Channel::<CriticalSectionRawMutex, FlightCoreEvent, 3>::new();
+
+    let gps_fut = gps_parser.run(&mut gps);
 
     let radio_fut = async {
         if let Some(mut radio) = radio {
@@ -199,35 +203,56 @@ pub async fn avionics_main(
             let mut imu_sub = imu_channel.subscriber().unwrap();
             let mut baro_sub = baro_channel.subscriber().unwrap();
             loop {
-                if arming_state.lock(|s| *s.borrow()) &&
-                let Ok(mut flight_core) = flight_core.try_lock() &&
-                let Some(flight_core)= flight_core.as_mut() {
-                    let imu_reading = imu_sub.next_message_pure().await;
-                    let baro_reading = baro_sub.try_next_message_pure();
-                    // TODO gps
-                    let sensor_snapshot = PartialSensorSnapshot {
-                        timestamp: imu_reading.timestamp,
-                        imu_reading: imu_reading,
-                        gps_location: None,
-                        baro_reading: baro_reading,
-                    };
+                // would love to use chained if lets, but rustfmt doesn't like it
+                if arming_state.lock(|s| *s.borrow()) {
+                    if let Ok(mut flight_core) = flight_core.try_lock() {
+                        if let Some(flight_core) = flight_core.as_mut() {
+                            let imu_reading = imu_sub.next_message_pure().await;
+                            let baro_reading = baro_sub.try_next_message_pure();
 
-                    flight_core.tick(sensor_snapshot);
-                }else{
-                    timer.sleep(5.0).await;
+                            let gps_location = if gps_parser.get_updated() {
+                                Some(gps_parser.get_nmea())
+                            } else {
+                                None
+                            };
+
+                            let sensor_snapshot = PartialSensorSnapshot {
+                                timestamp: imu_reading.timestamp,
+                                imu_reading,
+                                gps_location,
+                                baro_reading,
+                            };
+
+                            flight_core.tick(sensor_snapshot);
+                            continue;
+                        }
+                    }
                 }
+                timer.sleep(5.0).await;
             }
         };
 
-        join!(imu_fut, baro_fut, arming_fut, radio_fut, flight_core_fut);
+        #[allow(unreachable_code)]
+        {
+            join!(
+                imu_fut,
+                baro_fut,
+                arming_fut,
+                radio_fut,
+                flight_core_fut,
+                gps_fut
+            );
+        }
     };
 
     let flight_core_event_consumer = async {
         let receiver = flight_core_events.receiver();
         // TODO check again: pyro1: main, pyro2: drogue
         claim_devices!(device_manager, pyro1_ctrl, pyro2_ctrl);
+        let debugger = device_manager.debugger.clone();
         loop {
             let event = receiver.recv().await;
+            debugger.dispatch(DebuggerTargetEvent::FlightCoreEvent(event));
             match event {
                 FlightCoreEvent::CriticalError => {
                     claim_devices!(device_manager, sys_reset);

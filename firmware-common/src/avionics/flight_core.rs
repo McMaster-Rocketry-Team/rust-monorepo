@@ -386,6 +386,11 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
             FlightCoreState::Landed {} => {}
         }
 
+        log_info!(
+            "Estimated altitude: {:?}",
+            self.eskf.position.z_up_to_y_up().y
+        );
+
         self.last_snapshot_timestamp = Some(snapshot.timestamp);
     }
 }

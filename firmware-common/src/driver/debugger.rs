@@ -1,3 +1,4 @@
+use crate::avionics::flight_core_event::FlightCoreEvent;
 pub use crate::common::vlp::application_layer::RadioApplicationClient;
 pub use crate::common::vlp::application_layer::{
     ApplicationLayerRxPackage, ApplicationLayerTxPackage,
@@ -15,6 +16,7 @@ pub use ferraris_calibration::CalibrationInfo;
 pub enum DebuggerTargetEvent {
     Calibrating(InteractiveCalibratorState),
     ApplicationLayerPackage(ApplicationLayerTxPackage),
+    FlightCoreEvent(FlightCoreEvent),
 }
 
 pub trait Debugger: Clone {

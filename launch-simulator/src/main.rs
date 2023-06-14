@@ -132,7 +132,7 @@ fn setup_physics(mut commands: Commands) {
 fn setup_virtual_avionics(mut commands: Commands) {
     let (debugger, debugger_host) = create_debugger();
     let (serial_a, serial_b) = create_virtual_serial();
-    let (sensor_tx, imu) = create_sensors();
+    let (sensor_tx, imu, baro) = create_sensors();
     let (arming, arming_ctrl) = create_hardware_arming();
     let (pyro_1, pyro_1_receiver) = create_pyro(1);
     let (pyro_2, pyro_2_receiver) = create_pyro(2);
@@ -149,6 +149,7 @@ fn setup_virtual_avionics(mut commands: Commands) {
     start_avionics_thread(
         "./launch-simulator/avionics.fl".into(),
         imu,
+        baro,
         serial_a,
         debugger,
         arming,

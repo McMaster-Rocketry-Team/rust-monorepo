@@ -1,12 +1,17 @@
 use crate::virt_drivers::{
-    arming::VirtualHardwareArming, buzzer::SpeakerBuzzer, debugger::Debugger, pyro::VirtualPyro,
-    sensors::VirtualIMU, serial::VirtualSerial, timer::TokioTimer,
+    arming::VirtualHardwareArming,
+    buzzer::SpeakerBuzzer,
+    debugger::Debugger,
+    pyro::VirtualPyro,
+    sensors::{VirtualBaro, VirtualIMU},
+    serial::VirtualSerial,
+    timer::TokioTimer,
 };
 use firmware_common::{
     driver::{
         adc::DummyADC,
         arming::HardwareArming,
-        barometer::DummyBarometer,
+        barometer::{Barometer, DummyBarometer},
         debugger::Debugger as DebuggerDriver,
         dummy_radio_kind::DummyRadioKind,
         gps::{DummyGPS, DummyGPSCtrl},
@@ -32,6 +37,7 @@ use vlfs_host::FileFlash;
 pub fn start_avionics_thread(
     flash_file_name: PathBuf,
     imu: VirtualIMU,
+    baro: VirtualBaro,
     serial: VirtualSerial,
     debugger: Debugger,
     arming: VirtualHardwareArming,
@@ -44,6 +50,7 @@ pub fn start_avionics_thread(
         avionics(
             flash_file_name,
             imu,
+            baro,
             serial,
             arming,
             pyro_1,
@@ -57,6 +64,7 @@ pub fn start_avionics_thread(
 async fn avionics(
     flash_file_name: PathBuf,
     imu: impl IMU,
+    baro: impl Barometer,
     serial: impl Serial,
     arming: impl HardwareArming,
     pyro_1: impl PyroCtrl,
@@ -84,7 +92,7 @@ async fn avionics(
         DummyRNG {},
         DummyIndicator {},
         DummyIndicator {},
-        DummyBarometer::new(timer),
+        baro,
         (DummyGPS::new(timer), DummyGPSCtrl {}), // VLF3's GPS doesn't work
         debugger,
     );

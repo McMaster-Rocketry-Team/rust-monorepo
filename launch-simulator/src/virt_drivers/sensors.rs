@@ -6,7 +6,7 @@ use std::{
 use bevy::prelude::{Component, Transform};
 use bevy_rapier3d::prelude::Velocity;
 use firmware_common::driver::{
-    barometer::BaroReading,
+    barometer::{BaroReading, Barometer},
     imu::{IMUReading, IMU},
 };
 use nalgebra::{UnitQuaternion, Vector3};
@@ -84,7 +84,18 @@ impl SensorSender {
             gyro: gyro.into(),
         };
 
-        self.tx.send(SensorSnapshot { imu_reading }).unwrap();
+        let baro_reading = BaroReading {
+            timestamp: now,
+            pressure: baro_imposter(transform.translation.y, 50.0),
+            temperature: 50.0,
+        };
+
+        self.tx
+            .send(SensorSnapshot {
+                imu_reading,
+                baro_reading,
+            })
+            .unwrap();
 
         self.last_state = Some((now, velocity, transform));
         self.ready = true;
@@ -98,13 +109,17 @@ impl SensorSender {
 #[derive(Clone, Default, Debug)]
 pub struct SensorSnapshot {
     imu_reading: IMUReading,
-    // baro_reading: BaroReading,
+    baro_reading: BaroReading,
 }
 
-pub fn create_sensors() -> (SensorSender, VirtualIMU) {
+pub fn create_sensors() -> (SensorSender, VirtualIMU, VirtualBaro) {
     let (tx, rx) = watch::channel(SensorSnapshot::default());
 
-    (SensorSender::new(tx), VirtualIMU { rx })
+    (
+        SensorSender::new(tx),
+        VirtualIMU { rx: rx.clone() },
+        VirtualBaro { rx },
+    )
 }
 
 pub struct VirtualIMU {
@@ -127,6 +142,22 @@ impl IMU for VirtualIMU {
     }
 }
 
+pub struct VirtualBaro {
+    rx: Receiver<SensorSnapshot>,
+}
+
+impl Barometer for VirtualBaro {
+    type Error = ();
+
+    async fn reset(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    async fn read(&mut self) -> Result<BaroReading, Self::Error> {
+        Ok(self.rx.borrow().baro_reading.clone())
+    }
+}
+
 fn format_float(num: f32) -> String {
     let sign = if num.is_sign_positive() { " " } else { "-" };
     let abs_num = num.abs();
@@ -143,4 +174,10 @@ fn format_vec(vec: Vector3<f32>) -> String {
         format_float(vec.y),
         format_float(vec.z)
     )
+}
+
+fn baro_imposter(altitude: f32, temperature: f32) -> f32 {
+    const SEA_LEVEL_PRESSURE: f32 = 101325.0;
+
+    SEA_LEVEL_PRESSURE * (1.0 - (0.0065 * altitude) / (temperature + 273.15)).powf(5.255)
 }

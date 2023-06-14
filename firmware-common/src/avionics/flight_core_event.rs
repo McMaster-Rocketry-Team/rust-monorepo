@@ -1,5 +1,6 @@
 use embassy_sync::{blocking_mutex::raw::RawMutex, channel::Sender};
 
+#[derive(Debug, Clone, Copy)]
 pub enum FlightCoreEvent {
     CriticalError,
     Ignition,
