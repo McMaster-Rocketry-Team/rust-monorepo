@@ -19,7 +19,7 @@ impl BaroReading {
 }
 
 pub trait Barometer {
-    type Error;
+    type Error: defmt::Format;
 
     async fn reset(&mut self) -> Result<(), Self::Error>;
     async fn read(&mut self) -> Result<BaroReading, Self::Error>;
