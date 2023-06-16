@@ -1,7 +1,8 @@
 use super::timer::Timer;
+use rkyv::{Archive, Deserialize, Serialize};
 use libm::powf;
 
-#[derive(defmt::Format, Debug, Clone, Default)]
+#[derive(defmt::Format, Debug, Clone, Default, Archive, Deserialize, Serialize)]
 pub struct BaroReading {
     pub timestamp: f64,   // ms
     pub temperature: f32, // C

@@ -1,19 +1,19 @@
 use core::ops::Mul;
 
-use crate::common::gps_parser::GPSLocation;
+use super::baro_reading_filter::BaroFilterOutput;
+use super::baro_reading_filter::BaroReadingFilter;
+use super::flight_core_event::FlightCoreEvent;
+use super::flight_core_event::FlightCoreEventDispatcher;
 use crate::common::moving_average::NoSumSMA;
 use crate::common::sensor_snapshot::PartialSensorSnapshot;
 use eskf::ESKF;
 use ferraris_calibration::CalibrationInfo;
 use heapless::Deque;
+#[allow(unused_imports)]
+use micromath::F32Ext;
 use nalgebra::Matrix3;
 use nalgebra::UnitQuaternion;
 use nalgebra::Vector3;
-
-use super::baro_reading_filter::BaroFilterOutput;
-use super::baro_reading_filter::BaroReadingFilter;
-use super::flight_core_event::FlightCoreEvent;
-use super::flight_core_event::FlightCoreEventDispatcher;
 
 pub struct Variances {
     pub acc: Vector3<f32>,
@@ -53,7 +53,7 @@ pub enum FlightCoreState {
     Armed {
         // 500ms history
         snapshot_history: Deque<PartialSensorSnapshot, 100>,
-        gps_location_history: Deque<GPSLocation, 3>,
+        // gps_location_history: Deque<GPSLocation, 3>,
         acc_y_moving_average: NoSumSMA<f32, f32, 4>,
     },
     PowerAscend {
@@ -82,7 +82,7 @@ impl FlightCoreState {
     pub fn new() -> Self {
         Self::Armed {
             snapshot_history: Deque::new(),
-            gps_location_history: Deque::new(),
+            // gps_location_history: Deque::new(),
             acc_y_moving_average: NoSumSMA::new(0.0),
         }
     }
@@ -192,7 +192,7 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
         match &mut self.state {
             FlightCoreState::Armed {
                 snapshot_history,
-                gps_location_history,
+                // gps_location_history,
                 acc_y_moving_average,
             } => {
                 // update state
@@ -203,14 +203,14 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
                 }
                 snapshot_history.push_back(snapshot.clone()).unwrap();
 
-                if let Some(gps_location) = &snapshot.gps_location {
-                    if gps_location_history.is_full() {
-                        gps_location_history.pop_front();
-                    }
-                    gps_location_history
-                        .push_back(gps_location.clone())
-                        .unwrap();
-                }
+                // if let Some(gps_location) = &snapshot.gps_location {
+                //     if gps_location_history.is_full() {
+                //         gps_location_history.pop_front();
+                //     }
+                //     gps_location_history
+                //         .push_back(gps_location.clone())
+                //         .unwrap();
+                // }
 
                 log_info!(
                     "acc_y_moving_average: {}",
@@ -228,9 +228,8 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
                     // which means the rocket is nose down, if thats the case we got bigger problems
                     let orientation =
                         UnitQuaternion::rotation_between(&sky_vector, &launch_vector).unwrap();
-                    let observe_result = self
-                        .eskf
-                        .observe_orientation(orientation, Matrix3::zeros());
+                    let observe_result =
+                        self.eskf.observe_orientation(orientation, Matrix3::zeros());
                     if observe_result.is_err() {
                         self.critical_error = true;
                         self.event_dispatcher
@@ -364,7 +363,7 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
             }
             FlightCoreState::MainChuteDescend {} => {
                 // landing detection
-                if self.eskf.velocity.magnitude() < 0.5 {
+                if self.eskf.velocity.z.abs() < 0.5 {
                     self.event_dispatcher.dispatch(FlightCoreEvent::Landed);
                     self.state = FlightCoreState::Landed {};
                 }
@@ -372,10 +371,7 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
             FlightCoreState::Landed {} => {}
         }
 
-        log_info!(
-            "Estimated altitude: {:?}",
-            self.eskf.position.z
-        );
+        log_info!("Estimated altitude: {:?}", self.eskf.position.z);
 
         self.last_snapshot_timestamp = Some(snapshot.timestamp);
     }

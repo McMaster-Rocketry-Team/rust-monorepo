@@ -1,22 +1,19 @@
 use core::{cell::RefCell, ops::Deref};
 
-use chrono::{NaiveDate, NaiveTime};
 use defmt::{debug, warn};
 use nmea::Nmea;
+use rkyv::{Archive, Deserialize, Serialize};
 
 use crate::driver::{gps::GPS, timer::Timer};
 use embassy_sync::blocking_mutex::{raw::CriticalSectionRawMutex, Mutex as BlockingMutex};
 
-#[derive(Debug, Clone)]
+
+#[derive(Archive, Deserialize, Serialize, Debug, Clone)]
 pub struct GPSLocation {
     pub timestamp: f64,
-    pub fix_time: Option<NaiveTime>,
-    pub fix_date: Option<NaiveDate>,
     pub latitude: Option<f64>,
     pub longitude: Option<f64>,
     pub altitude: Option<f32>,
-    pub speed_over_ground: Option<f32>,
-    pub true_course: Option<f32>,
     pub num_of_fix_satellites: Option<u32>,
     pub hdop: Option<f32>,
     pub vdop: Option<f32>,
@@ -27,13 +24,9 @@ impl<T: Deref<Target = Nmea>> From<(f64, T)> for GPSLocation {
     fn from((timestamp, value): (f64, T)) -> Self {
         Self {
             timestamp,
-            fix_time: value.fix_time,
-            fix_date: value.fix_date,
             latitude: value.latitude,
             longitude: value.longitude,
             altitude: value.altitude,
-            speed_over_ground: value.speed_over_ground,
-            true_course: value.true_course,
             num_of_fix_satellites: value.num_of_fix_satellites,
             hdop: value.hdop,
             vdop: value.vdop,

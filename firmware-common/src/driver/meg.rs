@@ -1,12 +1,14 @@
 use core::fmt::Write;
 use heapless::String;
 use nalgebra::Vector3;
+use rkyv::{Archive, Deserialize, Serialize};
 
 use super::timer::Timer;
 
+#[derive(Archive, Deserialize, Serialize, Debug, Clone)]
 pub struct MegReading {
     pub timestamp: f64,    // ms
-    pub meg: Vector3<f32>, // gauss
+    pub meg: [f32;3],      // gauss
 }
 
 impl defmt::Format for MegReading {
@@ -15,9 +17,9 @@ impl defmt::Format for MegReading {
         core::write!(
             &mut message,
             "MegReading {{ {:.5} {:.5} {:.5} }}",
-            self.meg.x,
-            self.meg.y,
-            self.meg.z,
+            self.meg[0],
+            self.meg[1],
+            self.meg[2],
         )
         .unwrap();
         defmt::write!(f, "{}", message.as_str())
@@ -51,7 +53,7 @@ impl<T: Timer> Megnetometer for DummyMegnetometer<T> {
         self.timer.sleep(1.0).await;
         Ok(MegReading {
             timestamp: 0.0,
-            meg: Vector3::new(0.0, 0.0, 0.0),
+            meg: [0.0, 0.0, 0.0],
         })
     }
 }

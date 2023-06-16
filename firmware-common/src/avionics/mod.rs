@@ -12,7 +12,11 @@ use ferraris_calibration::IMUReading;
 use futures::join;
 use lora_phy::mod_traits::RadioKind;
 use nalgebra::Vector3;
-use vlfs::{Crc, Flash, VLFS};
+use rkyv::{
+    ser::{serializers::BufferSerializer, Serializer},
+    Archive,
+};
+use vlfs::{io_traits::AsyncWriter, Crc, FileWriter, Flash, VLFS};
 
 use crate::{
     avionics::{
@@ -21,14 +25,20 @@ use crate::{
     },
     claim_devices,
     common::{
-        device_manager::prelude::*, files::CALIBRATION_FILE_TYPE, gps_parser::GPSParser,
-        imu_calibration_file::read_imu_calibration_file, sensor_snapshot::PartialSensorSnapshot,
+        device_manager::prelude::*,
+        files::{AVIONICS_LOG_FILE_TYPE, AVIONICS_SENSORS_FILE_TYPE, CALIBRATION_FILE_TYPE},
+        gps_parser::GPSParser,
+        imu_calibration_file::read_imu_calibration_file,
+        sensor_snapshot::{PartialSensorSnapshot, SensorReading},
         ticker::Ticker,
     },
     device_manager_type,
     driver::{
         barometer::BaroReading,
-        debugger::{ApplicationLayerRxPackage, ApplicationLayerTxPackage, RadioApplicationClient, DebuggerTargetEvent},
+        debugger::{
+            ApplicationLayerRxPackage, ApplicationLayerTxPackage, DebuggerTargetEvent,
+            RadioApplicationClient,
+        },
         gps::GPS,
         indicator::Indicator,
         timer::Timer,
@@ -41,6 +51,20 @@ pub mod baro_reading_filter;
 pub mod flight_core;
 pub mod flight_core_event;
 
+async fn save_sensor_reading(
+    reading: SensorReading,
+    sensors_file: &mut FileWriter<'_, impl Flash, impl Crc>,
+    buffer: [u8; 100],
+) -> [u8; 100] {
+    let mut serializer = BufferSerializer::new(buffer);
+    serializer.serialize_value(&reading).unwrap();
+    let buffer = serializer.into_inner();
+    let buffer_slice = &buffer[..core::mem::size_of::<<SensorReading as Archive>::Archived>()];
+    sensors_file.extend_from_slice(buffer_slice).await.unwrap();
+
+    buffer
+}
+
 #[inline(never)]
 pub async fn avionics_main(
     fs: &VLFS<impl Flash, impl Crc>,
@@ -48,6 +72,70 @@ pub async fn avionics_main(
 ) -> ! {
     let timer = device_manager.timer;
     claim_devices!(device_manager, buzzer);
+
+    let sensors_file_id = unwrap!(fs.create_file(AVIONICS_SENSORS_FILE_TYPE).await.ok());
+    let mut sensors_file = unwrap!(fs.open_file_for_write(sensors_file_id).await.ok());
+    let log_file_id = unwrap!(fs.create_file(AVIONICS_LOG_FILE_TYPE).await.ok());
+    let mut logs_file = unwrap!(fs.open_file_for_write(log_file_id).await.ok());
+
+    let sensors_file_should_write_all = BlockingMutex::<NoopRawMutex, _>::new(RefCell::new(false));
+    let sensors_file_channel = PubSubChannel::<NoopRawMutex, SensorReading, 200, 1, 1>::new();
+
+    let sensors_file_fut = async {
+        let write_interval_ms = 1000.0;
+        let mut last_gps_timestamp = 0.0f64;
+        let mut last_imu_timestamp = 0.0f64;
+        let mut last_baro_timestamp = 0.0f64;
+        let mut last_meg_timestamp = 0.0f64;
+        let mut last_batt_volt = 0.0f64;
+        let mut buffer = [0u8; 100];
+        let mut subscriber = sensors_file_channel.subscriber().unwrap();
+
+        loop {
+            let sensor_reading = subscriber.next_message_pure().await;
+            if sensors_file_should_write_all.lock(|v| *v.borrow()) {
+                buffer = save_sensor_reading(sensor_reading, &mut sensors_file, buffer).await;
+            } else {
+                match &sensor_reading {
+                    SensorReading::GPS(gps_reading) => {
+                        if gps_reading.timestamp - last_gps_timestamp > write_interval_ms {
+                            last_gps_timestamp = gps_reading.timestamp;
+                            buffer = save_sensor_reading(sensor_reading, &mut sensors_file, buffer)
+                                .await;
+                        }
+                    }
+                    SensorReading::IMU(imu_reading) => {
+                        if imu_reading.timestamp - last_imu_timestamp > write_interval_ms {
+                            last_imu_timestamp = imu_reading.timestamp;
+                            buffer = save_sensor_reading(sensor_reading, &mut sensors_file, buffer)
+                                .await;
+                        }
+                    }
+                    SensorReading::Baro(baro_reading) => {
+                        if baro_reading.timestamp - last_baro_timestamp > write_interval_ms {
+                            last_baro_timestamp = baro_reading.timestamp;
+                            buffer = save_sensor_reading(sensor_reading, &mut sensors_file, buffer)
+                                .await;
+                        }
+                    }
+                    SensorReading::Meg(meg_reading) => {
+                        if meg_reading.timestamp - last_meg_timestamp > write_interval_ms {
+                            last_meg_timestamp = meg_reading.timestamp;
+                            buffer = save_sensor_reading(sensor_reading, &mut sensors_file, buffer)
+                                .await;
+                        }
+                    }
+                    SensorReading::BatteryVoltage { timestamp, .. } => {
+                        if timestamp - last_batt_volt > write_interval_ms {
+                            last_batt_volt = *timestamp;
+                            buffer = save_sensor_reading(sensor_reading, &mut sensors_file, buffer)
+                                .await;
+                        }
+                    }
+                }
+            }
+        }
+    };
 
     buzzer.play(2000, 50.0).await;
     timer.sleep(150.0).await;
@@ -60,10 +148,19 @@ pub async fn avionics_main(
 
     let buzzer = Mutex::<NoopRawMutex, _>::new(buzzer);
 
-    claim_devices!(device_manager, arming_switch, imu, barometer, gps);
+    claim_devices!(
+        device_manager,
+        arming_switch,
+        imu,
+        barometer,
+        gps,
+        meg,
+        batt_voltmeter
+    );
     unwrap!(imu.wait_for_power_on().await);
     unwrap!(imu.reset().await);
     unwrap!(barometer.reset().await);
+    unwrap!(meg.reset().await);
 
     let imu = Mutex::<NoopRawMutex, _>::new(imu);
 
@@ -102,11 +199,14 @@ pub async fn avionics_main(
         let imu_channel = PubSubChannel::<NoopRawMutex, IMUReading, 1, 1, 1>::new();
         let mut baro_ticker = Ticker::every(timer, 5.0);
         let baro_channel = PubSubChannel::<NoopRawMutex, BaroReading, 1, 1, 1>::new();
+        let mut meg_ticker = Ticker::every(timer, 50.0);
+        let mut batt_volt_ticker = Ticker::every(timer, 5.0);
 
         let imu_fut = async {
             loop {
                 if arming_state.lock(|s| *s.borrow()) && let Ok(mut imu) = imu.try_lock() {
                     let imu_reading = unwrap!(imu.read().await);
+                    sensors_file_channel.publish_immediate(SensorReading::IMU(imu_reading.clone()));
                     imu_channel.publish_immediate(imu_reading);
                 }
                 imu_ticker.next().await;
@@ -117,9 +217,45 @@ pub async fn avionics_main(
             loop {
                 if arming_state.lock(|s| *s.borrow()) {
                     let baro_reading = unwrap!(barometer.read().await);
+                    sensors_file_channel
+                        .publish_immediate(SensorReading::Baro(baro_reading.clone()));
                     baro_channel.publish_immediate(baro_reading);
                 }
                 baro_ticker.next().await;
+            }
+        };
+
+        let gps_logging_fut = async {
+            loop {
+                if gps_parser.get_updated() {
+                    sensors_file_channel
+                        .publish_immediate(SensorReading::GPS(gps_parser.get_nmea()));
+                }
+
+                timer.sleep(5.0).await;
+            }
+        };
+
+        let meg_fut = async {
+            loop {
+                if arming_state.lock(|s| *s.borrow()) {
+                    let meg_reading = unwrap!(meg.read().await);
+                    sensors_file_channel.publish_immediate(SensorReading::Meg(meg_reading));
+                }
+                meg_ticker.next().await;
+            }
+        };
+
+        let bat_fut = async {
+            loop {
+                if arming_state.lock(|s| *s.borrow()) {
+                    let batt_volt_reading = unwrap!(batt_voltmeter.read().await);
+                    sensors_file_channel.publish_immediate(SensorReading::BatteryVoltage {
+                        timestamp: timer.now_mills(),
+                        voltage: batt_volt_reading,
+                    });
+                }
+                batt_volt_ticker.next().await;
             }
         };
 
@@ -210,16 +346,9 @@ pub async fn avionics_main(
                             let imu_reading = imu_sub.next_message_pure().await;
                             let baro_reading = baro_sub.try_next_message_pure();
 
-                            let gps_location = if gps_parser.get_updated() {
-                                Some(gps_parser.get_nmea())
-                            } else {
-                                None
-                            };
-
                             let sensor_snapshot = PartialSensorSnapshot {
                                 timestamp: imu_reading.timestamp,
                                 imu_reading,
-                                gps_location,
                                 baro_reading,
                             };
 
@@ -240,7 +369,10 @@ pub async fn avionics_main(
                 arming_fut,
                 radio_fut,
                 flight_core_fut,
-                gps_fut
+                gps_fut,
+                gps_logging_fut,
+                meg_fut,
+                bat_fut,
             );
         }
     };
@@ -260,6 +392,7 @@ pub async fn avionics_main(
                 }
                 FlightCoreEvent::Ignition => {
                     // TODO cameras
+                    sensors_file_should_write_all.lock(|s| *s.borrow_mut() = true);
                 }
                 FlightCoreEvent::Apogee => {
                     // noop
@@ -276,6 +409,7 @@ pub async fn avionics_main(
                 }
                 FlightCoreEvent::Landed => {
                     // TODO buzzer
+                    sensors_file_should_write_all.lock(|s| *s.borrow_mut() = false);
                 }
                 FlightCoreEvent::DidNotReachMinApogee => {
                     // noop
@@ -284,7 +418,12 @@ pub async fn avionics_main(
         }
     };
 
-    join!(radio_fut, main_fut, flight_core_event_consumer);
+    join!(
+        radio_fut,
+        main_fut,
+        flight_core_event_consumer,
+        sensors_file_fut
+    );
     defmt::unreachable!();
 }
 
