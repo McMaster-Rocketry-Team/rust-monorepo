@@ -218,10 +218,10 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
                 //         .unwrap();
                 // }
 
-                log_info!(
-                    "acc_y_moving_average: {}",
-                    acc_y_moving_average.get_average()
-                );
+                // log_info!(
+                //     "acc_y_moving_average: {}",
+                //     acc_y_moving_average.get_average()
+                // );
                 // launch detection
                 if snapshot_history.is_full() && acc_y_moving_average.get_average() > 50.0 {
                     // backtrack 500ms to calculate launch angle
@@ -286,7 +286,8 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
                     }
 
                     self.event_dispatcher.dispatch(FlightCoreEvent::Ignition);
-                    self.event_dispatcher.dispatch(FlightCoreEvent::ChangeState(AvionicsState::PowerAscent));
+                    self.event_dispatcher
+                        .dispatch(FlightCoreEvent::ChangeState(AvionicsState::PowerAscent));
                     self.state = FlightCoreState::PowerAscend {
                         launch_timestamp: snapshot.timestamp,
                         launch_altitude,
@@ -304,7 +305,8 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
 
                 // coast detection
                 if acc_mag_moving_average.is_full() && acc_mag_moving_average.get_average() < 10.0 {
-                    self.event_dispatcher.dispatch(FlightCoreEvent::ChangeState(AvionicsState::Coasting));
+                    self.event_dispatcher
+                        .dispatch(FlightCoreEvent::ChangeState(AvionicsState::Coasting));
                     self.state = FlightCoreState::Coast {
                         launch_timestamp: *launch_timestamp,
                         launch_altitude: *launch_altitude,
@@ -317,7 +319,8 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
             } => {
                 // apogee detection
                 if self.eskf.velocity.z <= 0.0 {
-                    self.event_dispatcher.dispatch(FlightCoreEvent::ChangeState(AvionicsState::Descent));
+                    self.event_dispatcher
+                        .dispatch(FlightCoreEvent::ChangeState(AvionicsState::Descent));
                     self.event_dispatcher.dispatch(FlightCoreEvent::Apogee);
                     self.state = FlightCoreState::DrogueChute {
                         deploy_time: snapshot.timestamp + self.config.drogue_chute_delay_ms,
@@ -375,14 +378,15 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
                 // landing detection
                 if self.eskf.velocity.z.abs() < 0.5 {
                     self.event_dispatcher.dispatch(FlightCoreEvent::Landed);
-                    self.event_dispatcher.dispatch(FlightCoreEvent::ChangeState(AvionicsState::Landed));
+                    self.event_dispatcher
+                        .dispatch(FlightCoreEvent::ChangeState(AvionicsState::Landed));
                     self.state = FlightCoreState::Landed {};
                 }
             }
             FlightCoreState::Landed {} => {}
         }
 
-        log_info!("Estimated altitude: {:?}", self.eskf.position.z);
+        // log_info!("Estimated altitude: {:?}", self.eskf.position.z);
 
         self.last_snapshot_timestamp = Some(snapshot.timestamp);
     }

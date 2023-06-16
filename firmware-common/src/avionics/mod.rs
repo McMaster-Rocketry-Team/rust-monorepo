@@ -478,20 +478,24 @@ pub async fn avionics_main(
         }
     };
 
-    let mut telemetry_ticker = Ticker::every(timer, 5000.0);
+    let mut telemetry_ticker = Ticker::every(timer, 3000.0);
     let telemetry_fut = async {
+        let mut last_telemetry_timestamp = 0.0f64;
         loop {
-            if arming_state.lock(|s| *s.borrow()) {
-                telemetry_ticker.duration_ms = 60_000.0;
-            } else {
-                telemetry_ticker.duration_ms = 3_000.0;
+            if !arming_state.lock(|s| *s.borrow())
+                && timer.now_mills() - last_telemetry_timestamp <= 60_000.0
+            {
+                telemetry_ticker.next().await;
+                continue;
             }
-            telemetry_ticker.next().await;
+
             let mut telemetry_data = telemetry_data.lock(|d| d.borrow().clone());
             telemetry_data.timestamp = timer.now_mills();
+            last_telemetry_timestamp = telemetry_data.timestamp;
             radio_tx
                 .send(ApplicationLayerTxPackage::Telemetry(telemetry_data))
                 .await;
+            telemetry_ticker.next().await;
         }
     };
 
@@ -502,7 +506,12 @@ pub async fn avionics_main(
         let debugger = device_manager.debugger.clone();
         loop {
             let event = receiver.recv().await;
-            debugger.dispatch(DebuggerTargetEvent::FlightCoreEvent(event));
+            match event {
+                FlightCoreEvent::ChangeAltitude(_) => {}
+                _ => {
+                    debugger.dispatch(DebuggerTargetEvent::FlightCoreEvent(event));
+                }
+            }
             match event {
                 FlightCoreEvent::CriticalError => {
                     claim_devices!(device_manager, sys_reset);
@@ -575,8 +584,8 @@ pub async fn avionics_main(
 const MARAUDER_2_FLIGHT_CONFIG: FlightCoreConfig = FlightCoreConfig {
     drogue_chute_minimum_time_ms: 20_000.0,
     drogue_chute_minimum_altitude_agl: 2000.0,
-    drogue_chute_delay_ms: 1000.0,
-    main_chute_delay_ms: 1000.0,
+    drogue_chute_delay_ms: 2000.0,
+    main_chute_delay_ms: 0.0,
     main_chute_altitude_agl: 365.0, // 1200 ft
 };
 
