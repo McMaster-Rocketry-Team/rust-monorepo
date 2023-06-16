@@ -29,7 +29,7 @@ use crate::{
     claim_devices,
     common::{
         device_manager::prelude::*,
-        files::{AVIONICS_LOG_FILE_TYPE, AVIONICS_SENSORS_FILE_TYPE, CALIBRATION_FILE_TYPE},
+        files::{AVIONICS_LOG_FILE_TYPE, AVIONICS_SENSORS_FILE_TYPE},
         gps_parser::{GPSLocation, GPSParser},
         imu_calibration_file::read_imu_calibration_file,
         sensor_snapshot::{BatteryVoltage, PartialSensorSnapshot, SensorReading},
@@ -234,6 +234,7 @@ pub async fn avionics_main(
         let arming_state = unwrap!(arming_switch.read_arming().await);
         let arming_state =
             BlockingMutex::<CriticalSectionRawMutex, _>::new(RefCell::new(arming_state));
+        // TODO buzzer
         let rocket_upright_acc: BlockingMutex<NoopRawMutex, RefCell<Option<Vector3<f32>>>> =
             BlockingMutex::new(RefCell::new(read_up_right_vector(fs).await));
         let flight_core: Mutex<
