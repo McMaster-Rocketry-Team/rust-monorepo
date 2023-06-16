@@ -19,7 +19,10 @@ use rkyv::{
 use vlfs::{io_traits::AsyncWriter, Crc, FileWriter, Flash, VLFS};
 
 use self::flight_core::Config as FlightCoreConfig;
-use crate::avionics::up_right_vector_file::write_up_right_vector;
+use crate::{
+    avionics::up_right_vector_file::write_up_right_vector,
+    common::telemetry::telemetry_data::{AvionicsState, TelemetryData},
+};
 use crate::{
     avionics::{
         flight_core::{FlightCore, Variances},
@@ -217,8 +220,11 @@ pub async fn avionics_main(
 
     let radio = device_manager.get_radio_application_layer().await;
 
-    let radio_tx = Channel::<CriticalSectionRawMutex, ApplicationLayerTxPackage, 3>::new();
+    let radio_tx = Channel::<CriticalSectionRawMutex, ApplicationLayerTxPackage, 1>::new();
     let radio_rx = Channel::<CriticalSectionRawMutex, ApplicationLayerRxPackage, 3>::new();
+
+    let telemetry_data: BlockingMutex<NoopRawMutex, RefCell<TelemetryData>> =
+        BlockingMutex::new(RefCell::new(TelemetryData::default()));
 
     let flight_core_events = Channel::<CriticalSectionRawMutex, FlightCoreEvent, 3>::new();
 
@@ -230,10 +236,9 @@ pub async fn avionics_main(
         }
     };
 
+    let arming_state = unwrap!(arming_switch.read_arming().await);
+    let arming_state = BlockingMutex::<CriticalSectionRawMutex, _>::new(RefCell::new(arming_state));
     let main_fut = async {
-        let arming_state = unwrap!(arming_switch.read_arming().await);
-        let arming_state =
-            BlockingMutex::<CriticalSectionRawMutex, _>::new(RefCell::new(arming_state));
         // TODO buzzer
         let rocket_upright_acc: BlockingMutex<NoopRawMutex, RefCell<Option<Vector3<f32>>>> =
             BlockingMutex::new(RefCell::new(read_up_right_vector(fs).await));
@@ -241,6 +246,7 @@ pub async fn avionics_main(
             NoopRawMutex,
             Option<FlightCore<Sender<CriticalSectionRawMutex, FlightCoreEvent, 3>>>,
         > = Mutex::new(None);
+
         let mut imu_ticker = Ticker::every(timer, 5.0);
         let imu_channel = PubSubChannel::<NoopRawMutex, IMUReading, 1, 1, 1>::new();
         let mut baro_ticker = Ticker::every(timer, 5.0);
@@ -263,6 +269,11 @@ pub async fn avionics_main(
             loop {
                 if arming_state.lock(|s| *s.borrow()) {
                     let baro_reading = unwrap!(barometer.read().await);
+                    telemetry_data.lock(|d| {
+                        let mut d = d.borrow_mut();
+                        d.pressure = baro_reading.pressure;
+                        d.temperature = baro_reading.temperature;
+                    });
                     sensors_file_channel
                         .publish_immediate(SensorReading::Baro(baro_reading.clone()));
                     baro_channel.publish_immediate(baro_reading);
@@ -274,8 +285,13 @@ pub async fn avionics_main(
         let gps_logging_fut = async {
             loop {
                 if gps_parser.get_updated() {
-                    sensors_file_channel
-                        .publish_immediate(SensorReading::GPS(gps_parser.get_nmea()));
+                    let nmea = gps_parser.get_nmea();
+                    telemetry_data.lock(|d| {
+                        let mut d = d.borrow_mut();
+                        d.satellites_in_use = nmea.num_of_fix_satellites;
+                        d.lat_lon = nmea.lat_lon;
+                    });
+                    sensors_file_channel.publish_immediate(SensorReading::GPS(nmea));
                 }
 
                 timer.sleep(5.0).await;
@@ -296,6 +312,10 @@ pub async fn avionics_main(
             loop {
                 if arming_state.lock(|s| *s.borrow()) {
                     let batt_volt_reading = unwrap!(batt_voltmeter.read().await);
+                    telemetry_data.lock(|d| {
+                        let mut d = d.borrow_mut();
+                        d.battery_voltage = batt_volt_reading;
+                    });
                     sensors_file_channel.publish_immediate(SensorReading::BatteryVoltage(
                         BatteryVoltage {
                             timestamp: timer.now_mills(),
@@ -340,6 +360,9 @@ pub async fn avionics_main(
                             buzzer.play(2000, 500.0).await;
                         }
                     } else {
+                        telemetry_data.lock(|s| {
+                            s.borrow_mut().avionics_state = AvionicsState::Idle;
+                        });
                         let mut flight_core = flight_core.lock().await;
                         flight_core.take();
                     }
@@ -427,6 +450,23 @@ pub async fn avionics_main(
         }
     };
 
+    let mut telemetry_ticker = Ticker::every(timer, 5000.0);
+    let telemetry_fut = async {
+        loop {
+            if arming_state.lock(|s| *s.borrow()) {
+                telemetry_ticker.duration_ms = 60_000.0;
+            } else {
+                telemetry_ticker.duration_ms = 3_000.0;
+            }
+            telemetry_ticker.next().await;
+            let mut telemetry_data = telemetry_data.lock(|d| d.borrow().clone());
+            telemetry_data.timestamp = timer.now_mills();
+            radio_tx
+                .send(ApplicationLayerTxPackage::Telemetry(telemetry_data))
+                .await;
+        }
+    };
+
     let flight_core_event_consumer = async {
         let receiver = flight_core_events.receiver();
         // TODO check again: pyro1: main, pyro2: drogue
@@ -464,11 +504,18 @@ pub async fn avionics_main(
                 FlightCoreEvent::DidNotReachMinApogee => {
                     // noop
                 }
+                FlightCoreEvent::ChangeState(new_state) => {
+                    telemetry_data.lock(|s| s.borrow_mut().avionics_state = new_state);
+                }
+                FlightCoreEvent::ChangeAltitude(new_altitude) => {
+                    telemetry_data.lock(|s| s.borrow_mut().altitude = new_altitude);
+                }
             }
         }
     };
 
     join!(
+        telemetry_fut,
         radio_fut,
         main_fut,
         flight_core_event_consumer,

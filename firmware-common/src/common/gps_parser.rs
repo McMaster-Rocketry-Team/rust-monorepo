@@ -7,14 +7,12 @@ use rkyv::{Archive, Deserialize, Serialize};
 use crate::driver::{gps::GPS, timer::Timer};
 use embassy_sync::blocking_mutex::{raw::CriticalSectionRawMutex, Mutex as BlockingMutex};
 
-
 #[derive(Archive, Deserialize, Serialize, Debug, Clone)]
 pub struct GPSLocation {
     pub timestamp: f64,
-    pub latitude: Option<f64>,
-    pub longitude: Option<f64>,
+    pub lat_lon: Option<(f64, f64)>,
     pub altitude: Option<f32>,
-    pub num_of_fix_satellites: Option<u32>,
+    pub num_of_fix_satellites: u32,
     pub hdop: Option<f32>,
     pub vdop: Option<f32>,
     pub pdop: Option<f32>,
@@ -22,12 +20,17 @@ pub struct GPSLocation {
 
 impl<T: Deref<Target = Nmea>> From<(f64, T)> for GPSLocation {
     fn from((timestamp, value): (f64, T)) -> Self {
+        let lat_lon = if let Some(lat) = value.latitude && let Some(lon) = value.longitude{
+            Some((lat, lon))
+        }else{
+            None
+        };
+
         Self {
             timestamp,
-            latitude: value.latitude,
-            longitude: value.longitude,
+            lat_lon,
             altitude: value.altitude,
-            num_of_fix_satellites: value.num_of_fix_satellites,
+            num_of_fix_satellites: value.num_of_fix_satellites.unwrap_or(0),
             hdop: value.hdop,
             vdop: value.vdop,
             pdop: value.pdop,

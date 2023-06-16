@@ -2,7 +2,7 @@ use crate::driver::timer::Timer;
 
 pub struct Ticker<T: Timer> {
     expires_at_ms: f64,
-    duration_ms: f64,
+    pub duration_ms: f64,
     timer: T,
 }
 

@@ -59,15 +59,15 @@ pub async fn beacon_sender(
         loop {
             let nmea = gps_parser.get_nmea();
 
-            satellites_count.lock(|v| v.replace(nmea.num_of_fix_satellites.unwrap_or_default()));
-            locked.lock(|v| v.replace(nmea.longitude.is_some()));
+            satellites_count.lock(|v| v.replace(nmea.num_of_fix_satellites));
+            locked.lock(|v| v.replace(nmea.lat_lon.is_some()));
 
             if let Some(lora) = &mut lora {
                 let mut serializer = BufferSerializer::new([0u8; 32]);
                 let beacon_data = BeaconData {
-                    satellite_count: Some(nmea.num_of_fix_satellites.unwrap_or_default() as u8),
-                    longitude: nmea.longitude.map(|v| v as f32),
-                    latitude: nmea.latitude.map(|v| v as f32),
+                    satellite_count: Some(nmea.num_of_fix_satellites as u8),
+                    longitude: nmea.lat_lon.map(|v| v.1 as f32),
+                    latitude: nmea.lat_lon.map(|v| v.0 as f32),
                 };
                 serializer.serialize_value(&beacon_data).unwrap();
                 let buffer = serializer.into_inner();
