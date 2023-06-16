@@ -1,6 +1,4 @@
-use core::f32::consts::FRAC_PI_2;
 use core::ops::Mul;
-use core::ops::Neg;
 
 use crate::common::gps_parser::GPSLocation;
 use crate::common::moving_average::NoSumSMA;
@@ -9,9 +7,6 @@ use eskf::ESKF;
 use ferraris_calibration::CalibrationInfo;
 use heapless::Deque;
 use nalgebra::Matrix3;
-use nalgebra::Point3;
-use nalgebra::Scalar;
-use nalgebra::Unit;
 use nalgebra::UnitQuaternion;
 use nalgebra::Vector3;
 
@@ -123,7 +118,14 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
         variances: Variances,
     ) -> Self {
         let sky_vector = -rocket_upright_acc.normalize();
-        let plus_y_vector = Vector3::<f32>::new(0.0, 1.0, 0.0);
+        let plus_y_vector = Vector3::<f32>::new(0.0, 0.0, -1.0);
+
+        let mut eskf = eskf::Builder::new()
+            .acceleration_variance(variances.acc.magnitude())
+            .rotation_variance(variances.gyro.magnitude().to_radians())
+            .initial_covariance(1e-1)
+            .build();
+        eskf.gravity = Vector3::new(0.0, 0.0, -9.81);
         Self {
             event_dispatcher,
             config,
@@ -137,11 +139,7 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
             )
             .unwrap(),
             last_snapshot_timestamp: None,
-            eskf: eskf::Builder::new()
-                .acceleration_variance(variances.acc.magnitude())
-                .rotation_variance(variances.gyro.magnitude())
-                .initial_covariance(1e-1)
-                .build(),
+            eskf,
             variances,
             baro_filter: BaroReadingFilter::new(),
             critical_error: false,
@@ -172,8 +170,8 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
 
         if self.state.is_in_air() {
             self.eskf.predict(
-                acc.clone().y_up_to_z_up(),
-                gyro.clone().y_up_to_z_up(),
+                acc.clone(),
+                degree_to_rad(gyro.clone()),
                 (dt / 1000.0) as f32,
             );
 
@@ -189,16 +187,6 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
                 }
                 self.eskf.observe_height(altitude, self.variances.baro_altemeter).ok();
             }
-
-            if let Some(GPSLocation {
-                altitude: Some(altitude),
-                vdop: Some(vdop),
-                ..
-            }) = &snapshot.gps_location
-            {
-                // TODO use gps location infomation
-                self.eskf.observe_height(*altitude, vdop * vdop).ok();
-            }
         }
 
         match &mut self.state {
@@ -208,7 +196,7 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
                 acc_y_moving_average,
             } => {
                 // update state
-                acc_y_moving_average.add_sample(snapshot.imu_reading.acc[1]);
+                acc_y_moving_average.add_sample(snapshot.imu_reading.acc[2]);
 
                 if snapshot_history.is_full() {
                     snapshot_history.pop_front();
@@ -224,22 +212,25 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
                         .unwrap();
                 }
 
-                log_info!("acc_y_moving_average: {}", acc_y_moving_average.get_average());
+                log_info!(
+                    "acc_y_moving_average: {}",
+                    acc_y_moving_average.get_average()
+                );
                 // launch detection
-                if snapshot_history.is_full() && acc_y_moving_average.get_average() < -50.0 {
+                if snapshot_history.is_full() && acc_y_moving_average.get_average() > 50.0 {
                     // backtrack 500ms to calculate launch angle
                     let snapshot_before_launch = snapshot_history.front().unwrap();
 
                     let launch_vector =
                         -Vector3::from(snapshot_before_launch.imu_reading.acc).normalize();
-                    let sky_vector = Vector3::<f32>::new(0.0, 1.0, 0.0);
+                    let sky_vector = Vector3::<f32>::new(0.0, 0.0, -1.0);
                     // panics when sky_vector and plus_y_vector are pointing in the opposite direction,
                     // which means the rocket is nose down, if thats the case we got bigger problems
                     let orientation =
                         UnitQuaternion::rotation_between(&sky_vector, &launch_vector).unwrap();
                     let observe_result = self
                         .eskf
-                        .observe_orientation(orientation.y_up_to_z_up(), Matrix3::zeros());
+                        .observe_orientation(orientation, Matrix3::zeros());
                     if observe_result.is_err() {
                         self.critical_error = true;
                         self.event_dispatcher
@@ -247,31 +238,25 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
                         return;
                     }
 
-                    let mut gps_altitude_sum: f32 = 0.0;
-                    let mut gps_altitude_count: u32 = 0;
-                    for gps_location in gps_location_history.iter() {
-                        if gps_location.timestamp < snapshot_before_launch.timestamp &&
-                        gps_location.timestamp > snapshot_before_launch.timestamp - 5000.0 &&
-                        let Some(speed) = gps_location.speed_over_ground && speed < 0.2 &&
-                        let Some(gps_altitude) = gps_location.altitude
-                        {
-                            gps_altitude_sum += gps_altitude;
-                            gps_altitude_count += 1;
-                        }
-                    }
+                    // let mut gps_altitude_sum: f32 = 0.0;
+                    // let mut gps_altitude_count: u32 = 0;
+                    // for gps_location in gps_location_history.iter() {
+                    //     if gps_location.timestamp < snapshot_before_launch.timestamp &&
+                    //     gps_location.timestamp > snapshot_before_launch.timestamp - 5000.0 &&
+                    //     let Some(speed) = gps_location.speed_over_ground && speed < 0.2 &&
+                    //     let Some(gps_altitude) = gps_location.altitude
+                    //     {
+                    //         gps_altitude_sum += gps_altitude;
+                    //         gps_altitude_count += 1;
+                    //     }
+                    // }
 
                     let baro_before_launch = snapshot_history
                         .iter()
                         .find(|s| s.baro_reading.is_some())
                         .map(|s| s.baro_reading.as_ref().unwrap().altitude());
 
-                    let launch_altitude = if gps_altitude_count > 0 {
-                        let launch_altitude = gps_altitude_sum / gps_altitude_count as f32;
-                        if let Some(baro_before_launch) = baro_before_launch {
-                            self.baro_altimeter_offset = Some(launch_altitude - baro_before_launch);
-                        }
-                        launch_altitude
-                    } else if let Some(baro_altitude) = baro_before_launch {
+                    let launch_altitude = if let Some(baro_altitude) = baro_before_launch {
                         baro_altitude
                     } else {
                         0.0
@@ -288,8 +273,8 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
                         snapshot_history.iter().zip(snapshot_history.iter().skip(1))
                     {
                         self.eskf.predict(
-                            Vector3::from(snapshot.imu_reading.acc).y_up_to_z_up(),
-                            Vector3::from(snapshot.imu_reading.gyro).y_up_to_z_up(),
+                            Vector3::from(snapshot.imu_reading.acc),
+                            degree_to_rad(Vector3::from(snapshot.imu_reading.gyro)),
                             ((snapshot.timestamp - prev_snapshot.timestamp) / 1000.0) as f32,
                         );
                     }
@@ -323,7 +308,7 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
                 launch_altitude,
             } => {
                 // apogee detection
-                if self.eskf.velocity.z_up_to_y_up().y <= 0.0 {
+                if self.eskf.velocity.z <= 0.0 {
                     self.event_dispatcher.dispatch(FlightCoreEvent::Apogee);
                     self.state = FlightCoreState::DrogueChute {
                         deploy_time: snapshot.timestamp + self.config.drogue_chute_delay_ms,
@@ -337,7 +322,7 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
                 launch_altitude,
                 launch_timestamp,
             } => {
-                let altitude_agl = self.eskf.position.z_up_to_y_up().y - *launch_altitude;
+                let altitude_agl = self.eskf.position.z - *launch_altitude;
                 if altitude_agl < self.config.drogue_chute_minimum_altitude_agl {
                     self.event_dispatcher
                         .dispatch(FlightCoreEvent::DidNotReachMinApogee);
@@ -360,7 +345,7 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
                 deploy_time: None,
                 launch_altitude,
             } => {
-                let altitude_agl = self.eskf.position.z_up_to_y_up().y - *launch_altitude;
+                let altitude_agl = self.eskf.position.z - *launch_altitude;
                 if altitude_agl <= self.config.main_chute_altitude_agl {
                     self.state = FlightCoreState::MainChute {
                         deploy_time: Some(snapshot.timestamp + self.config.main_chute_delay_ms),
@@ -389,63 +374,15 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
 
         log_info!(
             "Estimated altitude: {:?}",
-            self.eskf.position.z_up_to_y_up().y
+            self.eskf.position.z
         );
 
         self.last_snapshot_timestamp = Some(snapshot.timestamp);
     }
 }
 
-// The coordinate system used by the flight core and visualizer is Y up, Z forward, X right:
-//     Y
-//     |
-//     |
-//     |_______ X
-//    /
-//   /
-//  Z
+// using FRD (Front-X Right-Y Down-Z)
 
-// The coordinate system used by eskf is Z up, Y backward, X right:
-//     Z    Y
-//     |  /
-//     | /
-//     |_______ X
-
-trait CoordinateSystemConvertable<T> {
-    fn y_up_to_z_up(self) -> T;
-    fn z_up_to_y_up(self) -> T;
-}
-
-impl<T: Scalar + Neg<Output = T> + Copy> CoordinateSystemConvertable<Vector3<T>> for Vector3<T> {
-    fn y_up_to_z_up(self) -> Vector3<T> {
-        Vector3::new(self.x, -self.z, self.y)
-    }
-
-    fn z_up_to_y_up(self) -> Vector3<T> {
-        Vector3::new(self.x, self.z, -self.y)
-    }
-}
-
-impl<T: Scalar + Neg<Output = T> + Copy> CoordinateSystemConvertable<Point3<T>> for Point3<T> {
-    fn y_up_to_z_up(self) -> Point3<T> {
-        Point3::new(self.x, -self.z, self.y)
-    }
-
-    fn z_up_to_y_up(self) -> Point3<T> {
-        Point3::new(self.x, self.z, -self.y)
-    }
-}
-
-impl CoordinateSystemConvertable<UnitQuaternion<f32>> for UnitQuaternion<f32> {
-    fn y_up_to_z_up(self) -> UnitQuaternion<f32> {
-        let rot_quat =
-            UnitQuaternion::from_axis_angle(&Unit::new_normalize(Vector3::x()), -FRAC_PI_2);
-        rot_quat * self
-    }
-
-    fn z_up_to_y_up(self) -> UnitQuaternion<f32> {
-        let rot_quat =
-            UnitQuaternion::from_axis_angle(&Unit::new_normalize(Vector3::x()), -FRAC_PI_2);
-        rot_quat * self
-    }
+fn degree_to_rad(vec: Vector3<f32>) -> Vector3<f32> {
+    Vector3::new(vec.x.to_radians(), vec.y.to_radians(), vec.z.to_radians())
 }
