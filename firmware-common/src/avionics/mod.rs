@@ -27,9 +27,9 @@ use crate::{
     common::{
         device_manager::prelude::*,
         files::{AVIONICS_LOG_FILE_TYPE, AVIONICS_SENSORS_FILE_TYPE, CALIBRATION_FILE_TYPE},
-        gps_parser::GPSParser,
+        gps_parser::{GPSLocation, GPSParser},
         imu_calibration_file::read_imu_calibration_file,
-        sensor_snapshot::{PartialSensorSnapshot, SensorReading},
+        sensor_snapshot::{BatteryVoltage, PartialSensorSnapshot, SensorReading},
         ticker::Ticker,
     },
     device_manager_type,
@@ -41,6 +41,7 @@ use crate::{
         },
         gps::GPS,
         indicator::Indicator,
+        meg::MegReading,
         timer::Timer,
     },
 };
@@ -57,12 +58,56 @@ async fn save_sensor_reading(
     buffer: [u8; 100],
 ) -> [u8; 100] {
     let mut serializer = BufferSerializer::new(buffer);
-    serializer.serialize_value(&reading).unwrap();
-    let buffer = serializer.into_inner();
-    let buffer_slice = &buffer[..core::mem::size_of::<<SensorReading as Archive>::Archived>()];
-    sensors_file.extend_from_slice(buffer_slice).await.unwrap();
+    match reading {
+        SensorReading::GPS(gps) => {
+            serializer.serialize_value(&gps).unwrap();
+            let buffer = serializer.into_inner();
+            let buffer_slice =
+                &buffer[..core::mem::size_of::<<GPSLocation as Archive>::Archived>()];
+            sensors_file.extend_from_u8(0).await.unwrap();
+            sensors_file.extend_from_slice(buffer_slice).await.unwrap();
 
-    buffer
+            buffer
+        }
+        SensorReading::IMU(imu) => {
+            serializer.serialize_value(&imu).unwrap();
+            let buffer = serializer.into_inner();
+            let buffer_slice = &buffer[..core::mem::size_of::<<IMUReading as Archive>::Archived>()];
+            sensors_file.extend_from_u8(1).await.unwrap();
+            sensors_file.extend_from_slice(buffer_slice).await.unwrap();
+
+            buffer
+        }
+        SensorReading::Baro(baro) => {
+            serializer.serialize_value(&baro).unwrap();
+            let buffer = serializer.into_inner();
+            let buffer_slice =
+                &buffer[..core::mem::size_of::<<BaroReading as Archive>::Archived>()];
+            sensors_file.extend_from_u8(2).await.unwrap();
+            sensors_file.extend_from_slice(buffer_slice).await.unwrap();
+
+            buffer
+        }
+        SensorReading::Meg(meg) => {
+            serializer.serialize_value(&meg).unwrap();
+            let buffer = serializer.into_inner();
+            let buffer_slice = &buffer[..core::mem::size_of::<<MegReading as Archive>::Archived>()];
+            sensors_file.extend_from_u8(3).await.unwrap();
+            sensors_file.extend_from_slice(buffer_slice).await.unwrap();
+
+            buffer
+        }
+        SensorReading::BatteryVoltage(battery_voltage) => {
+            serializer.serialize_value(&battery_voltage).unwrap();
+            let buffer = serializer.into_inner();
+            let buffer_slice =
+                &buffer[..core::mem::size_of::<<BatteryVoltage as Archive>::Archived>()];
+            sensors_file.extend_from_u8(4).await.unwrap();
+            sensors_file.extend_from_slice(buffer_slice).await.unwrap();
+
+            buffer
+        }
+    }
 }
 
 #[inline(never)]
@@ -82,7 +127,7 @@ pub async fn avionics_main(
     let sensors_file_channel = PubSubChannel::<NoopRawMutex, SensorReading, 200, 1, 1>::new();
 
     let sensors_file_fut = async {
-        let write_interval_ms = 1000.0;
+        let write_interval_ms = 10000.0;
         let mut last_gps_timestamp = 0.0f64;
         let mut last_imu_timestamp = 0.0f64;
         let mut last_baro_timestamp = 0.0f64;
@@ -125,9 +170,9 @@ pub async fn avionics_main(
                                 .await;
                         }
                     }
-                    SensorReading::BatteryVoltage { timestamp, .. } => {
-                        if timestamp - last_batt_volt > write_interval_ms {
-                            last_batt_volt = *timestamp;
+                    SensorReading::BatteryVoltage(battery_voltage) => {
+                        if battery_voltage.timestamp - last_batt_volt > write_interval_ms {
+                            last_batt_volt = battery_voltage.timestamp;
                             buffer = save_sensor_reading(sensor_reading, &mut sensors_file, buffer)
                                 .await;
                         }
@@ -250,10 +295,12 @@ pub async fn avionics_main(
             loop {
                 if arming_state.lock(|s| *s.borrow()) {
                     let batt_volt_reading = unwrap!(batt_voltmeter.read().await);
-                    sensors_file_channel.publish_immediate(SensorReading::BatteryVoltage {
-                        timestamp: timer.now_mills(),
-                        voltage: batt_volt_reading,
-                    });
+                    sensors_file_channel.publish_immediate(SensorReading::BatteryVoltage(
+                        BatteryVoltage {
+                            timestamp: timer.now_mills(),
+                            voltage: batt_volt_reading,
+                        },
+                    ));
                 }
                 batt_volt_ticker.next().await;
             }

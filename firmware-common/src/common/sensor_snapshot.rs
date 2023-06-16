@@ -10,7 +10,13 @@ pub enum SensorReading {
     IMU(IMUReading),
     Baro(BaroReading),
     Meg(MegReading),
-    BatteryVoltage { timestamp: f64, voltage: f32 },
+    BatteryVoltage(BatteryVoltage),
+}
+
+#[derive(Archive, Deserialize, Serialize, Debug, Clone)]
+pub struct BatteryVoltage {
+    pub timestamp: f64,
+    pub voltage: f32,
 }
 
 impl SensorReading {
@@ -20,7 +26,7 @@ impl SensorReading {
             SensorReading::IMU(imu) => imu.timestamp,
             SensorReading::Baro(baro) => baro.timestamp,
             SensorReading::Meg(meg) => meg.timestamp,
-            SensorReading::BatteryVoltage { timestamp, .. } => *timestamp,
+            SensorReading::BatteryVoltage(batt) => batt.timestamp,
         }
     }
 }
