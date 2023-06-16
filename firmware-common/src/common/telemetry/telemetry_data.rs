@@ -1,7 +1,6 @@
-use nalgebra::{Vector3, Vector4};
+use rkyv::{Archive, Deserialize, Serialize};
 
-#[allow(dead_code)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Archive, Deserialize, Serialize, Debug, Copy, Clone, defmt::Format)]
 pub enum AvionicsState {
     Sleeping,
     SoftArmed,
@@ -11,35 +10,15 @@ pub enum AvionicsState {
     Landed,
 }
 
-#[allow(dead_code)]
-#[derive(Debug, Clone)]
-pub struct Pyro {
-    continuity: bool,
-    firing: bool,
-    fault: bool,
-}
-
-#[allow(dead_code)]
-#[derive(Debug, Clone)]
+#[derive(Archive, Deserialize, Serialize, Debug, Clone, defmt::Format)]
 pub struct TelemetryData {
     timestamp: u64, // ms
     avionics_state: AvionicsState,
-    acceleration: Option<Vector3<f32>>,
-    rotation_speed: Option<Vector3<f32>>,
-    orientation: Option<Vector4<f32>>,
-    speed: Option<Vector3<f32>>,
-    position: Option<Vector3<f32>>,
-    pressure: Option<f32>,
-    air_temperature: Option<f32>,
-    cpu_temperature: f32,
+    position: [f32; 3],
+    pressure: f32,
+    temperature: f32,
     satellites_in_use: i32,
     lat_lon: Option<(f32, f32)>,
     armed: bool,
-    soft_armed: bool,
-    pyro1: Pyro,
-    pyro2: Pyro,
-    pyro3: Pyro,
     battery_voltage: f32,
-    current: f32,
-    buzzer: bool,
 }

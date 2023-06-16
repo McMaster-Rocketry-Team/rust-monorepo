@@ -221,6 +221,7 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
                     // backtrack 500ms to calculate launch angle
                     let snapshot_before_launch = snapshot_history.front().unwrap();
 
+                    // TODO sample more
                     let launch_vector =
                         -Vector3::from(snapshot_before_launch.imu_reading.acc).normalize();
                     let sky_vector = Vector3::<f32>::new(0.0, 0.0, -1.0);

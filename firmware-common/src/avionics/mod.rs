@@ -18,10 +18,13 @@ use rkyv::{
 };
 use vlfs::{io_traits::AsyncWriter, Crc, FileWriter, Flash, VLFS};
 
+use self::flight_core::Config as FlightCoreConfig;
+use crate::avionics::up_right_vector_file::write_up_right_vector;
 use crate::{
     avionics::{
         flight_core::{FlightCore, Variances},
         flight_core_event::FlightCoreEvent,
+        up_right_vector_file::read_up_right_vector,
     },
     claim_devices,
     common::{
@@ -46,11 +49,10 @@ use crate::{
     },
 };
 
-use self::flight_core::Config as FlightCoreConfig;
-
 pub mod baro_reading_filter;
 pub mod flight_core;
 pub mod flight_core_event;
+mod up_right_vector_file;
 
 async fn save_sensor_reading(
     reading: SensorReading,
@@ -213,8 +215,6 @@ pub async fn avionics_main(
 
     let cal_info = read_imu_calibration_file(fs).await;
 
-    fs.find_file_by_type(CALIBRATION_FILE_TYPE).await;
-
     let radio = device_manager.get_radio_application_layer().await;
 
     let radio_tx = Channel::<CriticalSectionRawMutex, ApplicationLayerTxPackage, 3>::new();
@@ -235,7 +235,7 @@ pub async fn avionics_main(
         let arming_state =
             BlockingMutex::<CriticalSectionRawMutex, _>::new(RefCell::new(arming_state));
         let rocket_upright_acc: BlockingMutex<NoopRawMutex, RefCell<Option<Vector3<f32>>>> =
-            BlockingMutex::new(RefCell::new(None));
+            BlockingMutex::new(RefCell::new(read_up_right_vector(fs).await));
         let flight_core: Mutex<
             NoopRawMutex,
             Option<FlightCore<Sender<CriticalSectionRawMutex, FlightCoreEvent, 3>>>,
@@ -365,7 +365,9 @@ pub async fn avionics_main(
                                 ticker.next().await;
                             }
                             drop(imu);
-                            rocket_upright_acc.lock(|s| s.borrow_mut().replace(acc_sum / 100.0));
+                            acc_sum /= 100.0;
+                            rocket_upright_acc.lock(|s| s.borrow_mut().replace(acc_sum));
+                            write_up_right_vector(fs, acc_sum).await.ok();
 
                             let mut buzzer = buzzer.lock().await;
                             buzzer.play(2700, 500.0).await;

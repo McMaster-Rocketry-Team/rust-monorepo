@@ -3,6 +3,8 @@ use embassy_sync::{
     channel::{Receiver, Sender},
 };
 
+use crate::common::telemetry::telemetry_data::TelemetryData;
+
 pub trait RadioApplicationClient {
     type Error: defmt::Format;
 
@@ -23,5 +25,5 @@ pub enum ApplicationLayerRxPackage {
 
 #[derive(Debug, Clone, defmt::Format)]
 pub enum ApplicationLayerTxPackage {
-    Telemetry,
+    Telemetry(TelemetryData),
 }
