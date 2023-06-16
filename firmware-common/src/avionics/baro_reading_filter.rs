@@ -39,7 +39,8 @@ impl BaroReadingFilter {
         let prev_reading = self.history.front().unwrap();
         let pressure_slope = (baro_reading.pressure - prev_reading.pressure)
             / ((baro_reading.timestamp - prev_reading.timestamp) / 1000.0) as f32;
-        if pressure_slope > 1500.0 {
+        if pressure_slope > 3000.0 {
+            log_info!("BaroFilter: ignoring pressure reading");
             self.ignore_pressure_end_time = baro_reading.timestamp + 500.0;
             self.baro_reading_hold = Some(baro_reading.clone());
         }

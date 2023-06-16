@@ -1,3 +1,5 @@
+use std::f32::consts::PI;
+
 use bevy::prelude::*;
 use bevy_rapier3d::prelude::*;
 use nalgebra::{UnitQuaternion, Vector3};
@@ -50,6 +52,35 @@ pub fn create_launch(
                 .insert(TransformBundle::from_transform(body_tube_transform.clone()))
                 .insert(ImpulseJoint::new(body_tube, joint))
                 .insert(player);
+        }
+    }
+}
+
+pub fn set_launch_angle(
+    mut commands: Commands,
+    mut ev_ui: EventReader<UIEvent>,
+    launch_mount_entity: Query<(Entity, &Transform), With<LaunchMountMarker>>,
+) {
+    for ui_event in ev_ui.iter() {
+        if let UIEvent::SetLaunchAngle(angle) = ui_event {
+            let (launch_mount, launch_mount_transform) = launch_mount_entity.iter().next().unwrap();
+
+            let animation = AnimationBuilder::new()
+                .add_keyframe(
+                    Translation3DKeyFrame::new(
+                        launch_mount_transform.rotation.into(),
+                        launch_mount_transform.translation.into(),
+                    ),
+                    1.0,
+                )
+                .finish(Translation3DKeyFrame::new(
+                    UnitQuaternion::from_axis_angle(&Vector3::z_axis(), *angle),
+                    Vector3::new(0.0, 2.0, 0.0),
+                ));
+
+            let player = AnimationPlayer::new(animation, false);
+
+            commands.entity(launch_mount).insert(player);
         }
     }
 }

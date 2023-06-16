@@ -46,6 +46,11 @@ pub fn rocket_chute_system(
                         impulse: impulse,
                         torque_impulse: Vec3::ZERO,
                     })
+                    .remove::<Damping>()
+                    .insert(Damping {
+                        linear_damping: 3.0,
+                        angular_damping: 2.0,
+                    })
                     .insert(ImpulseJoint::new(body_tube_entity, rope_joint));
 
                 commands.entity(body_tube_entity).insert(ExternalImpulse {
@@ -68,6 +73,11 @@ pub fn rocket_chute_system(
                     .insert(ExternalImpulse {
                         impulse: -impulse,
                         torque_impulse: Vec3::ZERO,
+                    })
+                    .remove::<Damping>()
+                    .insert(Damping {
+                        linear_damping: 0.3,
+                        angular_damping: 2.0,
                     })
                     .insert(ImpulseJoint::new(body_tube_entity, rope_joint));
 

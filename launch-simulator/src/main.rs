@@ -3,7 +3,10 @@
 #![feature(let_chains)]
 #![feature(try_blocks)]
 
-use std::sync::{Arc, Barrier};
+use std::{
+    f32::consts::PI,
+    sync::{Arc, Barrier},
+};
 
 use avionics::start_avionics_thread;
 use bevy::{
@@ -17,7 +20,7 @@ use bevy_rapier3d::prelude::*;
 use firmware_common::driver::debugger::{ApplicationLayerRxPackage, DebuggerTargetEvent};
 use ground_test::create_ground_test;
 use keyframe::animation_system;
-use launch::{create_launch, ignition_handler};
+use launch::{create_launch, ignition_handler, set_launch_angle};
 use motor::{motor_ignitor, motor_system};
 use rocket::{rocket_camera_tracking, rocket_chute_system, rocket_pyro_receiver_system};
 use virt_drivers::{
@@ -81,6 +84,7 @@ fn main() {
         .add_system(motor_system)
         .add_system(rocket_camera_tracking)
         .add_system(rocket_pyro_receiver_system)
+        .add_system(set_launch_angle)
         .run();
 }
 
@@ -99,6 +103,11 @@ fn setup_physics(mut commands: Commands) {
     // floor
     commands
         .spawn(Collider::cuboid(5.0, 0.1, 5.0))
+        .insert(Restitution::coefficient(0.1))
+        .insert(TransformBundle::from(Transform::from_xyz(0.0, -0.1, 0.0)));
+
+    commands
+        .spawn(Collider::cuboid(3000.0, 0.1, 3000.0))
         .insert(Restitution::coefficient(0.1))
         .insert(TransformBundle::from(Transform::from_xyz(0.0, -0.1, 0.0)));
 
@@ -208,6 +217,9 @@ fn ui_system(
         if ui.button("Vertical Calibration").clicked() {
             debugger_host.send(ApplicationLayerRxPackage::VerticalCalibration);
         }
+        if ui.button("Set Launch Angle").clicked() {
+            ev_ui.send(UIEvent::SetLaunchAngle(10.0 / 180.0 * PI));
+        }
         ui.toggle_value(&mut arming_state, "Arming");
         if ui.button("Ignition").clicked() {
             ev_ui.send(UIEvent::Ignition);
@@ -284,6 +296,7 @@ struct ReadyBarrier(Option<Arc<Barrier>>);
 pub enum UIEvent {
     SetupGroundTest,
     SetupLaunch,
+    SetLaunchAngle(f32),
     Ignition,
 }
 
