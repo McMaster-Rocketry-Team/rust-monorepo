@@ -9,4 +9,5 @@ pub mod radio_kind_wrapper;
 pub mod sensor_snapshot;
 pub mod telemetry;
 pub mod ticker;
+#[macro_use]
 pub mod vlp;

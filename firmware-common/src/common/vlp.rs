@@ -1,18 +1,18 @@
 use heapless::Vec;
 
 #[macro_use]
-mod macros;
+pub mod macros;
 pub mod application_layer;
 mod compression;
 mod encryption;
 mod framing;
-mod phy;
+pub mod phy;
 
 use lora_phy::mod_params::RadioError;
 use phy::VLPPhy;
 
 use self::framing::{Flags, FramingError, Packet};
-use defmt::warn;
+use defmt::{info, warn};
 
 pub const MAX_PAYLOAD_LENGTH: usize = 222;
 
@@ -29,9 +29,9 @@ pub enum Priority {
 
 #[derive(Copy, Clone, Debug, Default, defmt::Format)]
 pub struct SocketParams {
-    encryption: bool,
-    compression: bool,
-    reliability: bool,
+    pub encryption: bool,
+    pub compression: bool,
+    pub reliability: bool,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, defmt::Format)]
@@ -73,9 +73,9 @@ pub struct VLPSocket<P: VLPPhy> {
     //TODO: Encryption, Compression
     phy: P,
     state: ConnectionState,
-    prio: Priority,
+    pub prio: Priority,
     params: SocketParams,
-    next_seqnum: u16,
+    pub next_seqnum: u16,
 }
 
 impl<P: VLPPhy> VLPSocket<P> {
@@ -124,13 +124,16 @@ impl<P: VLPPhy> VLPSocket<P> {
         loop {
             match Packet::deserialize(_self.phy.rx().await?) {
                 Ok(packet) => {
+                    info!("Received packet {:?}", packet);
                     // Normal path
                     if packet.flags.contains(Flags::ESTABLISH) {
+                        info!("Normal path. cxn established");
                         _self.params.compression = packet.flags.contains(Flags::COMPRESSION);
                         _self.params.encryption = packet.flags.contains(Flags::ENCRYPTION);
                         _self.params.reliability = packet.flags.contains(Flags::RELIABLE);
                         break;
                     } else {
+                        info!("Anomaly path. Sending RST");
                         // Anomaly: remote party believes a session to already be established.
                         let rst = Packet {
                             flags: Flags::RST,
@@ -140,13 +143,17 @@ impl<P: VLPPhy> VLPSocket<P> {
 
                         // Send RST packet, and await new handshake from remote party.
                         _self.phy.tx(&rst.serialize()[..]).await;
+                        _self.phy.reset_frequency();
                     }
                 }
                 Err(_) => continue,
             }
         }
 
+        _self.phy.increment_frequency();
+
         if _self.params.reliability {
+            info!("Sending ack");
             let ack = Packet {
                 flags: Flags::ACK,
                 seqnum: _self.next_seqnum,
@@ -154,6 +161,7 @@ impl<P: VLPPhy> VLPSocket<P> {
             };
             _self.phy.tx(&ack.serialize()[..]).await;
             _self.next_seqnum = _self.next_seqnum.wrapping_add(1);
+            _self.phy.increment_frequency();
         }
 
         _self.state = ConnectionState::Established;
@@ -220,6 +228,7 @@ impl<P: VLPPhy> VLPSocket<P> {
             seqnum: self.next_seqnum,
             payload: None,
         };
+
         self.next_seqnum = self.next_seqnum.wrapping_add(1);
 
         loop {
@@ -245,6 +254,8 @@ impl<P: VLPPhy> VLPSocket<P> {
         }
 
         let packet = Packet::deserialize(self.phy.rx().await?)?;
+        self.phy.increment_frequency();
+        info!("recvd {:?}", packet);
         if packet.flags.contains(Flags::HANDOFF) {
             // HANDOFF must be ACKed, regardless of reliability of transport
             let ack = Packet {
@@ -253,8 +264,10 @@ impl<P: VLPPhy> VLPSocket<P> {
                 payload: None,
             };
             self.phy.tx(&ack.serialize()[..]).await;
+            self.phy.increment_frequency();
             self.next_seqnum = packet.seqnum.wrapping_add(2);
             self.prio = Priority::Driver;
+            info!("Priority changed. I'm in charge");
         } else if self.params.reliability
             && (packet.seqnum == self.next_seqnum || packet.seqnum == self.next_seqnum - 2)
         {
@@ -264,7 +277,9 @@ impl<P: VLPPhy> VLPSocket<P> {
                 payload: None,
             };
             self.phy.tx(&ack.serialize()[..]).await;
+            self.phy.increment_frequency();
             self.next_seqnum = self.next_seqnum.wrapping_add(2);
+            info!("Ack sent");
         } else if self.params.reliability && packet.seqnum != self.next_seqnum {
             return Err(VLPError::InvalidSeqnum);
         } else if !self.params.reliability && packet.seqnum > self.next_seqnum {
@@ -283,8 +298,10 @@ impl<P: VLPPhy> VLPSocket<P> {
     }
 
     async fn reliable_tx(&mut self, packet: &Packet) -> Result<Packet, VLPError> {
+        info!("Reliable send of packet {:?}", packet);
         let packet = packet.serialize();
         self.phy.tx(&packet[..]).await;
+        self.phy.increment_frequency();
 
         loop {
             match self.phy.rx_with_timeout(2000).await {
@@ -293,20 +310,32 @@ impl<P: VLPPhy> VLPSocket<P> {
                         Ok(recv) => {
                             // Validate seqnum against record. Re-tx if mismatch
                             if recv.flags.contains(Flags::ACK) && recv.seqnum == self.next_seqnum {
+                                info!("ACK recvd");
                                 self.next_seqnum = self.next_seqnum.wrapping_add(1);
+                                self.phy.increment_frequency();
                                 return Ok(recv);
                             } else if recv.flags.contains(Flags::RST) {
+                                info!("RST recvd.");
                                 // Can't handle re-establishing here because recursion
+                                self.phy.reset_frequency();
                                 return Err(VLPError::SessionReset);
                             } else {
+                                info!("retx");
                                 self.phy.tx(&packet[..]).await;
                             }
                         }
-                        Err(_) => self.phy.tx(&packet[..]).await,
+                        Err(_) => {
+                            info!("retx (deser error)");
+                            self.phy.tx(&packet[..]).await;
+                        }
                     }
                 }
-                Err(_e) => {
+                Err(RadioError::ReceiveTimeout) => {
+                    info!("retx (timeout");
                     self.phy.tx(&packet[..]).await;
+                }
+                Err(e) => {
+                    panic!("{:?}", e);
                 }
             }
         }
@@ -420,6 +449,14 @@ mod tests {
                 Either::Left(_) => Err(RadioError::ReceiveTimeout),
                 Either::Right((x, _)) => x,
             }
+        }
+
+        fn increment_frequency(&mut self) {
+            
+        }
+
+        fn reset_frequency(&mut self) {
+            
         }
     }
 

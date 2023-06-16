@@ -1,5 +1,6 @@
 use super::*;
 use bitflags::bitflags;
+use defmt::Format;
 use heapless::Vec;
 
 bitflags! {
@@ -14,6 +15,12 @@ bitflags! {
         const HANDOFF = 0x04;
         const PSH = 0x02;
         const ACK = 0x01;
+    }
+}
+
+impl Format for Flags {
+    fn format(&self, fmt: defmt::Formatter) {
+        defmt::write!(fmt, "Flags({:x})", self.bits())
     }
 }
 
@@ -38,6 +45,18 @@ pub struct Packet {
     pub flags: Flags,
     pub seqnum: u16,
     pub payload: Option<Vec<u8, MAX_PAYLOAD_LENGTH>>,
+}
+
+impl Format for Packet {
+    fn format(&self, fmt: defmt::Formatter) {
+        defmt::write!(
+            fmt,
+            "Packet {{ flags: {:?}, seqnum: {:?}, payload: {:?} }}",
+            self.flags,
+            self.seqnum,
+            self.payload.as_ref().map(|v| &v[..])
+        );
+    }
 }
 
 impl Packet {
