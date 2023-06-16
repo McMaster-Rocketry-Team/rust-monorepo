@@ -1,6 +1,9 @@
+#[macro_export]
 macro_rules! packet {
     ($($elem:expr),*) => {{
-        let mut buf = Vec::<u8, MAX_PAYLOAD_LENGTH>::new();
+
+        // max payload length is 222 im fucking done with this
+        let mut buf = ::heapless::Vec::<u8, 222>::new();
         $(
             buf.push($elem);
         )*
