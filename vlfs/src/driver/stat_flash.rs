@@ -2,25 +2,25 @@ use core::cell::RefCell;
 
 use crate::{Flash, Timer};
 use defmt::Format;
-use embassy_sync::blocking_mutex::{raw::CriticalSectionRawMutex, Mutex as BlockingMutex};
+use embassy_sync::blocking_mutex::{raw::NoopRawMutex, Mutex as BlockingMutex};
 use paste::paste;
 
 #[derive(Debug, Format, Clone, Default)]
 pub struct Stat {
-   pub erase_sector_4kib_total_time_ms: f64,
-   pub erase_sector_4kib_count: usize,
-   pub erase_block_32kib_total_time_ms: f64,
-   pub erase_block_32kib_count: usize,
-   pub erase_block_64kib_total_time_ms: f64,
-   pub erase_block_64kib_count: usize,
-   pub read_4kib_total_time_ms: f64,
-   pub read_4kib_count: usize,
-   pub write_256b_total_time_ms: f64,
-   pub write_256b_count: usize,
+    pub erase_sector_4kib_total_time_ms: f64,
+    pub erase_sector_4kib_count: usize,
+    pub erase_block_32kib_total_time_ms: f64,
+    pub erase_block_32kib_count: usize,
+    pub erase_block_64kib_total_time_ms: f64,
+    pub erase_block_64kib_count: usize,
+    pub read_4kib_total_time_ms: f64,
+    pub read_4kib_count: usize,
+    pub write_256b_total_time_ms: f64,
+    pub write_256b_count: usize,
 }
 
 pub struct StatFlash {
-    stat: BlockingMutex<CriticalSectionRawMutex, RefCell<Stat>>,
+    stat: BlockingMutex<NoopRawMutex, RefCell<Stat>>,
 }
 
 impl StatFlash {

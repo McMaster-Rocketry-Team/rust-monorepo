@@ -198,7 +198,9 @@ where
             ..(region.sector_index_offseted + region.length.get_length_in_sectors())
         {
             let unoffseted_sector_index = i + ALLOC_TABLES_SECTORS_USED as u16;
-            sectors_mng.sector_map.set_sector_used(unoffseted_sector_index);
+            sectors_mng
+                .sector_map
+                .set_sector_used(unoffseted_sector_index);
             erase_ahead_sectors.push(unoffseted_sector_index).unwrap();
         }
         Ok(())

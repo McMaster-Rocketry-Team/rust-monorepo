@@ -1,4 +1,7 @@
-use core::{ops::{Deref, DerefMut}, fmt::Debug};
+use core::{
+    fmt::Debug,
+    ops::{Deref, DerefMut},
+};
 use embassy_sync::{blocking_mutex::raw::RawMutex, mutex::MutexGuard};
 
 /// A Flash driver is represented here

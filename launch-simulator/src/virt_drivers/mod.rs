@@ -1,7 +1,7 @@
-pub mod timer;
-pub mod serial;
-pub mod debugger;
-pub mod sensors;
-pub mod buzzer;
-pub mod pyro;
 pub mod arming;
+pub mod buzzer;
+pub mod debugger;
+pub mod pyro;
+pub mod sensors;
+pub mod serial;
+pub mod timer;

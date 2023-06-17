@@ -32,8 +32,7 @@ enum SectorDataLength {
     Unknown,   // Sector data length has been read, but the value is invalid
 }
 
-#[derive(defmt::Format)]
-#[derive(Debug, Clone)]
+#[derive(defmt::Format, Debug, Clone)]
 pub enum VLFSReadStatus {
     Ok,
     EndOfFile,

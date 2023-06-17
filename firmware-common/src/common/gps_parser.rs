@@ -5,7 +5,7 @@ use nmea::Nmea;
 use rkyv::{Archive, Deserialize, Serialize};
 
 use crate::driver::{gps::GPS, timer::Timer};
-use embassy_sync::blocking_mutex::{raw::CriticalSectionRawMutex, Mutex as BlockingMutex};
+use embassy_sync::blocking_mutex::{raw::NoopRawMutex, Mutex as BlockingMutex};
 
 #[derive(Archive, Deserialize, Serialize, Debug, Clone)]
 pub struct GPSLocation {
@@ -39,8 +39,8 @@ impl<T: Deref<Target = Nmea>> From<(f64, T)> for GPSLocation {
 }
 
 pub struct GPSParser<T: Timer> {
-    nmea: BlockingMutex<CriticalSectionRawMutex, RefCell<Nmea>>,
-    updated: BlockingMutex<CriticalSectionRawMutex, RefCell<bool>>,
+    nmea: BlockingMutex<NoopRawMutex, RefCell<Nmea>>,
+    updated: BlockingMutex<NoopRawMutex, RefCell<bool>>,
     timer: T,
 }
 

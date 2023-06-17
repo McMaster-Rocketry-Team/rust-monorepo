@@ -2,7 +2,7 @@ use core::cell::RefCell;
 
 use defmt::unwrap;
 use embassy_sync::{
-    blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex},
+    blocking_mutex::raw::NoopRawMutex,
     blocking_mutex::Mutex as BlockingMutex,
     channel::{Channel, Sender},
     mutex::Mutex,
@@ -233,13 +233,13 @@ pub async fn avionics_main(
 
     let radio = device_manager.get_radio_application_layer().await;
 
-    let radio_tx = Channel::<CriticalSectionRawMutex, ApplicationLayerTxPackage, 1>::new();
-    let radio_rx = Channel::<CriticalSectionRawMutex, ApplicationLayerRxPackage, 3>::new();
+    let radio_tx = Channel::<NoopRawMutex, ApplicationLayerTxPackage, 1>::new();
+    let radio_rx = Channel::<NoopRawMutex, ApplicationLayerRxPackage, 3>::new();
 
     let telemetry_data: BlockingMutex<NoopRawMutex, RefCell<TelemetryData>> =
         BlockingMutex::new(RefCell::new(TelemetryData::default()));
 
-    let flight_core_events = Channel::<CriticalSectionRawMutex, FlightCoreEvent, 3>::new();
+    let flight_core_events = Channel::<NoopRawMutex, FlightCoreEvent, 3>::new();
 
     let shared_buzzer_fut = async {
         let mut sub = shared_buzzer_channel.subscriber().unwrap();
@@ -264,14 +264,14 @@ pub async fn avionics_main(
     };
 
     let arming_state = unwrap!(arming_switch.read_arming().await);
-    let arming_state = BlockingMutex::<CriticalSectionRawMutex, _>::new(RefCell::new(arming_state));
+    let arming_state = BlockingMutex::<NoopRawMutex, _>::new(RefCell::new(arming_state));
     let main_fut = async {
         // TODO buzzer
         let rocket_upright_acc: BlockingMutex<NoopRawMutex, RefCell<Option<Vector3<f32>>>> =
             BlockingMutex::new(RefCell::new(read_up_right_vector(fs).await));
         let flight_core: Mutex<
             NoopRawMutex,
-            Option<FlightCore<Sender<CriticalSectionRawMutex, FlightCoreEvent, 3>>>,
+            Option<FlightCore<Sender<NoopRawMutex, FlightCoreEvent, 3>>>,
         > = Mutex::new(None);
 
         let mut imu_ticker = Ticker::every(timer, 5.0);

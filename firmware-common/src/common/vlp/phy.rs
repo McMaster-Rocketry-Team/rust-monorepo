@@ -43,7 +43,11 @@ pub struct PhysicalVLPPhy<'a, R: RadioKind + 'static, T: Timer> {
 
 impl<'a, R: RadioKind + 'static, T: Timer> PhysicalVLPPhy<'a, R, T> {
     pub fn new(phy: &'a mut LoRa<R>, tim: T) -> Self {
-        Self { phy, tim, freq_idx: 0 }
+        Self {
+            phy,
+            tim,
+            freq_idx: 0,
+        }
     }
 
     fn create_modulation_params(&mut self) -> ModulationParams {
@@ -54,7 +58,7 @@ impl<'a, R: RadioKind + 'static, T: Timer> PhysicalVLPPhy<'a, R, T> {
                 SpreadingFactor::_12,
                 Bandwidth::_250KHz,
                 CodingRate::_4_8,
-                freq
+                freq,
             )
             .unwrap()
     }

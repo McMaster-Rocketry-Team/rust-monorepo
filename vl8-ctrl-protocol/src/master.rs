@@ -3,7 +3,7 @@ use core::task::Waker;
 
 use defmt::{warn, Format};
 use embassy_sync::blocking_mutex::Mutex as BlockingMutex;
-use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
+use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
 use firmware_common::driver::{serial::Serial, timer::Timer};
 
 use crate::multi_waker::MultiWakerRegistration;
@@ -18,11 +18,10 @@ use crate::{
 };
 
 pub struct Master<S: Serial, T: Timer> {
-    serial: Mutex<CriticalSectionRawMutex, S>,
+    serial: Mutex<NoopRawMutex, S>,
     timer: T,
-    pub(crate) last_event: BlockingMutex<CriticalSectionRawMutex, RefCell<Option<Event>>>,
-    pub(crate) wakers_reg:
-        BlockingMutex<CriticalSectionRawMutex, RefCell<MultiWakerRegistration<10>>>,
+    pub(crate) last_event: BlockingMutex<NoopRawMutex, RefCell<Option<Event>>>,
+    pub(crate) wakers_reg: BlockingMutex<NoopRawMutex, RefCell<MultiWakerRegistration<10>>>,
 }
 
 #[derive(Debug, Format)]
@@ -130,11 +129,7 @@ impl<S: Serial, T: Timer> Master<S, T> {
         &self,
         is_recording: bool,
     ) -> Result<(), RequestError<S::Error>> {
-        let response = self
-            .request(CameraCtrl {
-                is_recording
-            })
-            .await?;
+        let response = self.request(CameraCtrl { is_recording }).await?;
         match response {
             DecodedPackage::Ack(_) => Ok(()),
             _ => Err(RequestError::ProtocolError),

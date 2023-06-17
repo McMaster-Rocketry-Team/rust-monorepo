@@ -7,8 +7,8 @@ use super::timer::Timer;
 
 #[derive(Archive, Deserialize, Serialize, Debug, Clone)]
 pub struct MegReading {
-    pub timestamp: f64,    // ms
-    pub meg: [f32;3],      // gauss
+    pub timestamp: f64, // ms
+    pub meg: [f32; 3],  // gauss
 }
 
 impl defmt::Format for MegReading {

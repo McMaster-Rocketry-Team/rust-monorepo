@@ -1,7 +1,7 @@
 use super::timer::Timer;
 
 pub trait ADC {
-    type Error:defmt::Format;
+    type Error: defmt::Format;
 
     async fn read(&mut self) -> Result<f32, Self::Error>;
 }

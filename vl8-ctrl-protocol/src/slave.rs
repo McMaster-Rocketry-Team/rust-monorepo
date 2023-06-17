@@ -3,7 +3,7 @@ use core::future::Future;
 
 use defmt::{info, unwrap, warn};
 use embassy_sync::blocking_mutex::Mutex as BlockingMutex;
-use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
+use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
 use firmware_common::driver::serial::Serial;
 use heapless::Deque;
 
@@ -16,8 +16,8 @@ use crate::packages::Package;
 use crate::EventPackage;
 
 pub struct Slave<S: Serial> {
-    events: BlockingMutex<CriticalSectionRawMutex, RefCell<Deque<Event, 5>>>,
-    serial: Mutex<CriticalSectionRawMutex, S>,
+    events: BlockingMutex<NoopRawMutex, RefCell<Deque<Event, 5>>>,
+    serial: Mutex<NoopRawMutex, S>,
 }
 
 impl<S: Serial> Slave<S> {

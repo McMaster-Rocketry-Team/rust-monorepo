@@ -4,8 +4,7 @@ use super::Package;
 
 #[derive(Archive, Deserialize, Serialize, defmt::Format, Debug)]
 #[archive(check_bytes)]
-pub struct GetHardwareArming {
-}
+pub struct GetHardwareArming {}
 
 impl Package for GetHardwareArming {
     fn get_id() -> u8 {

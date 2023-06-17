@@ -2,7 +2,8 @@ use rkyv::{Archive, Deserialize, Serialize};
 
 #[derive(Archive, Deserialize, Serialize, Debug, Copy, Clone, defmt::Format, Default)]
 pub enum AvionicsState {
-    #[default] Idle,
+    #[default]
+    Idle,
     Armed,
     PowerAscent,
     Coasting,

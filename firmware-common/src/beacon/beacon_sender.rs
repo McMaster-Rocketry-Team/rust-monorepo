@@ -23,7 +23,7 @@ use crate::{
     },
 };
 use core::{cell::RefCell, fmt::Write};
-use embassy_sync::blocking_mutex::{raw::CriticalSectionRawMutex, Mutex as BlockingMutex};
+use embassy_sync::blocking_mutex::{raw::NoopRawMutex, Mutex as BlockingMutex};
 use futures::future::join3;
 use heapless::String;
 
@@ -47,8 +47,8 @@ pub async fn beacon_sender(
         .await
         .ok();
 
-    let satellites_count = BlockingMutex::<CriticalSectionRawMutex, _>::new(RefCell::new(0u32));
-    let locked = BlockingMutex::<CriticalSectionRawMutex, _>::new(RefCell::new(false));
+    let satellites_count = BlockingMutex::<NoopRawMutex, _>::new(RefCell::new(0u32));
+    let locked = BlockingMutex::<NoopRawMutex, _>::new(RefCell::new(false));
 
     let gps_parser = GPSParser::new(timer);
     // todo log gps location to file

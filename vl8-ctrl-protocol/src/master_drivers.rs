@@ -1,13 +1,13 @@
 use crate::{Event, Master, RequestError};
 use core::cell::RefCell;
 use core::{future::poll_fn, task::Poll};
+use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::blocking_mutex::Mutex as BlockingMutex;
-use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
+use embassy_sync::signal::Signal;
 use firmware_common::driver::{
-    arming::HardwareArming as ArmingDriver, gps::NmeaSentence, gps::GPS as GPSDriver,
-    pyro::Continuity as ContinuityDriver, pyro::PyroCtrl as PyroCtrlDriver, serial::Serial,
-    camera::Camera as CameraCtrlDriver,
-    timer::Timer,
+    arming::HardwareArming as ArmingDriver, camera::Camera as CameraCtrlDriver, gps::NmeaSentence,
+    gps::GPS as GPSDriver, pyro::Continuity as ContinuityDriver, pyro::PyroCtrl as PyroCtrlDriver,
+    serial::Serial, timer::Timer,
 };
 use heapless::String;
 
@@ -37,8 +37,8 @@ impl<'a, S: Serial, T: Timer> PyroCtrlDriver for MasterPyroCtrl<'a, S, T> {
 pub struct MasterPyroContinuity<'a, S: Serial, T: Timer> {
     master: &'a Master<S, T>,
     pyro_channel: u8,
-    signal: Signal<CriticalSectionRawMutex, bool>,
-    continuity: BlockingMutex<CriticalSectionRawMutex, RefCell<bool>>,
+    signal: Signal<NoopRawMutex, bool>,
+    continuity: BlockingMutex<NoopRawMutex, RefCell<bool>>,
 }
 
 impl<'a, S: Serial, T: Timer> MasterPyroContinuity<'a, S, T> {
@@ -97,8 +97,8 @@ impl<'a, S: Serial, T: Timer> ContinuityDriver for &MasterPyroContinuity<'a, S, 
 
 pub struct MasterHardwareArming<'a, S: Serial, T: Timer> {
     master: &'a Master<S, T>,
-    signal: Signal<CriticalSectionRawMutex, bool>,
-    armed: BlockingMutex<CriticalSectionRawMutex, RefCell<bool>>,
+    signal: Signal<NoopRawMutex, bool>,
+    armed: BlockingMutex<NoopRawMutex, RefCell<bool>>,
 }
 
 impl<'a, S: Serial, T: Timer> MasterHardwareArming<'a, S, T> {
@@ -153,8 +153,8 @@ impl<'a, S: Serial, T: Timer> ArmingDriver for &MasterHardwareArming<'a, S, T> {
 
 pub struct MasterGPS<'a, S: Serial, T: Timer> {
     master: &'a Master<S, T>,
-    signal: Signal<CriticalSectionRawMutex, ()>,
-    sentence: BlockingMutex<CriticalSectionRawMutex, RefCell<Option<NmeaSentence>>>,
+    signal: Signal<NoopRawMutex, ()>,
+    sentence: BlockingMutex<NoopRawMutex, RefCell<Option<NmeaSentence>>>,
     timer: T,
 }
 
@@ -215,9 +215,7 @@ pub struct MasterCameraCtrl<'a, S: Serial, T: Timer> {
 
 impl<'a, S: Serial, T: Timer> MasterCameraCtrl<'a, S, T> {
     pub fn new(master: &'a Master<S, T>) -> Self {
-        Self {
-            master,
-        }
+        Self { master }
     }
 }
 

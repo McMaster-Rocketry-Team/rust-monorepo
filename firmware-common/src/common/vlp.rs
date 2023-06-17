@@ -451,13 +451,9 @@ mod tests {
             }
         }
 
-        fn increment_frequency(&mut self) {
-            
-        }
+        fn increment_frequency(&mut self) {}
 
-        fn reset_frequency(&mut self) {
-            
-        }
+        fn reset_frequency(&mut self) {}
     }
 
     // BEGIN RELIABLE TRANSPORT TESTS

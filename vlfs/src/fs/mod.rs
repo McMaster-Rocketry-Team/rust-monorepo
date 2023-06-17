@@ -4,7 +4,7 @@ use crate::driver::{crc::Crc, flash::Flash};
 use crate::LsFileEntry;
 use bitvec::prelude::*;
 use defmt::*;
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::blocking_mutex::Mutex as BlockingMutex;
 use embassy_sync::mutex::Mutex;
 use rand::rngs::SmallRng;
@@ -38,7 +38,6 @@ const TABLE_COUNT: usize = 4;
 const MAX_SECTOR_DATA_SIZE: usize = 4016;
 const ALLOC_TABLES_SECTORS_USED: usize = TABLE_COUNT * 32 * 1024 / SECTOR_SIZE;
 const DATA_REGION_SECTORS: usize = SECTORS_COUNT - ALLOC_TABLES_SECTORS_USED; // must be a multiple of 16 & aligned to 16
-
 
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, defmt::Format)]
 pub struct FileID(pub u64);
@@ -113,11 +112,11 @@ where
     F: Flash,
     C: Crc,
 {
-    allocation_table: RwLock<CriticalSectionRawMutex, AllocationTableWrapper, 10>,
-    sectors_mng: RwLock<CriticalSectionRawMutex, SectorsMng, 10>,
-    flash: Mutex<CriticalSectionRawMutex, F>,
-    crc: Mutex<CriticalSectionRawMutex, C>,
-    rng: BlockingMutex<CriticalSectionRawMutex, RefCell<SmallRng>>,
+    allocation_table: RwLock<NoopRawMutex, AllocationTableWrapper, 10>,
+    sectors_mng: RwLock<NoopRawMutex, SectorsMng, 10>,
+    flash: Mutex<NoopRawMutex, F>,
+    crc: Mutex<NoopRawMutex, C>,
+    rng: BlockingMutex<NoopRawMutex, RefCell<SmallRng>>,
 }
 
 impl<F, C> VLFS<F, C>

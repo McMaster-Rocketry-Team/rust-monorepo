@@ -20,7 +20,7 @@ impl HardwareArming for VirtualHardwareArming {
 }
 
 #[derive(Component)]
-pub struct VirtualHardwareArmingController{
+pub struct VirtualHardwareArmingController {
     tx: Sender<bool>,
 }
 
@@ -32,5 +32,8 @@ impl VirtualHardwareArmingController {
 
 pub fn create_hardware_arming() -> (VirtualHardwareArming, VirtualHardwareArmingController) {
     let (tx, rx) = watch::channel(false);
-    (VirtualHardwareArming { rx }, VirtualHardwareArmingController { tx })
+    (
+        VirtualHardwareArming { rx },
+        VirtualHardwareArmingController { tx },
+    )
 }

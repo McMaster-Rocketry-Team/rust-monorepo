@@ -1,6 +1,6 @@
 use super::timer::Timer;
-use rkyv::{Archive, Deserialize, Serialize};
 use libm::powf;
+use rkyv::{Archive, Deserialize, Serialize};
 
 #[derive(defmt::Format, Debug, Clone, Default, Archive, Deserialize, Serialize)]
 pub struct BaroReading {

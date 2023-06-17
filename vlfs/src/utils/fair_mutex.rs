@@ -4,7 +4,7 @@ use core::task::{Poll, Waker};
 
 use core::future::poll_fn;
 use defmt::info;
-use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, RawMutex};
+use embassy_sync::blocking_mutex::raw::{NoopRawMutex, RawMutex};
 use embassy_sync::blocking_mutex::Mutex as BlockingMutex;
 use futures::future::join;
 
@@ -106,7 +106,7 @@ where
 }
 
 pub async fn fairMutexTest() {
-    let m: FairMutex<CriticalSectionRawMutex, u32, 10> = FairMutex::new(0);
+    let m: FairMutex<NoopRawMutex, u32, 10> = FairMutex::new(0);
     let task1 = async {
         loop {
             info!("Task 1");
@@ -135,7 +135,7 @@ pub async fn fairMutexTest() {
 // mod tests {
 //     use core::time::Duration;
 
-//     use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+//     use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 //     use futures_executor::LocalPool;
 //     use futures_timer::Delay;
 //     use futures_util::task::SpawnExt;
@@ -146,7 +146,7 @@ pub async fn fairMutexTest() {
 //     #[futures_test::test]
 //     async fn test() {
 //         let executor = LocalPool::new();
-//         static MUTEX: StaticCell<FairMutex::<CriticalSectionRawMutex, u32, 10>> = StaticCell::new();
+//         static MUTEX: StaticCell<FairMutex::<NoopRawMutex, u32, 10>> = StaticCell::new();
 //         let mutex = &*MUTEX.init(FairMutex::new(0));
 
 //         let m = mutex;

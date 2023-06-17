@@ -205,7 +205,7 @@ where
 // pub async fn rwLockTest<T: Timer>(timer: &T) {
 //     async {
 //         info!("rw lock test 1 started! =====");
-//         let data = RwLock::<CriticalSectionRawMutex, _, 10>::new(1);
+//         let data = RwLock::<NoopRawMutex, _, 10>::new(1);
 
 //         let task1 = async {
 //             let read1 = data.read().await;
@@ -244,7 +244,7 @@ where
 
 //     async {
 //         info!("rw lock test 2 started! =====");
-//         let data = RwLock::<CriticalSectionRawMutex, _, 10>::new(1);
+//         let data = RwLock::<NoopRawMutex, _, 10>::new(1);
 
 //         let task1 = async {
 //             loop {

@@ -41,7 +41,7 @@ impl From<&FileEntry> for LsFileEntry {
 
 pub struct FilesIterator<'a> {
     i: usize,
-    at: RwLockReadGuard<'a, CriticalSectionRawMutex, AllocationTableWrapper, 10>,
+    at: RwLockReadGuard<'a, NoopRawMutex, AllocationTableWrapper, 10>,
     file_type: Option<FileType>,
 }
 

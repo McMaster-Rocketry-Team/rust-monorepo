@@ -7,6 +7,7 @@ use crate::driver::{
     arming::HardwareArming,
     barometer::Barometer,
     buzzer::Buzzer,
+    camera::Camera,
     debugger::{Debugger, RadioApplicationClient},
     gps::{GPSCtrl, GPS},
     imu::IMU,
@@ -17,9 +18,9 @@ use crate::driver::{
     serial::Serial,
     sys_reset::SysReset,
     timer::{DelayUsWrapper, Timer},
-    usb::USB, camera::Camera,
+    usb::USB,
 };
-use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
+use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
 
 #[allow(dead_code)]
 pub struct DeviceManager<
@@ -51,32 +52,32 @@ pub struct DeviceManager<
     GT: GPSCtrl,
     CAM: Camera,
 > {
-    pub(crate) sys_reset: Mutex<CriticalSectionRawMutex, D>,
-    pub(crate) flash: Mutex<CriticalSectionRawMutex, F>,
-    pub(crate) crc: Mutex<CriticalSectionRawMutex, C>,
-    pub(crate) imu: Mutex<CriticalSectionRawMutex, I>,
-    pub(crate) batt_voltmeter: Mutex<CriticalSectionRawMutex, V>,
-    pub(crate) batt_ammeter: Mutex<CriticalSectionRawMutex, A>,
-    pub(crate) pyro1_cont: Mutex<CriticalSectionRawMutex, P1C>,
-    pub(crate) pyro1_ctrl: Mutex<CriticalSectionRawMutex, P1T>,
-    pub(crate) pyro2_cont: Mutex<CriticalSectionRawMutex, P2C>,
-    pub(crate) pyro2_ctrl: Mutex<CriticalSectionRawMutex, P2T>,
-    pub(crate) pyro3_cont: Mutex<CriticalSectionRawMutex, P3C>,
-    pub(crate) pyro3_ctrl: Mutex<CriticalSectionRawMutex, P3T>,
-    pub(crate) arming_switch: Mutex<CriticalSectionRawMutex, ARM>,
-    pub(crate) serial: Mutex<CriticalSectionRawMutex, S>,
-    pub(crate) usb: Mutex<CriticalSectionRawMutex, U>,
-    pub(crate) buzzer: Mutex<CriticalSectionRawMutex, B>,
-    pub(crate) meg: Mutex<CriticalSectionRawMutex, M>,
+    pub(crate) sys_reset: Mutex<NoopRawMutex, D>,
+    pub(crate) flash: Mutex<NoopRawMutex, F>,
+    pub(crate) crc: Mutex<NoopRawMutex, C>,
+    pub(crate) imu: Mutex<NoopRawMutex, I>,
+    pub(crate) batt_voltmeter: Mutex<NoopRawMutex, V>,
+    pub(crate) batt_ammeter: Mutex<NoopRawMutex, A>,
+    pub(crate) pyro1_cont: Mutex<NoopRawMutex, P1C>,
+    pub(crate) pyro1_ctrl: Mutex<NoopRawMutex, P1T>,
+    pub(crate) pyro2_cont: Mutex<NoopRawMutex, P2C>,
+    pub(crate) pyro2_ctrl: Mutex<NoopRawMutex, P2T>,
+    pub(crate) pyro3_cont: Mutex<NoopRawMutex, P3C>,
+    pub(crate) pyro3_ctrl: Mutex<NoopRawMutex, P3T>,
+    pub(crate) arming_switch: Mutex<NoopRawMutex, ARM>,
+    pub(crate) serial: Mutex<NoopRawMutex, S>,
+    pub(crate) usb: Mutex<NoopRawMutex, U>,
+    pub(crate) buzzer: Mutex<NoopRawMutex, B>,
+    pub(crate) meg: Mutex<NoopRawMutex, M>,
     radio_kind: Option<L>,
-    pub(crate) lora: Mutex<CriticalSectionRawMutex, Option<LoRa<L>>>,
-    pub(crate) rng: Mutex<CriticalSectionRawMutex, R>,
-    pub(crate) status_indicator: Mutex<CriticalSectionRawMutex, IS>,
-    pub(crate) error_indicator: Mutex<CriticalSectionRawMutex, IE>,
-    pub(crate) barometer: Mutex<CriticalSectionRawMutex, BA>,
-    pub(crate) gps: Mutex<CriticalSectionRawMutex, G>,
-    pub(crate) gps_ctrl: Mutex<CriticalSectionRawMutex, GT>,
-    pub(crate) camera: Mutex<CriticalSectionRawMutex, CAM>,
+    pub(crate) lora: Mutex<NoopRawMutex, Option<LoRa<L>>>,
+    pub(crate) rng: Mutex<NoopRawMutex, R>,
+    pub(crate) status_indicator: Mutex<NoopRawMutex, IS>,
+    pub(crate) error_indicator: Mutex<NoopRawMutex, IE>,
+    pub(crate) barometer: Mutex<NoopRawMutex, BA>,
+    pub(crate) gps: Mutex<NoopRawMutex, G>,
+    pub(crate) gps_ctrl: Mutex<NoopRawMutex, GT>,
+    pub(crate) camera: Mutex<NoopRawMutex, CAM>,
     pub(crate) timer: T,
     pub(crate) debugger: DB,
 }
@@ -310,6 +311,7 @@ pub mod prelude {
     pub use crate::driver::arming::HardwareArming;
     pub use crate::driver::barometer::Barometer;
     pub use crate::driver::buzzer::Buzzer;
+    pub use crate::driver::camera::Camera;
     pub use crate::driver::debugger::Debugger;
     pub use crate::driver::gps::{GPSCtrl, GPS};
     pub use crate::driver::imu::IMU;
@@ -321,7 +323,6 @@ pub mod prelude {
     pub use crate::driver::sys_reset::SysReset;
     pub use crate::driver::timer::Timer;
     pub use crate::driver::usb::USB;
-    pub use crate::driver::camera::Camera;
     pub use lora_phy::mod_traits::RadioKind;
     pub use lora_phy::LoRa;
     pub use vlfs::{Crc, Flash};
