@@ -216,7 +216,9 @@ pub async fn avionics_main(
         barometer,
         gps,
         meg,
-        batt_voltmeter
+        batt_voltmeter,
+        pyro1_cont,
+        pyro2_cont
     );
     unwrap!(imu.wait_for_power_on().await);
     unwrap!(imu.reset().await);
@@ -278,6 +280,38 @@ pub async fn avionics_main(
         let baro_channel = PubSubChannel::<NoopRawMutex, BaroReading, 1, 1, 1>::new();
         let mut meg_ticker = Ticker::every(timer, 50.0);
         let mut batt_volt_ticker = Ticker::every(timer, 5.0);
+
+        let pyro1_cont_fut = async {
+            let cont = unwrap!(pyro1_cont.read_continuity().await);
+            telemetry_data.lock(|d| {
+                let mut d = d.borrow_mut();
+                d.pyro1_cont = cont
+            });
+
+            loop {
+                let cont = unwrap!(pyro1_cont.wait_continuity_change().await);
+                telemetry_data.lock(|d| {
+                    let mut d = d.borrow_mut();
+                    d.pyro1_cont = cont
+                });
+            }
+        };
+
+        let pyro2_cont_fut = async {
+            let cont = unwrap!(pyro2_cont.read_continuity().await);
+            telemetry_data.lock(|d| {
+                let mut d = d.borrow_mut();
+                d.pyro2_cont = cont
+            });
+
+            loop {
+                let cont = unwrap!(pyro2_cont.wait_continuity_change().await);
+                telemetry_data.lock(|d| {
+                    let mut d = d.borrow_mut();
+                    d.pyro2_cont = cont
+                });
+            }
+        };
 
         let imu_fut = async {
             loop {
@@ -474,6 +508,8 @@ pub async fn avionics_main(
                 gps_logging_fut,
                 meg_fut,
                 bat_fut,
+                pyro1_cont_fut,
+                pyro2_cont_fut
             );
         }
     };

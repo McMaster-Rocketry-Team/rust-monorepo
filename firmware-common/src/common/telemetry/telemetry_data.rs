@@ -20,4 +20,6 @@ pub struct TelemetryData {
     pub satellites_in_use: u32,
     pub lat_lon: Option<(f64, f64)>,
     pub battery_voltage: f32,
+    pub pyro1_cont: bool,
+    pub pyro2_cont: bool,
 }
