@@ -6,6 +6,7 @@ use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal}
 use firmware_common::driver::{
     arming::HardwareArming as ArmingDriver, gps::NmeaSentence, gps::GPS as GPSDriver,
     pyro::Continuity as ContinuityDriver, pyro::PyroCtrl as PyroCtrlDriver, serial::Serial,
+    camera::Camera as CameraCtrlDriver,
     timer::Timer,
 };
 use heapless::String;
@@ -205,5 +206,26 @@ impl<'a, S: Serial, T: Timer> GPSDriver for &MasterGPS<'a, S, T> {
                 return sentence;
             }
         }
+    }
+}
+
+pub struct MasterCameraCtrl<'a, S: Serial, T: Timer> {
+    master: &'a Master<S, T>,
+}
+
+impl<'a, S: Serial, T: Timer> MasterCameraCtrl<'a, S, T> {
+    pub fn new(master: &'a Master<S, T>) -> Self {
+        Self {
+            master,
+        }
+    }
+}
+
+impl<'a, S: Serial, T: Timer> CameraCtrlDriver for MasterCameraCtrl<'a, S, T> {
+    type Error = RequestError<S::Error>;
+
+    async fn set_recording(&mut self, is_recording: bool) -> Result<(), RequestError<S::Error>> {
+        self.master.camera_ctrl(is_recording).await?;
+        Ok(())
     }
 }

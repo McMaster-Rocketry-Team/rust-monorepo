@@ -12,6 +12,7 @@ use firmware_common::{
         adc::DummyADC,
         arming::HardwareArming,
         barometer::{Barometer, DummyBarometer},
+        camera::DummyCamera,
         debugger::Debugger as DebuggerDriver,
         dummy_radio_kind::DummyRadioKind,
         gps::{DummyGPS, DummyGPSCtrl},
@@ -94,6 +95,7 @@ async fn avionics(
         DummyIndicator {},
         baro,
         (DummyGPS::new(timer), DummyGPSCtrl {}), // VLF3's GPS doesn't work
+        DummyCamera {},
         debugger,
     );
 

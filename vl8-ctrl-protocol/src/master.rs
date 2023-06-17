@@ -7,6 +7,7 @@ use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 use firmware_common::driver::{serial::Serial, timer::Timer};
 
 use crate::multi_waker::MultiWakerRegistration;
+use crate::packages::camera::CameraCtrl;
 use crate::packages::continuity::{ContinuityInfo, GetContinuity};
 use crate::packages::hardware_arming::{GetHardwareArming, HardwareArmingInfo};
 use crate::{
@@ -117,6 +118,21 @@ impl<S: Serial, T: Timer> Master<S, T> {
             .request(PyroCtrl {
                 pyro_channel,
                 enable,
+            })
+            .await?;
+        match response {
+            DecodedPackage::Ack(_) => Ok(()),
+            _ => Err(RequestError::ProtocolError),
+        }
+    }
+
+    pub(crate) async fn camera_ctrl(
+        &self,
+        is_recording: bool,
+    ) -> Result<(), RequestError<S::Error>> {
+        let response = self
+            .request(CameraCtrl {
+                is_recording
             })
             .await?;
         match response {

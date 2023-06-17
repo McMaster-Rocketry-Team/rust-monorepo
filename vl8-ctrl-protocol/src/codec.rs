@@ -7,6 +7,7 @@ use rkyv::{
 
 use crate::packages::{
     ack::Ack,
+    camera::CameraCtrl,
     continuity::{ContinuityInfo, GetContinuity},
     device::{DeviceInfo, GetDevice},
     event::{EventPackage, PollEvent},
@@ -40,6 +41,7 @@ pub enum DecodedPackage {
     ContinuityInfo(ContinuityInfo),
     GetHardwareArming(GetHardwareArming),
     HardwareArmingInfo(HardwareArmingInfo),
+    CameraCtrl(CameraCtrl),
 }
 
 #[derive(defmt::Format, Debug)]
@@ -107,6 +109,11 @@ pub fn decode_package(buffer: &[u8]) -> Result<DecodedPackage, DecodePackageErro
     } else if package_id == HardwareArmingInfo::get_id() {
         let archived = unsafe { archived_root::<HardwareArmingInfo>(&buffer[2..]) };
         return Ok(DecodedPackage::HardwareArmingInfo(
+            archived.deserialize(&mut rkyv::Infallible).unwrap(),
+        ));
+    } else if package_id == CameraCtrl::get_id() {
+        let archived = unsafe { archived_root::<CameraCtrl>(&buffer[2..]) };
+        return Ok(DecodedPackage::CameraCtrl(
             archived.deserialize(&mut rkyv::Infallible).unwrap(),
         ));
     }

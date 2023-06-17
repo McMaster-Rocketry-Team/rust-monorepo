@@ -1,4 +1,3 @@
-use embedded_hal_async::delay::DelayUs;
 use heapless::Vec;
 use lora_phy::{
     mod_params::{Bandwidth, CodingRate, ModulationParams, RadioError, SpreadingFactor},

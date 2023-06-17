@@ -5,7 +5,9 @@
 
 pub use codec::{decode_package, encode_package, DecodedPackage};
 pub use master::{Master, RequestError};
-pub use master_drivers::{MasterGPS, MasterHardwareArming, MasterPyroContinuity, MasterPyroCtrl};
+pub use master_drivers::{
+    MasterCameraCtrl, MasterGPS, MasterHardwareArming, MasterPyroContinuity, MasterPyroCtrl,
+};
 pub use packages::ack::Ack;
 pub use packages::continuity::ContinuityInfo;
 pub use packages::device::{DeviceInfo, GetDevice};

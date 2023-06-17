@@ -17,7 +17,7 @@ use crate::driver::{
     serial::Serial,
     sys_reset::SysReset,
     timer::{DelayUsWrapper, Timer},
-    usb::USB,
+    usb::USB, camera::Camera,
 };
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 
@@ -49,6 +49,7 @@ pub struct DeviceManager<
     BA: Barometer,
     G: GPS,
     GT: GPSCtrl,
+    CAM: Camera,
 > {
     pub(crate) sys_reset: Mutex<CriticalSectionRawMutex, D>,
     pub(crate) flash: Mutex<CriticalSectionRawMutex, F>,
@@ -75,6 +76,7 @@ pub struct DeviceManager<
     pub(crate) barometer: Mutex<CriticalSectionRawMutex, BA>,
     pub(crate) gps: Mutex<CriticalSectionRawMutex, G>,
     pub(crate) gps_ctrl: Mutex<CriticalSectionRawMutex, GT>,
+    pub(crate) camera: Mutex<CriticalSectionRawMutex, CAM>,
     pub(crate) timer: T,
     pub(crate) debugger: DB,
 }
@@ -106,6 +108,7 @@ impl<
         BA: Barometer,
         G: GPS,
         GT: GPSCtrl,
+        CAM: Camera,
     >
     DeviceManager<
         DB,
@@ -134,6 +137,7 @@ impl<
         BA,
         G,
         GT,
+        CAM,
     >
 {
     pub fn new(
@@ -158,6 +162,7 @@ impl<
         error_indicator: IE,
         barometer: BA,
         gps: (G, GT),
+        camera: CAM,
         debugger: DB,
     ) -> Self {
         Self {
@@ -187,6 +192,7 @@ impl<
             barometer: Mutex::new(barometer),
             gps: Mutex::new(gps.0),
             gps_ctrl: Mutex::new(gps.1),
+            camera: Mutex::new(camera),
             timer,
         }
     }
@@ -264,6 +270,7 @@ macro_rules! device_manager_type{
     impl Barometer,
     impl GPS,
     impl GPSCtrl,
+    impl Camera,
 >};
 
 (mut) => { &mut DeviceManager<
@@ -293,6 +300,7 @@ macro_rules! device_manager_type{
     impl Barometer,
     impl GPS,
     impl GPSCtrl,
+    impl Camera,
 >}
 }
 
@@ -313,6 +321,7 @@ pub mod prelude {
     pub use crate::driver::sys_reset::SysReset;
     pub use crate::driver::timer::Timer;
     pub use crate::driver::usb::USB;
+    pub use crate::driver::camera::Camera;
     pub use lora_phy::mod_traits::RadioKind;
     pub use lora_phy::LoRa;
     pub use vlfs::{Crc, Flash};
