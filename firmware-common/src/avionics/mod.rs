@@ -452,7 +452,7 @@ pub async fn avionics_main(
                             drop(imu);
                             acc_sum /= 100.0;
                             rocket_upright_acc.lock(|s| s.borrow_mut().replace(acc_sum));
-                            write_up_right_vector(fs, acc_sum).await.ok();
+                            write_up_right_vector(fs, acc_sum).await.unwrap();
 
                             let mut tones = Vec::new();
                             tones.push(BuzzerTone(Some(2700), 500.0)).unwrap();

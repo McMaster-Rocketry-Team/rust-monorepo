@@ -1,7 +1,7 @@
 use crate::common::files::AVIONICS_UP_RIGHT_FILE_TYPE;
 use nalgebra::Vector3;
 use vlfs::io_traits::AsyncWriter;
-use vlfs::{io_traits::AsyncReader, Crc, Flash, LsFileEntry, VLFSError, VLFSReadStatus, VLFS};
+use vlfs::{io_traits::AsyncReader, Crc, Flash, LsFileEntry, VLFSError, VLFS};
 
 pub async fn read_up_right_vector(fs: &VLFS<impl Flash, impl Crc>) -> Option<Vector3<f32>> {
     let file = fs.find_file_by_type(AVIONICS_UP_RIGHT_FILE_TYPE).await;
@@ -13,7 +13,7 @@ pub async fn read_up_right_vector(fs: &VLFS<impl Flash, impl Crc>) -> Option<Vec
         if let Ok(mut reader) = fs.open_file_for_read(file_id).await {
             let mut buffer = [0u8; 12];
             let result = match reader.read_slice(&mut buffer, 12).await {
-                Ok((buffer, VLFSReadStatus::Ok)) => {
+                Ok((buffer, _)) if buffer.len() == 12 => {
                     log_info!("Read up right vector successfully");
                     Some(Vector3::new(
                         f32::from_be_bytes((&buffer[0..4]).try_into().unwrap()),
@@ -49,5 +49,6 @@ pub async fn write_up_right_vector<F: Flash>(
     let mut writer = fs.open_file_for_write(file_id).await?;
     writer.extend_from_slice(&buffer).await?;
     writer.close().await?;
+    log_info!("up right vector saved");
     Ok(())
 }

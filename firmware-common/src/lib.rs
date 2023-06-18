@@ -92,14 +92,14 @@ pub async fn init(
         }
 
         let device_mode = if let Some(device_mode_overwrite) = device_mode_overwrite {
-            info!("Using device mode overwrite: {:?}", device_mode_overwrite);
+            log_info!("Using device mode overwrite: {:?}", device_mode_overwrite);
             device_mode_overwrite
         } else {
             if let Some(device_mode_) = read_device_mode(&fs).await {
-                info!("Read device mode from disk: {}", device_mode_);
+                log_info!("Read device mode from disk: {:?}", device_mode_);
                 device_mode_
             } else {
-                info!("No device mode file found, creating one");
+                log_info!("No device mode file found, creating one");
                 try_or_warn!(write_device_mode(&fs, DeviceMode::Avionics).await);
                 DeviceMode::Avionics
             }

@@ -1,8 +1,8 @@
 use futures::join;
 use vlfs::VLFS;
 
-use crate::common::console::console_program::start_console_program;
 use crate::common::console::console::Console;
+use crate::common::console::console_program::start_console_program;
 use crate::common::device_manager::prelude::*;
 use crate::driver::serial::Serial;
 

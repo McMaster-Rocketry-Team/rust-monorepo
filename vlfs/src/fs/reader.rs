@@ -15,6 +15,11 @@ where
     ) -> Result<FileReader<F, C>, VLFSError<F::Error>> {
         let mut at = self.allocation_table.write().await;
         if let Some(file_entry) = self.find_file_entry_mut(&mut at.allocation_table, file_id) {
+            log_info!(
+                "Opening file {:?} with id {:?} for read",
+                file_id,
+                file_entry.file_type
+            );
             if file_entry.opened {
                 return Err(VLFSError::FileInUse);
             }
@@ -188,9 +193,10 @@ where
             }
 
             if actual_crc != expected_crc {
-                info!(
+                log_info!(
                     "CRC mismatch: expected {}, actual {}",
-                    expected_crc, actual_crc
+                    expected_crc,
+                    actual_crc
                 );
                 // Tell the application the page is corrupted
                 // and let the application decide if it wants to continue reading
@@ -214,6 +220,11 @@ where
             .vlfs
             .find_file_entry_mut(&mut at.allocation_table, self.file_id)
             .unwrap();
+        log_info!(
+            "Closing file {:?} with id {:?} for read",
+            file_entry.file_id,
+            file_entry.file_type
+        );
         file_entry.opened = false;
         self.closed = true;
     }

@@ -7,7 +7,7 @@ edition = "2021"
 [features]
 default = ["global-allocator"]
 global-allocator = []
-log = ["dep:log"]
+log = ["dep:log", "vlfs/log"]
 
 [dependencies]
 embassy-sync = { version = "0.2.0", default-features = false }

@@ -4509,6 +4509,7 @@ dependencies = [
  "futures-timer",
  "futures-util",
  "heapless",
+ "log",
  "paste",
  "rand",
  "static_cell",

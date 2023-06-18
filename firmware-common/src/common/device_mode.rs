@@ -3,7 +3,7 @@ use vlfs::{Crc, Flash, LsFileEntry, VLFSError, VLFS};
 
 use super::files::DEVICE_MODE_FILE_TYPE;
 
-#[derive(Clone, Copy, defmt::Format)]
+#[derive(Clone, Copy, Debug, defmt::Format)]
 #[repr(u8)]
 pub enum DeviceMode {
     Avionics = 1,

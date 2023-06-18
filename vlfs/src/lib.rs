@@ -4,6 +4,8 @@
 #![feature(let_chains)]
 #![feature(try_blocks)]
 
+mod fmt;
+
 pub use driver::async_erase_flash::AsyncEraseFlash;
 pub use driver::crc::Crc;
 pub use driver::dummy_crc::DummyCrc;

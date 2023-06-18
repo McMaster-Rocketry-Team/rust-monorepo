@@ -4,22 +4,25 @@ use vlfs::{Crc, Flash, VLFS};
 use crate::{
     claim_devices,
     common::device_manager::prelude::*,
-    common::{device_mode::{write_device_mode, DeviceMode}, console::console_program::ConsoleProgram},
+    common::{
+        console::console_program::ConsoleProgram,
+        device_mode::{write_device_mode, DeviceMode},
+    },
     driver::{serial::Serial, sys_reset::SysReset},
     try_or_warn,
 };
 
-pub struct ChangeMode<'a, F:Flash, C:Crc> {
-    vlfs: &'a VLFS<F,C>,
+pub struct ChangeMode<'a, F: Flash, C: Crc> {
+    vlfs: &'a VLFS<F, C>,
 }
 
-impl<'a, F:Flash, C:Crc> ChangeMode<'a,F,C> {
-    pub fn new(vlfs: &'a VLFS<F,C>) -> Self {
-        Self {vlfs}
+impl<'a, F: Flash, C: Crc> ChangeMode<'a, F, C> {
+    pub fn new(vlfs: &'a VLFS<F, C>) -> Self {
+        Self { vlfs }
     }
 }
 
-impl<'a, F:Flash, C:Crc> ConsoleProgram for ChangeMode<'a,F,C> {
+impl<'a, F: Flash, C: Crc> ConsoleProgram for ChangeMode<'a, F, C> {
     fn id(&self) -> u64 {
         0x3
     }

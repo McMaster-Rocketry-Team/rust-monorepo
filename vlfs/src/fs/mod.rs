@@ -202,7 +202,6 @@ where
                     }
 
                     let mut current_sector_index = file_entry.first_sector_index;
-                    drop(file_entry);
 
                     // delete file entry
                     at.allocation_table.file_entries.swap_remove(i);
@@ -268,7 +267,7 @@ where
                     sector_data_size, sector_index
                 );
                 if sector_data_size > MAX_SECTOR_DATA_SIZE {
-                    warn!("sector_data_size > MAX_SECTOR_DATA_SIZE");
+                    log_warn!("sector_data_size > MAX_SECTOR_DATA_SIZE");
                     sectors += 1;
                     break;
                 } else {
