@@ -2,6 +2,8 @@ use defmt::{info, unwrap};
 use vlfs::{io_traits::AsyncWriter, Crc, Flash, VLFS};
 
 use crate::driver::serial::Serial;
+
+// TODO implement `ConsoleProgram` and add to `start_common_programs`
 pub struct WriteFile {}
 
 impl WriteFile {

@@ -307,6 +307,7 @@ macro_rules! device_manager_type{
 
 pub mod prelude {
     pub use super::DeviceManager;
+    pub use crate::device_manager_type;
     pub use crate::driver::adc::ADC;
     pub use crate::driver::arming::HardwareArming;
     pub use crate::driver::barometer::Barometer;

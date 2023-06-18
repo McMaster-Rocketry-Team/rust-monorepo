@@ -3,6 +3,7 @@ use vlfs::{io_traits::AsyncReader, Crc, Flash, VLFSReadStatus, VLFS};
 
 use crate::driver::serial::Serial;
 
+// TODO implement `ConsoleProgram` and add to `start_common_programs`
 pub struct ReadFile {}
 
 impl ReadFile {

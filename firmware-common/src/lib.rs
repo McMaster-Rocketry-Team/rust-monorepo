@@ -11,7 +11,10 @@ use futures::join;
 
 use crate::{
     avionics::avionics_main,
-    common::{console::console::run_console, device_manager::prelude::*},
+    common::{
+        console::{console::Console, programs::start_common_programs::start_common_programs},
+        device_manager::prelude::*,
+    },
     ground_test::gcm::ground_test_gcm,
 };
 use defmt::*;
@@ -68,8 +71,11 @@ pub async fn init(
         }
     };
 
-    let serial_console = run_console(&fs, serial, &stat_flash, device_manager);
-    let usb_console = run_console(&fs, usb, &stat_flash, device_manager);
+    let serial_console = Console::<_, 20>::new(serial);
+    let serial_console_common_programs_fut =
+        start_common_programs(device_manager, &serial_console, &fs);
+    let usb_console = Console::<_, 20>::new(usb);
+    let usb_console_common_programs_fut = start_common_programs(device_manager, &usb_console, &fs);
 
     let main_fut = async {
         if usb_connected {
@@ -116,7 +122,13 @@ pub async fn init(
 
     #[allow(unreachable_code)]
     {
-        join!(main_fut, serial_console, usb_console);
+        join!(
+            main_fut,
+            serial_console.run_dispatcher(),
+            usb_console.run_dispatcher(),
+            serial_console_common_programs_fut,
+            usb_console_common_programs_fut
+        );
     }
 
     defmt::unreachable!()

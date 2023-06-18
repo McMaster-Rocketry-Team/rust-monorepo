@@ -1,3 +1,3 @@
 pub mod console;
 pub mod programs;
-pub mod console_program_dispatcher;
+pub mod console_program;

@@ -14,6 +14,7 @@ use crate::{
     try_or_warn,
 };
 
+// TODO implement `ConsoleProgram` and add to `start_common_programs`
 pub struct BenchmarkFlash {}
 
 impl BenchmarkFlash {

@@ -7,88 +7,23 @@ use vlfs::{io_traits::AsyncWriter, Crc, Flash, VLFS};
 
 use crate::{
     claim_devices,
-    common::{device_manager::prelude::*, files::CALIBRATION_FILE_TYPE, ticker::Ticker},
+    common::{
+        console::console_program::ConsoleProgram, device_manager::prelude::*,
+        files::CALIBRATION_FILE_TYPE, ticker::Ticker,
+    },
     device_manager_type,
     driver::{
         buzzer::Buzzer, debugger::DebuggerTargetEvent, imu::IMU, serial::Serial, timer::Timer,
     },
 };
 
-pub struct Calibrate {}
+pub struct Calibrate<'a, F: Flash, C: Crc> {
+    vlfs: &'a VLFS<F, C>,
+}
 
-impl Calibrate {
-    pub fn new() -> Self {
-        Self {}
-    }
-
-    pub fn id(&self) -> u64 {
-        0x5
-    }
-
-    pub async fn start(
-        &self,
-        serial: &mut impl Serial,
-        fs: &VLFS<impl Flash, impl Crc>,
-        device_manager: device_manager_type!(),
-    ) -> Result<(), ()> {
-        let timer = device_manager.timer;
-        let debugger = device_manager.debugger.clone();
-        claim_devices!(device_manager, buzzer, imu);
-        // TODO move this to main
-        unwrap!(imu.wait_for_power_on().await);
-        unwrap!(imu.reset().await);
-
-        let mut ticker = Ticker::every(timer, 5.0);
-        let mut calibrator = InteractiveCalibrator::new(Some(0.05), None, None);
-        loop {
-            ticker.next().await;
-            let reading = imu.read().await.map_err(|_| ()).unwrap();
-            let next_state = calibrator.process(&reading);
-            if let Some(state) = next_state {
-                match state {
-                    WaitingStill => self.waiting_still_sound(&mut buzzer, timer).await,
-                    State(axis, direction, event) if event != Event::Variance => {
-                        self.axis_sound(axis, &mut buzzer, timer).await;
-                        self.direction_sound(direction, &mut buzzer, timer).await;
-                        self.event_sound(event, &mut buzzer, timer).await;
-                    }
-                    State(_, _, _) => {}
-                    Success => {
-                        self.success_sound(&mut buzzer, timer).await;
-                    }
-                    Failure => {
-                        self.failure_sound(&mut buzzer, timer).await;
-                    }
-                    Idle => {}
-                }
-
-                debugger.dispatch(DebuggerTargetEvent::Calibrating(state));
-
-                if let Success = state {
-                    let cal_info = calibrator.get_calibration_info().unwrap();
-                    info!("{}", cal_info);
-                    unwrap!(
-                        fs.remove_files(|file_entry| file_entry.file_type == CALIBRATION_FILE_TYPE)
-                            .await
-                    );
-                    let file_id = unwrap!(fs.create_file(CALIBRATION_FILE_TYPE).await);
-                    let mut file = unwrap!(fs.open_file_for_write(file_id).await);
-
-                    let mut buffer = [0u8; 156];
-                    cal_info.serialize(&mut buffer);
-                    unwrap!(file.extend_from_slice(&buffer).await);
-                    unwrap!(file.close().await);
-
-                    unwrap!(serial.write(&[1]).await);
-                    break;
-                } else if let Failure = state {
-                    unwrap!(serial.write(&[0]).await);
-                    break;
-                }
-            }
-        }
-
-        Ok(())
+impl<'a, F: Flash, C: Crc> Calibrate<'a, F, C> {
+    pub fn new(vlfs: &'a VLFS<F, C>) -> Self {
+        Self { vlfs }
     }
 
     async fn waiting_still_sound(&self, buzzer: &mut impl Buzzer, timer: impl Timer) {
@@ -165,6 +100,71 @@ impl Calibrate {
         for i in (0..4).rev() {
             buzzer.play(1000 + i * 250, 50.0).await;
             timer.sleep(150.0).await;
+        }
+    }
+}
+
+impl<'a, F: Flash, C: Crc> ConsoleProgram for Calibrate<'a, F, C> {
+    fn id(&self) -> u64 {
+        0x05
+    }
+
+    async fn run(&mut self, serial: &mut impl Serial, device_manager: device_manager_type!()) {
+        let timer = device_manager.timer;
+        let debugger = device_manager.debugger.clone();
+        claim_devices!(device_manager, buzzer, imu);
+        // TODO move this to main
+        unwrap!(imu.wait_for_power_on().await);
+        unwrap!(imu.reset().await);
+
+        let mut ticker = Ticker::every(timer, 5.0);
+        let mut calibrator = InteractiveCalibrator::new(Some(0.05), None, None);
+        loop {
+            ticker.next().await;
+            let reading = imu.read().await.map_err(|_| ()).unwrap();
+            let next_state = calibrator.process(&reading);
+            if let Some(state) = next_state {
+                match state {
+                    WaitingStill => self.waiting_still_sound(&mut buzzer, timer).await,
+                    State(axis, direction, event) if event != Event::Variance => {
+                        self.axis_sound(axis, &mut buzzer, timer).await;
+                        self.direction_sound(direction, &mut buzzer, timer).await;
+                        self.event_sound(event, &mut buzzer, timer).await;
+                    }
+                    State(_, _, _) => {}
+                    Success => {
+                        self.success_sound(&mut buzzer, timer).await;
+                    }
+                    Failure => {
+                        self.failure_sound(&mut buzzer, timer).await;
+                    }
+                    Idle => {}
+                }
+
+                debugger.dispatch(DebuggerTargetEvent::Calibrating(state));
+
+                if let Success = state {
+                    let cal_info = calibrator.get_calibration_info().unwrap();
+                    info!("{}", cal_info);
+                    unwrap!(
+                        self.vlfs.remove_files(|file_entry| file_entry.file_type == CALIBRATION_FILE_TYPE)
+                            .await
+                    );
+                    let file_id = unwrap!(self.vlfs.create_file(CALIBRATION_FILE_TYPE).await);
+                    let mut file = unwrap!(self.vlfs.open_file_for_write(file_id).await);
+
+                    let mut buffer = [0u8; 156];
+                    cal_info.serialize(&mut buffer);
+                    unwrap!(file.extend_from_slice(&buffer).await);
+                    unwrap!(file.close().await);
+
+                    unwrap!(serial.write(&[1]).await);
+                    break;
+                } else if let Failure = state {
+                    unwrap!(serial.write(&[0]).await);
+                    break;
+                }
+            }
         }
     }
 }
