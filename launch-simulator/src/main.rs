@@ -22,6 +22,7 @@ use ground_test::create_ground_test;
 use keyframe::animation_system;
 use launch::{create_launch, ignition_handler, set_launch_angle};
 use motor::{motor_ignitor, motor_system};
+use orientation_logger::{setup_orientation_logger, orientation_logger_system};
 use rocket::{rocket_camera_tracking, rocket_chute_system, rocket_pyro_receiver_system};
 use virt_drivers::{
     arming::{create_hardware_arming, VirtualHardwareArmingController},
@@ -38,6 +39,7 @@ mod launch;
 mod motor;
 mod rocket;
 mod virt_drivers;
+mod orientation_logger;
 
 pub const AVIONICS_X_LEN: f32 = 0.04;
 pub const AVIONICS_Y_LEN: f32 = 0.02;
@@ -71,6 +73,7 @@ fn main() {
         .add_startup_system(setup_graphics)
         .add_startup_system(setup_physics)
         .add_startup_system(setup_virtual_avionics)
+        .add_startup_system(setup_orientation_logger)
         .add_system(ui_system)
         .add_system(virtual_sensors)
         .add_system(debugger_receiver)
@@ -85,6 +88,7 @@ fn main() {
         .add_system(rocket_camera_tracking)
         .add_system(rocket_pyro_receiver_system)
         .add_system(set_launch_angle)
+        .add_system(orientation_logger_system)
         .run();
 }
 
@@ -233,7 +237,7 @@ fn ui_system(
 }
 
 #[derive(States, Default, Debug, Clone, Copy, Hash, PartialEq, Eq)]
-enum ArmingState {
+pub enum ArmingState {
     Armed,
     #[default]
     Disarmed,

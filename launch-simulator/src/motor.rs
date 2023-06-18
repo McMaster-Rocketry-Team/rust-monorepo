@@ -40,7 +40,7 @@ pub fn motor_system(
 ) {
     for (entity, mut thrust_player, transform) in motor_tube_entity.iter_mut() {
         if let Some(thrust) = thrust_player.update(time.delta_seconds()) {
-            let thrust = Vec3::new(0.0, thrust, 0.0);
+            let thrust = Vec3::new(0.0, thrust*1.1, 0.0);
             let thrust = transform.rotation * thrust;
             commands.entity(entity).insert(ExternalForce {
                 force: thrust,

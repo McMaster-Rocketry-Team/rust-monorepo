@@ -1,5 +1,3 @@
-use std::f32::consts::PI;
-
 use bevy::prelude::*;
 use bevy_rapier3d::prelude::*;
 use nalgebra::{UnitQuaternion, Vector3};
@@ -34,13 +32,13 @@ pub fn create_launch(
                 .add_keyframe(
                     Translation3DKeyFrame::new(
                         body_tube_transform.rotation.into(),
-                        Vector3::new(0.0, 2.0, 0.0),
+                        Vector3::new(0.0, 1.0, 0.0),
                     ),
                     1.0,
                 )
                 .finish(Translation3DKeyFrame::new(
                     UnitQuaternion::from_axis_angle(&Vector3::z_axis(), 0.0),
-                    Vector3::new(0.0, 2.0, 0.0),
+                    Vector3::new(0.0, 1.0, 0.0),
                 ));
 
             let player = AnimationPlayer::new(animation, false);
