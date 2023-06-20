@@ -1,6 +1,6 @@
 use rkyv::{Archive, Deserialize, Serialize};
 
-#[derive(Archive, Deserialize, Serialize, Debug, Copy, Clone, defmt::Format, Default)]
+#[derive(Archive, Deserialize, Serialize, Debug, Copy, Clone, defmt::Format, Default, PartialEq)]
 #[archive(check_bytes)]
 pub enum AvionicsState {
     #[default]

@@ -24,9 +24,14 @@ use crate::{
     common::{
         telemetry::telemetry_data::{AvionicsState, TelemetryData},
         vlp::{SocketParams, VLPSocket},
-    }, vlp::application_layer::{ApplicationLayerTxPackage, ApplicationLayerRxPackage},
+    },
+    vlp::{
+        application_layer::{
+            ApplicationLayerRxPackage, ApplicationLayerTxPackage, RadioApplicationPackage,
+        },
+        Priority,
+    },
 };
-use crate::common::vlp::application_layer::RadioApplicationClient;
 use crate::{
     avionics::{
         flight_core::{FlightCore, Variances},
@@ -44,15 +49,8 @@ use crate::{
     },
     device_manager_type,
     driver::{
-        barometer::BaroReading,
-        debugger::{
-            DebuggerTargetEvent,
-            
-        },
-        gps::GPS,
-        indicator::Indicator,
-        meg::MegReading,
-        timer::Timer,
+        barometer::BaroReading, debugger::DebuggerTargetEvent, gps::GPS, indicator::Indicator,
+        meg::MegReading, timer::Timer,
     },
 };
 use heapless::Vec;
@@ -268,6 +266,9 @@ pub async fn avionics_main(
 
     let gps_fut = gps_parser.run(&mut gps);
 
+    let arming_state = unwrap!(arming_switch.read_arming().await);
+    let arming_state = BlockingMutex::<NoopRawMutex, _>::new(RefCell::new(arming_state));
+
     let radio_fut = async {
         let mut vlp_socket = VLPSocket::establish(
             vlp_phy,
@@ -279,11 +280,28 @@ pub async fn avionics_main(
         )
         .await;
 
-        vlp_socket.run(radio_tx.receiver(), radio_rx.sender()).await;
+        loop {
+            match vlp_socket.prio {
+                Priority::Driver => {
+                    let tx_package = radio_tx.recv().await;
+                    vlp_socket.transmit(tx_package.encode()).await;
+                    if telemetry_data.lock(|telemetry_data| telemetry_data.borrow().avionics_state)
+                        == AvionicsState::Idle
+                    {
+                        vlp_socket.handoff().await;
+                    }
+                }
+                Priority::Listener => {
+                    if let Ok(Some(data)) = vlp_socket.receive().await {
+                        if let Some(decoded) = ApplicationLayerRxPackage::decode(data) {
+                            radio_rx.send(decoded).await;
+                        }
+                    }
+                }
+            }
+        }
     };
 
-    let arming_state = unwrap!(arming_switch.read_arming().await);
-    let arming_state = BlockingMutex::<NoopRawMutex, _>::new(RefCell::new(arming_state));
     let main_fut = async {
         // TODO buzzer
         let rocket_upright_acc: BlockingMutex<NoopRawMutex, RefCell<Option<Vector3<f32>>>> =
