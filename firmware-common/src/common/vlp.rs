@@ -124,16 +124,16 @@ impl<P: VLPPhy> VLPSocket<P> {
         loop {
             match Packet::deserialize(_self.phy.rx().await?) {
                 Ok(packet) => {
-                    info!("Received packet {:?}", packet);
+                    log_info!("Received packet {:?}", packet);
                     // Normal path
                     if packet.flags.contains(Flags::ESTABLISH) {
-                        info!("Normal path. cxn established");
+                        log_info!("Normal path. cxn established");
                         _self.params.compression = packet.flags.contains(Flags::COMPRESSION);
                         _self.params.encryption = packet.flags.contains(Flags::ENCRYPTION);
                         _self.params.reliability = packet.flags.contains(Flags::RELIABLE);
                         break;
                     } else {
-                        info!("Anomaly path. Sending RST");
+                        log_info!("Anomaly path. Sending RST");
                         // Anomaly: remote party believes a session to already be established.
                         let rst = Packet {
                             flags: Flags::RST,
@@ -153,7 +153,7 @@ impl<P: VLPPhy> VLPSocket<P> {
         _self.phy.increment_frequency();
 
         if _self.params.reliability {
-            info!("Sending ack");
+            log_info!("Sending ack");
             let ack = Packet {
                 flags: Flags::ACK,
                 seqnum: _self.next_seqnum,
@@ -255,7 +255,7 @@ impl<P: VLPPhy> VLPSocket<P> {
 
         let packet = Packet::deserialize(self.phy.rx().await?)?;
         self.phy.increment_frequency();
-        info!("recvd {:?}", packet);
+        log_info!("recvd {:?}", packet);
         if packet.flags.contains(Flags::HANDOFF) {
             // HANDOFF must be ACKed, regardless of reliability of transport
             let ack = Packet {
@@ -267,7 +267,7 @@ impl<P: VLPPhy> VLPSocket<P> {
             self.phy.increment_frequency();
             self.next_seqnum = packet.seqnum.wrapping_add(2);
             self.prio = Priority::Driver;
-            info!("Priority changed. I'm in charge");
+            log_info!("Priority changed. I'm in charge");
         } else if self.params.reliability
             && (packet.seqnum == self.next_seqnum || packet.seqnum == self.next_seqnum - 2)
         {
@@ -279,11 +279,11 @@ impl<P: VLPPhy> VLPSocket<P> {
             self.phy.tx(&ack.serialize()[..]).await;
             self.phy.increment_frequency();
             self.next_seqnum = self.next_seqnum.wrapping_add(2);
-            info!("Ack sent");
+            log_info!("Ack sent");
         } else if self.params.reliability && packet.seqnum != self.next_seqnum {
             return Err(VLPError::InvalidSeqnum);
         } else if !self.params.reliability && packet.seqnum > self.next_seqnum {
-            warn!(
+            log_warn!(
                 "VLP: {} packet(s) lost in flight.",
                 packet.seqnum - self.next_seqnum
             );
@@ -298,7 +298,7 @@ impl<P: VLPPhy> VLPSocket<P> {
     }
 
     async fn reliable_tx(&mut self, packet: &Packet) -> Result<Packet, VLPError> {
-        info!("Reliable send of packet {:?}", packet);
+        log_info!("Reliable send of packet {:?}", packet);
         let packet = packet.serialize();
         self.phy.tx(&packet[..]).await;
         self.phy.increment_frequency();
@@ -310,28 +310,28 @@ impl<P: VLPPhy> VLPSocket<P> {
                         Ok(recv) => {
                             // Validate seqnum against record. Re-tx if mismatch
                             if recv.flags.contains(Flags::ACK) && recv.seqnum == self.next_seqnum {
-                                info!("ACK recvd");
+                                log_info!("ACK recvd");
                                 self.next_seqnum = self.next_seqnum.wrapping_add(1);
                                 self.phy.increment_frequency();
                                 return Ok(recv);
                             } else if recv.flags.contains(Flags::RST) {
-                                info!("RST recvd.");
+                                log_info!("RST recvd.");
                                 // Can't handle re-establishing here because recursion
                                 self.phy.reset_frequency();
                                 return Err(VLPError::SessionReset);
                             } else {
-                                info!("retx");
+                                log_info!("retx");
                                 self.phy.tx(&packet[..]).await;
                             }
                         }
                         Err(_) => {
-                            info!("retx (deser error)");
+                            log_info!("retx (deser error)");
                             self.phy.tx(&packet[..]).await;
                         }
                     }
                 }
                 Err(RadioError::ReceiveTimeout) => {
-                    info!("retx (timeout");
+                    log_info!("retx (timeout");
                     self.phy.tx(&packet[..]).await;
                 }
                 Err(e) => {

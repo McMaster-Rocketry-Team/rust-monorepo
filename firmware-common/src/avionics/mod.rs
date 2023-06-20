@@ -21,7 +21,7 @@ use vlfs::{io_traits::AsyncWriter, Crc, FileWriter, Flash, VLFS};
 use self::flight_core::Config as FlightCoreConfig;
 use crate::{
     avionics::up_right_vector_file::write_up_right_vector,
-    common::telemetry::telemetry_data::{AvionicsState, TelemetryData},
+    common::telemetry::telemetry_data::{AvionicsState, TelemetryData}, allocator::HEAP,
 };
 use crate::{
     avionics::{
@@ -121,6 +121,14 @@ pub async fn avionics_main(
     fs: &VLFS<impl Flash, impl Crc>,
     device_manager: device_manager_type!(),
 ) -> ! {
+    // Init 1KiB heap
+    {
+        use core::mem::MaybeUninit;
+        const HEAP_SIZE: usize = 1024;
+        static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
+        unsafe { HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE) }
+    }
+
     let timer = device_manager.timer;
     claim_devices!(device_manager, buzzer);
 
@@ -537,7 +545,7 @@ pub async fn avionics_main(
 
     let flight_core_event_consumer = async {
         let receiver = flight_core_events.receiver();
-        // TODO check again: pyro1: main, pyro2: drogue
+        // pyro1: main, pyro2: drogue
         claim_devices!(device_manager, pyro1_ctrl, pyro2_ctrl);
         let debugger = device_manager.debugger.clone();
         loop {

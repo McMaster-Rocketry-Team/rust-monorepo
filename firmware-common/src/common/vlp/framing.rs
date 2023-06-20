@@ -41,6 +41,7 @@ impl Flags {
     }
 }
 
+#[derive(Debug)]
 pub struct Packet {
     pub flags: Flags,
     pub seqnum: u16,

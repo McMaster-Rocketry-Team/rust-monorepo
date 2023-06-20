@@ -1,6 +1,7 @@
 use rkyv::{Archive, Deserialize, Serialize};
 
 #[derive(Archive, Deserialize, Serialize, Debug, Copy, Clone, defmt::Format, Default)]
+#[archive(check_bytes)]
 pub enum AvionicsState {
     #[default]
     Idle,
@@ -12,6 +13,7 @@ pub enum AvionicsState {
 }
 
 #[derive(Archive, Deserialize, Serialize, Debug, Clone, Default, defmt::Format)]
+#[archive(check_bytes)]
 pub struct TelemetryData {
     pub timestamp: f64, // ms
     pub avionics_state: AvionicsState,
