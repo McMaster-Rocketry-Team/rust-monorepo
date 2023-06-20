@@ -10,5 +10,5 @@ use crate::{
 
 #[inline(never)]
 pub async fn gcm_main(fs: &VLFS<impl Flash, impl Crc>, device_manager: device_manager_type!()) {
-    let radio = device_manager.get_radio_application_layer().await;
+    
 }

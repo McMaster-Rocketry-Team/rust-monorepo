@@ -1,3 +1,6 @@
+use core::ops::DerefMut;
+
+use embassy_sync::{mutex::MutexGuard, blocking_mutex::raw::RawMutex};
 use heapless::Vec;
 use lora_phy::{
     mod_params::{Bandwidth, CodingRate, ModulationParams, RadioError, SpreadingFactor},
@@ -33,6 +36,35 @@ pub trait VLPPhy {
 
     fn increment_frequency(&mut self);
     fn reset_frequency(&mut self);
+}
+
+impl<'a, M, T> VLPPhy for MutexGuard<'a, M, T>
+where
+    M: RawMutex,
+    T: VLPPhy,
+{
+    async fn tx(&mut self, payload: &[u8]) {
+        self.deref_mut().tx(payload).await
+    }
+
+    async fn rx(&mut self) -> Result<Vec<u8, MAX_PAYLOAD_LENGTH>, RadioError> {
+        self.deref_mut().rx().await
+    }
+
+    async fn rx_with_timeout(
+        &mut self,
+        timeout_ms: u32,
+    ) -> Result<Vec<u8, MAX_PAYLOAD_LENGTH>, RadioError> {
+        self.deref_mut().rx_with_timeout(timeout_ms).await
+    }
+
+    fn increment_frequency(&mut self) {
+        self.deref_mut().increment_frequency()
+    }
+
+    fn reset_frequency(&mut self) {
+        self.deref_mut().reset_frequency()
+    }
 }
 
 pub struct PhysicalVLPPhy<'a, R: RadioKind + 'static, T: Timer> {

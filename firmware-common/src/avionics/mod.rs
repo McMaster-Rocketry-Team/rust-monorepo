@@ -10,7 +10,6 @@ use embassy_sync::{
 };
 use ferraris_calibration::IMUReading;
 use futures::join;
-use lora_phy::mod_traits::RadioKind;
 use nalgebra::Vector3;
 use rkyv::{
     ser::{serializers::BufferSerializer, Serializer},
@@ -20,9 +19,14 @@ use vlfs::{io_traits::AsyncWriter, Crc, FileWriter, Flash, VLFS};
 
 use self::flight_core::Config as FlightCoreConfig;
 use crate::{
+    allocator::HEAP,
     avionics::up_right_vector_file::write_up_right_vector,
-    common::telemetry::telemetry_data::{AvionicsState, TelemetryData}, allocator::HEAP,
+    common::{
+        telemetry::telemetry_data::{AvionicsState, TelemetryData},
+        vlp::{SocketParams, VLPSocket},
+    }, vlp::application_layer::{ApplicationLayerTxPackage, ApplicationLayerRxPackage},
 };
+use crate::common::vlp::application_layer::RadioApplicationClient;
 use crate::{
     avionics::{
         flight_core::{FlightCore, Variances},
@@ -42,8 +46,8 @@ use crate::{
     driver::{
         barometer::BaroReading,
         debugger::{
-            ApplicationLayerRxPackage, ApplicationLayerTxPackage, DebuggerTargetEvent,
-            RadioApplicationClient,
+            DebuggerTargetEvent,
+            
         },
         gps::GPS,
         indicator::Indicator,
@@ -226,7 +230,8 @@ pub async fn avionics_main(
         meg,
         batt_voltmeter,
         pyro1_cont,
-        pyro2_cont
+        pyro2_cont,
+        vlp_phy
     );
     unwrap!(imu.wait_for_power_on().await);
     unwrap!(imu.reset().await);
@@ -238,8 +243,6 @@ pub async fn avionics_main(
     let gps_parser = GPSParser::new(timer);
 
     let cal_info = read_imu_calibration_file(fs).await;
-
-    let radio = device_manager.get_radio_application_layer().await;
 
     let radio_tx = Channel::<NoopRawMutex, ApplicationLayerTxPackage, 1>::new();
     let radio_rx = Channel::<NoopRawMutex, ApplicationLayerRxPackage, 3>::new();
@@ -266,9 +269,17 @@ pub async fn avionics_main(
     let gps_fut = gps_parser.run(&mut gps);
 
     let radio_fut = async {
-        if let Some(mut radio) = radio {
-            radio.run(radio_tx.receiver(), radio_rx.sender()).await;
-        }
+        let mut vlp_socket = VLPSocket::establish(
+            vlp_phy,
+            SocketParams {
+                encryption: false,
+                compression: false,
+                reliability: false,
+            },
+        )
+        .await;
+
+        vlp_socket.run(radio_tx.receiver(), radio_rx.sender()).await;
     };
 
     let arming_state = unwrap!(arming_switch.read_arming().await);

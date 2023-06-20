@@ -1963,6 +1963,7 @@ checksum = "23342abe12aba583913b2e62f22225ff9c950774065e4bfb61a19cd9770fec40"
 dependencies = [
  "futures-channel",
  "futures-core",
+ "futures-executor",
  "futures-io",
  "futures-sink",
  "futures-task",
@@ -2630,6 +2631,9 @@ dependencies = [
  "csv",
  "embassy-sync",
  "firmware-common",
+ "futures",
+ "heapless",
+ "lora-phy",
  "nalgebra 0.32.2",
  "rand",
  "rand_distr",
@@ -2725,9 +2729,9 @@ checksum = "b06a4cde4c0f271a446782e3eff8de789548ce57dbc8eca9292c27f4a42004b4"
 
 [[package]]
 name = "lora-phy"
-version = "1.0.2"
+version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d274613341fa7e830932b3ea362a21ece3f77d6eb31a783c5def4203320e53bb"
+checksum = "d8d0e7e96cee5d176bf52f70a4c26678d4eddbf12a7f3f022b92e8239e9dc6c3"
 dependencies = [
  "defmt",
  "embedded-hal-async",

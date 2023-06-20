@@ -1,9 +1,5 @@
 use defmt::{info, unwrap};
 use futures::future::join;
-use lora_phy::mod_params::{Bandwidth, CodingRate, SpreadingFactor};
-
-use crate::driver::timer::DelayUsWrapper;
-use crate::utils::run_with_timeout;
 use crate::{
     claim_devices,
     common::device_manager::prelude::*,
@@ -17,16 +13,13 @@ pub async fn ground_test_avionics(device_manager: device_manager_type!()) -> ! {
     let timer = device_manager.timer;
     claim_devices!(
         device_manager,
-        lora,
+        vlp_phy,
         pyro1_cont,
         pyro1_ctrl,
         pyro2_cont,
         pyro2_ctrl,
         status_indicator
     );
-    let lora = lora.as_mut().unwrap();
-    lora.sleep(&mut DelayUsWrapper(timer)).await.unwrap();
-    let mut rx_buffer = [0u8; 256];
 
     let indicator_fut = async {
         loop {
@@ -53,52 +46,18 @@ pub async fn ground_test_avionics(device_manager: device_manager_type!()) -> ! {
 
             info!("{}", lora_message.as_str());
 
-            let modulation_params = lora
-                .create_modulation_params(
-                    SpreadingFactor::_12,
-                    Bandwidth::_250KHz,
-                    CodingRate::_4_8,
-                    915_000_000,
-                )
-                .unwrap();
-            let mut tx_params = lora
-                .create_tx_packet_params(8, false, true, false, &modulation_params)
-                .unwrap();
-            lora.prepare_for_tx(&modulation_params, -9, true)
-                .await
-                .unwrap();
-            lora.tx(
-                &modulation_params,
-                &mut tx_params,
+            vlp_phy.tx(
                 lora_message.as_bytes(),
-                0xFFFFFF,
             )
-            .await
-            .unwrap();
+            .await;
 
-            lora.sleep(&mut DelayUsWrapper(timer)).await.unwrap();
-            let rx_params = lora
-                .create_rx_packet_params(8, false, 255, true, false, &modulation_params)
-                .unwrap();
-            lora.prepare_for_rx(
-                &modulation_params,
-                &rx_params,
-                None,
-                true,
-                true,
-                4,
-                0x00FFFFFFu32,
-            )
-            .await
-            .unwrap();
-
-            match run_with_timeout(timer, 1000.0, lora.rx(&rx_params, &mut rx_buffer)).await {
-                Ok(Ok((received_len, status))) => {
+            match vlp_phy.rx_with_timeout(1000).await {
+                Ok(data) => {
                     info!(
-                        "Received {} bytes, snr: {}, rssi: {}",
-                        received_len, status.snr, status.rssi
+                        "Received {} bytes",
+                        data.len()
                     );
-                    let rx_buffer = &rx_buffer[..(received_len as usize)];
+                    let rx_buffer = data.as_slice();
                     if rx_buffer == b"VLF3 fire 1" {
                         info!("Firing pyro 1");
                         unwrap!(pyro1_ctrl.set_enable(true).await);
@@ -111,15 +70,11 @@ pub async fn ground_test_avionics(device_manager: device_manager_type!()) -> ! {
                         unwrap!(pyro2_ctrl.set_enable(false).await);
                     }
                 }
-                Ok(Err(lora_error)) => {
-                    info!("LoRa Error: {:?}", lora_error);
-                }
-                Err(_) => {
-                    info!("RX Timeout");
+                Err(lora_error) => {
+                    info!("Radio Error: {:?}", lora_error);
                 }
             }
 
-            lora.sleep(&mut DelayUsWrapper(timer)).await.unwrap();
             timer.sleep(2000.0).await;
         }
     };

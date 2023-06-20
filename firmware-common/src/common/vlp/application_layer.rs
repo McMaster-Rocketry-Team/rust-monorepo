@@ -20,7 +20,13 @@ pub trait RadioApplicationPackage: Sized {
 pub trait RadioApplicationClient {
     type Error: defmt::Format;
 
-    async fn run<R: RawMutex, TXP: RadioApplicationPackage, RXP: RadioApplicationPackage, const TXN: usize, const RXN: usize>(
+    async fn run<
+        R: RawMutex,
+        TXP: RadioApplicationPackage,
+        RXP: RadioApplicationPackage,
+        const TXN: usize,
+        const RXN: usize,
+    >(
         &mut self,
         radio_tx: Receiver<R, TXP, TXN>,
         radio_rx: Sender<R, RXP, RXN>,
@@ -30,7 +36,15 @@ pub trait RadioApplicationClient {
 impl<P: VLPPhy> RadioApplicationClient for VLPSocket<P> {
     type Error = VLPError;
 
-    async fn run<'a, 'b, R: RawMutex, TXP: RadioApplicationPackage, RXP: RadioApplicationPackage, const TXN: usize, const RXN: usize>(
+    async fn run<
+        'a,
+        'b,
+        R: RawMutex,
+        TXP: RadioApplicationPackage,
+        RXP: RadioApplicationPackage,
+        const TXN: usize,
+        const RXN: usize,
+    >(
         &mut self,
         radio_tx: Receiver<'a, R, TXP, TXN>,
         radio_rx: Sender<'b, R, RXP, RXN>,
@@ -67,13 +81,19 @@ pub enum ApplicationLayerRxPackage {
 
 impl RadioApplicationPackage for ApplicationLayerRxPackage {
     fn encode(self) -> Vec<u8, 222> {
-        let mut serializer = BufferSerializer::new(Vec::<u8, 222>::new());
+        let mut buffer = Vec::<u8, 222>::new();
+        unsafe {
+            for _ in 0..core::mem::size_of::<<ApplicationLayerRxPackage as Archive>::Archived>() {
+                buffer.push_unchecked(0);
+            }
+        }
+        let mut serializer = BufferSerializer::new(buffer);
         serializer.serialize_value(&self).unwrap();
         serializer.into_inner()
     }
 
     fn decode(package: Vec<u8, 222>) -> Option<ApplicationLayerRxPackage> {
-        if let Ok(archived) = check_archived_root::<ApplicationLayerRxPackage>(&package) {
+        if let Ok(archived) = check_archived_root::<ApplicationLayerRxPackage>(package.as_slice()) {
             let d: ApplicationLayerRxPackage = archived.deserialize(&mut rkyv::Infallible).unwrap();
             Some(d)
         } else {
@@ -92,7 +112,13 @@ impl RadioApplicationPackage for ApplicationLayerTxPackage {
     fn encode(self) -> Vec<u8, 222> {
         match self {
             ApplicationLayerTxPackage::Telemetry(telemetry) => {
-                let mut serializer = BufferSerializer::new(Vec::<u8, 222>::new());
+                let mut buffer = Vec::<u8, 222>::new();
+                unsafe {
+                    for _ in 0..core::mem::size_of::<<TelemetryData as Archive>::Archived>() {
+                        buffer.push_unchecked(0);
+                    }
+                }
+                let mut serializer = BufferSerializer::new(buffer);
                 serializer.serialize_value(&telemetry).unwrap();
                 serializer.into_inner()
             }
@@ -100,7 +126,7 @@ impl RadioApplicationPackage for ApplicationLayerTxPackage {
     }
 
     fn decode(package: Vec<u8, 222>) -> Option<ApplicationLayerTxPackage> {
-        if let Ok(archived) = check_archived_root::<TelemetryData>(&package) {
+        if let Ok(archived) = check_archived_root::<TelemetryData>(package.as_slice()) {
             let d: TelemetryData = archived.deserialize(&mut rkyv::Infallible).unwrap();
             Some(ApplicationLayerTxPackage::Telemetry(d))
         } else {

@@ -31,6 +31,8 @@ use crate::{
 };
 pub use common::device_manager::DeviceManager;
 pub use common::device_mode::DeviceMode;
+
+pub use common::vlp;
 mod allocator;
 mod avionics;
 mod beacon;
@@ -44,7 +46,6 @@ pub async fn init(
     device_manager: device_manager_type!(mut),
     device_mode_overwrite: Option<DeviceMode>,
 ) -> ! {
-    device_manager.init().await;
     claim_devices!(device_manager, flash, crc, usb, serial);
     let timer = device_manager.timer;
 

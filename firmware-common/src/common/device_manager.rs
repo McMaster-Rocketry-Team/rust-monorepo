@@ -1,5 +1,3 @@
-use defmt::warn;
-use lora_phy::{mod_traits::RadioKind, LoRa};
 use vlfs::{Crc, Flash};
 
 use crate::driver::{
@@ -8,7 +6,7 @@ use crate::driver::{
     barometer::Barometer,
     buzzer::Buzzer,
     camera::Camera,
-    debugger::{Debugger, RadioApplicationClient},
+    debugger::Debugger,
     gps::{GPSCtrl, GPS},
     imu::IMU,
     indicator::Indicator,
@@ -17,10 +15,12 @@ use crate::driver::{
     rng::RNG,
     serial::Serial,
     sys_reset::SysReset,
-    timer::{DelayUsWrapper, Timer},
+    timer::Timer,
     usb::USB,
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
+
+use super::vlp::phy::VLPPhy;
 
 #[allow(dead_code)]
 pub struct DeviceManager<
@@ -43,7 +43,7 @@ pub struct DeviceManager<
     U: USB,
     B: Buzzer,
     M: Megnetometer,
-    L: RadioKind + 'static,
+    L: VLPPhy,
     R: RNG,
     IS: Indicator,
     IE: Indicator,
@@ -69,8 +69,7 @@ pub struct DeviceManager<
     pub(crate) usb: Mutex<NoopRawMutex, U>,
     pub(crate) buzzer: Mutex<NoopRawMutex, B>,
     pub(crate) meg: Mutex<NoopRawMutex, M>,
-    radio_kind: Option<L>,
-    pub(crate) lora: Mutex<NoopRawMutex, Option<LoRa<L>>>,
+    pub(crate) vlp_phy: Mutex<NoopRawMutex, L>,
     pub(crate) rng: Mutex<NoopRawMutex, R>,
     pub(crate) status_indicator: Mutex<NoopRawMutex, IS>,
     pub(crate) error_indicator: Mutex<NoopRawMutex, IE>,
@@ -102,7 +101,7 @@ impl<
         U: USB,
         B: Buzzer,
         M: Megnetometer,
-        L: RadioKind + 'static,
+        L: VLPPhy,
         R: RNG,
         IS: Indicator,
         IE: Indicator,
@@ -157,7 +156,7 @@ impl<
         usb: U,
         buzzer: B,
         meg: M,
-        radio_kind: L,
+        vlp_phy: L,
         rng: R,
         status_indicator: IS,
         error_indicator: IE,
@@ -185,8 +184,7 @@ impl<
             usb: Mutex::new(usb),
             buzzer: Mutex::new(buzzer),
             meg: Mutex::new(meg),
-            radio_kind: Some(radio_kind),
-            lora: Mutex::new(None),
+            vlp_phy: Mutex::new(vlp_phy),
             rng: Mutex::new(rng),
             status_indicator: Mutex::new(status_indicator),
             error_indicator: Mutex::new(error_indicator),
@@ -196,24 +194,6 @@ impl<
             camera: Mutex::new(camera),
             timer,
         }
-    }
-
-    pub async fn init(&mut self) {
-        if let Some(radio_kind) = self.radio_kind.take() {
-            match LoRa::new(radio_kind, false, &mut DelayUsWrapper(self.timer)).await {
-                Ok(lora) => {
-                    self.lora.get_mut().replace(lora);
-                }
-                Err(e) => {
-                    warn!("Failed to initialize LoRa: {:?}", e);
-                }
-            };
-        }
-    }
-
-    // TODO get application layer from lora
-    pub async fn get_radio_application_layer(&self) -> Option<impl RadioApplicationClient> {
-        self.debugger.get_vlp_application_layer()
     }
 }
 
@@ -264,7 +244,7 @@ macro_rules! device_manager_type{
     impl USB,
     impl Buzzer,
     impl Megnetometer,
-    impl RadioKind + 'static,
+    impl VLPPhy,
     impl RNG,
     impl Indicator,
     impl Indicator,
@@ -294,7 +274,7 @@ macro_rules! device_manager_type{
     impl USB,
     impl Buzzer,
     impl Megnetometer,
-    impl RadioKind + 'static,
+    impl VLPPhy,
     impl RNG,
     impl Indicator,
     impl Indicator,
@@ -307,6 +287,7 @@ macro_rules! device_manager_type{
 
 pub mod prelude {
     pub use super::DeviceManager;
+    pub use crate::common::vlp::phy::VLPPhy;
     pub use crate::device_manager_type;
     pub use crate::driver::adc::ADC;
     pub use crate::driver::arming::HardwareArming;
@@ -324,7 +305,5 @@ pub mod prelude {
     pub use crate::driver::sys_reset::SysReset;
     pub use crate::driver::timer::Timer;
     pub use crate::driver::usb::USB;
-    pub use lora_phy::mod_traits::RadioKind;
-    pub use lora_phy::LoRa;
     pub use vlfs::{Crc, Flash};
 }

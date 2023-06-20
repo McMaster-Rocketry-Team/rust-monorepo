@@ -1,12 +1,6 @@
 use defmt::{info, unwrap};
-use lora_phy::{
-    mod_params::{Bandwidth, CodingRate, SpreadingFactor},
-    mod_traits::RadioKind,
-};
-use rkyv::{
-    ser::{serializers::BufferSerializer, Serializer},
-    Archive,
-};
+use heapless::Vec;
+use rkyv::{ser::{serializers::BufferSerializer, Serializer}, Archive};
 use vlfs::{io_traits::AsyncWriter, Crc, Flash, VLFS};
 
 use crate::{
@@ -16,11 +10,7 @@ use crate::{
         device_manager::prelude::*, files::BEACON_SENDER_LOG_FILE_TYPE, gps_parser::GPSParser,
     },
     device_manager_type,
-    driver::{
-        gps::GPS,
-        indicator::Indicator,
-        timer::{DelayUsWrapper, Timer},
-    },
+    driver::{gps::GPS, indicator::Indicator, timer::Timer},
 };
 use core::{cell::RefCell, fmt::Write};
 use embassy_sync::blocking_mutex::{raw::NoopRawMutex, Mutex as BlockingMutex};
@@ -33,12 +23,15 @@ pub async fn beacon_sender(
     device_manager: device_manager_type!(),
     use_lora: bool,
 ) -> ! {
-    claim_devices!(device_manager, gps, lora, error_indicator, status_indicator);
+    claim_devices!(
+        device_manager,
+        gps,
+        vlp_phy,
+        error_indicator,
+        status_indicator
+    );
     let timer = device_manager.timer;
-    let mut lora = if use_lora { lora.as_mut() } else { None };
-    if let Some(lora) = &mut lora {
-        lora.sleep(&mut DelayUsWrapper(timer)).await.unwrap();
-    }
+    let mut vlp_phy = if use_lora { Some(vlp_phy) } else { None };
 
     let file_id = unwrap!(fs.create_file(BEACON_SENDER_LOG_FILE_TYPE).await);
     let mut log_file = unwrap!(fs.open_file_for_write(file_id).await);
@@ -62,8 +55,14 @@ pub async fn beacon_sender(
             satellites_count.lock(|v| v.replace(nmea.num_of_fix_satellites));
             locked.lock(|v| v.replace(nmea.lat_lon.is_some()));
 
-            if let Some(lora) = &mut lora {
-                let mut serializer = BufferSerializer::new([0u8; 32]);
+            if let Some(vlp_phy) = &mut vlp_phy {
+                let mut buffer = Vec::<u8, 222>::new();
+                unsafe{
+                    for _ in 0..core::mem::size_of::<<BeaconData as Archive>::Archived>() {
+                        buffer.push_unchecked(0);
+                    }
+                }
+                let mut serializer = BufferSerializer::new(buffer);
                 let beacon_data = BeaconData {
                     satellite_count: Some(nmea.num_of_fix_satellites as u8),
                     longitude: nmea.lat_lon.map(|v| v.1 as f32),
@@ -71,25 +70,8 @@ pub async fn beacon_sender(
                 };
                 serializer.serialize_value(&beacon_data).unwrap();
                 let buffer = serializer.into_inner();
-                let buffer = &buffer[..core::mem::size_of::<<BeaconData as Archive>::Archived>()];
 
-                let modulation_params = lora
-                    .create_modulation_params(
-                        SpreadingFactor::_12,
-                        Bandwidth::_250KHz,
-                        CodingRate::_4_8,
-                        915_000_000,
-                    )
-                    .unwrap();
-                let mut tx_params = lora
-                    .create_tx_packet_params(8, false, true, false, &modulation_params)
-                    .unwrap();
-                lora.prepare_for_tx(&modulation_params, 12, true)
-                    .await
-                    .unwrap();
-                lora.tx(&modulation_params, &mut tx_params, buffer, 0xFFFFFF)
-                    .await
-                    .unwrap();
+                vlp_phy.tx(&buffer).await;
             }
 
             let mut log_str = String::<32>::new();
@@ -102,9 +84,6 @@ pub async fn beacon_sender(
                     .trim_end_matches(|c| c == '\r' || c == '\n')
             );
 
-            if let Some(lora) = &mut lora {
-                lora.sleep(&mut DelayUsWrapper(timer)).await.unwrap();
-            }
             timer.sleep(1000.0).await;
         }
     };

@@ -17,12 +17,14 @@ use bevy::{
 use bevy_egui::{egui, EguiContexts, EguiPlugin};
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use bevy_rapier3d::prelude::*;
-use firmware_common::driver::debugger::{ApplicationLayerRxPackage, DebuggerTargetEvent};
+use firmware_common::{
+    driver::debugger::DebuggerTargetEvent, vlp::application_layer::ApplicationLayerRxPackage,
+};
 use ground_test::create_ground_test;
 use keyframe::animation_system;
 use launch::{create_launch, ignition_handler, set_launch_angle};
 use motor::{motor_ignitor, motor_system};
-use orientation_logger::{setup_orientation_logger, orientation_logger_system};
+use orientation_logger::{orientation_logger_system, setup_orientation_logger};
 use rocket::{rocket_camera_tracking, rocket_chute_system, rocket_pyro_receiver_system};
 use virt_drivers::{
     arming::{create_hardware_arming, VirtualHardwareArmingController},
@@ -30,16 +32,18 @@ use virt_drivers::{
     pyro::create_pyro,
     sensors::{create_sensors, SensorSender},
     serial::{create_virtual_serial, VirtualSerial},
+    vlp_phy::{create_mock_phy_participants, start_vlp_thread, VLPClient},
 };
+
 mod avionics;
 mod calibration_system;
 mod ground_test;
 mod keyframe;
 mod launch;
 mod motor;
+mod orientation_logger;
 mod rocket;
 mod virt_drivers;
-mod orientation_logger;
 
 pub const AVIONICS_X_LEN: f32 = 0.04;
 pub const AVIONICS_Y_LEN: f32 = 0.02;
@@ -89,6 +93,7 @@ fn main() {
         .add_system(rocket_pyro_receiver_system)
         .add_system(set_launch_angle)
         .add_system(orientation_logger_system)
+        .add_system(vlp_receiver)
         .run();
 }
 
@@ -150,6 +155,8 @@ fn setup_virtual_avionics(mut commands: Commands) {
     let (pyro_1, pyro_1_receiver) = create_pyro(1);
     let (pyro_2, pyro_2_receiver) = create_pyro(2);
     let ready_barrier = Arc::new(Barrier::new(2));
+    let (vlp_phy_a, vlp_phy_b) = create_mock_phy_participants();
+    let vlp_client = start_vlp_thread(vlp_phy_b);
 
     commands.spawn(debugger_host);
     commands.spawn(arming_ctrl);
@@ -157,6 +164,7 @@ fn setup_virtual_avionics(mut commands: Commands) {
     commands.spawn(sensor_tx);
     commands.spawn(pyro_1_receiver);
     commands.spawn(pyro_2_receiver);
+    commands.spawn(vlp_client);
     commands.spawn(ReadyBarrier(Some(ready_barrier.clone())));
 
     start_avionics_thread(
@@ -165,6 +173,7 @@ fn setup_virtual_avionics(mut commands: Commands) {
         baro,
         serial_a,
         debugger,
+        vlp_phy_a,
         arming,
         pyro_1,
         pyro_2,
@@ -179,14 +188,13 @@ fn ui_system(
     mut ev_rocket: EventWriter<RocketEvent>,
     mut serial: Query<&mut VirtualSerial>,
     mut arming_ctrl: Query<&mut VirtualHardwareArmingController>,
-    mut debugger_host: Query<&mut DebuggerHost>,
+    vlp_client: Query<&VLPClient>,
     mut s_arming_state: ResMut<State<ArmingState>>,
     avionics_transform: Query<&Transform, With<AvionicsMarker>>,
 ) {
     let arming_state_before: bool = s_arming_state.as_mut().0.into();
     let mut arming_state = arming_state_before;
     let mut serial = serial.iter_mut().next().unwrap();
-    let mut debugger_host = debugger_host.iter_mut().next().unwrap();
     let mut arming_ctrl = arming_ctrl.iter_mut().next().unwrap();
     let avionics_transform = avionics_transform.iter().next().unwrap();
     egui::Window::new("Controls").show(contexts.ctx_mut(), |ui| {
@@ -219,7 +227,11 @@ fn ui_system(
             ev_ui.send(UIEvent::SetupLaunch);
         }
         if ui.button("Vertical Calibration").clicked() {
-            debugger_host.send(ApplicationLayerRxPackage::VerticalCalibration);
+            vlp_client
+                .iter()
+                .next()
+                .unwrap()
+                .send(ApplicationLayerRxPackage::VerticalCalibration);
         }
         if ui.button("Set Launch Angle").clicked() {
             ev_ui.send(UIEvent::SetLaunchAngle(10.0 / 180.0 * PI));
@@ -288,6 +300,13 @@ fn debugger_receiver(
     while let Some(event) = debugger_receiver.try_recv() {
         info!("debugger: {:?}", event);
         ev_debugger.send(event);
+    }
+}
+
+fn vlp_receiver(vlp_client: Query<&VLPClient>) {
+    let vlp_client = vlp_client.iter().next().unwrap();
+    if let Some(package) = vlp_client.try_receive() {
+        info!("vlp: {:?}", package);
     }
 }
 
