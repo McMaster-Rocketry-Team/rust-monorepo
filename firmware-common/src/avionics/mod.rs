@@ -54,10 +54,12 @@ use crate::{
     },
 };
 use heapless::Vec;
+use self_test::self_test;
 
 pub mod baro_reading_filter;
 pub mod flight_core;
 pub mod flight_core_event;
+mod self_test;
 mod up_right_vector_file;
 
 async fn save_sensor_reading(
@@ -199,25 +201,39 @@ pub async fn avionics_main(
         }
     };
 
-    buzzer.play(2000, 50.0).await;
-    timer.sleep(150.0).await;
-    buzzer.play(2000, 50.0).await;
-    timer.sleep(150.0).await;
-    buzzer.play(3000, 50.0).await;
-    timer.sleep(150.0).await;
-    buzzer.play(3000, 50.0).await;
+    if self_test(device_manager).await {
+        buzzer.play(2000, 50.0).await;
+        timer.sleep(150.0).await;
+        buzzer.play(2000, 50.0).await;
+        timer.sleep(150.0).await;
+        buzzer.play(3000, 50.0).await;
+        timer.sleep(150.0).await;
+        buzzer.play(3000, 50.0).await;
+    } else {
+        buzzer.play(3000, 50.0).await;
+        timer.sleep(150.0).await;
+        buzzer.play(3000, 50.0).await;
+        timer.sleep(150.0).await;
+        buzzer.play(2000, 50.0).await;
+        timer.sleep(150.0).await;
+        buzzer.play(2000, 50.0).await;
+    }
 
     let shared_buzzer_channel = PubSubChannel::<NoopRawMutex, Vec<BuzzerTone, 7>, 2, 1, 1>::new();
 
-    let mut tones = Vec::new();
-    tones.push(BuzzerTone(Some(2000), 50.0)).unwrap();
-    tones.push(BuzzerTone(None, 150.0)).unwrap();
-    tones.push(BuzzerTone(Some(2000), 50.0)).unwrap();
-    tones.push(BuzzerTone(None, 150.0)).unwrap();
-    tones.push(BuzzerTone(Some(3000), 50.0)).unwrap();
-    tones.push(BuzzerTone(None, 150.0)).unwrap();
-    tones.push(BuzzerTone(Some(3000), 50.0)).unwrap();
-    shared_buzzer_channel.publish_immediate(tones);
+    let shared_buzzer_fut = async {
+        let mut sub = shared_buzzer_channel.subscriber().unwrap();
+        loop {
+            let tones = sub.next_message_pure().await;
+            for tone in tones {
+                if let Some(frequency) = tone.0 {
+                    buzzer.play(frequency, tone.1 as f64).await;
+                } else {
+                    timer.sleep(tone.1 as f64).await;
+                }
+            }
+        }
+    };
 
     claim_devices!(
         device_manager,
@@ -249,20 +265,6 @@ pub async fn avionics_main(
         BlockingMutex::new(RefCell::new(TelemetryData::default()));
 
     let flight_core_events = Channel::<NoopRawMutex, FlightCoreEvent, 3>::new();
-
-    let shared_buzzer_fut = async {
-        let mut sub = shared_buzzer_channel.subscriber().unwrap();
-        loop {
-            let tones = sub.next_message_pure().await;
-            for tone in tones {
-                if let Some(frequency) = tone.0 {
-                    buzzer.play(frequency, tone.1 as f64).await;
-                } else {
-                    timer.sleep(tone.1 as f64).await;
-                }
-            }
-        }
-    };
 
     let gps_fut = gps_parser.run(&mut gps);
 
