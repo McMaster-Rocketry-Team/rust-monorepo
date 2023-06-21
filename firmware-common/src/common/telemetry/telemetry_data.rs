@@ -19,6 +19,7 @@ pub struct TelemetryData {
     pub timestamp: f64, // ms
     pub avionics_state: AvionicsState,
     pub altitude: f32,
+    pub max_altitude: f32,
     pub pressure: f32,
     pub temperature: f32,
     pub satellites_in_use: u32,

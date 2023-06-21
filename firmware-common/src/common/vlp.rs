@@ -454,6 +454,8 @@ mod tests {
         fn increment_frequency(&mut self) {}
 
         fn reset_frequency(&mut self) {}
+
+        fn set_output_power(&mut self, _power: i32) {}
     }
 
     // BEGIN RELIABLE TRANSPORT TESTS

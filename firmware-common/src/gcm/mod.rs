@@ -33,6 +33,8 @@ pub async fn gcm_main<const N: usize, const M: usize>(
 ) {
     claim_devices!(device_manager, vlp_phy);
 
+    vlp_phy.set_output_power(22);
+
     let radio_tx = Channel::<NoopRawMutex, ApplicationLayerRxPackage, 1>::new();
     let radio_rx = Channel::<NoopRawMutex, ApplicationLayerTxPackage, 3>::new();
 

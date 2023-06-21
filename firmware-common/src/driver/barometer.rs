@@ -1,6 +1,7 @@
 use super::timer::Timer;
 use libm::powf;
 use rkyv::{Archive, Deserialize, Serialize};
+use core::fmt::Debug;
 
 #[derive(defmt::Format, Debug, Clone, Default, Archive, Deserialize, Serialize)]
 pub struct BaroReading {
@@ -20,7 +21,7 @@ impl BaroReading {
 }
 
 pub trait Barometer {
-    type Error: defmt::Format;
+    type Error: defmt::Format + Debug;
 
     async fn reset(&mut self) -> Result<(), Self::Error>;
     async fn read(&mut self) -> Result<BaroReading, Self::Error>;

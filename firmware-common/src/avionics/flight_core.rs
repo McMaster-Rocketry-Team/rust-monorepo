@@ -235,14 +235,15 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
                     // which means the rocket is nose down, if thats the case we got bigger problems
                     let orientation =
                         UnitQuaternion::rotation_between(&sky_vector, &launch_vector).unwrap();
-                    let observe_result =
-                        self.eskf.observe_orientation(orientation, Matrix3::zeros());
-                    if observe_result.is_err() {
-                        self.critical_error = true;
-                        self.event_dispatcher
-                            .dispatch(FlightCoreEvent::CriticalError);
-                        return;
-                    }
+                    self.eskf.orientation = orientation;
+                    // let observe_result =
+                    //     self.eskf.observe_orientation(orientation, Matrix3::zeros());
+                    // if observe_result.is_err() {
+                    //     self.critical_error = true;
+                    //     self.event_dispatcher
+                    //         .dispatch(FlightCoreEvent::CriticalError);
+                    //     return;
+                    // }
 
                     // let mut gps_altitude_sum: f32 = 0.0;
                     // let mut gps_altitude_count: u32 = 0;
@@ -267,13 +268,14 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
                     } else {
                         0.0
                     };
-                    let observe_result = self.eskf.observe_height(launch_altitude, 0.0);
-                    if observe_result.is_err() {
-                        self.critical_error = true;
-                        self.event_dispatcher
-                            .dispatch(FlightCoreEvent::CriticalError);
-                        return;
-                    }
+                    self.eskf.position.z = launch_altitude;
+                    // let observe_result = self.eskf.observe_height(launch_altitude, 0.0);
+                    // if observe_result.is_err() {
+                    //     self.critical_error = true;
+                    //     self.event_dispatcher
+                    //         .dispatch(FlightCoreEvent::CriticalError);
+                    //     return;
+                    // }
 
                     for (prev_snapshot, snapshot) in
                         snapshot_history.iter().zip(snapshot_history.iter().skip(1))

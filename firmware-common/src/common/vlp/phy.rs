@@ -1,6 +1,6 @@
 use core::ops::DerefMut;
 
-use embassy_sync::{mutex::MutexGuard, blocking_mutex::raw::RawMutex};
+use embassy_sync::{blocking_mutex::raw::RawMutex, mutex::MutexGuard};
 use heapless::Vec;
 use lora_phy::{
     mod_params::{Bandwidth, CodingRate, ModulationParams, RadioError, SpreadingFactor},
@@ -36,6 +36,7 @@ pub trait VLPPhy {
 
     fn increment_frequency(&mut self);
     fn reset_frequency(&mut self);
+    fn set_output_power(&mut self, power: i32);
 }
 
 impl<'a, M, T> VLPPhy for MutexGuard<'a, M, T>
@@ -65,19 +66,26 @@ where
     fn reset_frequency(&mut self) {
         self.deref_mut().reset_frequency()
     }
+
+    fn set_output_power(&mut self, power: i32) {
+        self.deref_mut().set_output_power(power)
+    }
 }
 
 pub struct PhysicalVLPPhy<'a, R: RadioKind + 'static, T: Timer> {
     phy: &'a mut LoRa<R>,
     tim: T,
     freq_idx: usize,
+    power: i32,
 }
 
 impl<'a, R: RadioKind + 'static, T: Timer> PhysicalVLPPhy<'a, R, T> {
+    // power: -9 - 22
     pub fn new(phy: &'a mut LoRa<R>, tim: T) -> Self {
         Self {
             phy,
             tim,
+            power: -9,
             freq_idx: 0,
         }
     }
@@ -108,13 +116,17 @@ impl<'a, R: RadioKind + 'static, T: Timer> VLPPhy for PhysicalVLPPhy<'a, R, T> {
             .await
             .expect("Sleep failed");
         self.phy
-            .prepare_for_tx(&modulation_params, -9, true)
+            .prepare_for_tx(&modulation_params, self.power, true)
             .await
             .unwrap();
         self.phy
             .tx(&modulation_params, &mut tx_params, payload, 0x00FFFFFF)
             .await
             .unwrap();
+        self.phy
+            .sleep(&mut DelayUsWrapper(self.tim))
+            .await
+            .expect("Sleep failed");
     }
 
     async fn rx(&mut self) -> Result<Vec<u8, MAX_PAYLOAD_LENGTH>, RadioError> {
@@ -135,12 +147,17 @@ impl<'a, R: RadioKind + 'static, T: Timer> VLPPhy for PhysicalVLPPhy<'a, R, T> {
                 0x00FFFFFF,
             )
             .await?;
-        match self.phy.rx(&rx_params, &mut buf[..]).await {
+        let result = match self.phy.rx(&rx_params, &mut buf[..]).await {
             Ok((bytes, _)) => {
                 Ok(Vec::<u8, MAX_PAYLOAD_LENGTH>::from_slice(&buf[..(bytes as usize)]).unwrap())
             }
             Err(e) => Err(e),
-        }
+        };
+        self.phy
+            .sleep(&mut DelayUsWrapper(self.tim))
+            .await
+            .expect("Sleep failed");
+        result
     }
 
     async fn rx_with_timeout(
@@ -177,13 +194,18 @@ impl<'a, R: RadioKind + 'static, T: Timer> VLPPhy for PhysicalVLPPhy<'a, R, T> {
         )
         .await;
 
-        match fut {
+        let result = match fut {
             Ok(Ok((bytes, _))) => {
                 Ok(Vec::<u8, MAX_PAYLOAD_LENGTH>::from_slice(&buf[..(bytes as usize)]).unwrap())
             }
             Ok(Err(e)) => Err(e),
             Err(_) => Err(RadioError::ReceiveTimeout),
-        }
+        };
+        self.phy
+            .sleep(&mut DelayUsWrapper(self.tim))
+            .await
+            .expect("Sleep failed");
+        result
     }
 
     fn increment_frequency(&mut self) {
@@ -195,5 +217,9 @@ impl<'a, R: RadioKind + 'static, T: Timer> VLPPhy for PhysicalVLPPhy<'a, R, T> {
 
     fn reset_frequency(&mut self) {
         self.freq_idx = 0;
+    }
+
+    fn set_output_power(&mut self, power: i32) {
+        self.power = power;
     }
 }

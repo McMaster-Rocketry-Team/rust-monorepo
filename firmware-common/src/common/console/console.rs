@@ -70,6 +70,7 @@ impl<S: Serial, const N: usize> Console<S, N> {
             };
             drop(serial);
             let command_id = u64::from_be_bytes(command_buffer);
+            log_info!("Received command: {:x}", command_id);
 
             let has_listener = self.state.lock(|state| {
                 let mut state = state.borrow_mut();

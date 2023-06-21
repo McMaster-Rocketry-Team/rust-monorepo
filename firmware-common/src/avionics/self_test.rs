@@ -8,8 +8,10 @@ pub async fn self_test(device_manager: device_manager_type!()) -> bool {
     unwrap!(barometer.reset().await);
     unwrap!(meg.reset().await);
 
-    let imu_ok = imu.read().await.is_ok();
-    let baro_ok = barometer.read().await.is_ok();
-    let meg_ok = meg.read().await.is_ok();
-    imu_ok && baro_ok && meg_ok
+    let imu = imu.read().await;
+    let baro = barometer.read().await;
+    let meg = meg.read().await;
+
+    log_info!("Self test: {:?} {:?} {:?}", imu, baro, meg);
+    imu.is_ok() && baro.is_ok() && meg.is_ok()
 }

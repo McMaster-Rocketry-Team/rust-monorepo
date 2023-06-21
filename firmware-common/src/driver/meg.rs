@@ -1,6 +1,5 @@
-use core::fmt::Write;
+use core::fmt::{Write, Debug};
 use heapless::String;
-use nalgebra::Vector3;
 use rkyv::{Archive, Deserialize, Serialize};
 
 use super::timer::Timer;
@@ -27,7 +26,7 @@ impl defmt::Format for MegReading {
 }
 
 pub trait Megnetometer {
-    type Error: defmt::Format;
+    type Error: defmt::Format + Debug;
     async fn reset(&mut self) -> Result<(), Self::Error>;
     async fn read(&mut self) -> Result<MegReading, Self::Error>;
 }

@@ -247,6 +247,7 @@ pub async fn avionics_main(
         pyro2_cont,
         vlp_phy
     );
+    vlp_phy.set_output_power(22);
     unwrap!(imu.wait_for_power_on().await);
     unwrap!(imu.reset().await);
     unwrap!(barometer.reset().await);
@@ -268,8 +269,7 @@ pub async fn avionics_main(
 
     let gps_fut = gps_parser.run(&mut gps);
 
-    let arming_state = unwrap!(arming_switch.read_arming().await);
-    let arming_state = BlockingMutex::<NoopRawMutex, _>::new(RefCell::new(arming_state));
+    let arming_state = BlockingMutex::<NoopRawMutex, _>::new(RefCell::new(false));
 
     let radio_fut = async {
         let mut vlp_socket = VLPSocket::establish(
@@ -399,8 +399,11 @@ pub async fn avionics_main(
         let meg_fut = async {
             loop {
                 if arming_state.lock(|s| *s.borrow()) {
-                    let meg_reading = unwrap!(meg.read().await);
-                    sensors_file_channel.publish_immediate(SensorReading::Meg(meg_reading));
+                    if let Ok(meg_reading) = meg.read().await {
+                        sensors_file_channel.publish_immediate(SensorReading::Meg(meg_reading));
+                    } else {
+                        log_warn!("Failed to read meg")
+                    }
                 }
                 meg_ticker.next().await;
             }
@@ -511,6 +514,13 @@ pub async fn avionics_main(
                         })
                         .await
                         .unwrap();
+                    let mut tones = Vec::new();
+                            tones.push(BuzzerTone(Some(2700), 500.0)).unwrap();
+                            tones.push(BuzzerTone(None, 250.0)).unwrap();
+                            tones.push(BuzzerTone(Some(2700), 50.0)).unwrap();
+                            tones.push(BuzzerTone(None, 150.0)).unwrap();
+                            tones.push(BuzzerTone(Some(3700), 50.0)).unwrap();
+                            shared_buzzer_channel.publish_immediate(tones);
                     }
                     ApplicationLayerRxPackage::SoftArming(_) => {
                         // TODO
@@ -567,8 +577,8 @@ pub async fn avionics_main(
     let telemetry_fut = async {
         let mut last_telemetry_timestamp = 0.0f64;
         loop {
-            if !arming_state.lock(|s| *s.borrow())
-                && timer.now_mills() - last_telemetry_timestamp <= 60_000.0
+            let should_throttle = !arming_state.lock(|s| *s.borrow()) || telemetry_data.lock(|d| d.borrow().avionics_state==AvionicsState::Landed);
+            if should_throttle && timer.now_mills() - last_telemetry_timestamp <= 60_000.0
             {
                 telemetry_ticker.next().await;
                 continue;
@@ -577,6 +587,7 @@ pub async fn avionics_main(
             let mut telemetry_data = telemetry_data.lock(|d| d.borrow().clone());
             telemetry_data.timestamp = timer.now_mills();
             last_telemetry_timestamp = telemetry_data.timestamp;
+            log_info!("Sending telemetry {:?}", telemetry_data);
             radio_tx
                 .send(ApplicationLayerTxPackage::Telemetry(telemetry_data))
                 .await;
@@ -630,7 +641,13 @@ pub async fn avionics_main(
                     telemetry_data.lock(|s| s.borrow_mut().avionics_state = new_state);
                 }
                 FlightCoreEvent::ChangeAltitude(new_altitude) => {
-                    telemetry_data.lock(|s| s.borrow_mut().altitude = new_altitude);
+                    telemetry_data.lock(|s| {
+                        let mut s = s.borrow_mut();
+                        s.altitude = new_altitude;
+                        if new_altitude > s.max_altitude {
+                            s.max_altitude = new_altitude;
+                        }
+                    });
                 }
             }
         }

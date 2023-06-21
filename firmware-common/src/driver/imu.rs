@@ -1,9 +1,11 @@
+use core::fmt::Debug;
+
 pub use ferraris_calibration::IMUReading;
 
 use super::timer::Timer;
 
 pub trait IMU {
-    type Error: defmt::Format;
+    type Error: defmt::Format + Debug;
 
     async fn wait_for_power_on(&mut self) -> Result<(), Self::Error>;
     async fn reset(&mut self) -> Result<(), Self::Error>;

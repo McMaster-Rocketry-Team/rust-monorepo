@@ -24,7 +24,7 @@ pub mod sector_management;
 pub mod utils;
 pub mod writer;
 
-const VLFS_VERSION: u32 = 16;
+const VLFS_VERSION: u32 = 17;
 const SECTORS_COUNT: usize = 16384; // for 512M-bit flash (W25Q512JV)
 const SECTOR_SIZE: usize = 4096;
 const PAGE_SIZE: usize = 256;
