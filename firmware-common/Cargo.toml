@@ -43,6 +43,8 @@ num-traits = { version = "0.2.15", default-features = false }
 eskf = { git = "https://github.com/PegasisForever/eskf-rs.git", default-features = false }
 libm = "0.2.7"
 embassy-futures = "0.1.0"
+serde = { version = "1.0.164", default-features = false, features = ["derive"] }
+serde-json-core = "0.5.0"
 
 [dev-dependencies]
 futures-executor = { version = "0.3.17", features = ["thread-pool"] }

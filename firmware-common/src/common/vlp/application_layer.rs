@@ -75,6 +75,7 @@ impl<P: VLPPhy> RadioApplicationClient for VLPSocket<P> {
 pub enum ApplicationLayerRxPackage {
     // stand the rocket vertically so VLF can know which angle it is mounted at
     VerticalCalibration,
+    ClearStorage,
     // currently unused
     SoftArming(bool),
 }

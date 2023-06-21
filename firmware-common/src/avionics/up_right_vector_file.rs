@@ -7,7 +7,7 @@ pub async fn read_up_right_vector(fs: &VLFS<impl Flash, impl Crc>) -> Option<Vec
     let file = fs.find_file_by_type(AVIONICS_UP_RIGHT_FILE_TYPE).await;
     if let Some(LsFileEntry {
         file_id,
-        file_type: _,
+        ..
     }) = file
     {
         if let Ok(mut reader) = fs.open_file_for_read(file_id).await {

@@ -113,7 +113,9 @@ pub async fn init(
         info!("Starting in mode {}", device_mode);
         match device_mode {
             DeviceMode::Avionics => avionics_main(&fs, device_manager).await,
-            DeviceMode::GCM => gcm_main(&fs, device_manager).await,
+            DeviceMode::GCM => {
+                gcm_main::<20, 20>(&fs, device_manager, &serial_console, &usb_console).await
+            }
             DeviceMode::BeaconSender => beacon_sender(&fs, device_manager, false).await,
             DeviceMode::BeaconReceiver => beacon_receiver(&fs, device_manager).await,
             DeviceMode::GroundTestAvionics => ground_test_avionics(device_manager).await,

@@ -26,6 +26,7 @@ where
 
 #[derive(Debug, Clone, defmt::Format)]
 pub struct LsFileEntry {
+    pub opened: bool,
     pub file_id: FileID,
     pub file_type: FileType,
 }
@@ -33,6 +34,7 @@ pub struct LsFileEntry {
 impl From<&FileEntry> for LsFileEntry {
     fn from(file_entry: &FileEntry) -> Self {
         Self {
+            opened: file_entry.opened,
             file_id: file_entry.file_id,
             file_type: file_entry.file_type,
         }

@@ -36,7 +36,7 @@ pub async fn read_device_mode(fs: &VLFS<impl Flash, impl Crc>) -> Option<DeviceM
     drop(files_iter);
     if let Some(LsFileEntry {
         file_id,
-        file_type: _,
+        ..
     }) = file
     {
         if let Ok(mut reader) = fs.open_file_for_read(file_id).await {

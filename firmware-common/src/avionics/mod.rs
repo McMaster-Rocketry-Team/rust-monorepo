@@ -500,6 +500,16 @@ pub async fn avionics_main(
                             shared_buzzer_channel.publish_immediate(tones);
                         }
                     }
+                    ApplicationLayerRxPackage::ClearStorage => {
+                        log_info!("Clearing storage");
+                        fs.remove_files(|entry| {
+                            !entry.opened
+                                && (entry.file_type == AVIONICS_LOG_FILE_TYPE
+                                    || entry.file_type == AVIONICS_SENSORS_FILE_TYPE)
+                        })
+                        .await
+                        .unwrap();
+                    }
                     ApplicationLayerRxPackage::SoftArming(_) => {
                         // TODO
                     }
