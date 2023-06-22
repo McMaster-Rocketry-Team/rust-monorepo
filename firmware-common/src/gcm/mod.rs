@@ -21,7 +21,7 @@ use crate::{
             ApplicationLayerRxPackage, ApplicationLayerTxPackage, RadioApplicationClient,
         },
         VLPSocket,
-    },
+    }, allocator::HEAP,
 };
 
 #[inline(never)]
@@ -31,6 +31,14 @@ pub async fn gcm_main<const N: usize, const M: usize>(
     console1: &Console<impl Serial, N>,
     console2: &Console<impl Serial, N>,
 ) {
+    // Init 1KiB heap
+    {
+        use core::mem::MaybeUninit;
+        const HEAP_SIZE: usize = 1024;
+        static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
+        unsafe { HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE) }
+    }
+
     claim_devices!(device_manager, vlp_phy);
 
     vlp_phy.set_output_power(22);
@@ -63,7 +71,7 @@ pub async fn gcm_main<const N: usize, const M: usize>(
 
     let radio_fut = async {
         let mut vlp_socket = VLPSocket::await_establish(vlp_phy).await.unwrap();
-        vlp_socket.run(radio_tx.receiver(), radio_rx.sender()).await;
+        vlp_socket.run(device_manager.timer, radio_tx.receiver(), radio_rx.sender()).await;
     };
 
     #[allow(unreachable_code)]
@@ -141,6 +149,8 @@ impl<'a, const N: usize> ConsoleProgram for GCMGetTelemetry<'a, N> {
                     serial.write(json).await;
                 }
             }
+        } else {
+            serial.write(b"x").await;
         }
     }
 }

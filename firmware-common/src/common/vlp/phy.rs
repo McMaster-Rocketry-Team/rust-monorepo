@@ -26,14 +26,22 @@ const FREQ_LIST: [u32; 64] = [
     913500000, 913700000, 913900000, 914100000, 914300000, 914500000, 914700000, 914900000,
 ];
 
+#[derive(Debug, defmt::Format)]
+pub struct RadioReceiveInfo {
+    pub rssi: i16,
+    pub snr: i16,
+    pub len: u8,
+}
+
 pub trait VLPPhy {
     async fn tx(&mut self, payload: &[u8]);
-    async fn rx(&mut self) -> Result<Vec<u8, MAX_PAYLOAD_LENGTH>, RadioError>;
+    async fn rx(&mut self) -> Result<(RadioReceiveInfo, Vec<u8, MAX_PAYLOAD_LENGTH>), RadioError>;
     async fn rx_with_timeout(
         &mut self,
         timeout_ms: u32,
-    ) -> Result<Vec<u8, MAX_PAYLOAD_LENGTH>, RadioError>;
+    ) -> Result<(RadioReceiveInfo, Vec<u8, MAX_PAYLOAD_LENGTH>), RadioError>;
 
+    fn set_frequency(&mut self, frequency: u32);
     fn increment_frequency(&mut self);
     fn reset_frequency(&mut self);
     fn set_output_power(&mut self, power: i32);
@@ -48,19 +56,23 @@ where
         self.deref_mut().tx(payload).await
     }
 
-    async fn rx(&mut self) -> Result<Vec<u8, MAX_PAYLOAD_LENGTH>, RadioError> {
+    async fn rx(&mut self) -> Result<(RadioReceiveInfo, Vec<u8, MAX_PAYLOAD_LENGTH>), RadioError> {
         self.deref_mut().rx().await
     }
 
     async fn rx_with_timeout(
         &mut self,
         timeout_ms: u32,
-    ) -> Result<Vec<u8, MAX_PAYLOAD_LENGTH>, RadioError> {
+    ) -> Result<(RadioReceiveInfo, Vec<u8, MAX_PAYLOAD_LENGTH>), RadioError> {
         self.deref_mut().rx_with_timeout(timeout_ms).await
     }
 
     fn increment_frequency(&mut self) {
         self.deref_mut().increment_frequency()
+    }
+
+    fn set_frequency(&mut self, frequency: u32) {
+        self.deref_mut().set_frequency(frequency)
     }
 
     fn reset_frequency(&mut self) {
@@ -96,7 +108,7 @@ impl<'a, R: RadioKind + 'static, T: Timer> PhysicalVLPPhy<'a, R, T> {
         self.phy
             .create_modulation_params(
                 SpreadingFactor::_12,
-                Bandwidth::_250KHz,
+                Bandwidth::_500KHz,
                 CodingRate::_4_8,
                 freq,
             )
@@ -129,7 +141,7 @@ impl<'a, R: RadioKind + 'static, T: Timer> VLPPhy for PhysicalVLPPhy<'a, R, T> {
             .expect("Sleep failed");
     }
 
-    async fn rx(&mut self) -> Result<Vec<u8, MAX_PAYLOAD_LENGTH>, RadioError> {
+    async fn rx(&mut self) -> Result<(RadioReceiveInfo, Vec<u8, MAX_PAYLOAD_LENGTH>), RadioError> {
         let modulation_params = self.create_modulation_params();
         let rx_params =
             self.phy
@@ -148,8 +160,16 @@ impl<'a, R: RadioKind + 'static, T: Timer> VLPPhy for PhysicalVLPPhy<'a, R, T> {
             )
             .await?;
         let result = match self.phy.rx(&rx_params, &mut buf[..]).await {
-            Ok((bytes, _)) => {
-                Ok(Vec::<u8, MAX_PAYLOAD_LENGTH>::from_slice(&buf[..(bytes as usize)]).unwrap())
+            Ok((bytes, status)) => {
+                let info = RadioReceiveInfo {
+                    rssi: status.rssi,
+                    snr: status.snr,
+                    len: bytes,
+                };
+                Ok((
+                    info,
+                    Vec::<u8, MAX_PAYLOAD_LENGTH>::from_slice(&buf[..(bytes as usize)]).unwrap(),
+                ))
             }
             Err(e) => Err(e),
         };
@@ -163,7 +183,7 @@ impl<'a, R: RadioKind + 'static, T: Timer> VLPPhy for PhysicalVLPPhy<'a, R, T> {
     async fn rx_with_timeout(
         &mut self,
         timeout_ms: u32,
-    ) -> Result<Vec<u8, MAX_PAYLOAD_LENGTH>, RadioError> {
+    ) -> Result<(RadioReceiveInfo, Vec<u8, MAX_PAYLOAD_LENGTH>), RadioError> {
         let modulation_params = self.create_modulation_params();
 
         let rx_params = self
@@ -195,8 +215,13 @@ impl<'a, R: RadioKind + 'static, T: Timer> VLPPhy for PhysicalVLPPhy<'a, R, T> {
         .await;
 
         let result = match fut {
-            Ok(Ok((bytes, _))) => {
-                Ok(Vec::<u8, MAX_PAYLOAD_LENGTH>::from_slice(&buf[..(bytes as usize)]).unwrap())
+            Ok(Ok((bytes, status))) => {
+                let info = RadioReceiveInfo {
+                    rssi: status.rssi,
+                    snr: status.snr,
+                    len: bytes,
+                };
+                Ok((info, Vec::<u8, MAX_PAYLOAD_LENGTH>::from_slice(&buf[..(bytes as usize)]).unwrap()))
             }
             Ok(Err(e)) => Err(e),
             Err(_) => Err(RadioError::ReceiveTimeout),
@@ -206,6 +231,17 @@ impl<'a, R: RadioKind + 'static, T: Timer> VLPPhy for PhysicalVLPPhy<'a, R, T> {
             .await
             .expect("Sleep failed");
         result
+    }
+
+    fn set_frequency(&mut self, frequency: u32) {
+        let mut idx = 0;
+        for (i, freq) in FREQ_LIST.iter().enumerate() {
+            if *freq == frequency {
+                idx = i;
+                break;
+            }
+        }
+        self.freq_idx = idx;
     }
 
     fn increment_frequency(&mut self) {

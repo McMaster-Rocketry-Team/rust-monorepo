@@ -27,4 +27,6 @@ pub struct TelemetryData {
     pub battery_voltage: f32,
     pub pyro1_cont: bool,
     pub pyro2_cont: bool,
+    pub hardware_armed: bool,
+    pub software_armed: bool,
 }

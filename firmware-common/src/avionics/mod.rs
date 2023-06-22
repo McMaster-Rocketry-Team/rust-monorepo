@@ -22,6 +22,7 @@ use crate::{
     allocator::HEAP,
     avionics::up_right_vector_file::write_up_right_vector,
     common::{
+        pvlp::{PVLPMaster, PVLP},
         telemetry::telemetry_data::{AvionicsState, TelemetryData},
         vlp::{SocketParams, VLPSocket},
     },
@@ -245,7 +246,8 @@ pub async fn avionics_main(
         batt_voltmeter,
         pyro1_cont,
         pyro2_cont,
-        vlp_phy
+        vlp_phy,
+        camera
     );
     vlp_phy.set_output_power(22);
     unwrap!(imu.wait_for_power_on().await);
@@ -269,37 +271,19 @@ pub async fn avionics_main(
 
     let gps_fut = gps_parser.run(&mut gps);
 
-    let arming_state = BlockingMutex::<NoopRawMutex, _>::new(RefCell::new(false));
+    let arming_state = BlockingMutex::<NoopRawMutex, _>::new(RefCell::new(ArmingState {
+        hardware_armed: false,
+        software_armed: false,
+    }));
 
     let radio_fut = async {
-        let mut vlp_socket = VLPSocket::establish(
-            vlp_phy,
-            SocketParams {
-                encryption: false,
-                compression: false,
-                reliability: false,
-            },
-        )
-        .await;
+        let mut socket = PVLPMaster::new(PVLP(vlp_phy), timer);
 
         loop {
-            match vlp_socket.prio {
-                Priority::Driver => {
-                    let tx_package = radio_tx.recv().await;
-                    vlp_socket.transmit(tx_package.encode()).await;
-                    if telemetry_data.lock(|telemetry_data| telemetry_data.borrow().avionics_state)
-                        == AvionicsState::Idle
-                    {
-                        vlp_socket.handoff().await;
-                    }
-                }
-                Priority::Listener => {
-                    if let Ok(Some(data)) = vlp_socket.receive().await {
-                        if let Some(decoded) = ApplicationLayerRxPackage::decode(data) {
-                            radio_rx.send(decoded).await;
-                        }
-                    }
-                }
+            let tx_package = radio_tx.recv().await;
+            let rx = socket.tx_and_rx(tx_package).await;
+            if let Some(rx_package) = rx {
+                radio_rx.send(rx_package).await;
             }
         }
     };
@@ -354,7 +338,7 @@ pub async fn avionics_main(
 
         let imu_fut = async {
             loop {
-                if arming_state.lock(|s| *s.borrow()) && let Ok(mut imu) = imu.try_lock() {
+                if arming_state.lock(|s| (*s.borrow()).is_armed()) && let Ok(mut imu) = imu.try_lock() {
                     let imu_reading = unwrap!(imu.read().await);
                     sensors_file_channel.publish_immediate(SensorReading::IMU(imu_reading.clone()));
                     imu_channel.publish_immediate(imu_reading);
@@ -365,7 +349,7 @@ pub async fn avionics_main(
 
         let baro_fut = async {
             loop {
-                if arming_state.lock(|s| *s.borrow()) {
+                if arming_state.lock(|s| (*s.borrow()).is_armed()) {
                     let baro_reading = unwrap!(barometer.read().await);
                     telemetry_data.lock(|d| {
                         let mut d = d.borrow_mut();
@@ -398,7 +382,7 @@ pub async fn avionics_main(
 
         let meg_fut = async {
             loop {
-                if arming_state.lock(|s| *s.borrow()) {
+                if arming_state.lock(|s| (*s.borrow()).is_armed()) {
                     if let Ok(meg_reading) = meg.read().await {
                         sensors_file_channel.publish_immediate(SensorReading::Meg(meg_reading));
                     } else {
@@ -411,7 +395,7 @@ pub async fn avionics_main(
 
         let bat_fut = async {
             loop {
-                if arming_state.lock(|s| *s.borrow()) {
+                if arming_state.lock(|s| (*s.borrow()).is_armed()) {
                     let batt_volt_reading = unwrap!(batt_voltmeter.read().await);
                     telemetry_data.lock(|d| {
                         let mut d = d.borrow_mut();
@@ -429,10 +413,17 @@ pub async fn avionics_main(
         };
 
         let arming_fut = async {
-            let mut last_arming_state = arming_state.lock(|s| *s.borrow());
+            let mut last_arming_state = arming_state.lock(|s| (*s.borrow()).is_armed());
             loop {
                 let new_arming_state = unwrap!(arming_switch.wait_arming_change().await);
-                arming_state.lock(|s| *s.borrow_mut() = new_arming_state);
+                telemetry_data.lock(|s| {
+                    s.borrow_mut().hardware_armed = new_arming_state;
+                });
+                let new_arming_state = arming_state.lock(|s| {
+                    let mut s = s.borrow_mut();
+                    s.hardware_armed = new_arming_state;
+                    s.is_armed()
+                });
                 if new_arming_state != last_arming_state {
                     if new_arming_state {
                         if let Some(rocket_upright_acc) = rocket_upright_acc.lock(|s| *s.borrow()) {
@@ -479,7 +470,7 @@ pub async fn avionics_main(
                 match radio_rx.recv().await {
                     ApplicationLayerRxPackage::VerticalCalibration => {
                         log_info!("Vertical calibration");
-                        if !arming_state.lock(|s| *s.borrow()) {
+                        if !arming_state.lock(|s| (*s.borrow()).is_armed()) {
                             let mut ticker = Ticker::every(timer, 1.0);
                             let mut acc_sum = Vector3::<f32>::zeros();
                             let mut imu = imu.lock().await;
@@ -514,16 +505,22 @@ pub async fn avionics_main(
                         })
                         .await
                         .unwrap();
-                    let mut tones = Vec::new();
-                            tones.push(BuzzerTone(Some(2700), 500.0)).unwrap();
-                            tones.push(BuzzerTone(None, 250.0)).unwrap();
-                            tones.push(BuzzerTone(Some(2700), 50.0)).unwrap();
-                            tones.push(BuzzerTone(None, 150.0)).unwrap();
-                            tones.push(BuzzerTone(Some(3700), 50.0)).unwrap();
-                            shared_buzzer_channel.publish_immediate(tones);
+                        let mut tones = Vec::new();
+                        tones.push(BuzzerTone(Some(2700), 500.0)).unwrap();
+                        tones.push(BuzzerTone(None, 250.0)).unwrap();
+                        tones.push(BuzzerTone(Some(2700), 50.0)).unwrap();
+                        tones.push(BuzzerTone(None, 150.0)).unwrap();
+                        tones.push(BuzzerTone(Some(3700), 50.0)).unwrap();
+                        shared_buzzer_channel.publish_immediate(tones);
                     }
-                    ApplicationLayerRxPackage::SoftArming(_) => {
-                        // TODO
+                    ApplicationLayerRxPackage::SoftArming(software_armed) => {
+                        arming_state.lock(|s| s.borrow_mut().software_armed = software_armed);
+                        telemetry_data.lock(|s| {
+                            s.borrow_mut().software_armed = software_armed;
+                        });
+                    }
+                    ApplicationLayerRxPackage::Synced => {
+                        // noop
                     }
                 }
             }
@@ -534,7 +531,7 @@ pub async fn avionics_main(
             let mut baro_sub = baro_channel.subscriber().unwrap();
             loop {
                 // would love to use chained if lets, but rustfmt doesn't like it
-                if arming_state.lock(|s| *s.borrow()) {
+                if arming_state.lock(|s| (*s.borrow()).is_armed()) {
                     if let Ok(mut flight_core) = flight_core.try_lock() {
                         if let Some(flight_core) = flight_core.as_mut() {
                             let imu_reading = imu_sub.next_message_pure().await;
@@ -573,13 +570,13 @@ pub async fn avionics_main(
         }
     };
 
-    let mut telemetry_ticker = Ticker::every(timer, 3000.0);
     let telemetry_fut = async {
+        let mut telemetry_ticker = Ticker::every(timer, 3000.0);
         let mut last_telemetry_timestamp = 0.0f64;
         loop {
-            let should_throttle = !arming_state.lock(|s| *s.borrow()) || telemetry_data.lock(|d| d.borrow().avionics_state==AvionicsState::Landed);
-            if should_throttle && timer.now_mills() - last_telemetry_timestamp <= 60_000.0
-            {
+            let should_throttle = !arming_state.lock(|s| (*s.borrow()).is_armed())
+                || telemetry_data.lock(|d| d.borrow().avionics_state == AvionicsState::Landed);
+            if should_throttle && timer.now_mills() - last_telemetry_timestamp <= 60_000.0 {
                 telemetry_ticker.next().await;
                 continue;
             }
@@ -592,6 +589,25 @@ pub async fn avionics_main(
                 .send(ApplicationLayerTxPackage::Telemetry(telemetry_data))
                 .await;
             telemetry_ticker.next().await;
+        }
+    };
+
+    let camera_ctrl_future = async {
+        let mut ticker = Ticker::every(timer, 3000.0);
+        let mut is_recording = false;
+
+        loop {
+            let should_record = arming_state.lock(|s| (*s.borrow()).is_armed())
+                && telemetry_data.lock(|d| d.borrow().avionics_state != AvionicsState::Landed);
+            if should_record && !is_recording {
+                camera.set_recording(true).await;
+                is_recording = true;
+            } else if !should_record && is_recording {
+                timer.sleep(60_000.0).await;
+                camera.set_recording(false).await;
+                is_recording = false;
+            }
+            ticker.next().await;
         }
     };
 
@@ -678,7 +694,8 @@ pub async fn avionics_main(
         radio_fut,
         main_fut,
         flight_core_event_consumer,
-        sensors_file_fut
+        sensors_file_fut,
+        camera_ctrl_future,
     );
     defmt::unreachable!();
 }
@@ -693,3 +710,14 @@ const MARAUDER_2_FLIGHT_CONFIG: FlightCoreConfig = FlightCoreConfig {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct BuzzerTone(Option<u32>, f32);
+
+struct ArmingState {
+    pub hardware_armed: bool,
+    pub software_armed: bool,
+}
+
+impl ArmingState {
+    pub fn is_armed(&self) -> bool {
+        self.hardware_armed && self.software_armed
+    }
+}

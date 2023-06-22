@@ -122,7 +122,7 @@ impl<P: VLPPhy> VLPSocket<P> {
         };
 
         loop {
-            match Packet::deserialize(_self.phy.rx().await?) {
+            match Packet::deserialize(_self.phy.rx().await?.1) {
                 Ok(packet) => {
                     log_info!("Received packet {:?}", packet);
                     // Normal path
@@ -253,7 +253,7 @@ impl<P: VLPPhy> VLPSocket<P> {
             return Err(VLPError::IllegalPriority(self.prio));
         }
 
-        let packet = Packet::deserialize(self.phy.rx().await?)?;
+        let packet = Packet::deserialize(self.phy.rx().await?.1)?;
         self.phy.increment_frequency();
         log_info!("recvd {:?}", packet);
         if packet.flags.contains(Flags::HANDOFF) {
@@ -306,7 +306,7 @@ impl<P: VLPPhy> VLPSocket<P> {
         loop {
             match self.phy.rx_with_timeout(2000).await {
                 Ok(resp) => {
-                    match Packet::deserialize(resp) {
+                    match Packet::deserialize(resp.1) {
                         Ok(recv) => {
                             // Validate seqnum against record. Re-tx if mismatch
                             if recv.flags.contains(Flags::ACK) && recv.seqnum == self.next_seqnum {
@@ -331,7 +331,7 @@ impl<P: VLPPhy> VLPSocket<P> {
                     }
                 }
                 Err(RadioError::ReceiveTimeout) => {
-                    log_info!("retx (timeout");
+                    log_info!("retx (timeout)");
                     self.phy.tx(&packet[..]).await;
                 }
                 Err(e) => {
@@ -357,7 +357,7 @@ mod tests {
     };
     use futures_timer::Delay;
 
-    use super::*;
+    use super::{*, phy::RadioReceiveInfo};
 
     #[inline(never)]
     #[no_mangle]
@@ -435,14 +435,20 @@ mod tests {
             self.sender.send(Vec::from_slice(payload).unwrap()).await;
         }
 
-        async fn rx(&mut self) -> Result<Vec<u8, MAX_PAYLOAD_LENGTH>, RadioError> {
-            Ok(self.receiver.recv().await)
+        async fn rx(&mut self) -> Result<(RadioReceiveInfo,Vec<u8, MAX_PAYLOAD_LENGTH>), RadioError> {
+            let received=self.receiver.recv().await;
+            let info = RadioReceiveInfo {
+                rssi: 0,
+                snr: 0,
+                len: received.len() as u8,
+            };
+            Ok((info,received))
         }
 
         async fn rx_with_timeout(
             &mut self,
             _timeout_ms: u32,
-        ) -> Result<Vec<u8, MAX_PAYLOAD_LENGTH>, RadioError> {
+        ) -> Result<(RadioReceiveInfo,Vec<u8, MAX_PAYLOAD_LENGTH>), RadioError> {
             let rxfut = self.rx();
             pin_mut!(rxfut);
             match select(Delay::new(Duration::from_millis(_timeout_ms as u64)), rxfut).await {
@@ -450,6 +456,8 @@ mod tests {
                 Either::Right((x, _)) => x,
             }
         }
+
+        fn set_frequency(&mut self, frequency: u32) {}
 
         fn increment_frequency(&mut self) {}
 

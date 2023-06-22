@@ -9,7 +9,7 @@ use rkyv::{
 };
 
 use super::{phy::VLPPhy, Priority, VLPError, VLPSocket};
-use crate::common::telemetry::telemetry_data::TelemetryData;
+use crate::{common::telemetry::telemetry_data::TelemetryData, driver::timer::Timer};
 use heapless::Vec;
 
 pub trait RadioApplicationPackage: Sized {
@@ -24,10 +24,12 @@ pub trait RadioApplicationClient {
         R: RawMutex,
         TXP: RadioApplicationPackage,
         RXP: RadioApplicationPackage,
+        T: Timer,
         const TXN: usize,
         const RXN: usize,
     >(
         &mut self,
+        timer: T,
         radio_tx: Receiver<R, TXP, TXN>,
         radio_rx: Sender<R, RXP, RXN>,
     ) -> !;
@@ -42,14 +44,17 @@ impl<P: VLPPhy> RadioApplicationClient for VLPSocket<P> {
         R: RawMutex,
         TXP: RadioApplicationPackage,
         RXP: RadioApplicationPackage,
+        T: Timer,
         const TXN: usize,
         const RXN: usize,
     >(
         &mut self,
+        timer: T,
         radio_tx: Receiver<'a, R, TXP, TXN>,
         radio_rx: Sender<'b, R, RXP, RXN>,
     ) -> ! {
         loop {
+            timer.sleep(100.0).await;
             match self.prio {
                 Priority::Driver => {
                     if let Ok(tx_package) = radio_tx.try_recv() {
@@ -62,6 +67,8 @@ impl<P: VLPPhy> RadioApplicationClient for VLPSocket<P> {
                     if let Ok(Some(data)) = self.receive().await {
                         if let Some(decoded) = RXP::decode(data) {
                             radio_rx.send(decoded).await;
+                        } else {
+                            log_warn!("VLP: Received invalid payload");
                         }
                     }
                 }
@@ -76,25 +83,31 @@ pub enum ApplicationLayerRxPackage {
     // stand the rocket vertically so VLF can know which angle it is mounted at
     VerticalCalibration,
     ClearStorage,
-    // currently unused
     SoftArming(bool),
+    Synced,
 }
 
 impl RadioApplicationPackage for ApplicationLayerRxPackage {
     fn encode(self) -> Vec<u8, 222> {
         let mut buffer = Vec::<u8, 222>::new();
         unsafe {
+            buffer.push_unchecked(0x69);
             for _ in 0..core::mem::size_of::<<ApplicationLayerRxPackage as Archive>::Archived>() {
                 buffer.push_unchecked(0);
             }
         }
-        let mut serializer = BufferSerializer::new(buffer);
+        let mut serializer = BufferSerializer::new(buffer.split_at_mut(1).1);
         serializer.serialize_value(&self).unwrap();
-        serializer.into_inner()
+        buffer
     }
 
     fn decode(package: Vec<u8, 222>) -> Option<ApplicationLayerRxPackage> {
-        if let Ok(archived) = check_archived_root::<ApplicationLayerRxPackage>(package.as_slice()) {
+        if package.len() == 0 || package[0] != 0x69 {
+            return None;
+        }
+        if let Ok(archived) =
+            check_archived_root::<ApplicationLayerRxPackage>(&package.as_slice()[1..])
+        {
             let d: ApplicationLayerRxPackage = archived.deserialize(&mut rkyv::Infallible).unwrap();
             Some(d)
         } else {
@@ -115,19 +128,23 @@ impl RadioApplicationPackage for ApplicationLayerTxPackage {
             ApplicationLayerTxPackage::Telemetry(telemetry) => {
                 let mut buffer = Vec::<u8, 222>::new();
                 unsafe {
+                    buffer.push_unchecked(0x69);
                     for _ in 0..core::mem::size_of::<<TelemetryData as Archive>::Archived>() {
                         buffer.push_unchecked(0);
                     }
                 }
-                let mut serializer = BufferSerializer::new(buffer);
+                let mut serializer = BufferSerializer::new(buffer.split_at_mut(1).1);
                 serializer.serialize_value(&telemetry).unwrap();
-                serializer.into_inner()
+                buffer
             }
         }
     }
 
     fn decode(package: Vec<u8, 222>) -> Option<ApplicationLayerTxPackage> {
-        if let Ok(archived) = check_archived_root::<TelemetryData>(package.as_slice()) {
+        if package.len() == 0 || package[0] != 0x69 {
+            return None;
+        }
+        if let Ok(archived) = check_archived_root::<TelemetryData>(&package.as_slice()[1..]) {
             let d: TelemetryData = archived.deserialize(&mut rkyv::Infallible).unwrap();
             Some(ApplicationLayerTxPackage::Telemetry(d))
         } else {

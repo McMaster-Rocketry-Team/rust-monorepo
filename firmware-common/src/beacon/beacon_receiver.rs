@@ -28,10 +28,10 @@ pub async fn beacon_receiver(
             Ok(data) => {
                 info!(
                     "Received {} bytes",
-                    data.len()
+                    data.0.len
                 );
                 
-                if let Ok(archived) = check_archived_root::<BeaconData>(&data) {
+                if let Ok(archived) = check_archived_root::<BeaconData>(&data.1) {
                     let d: BeaconData = archived.deserialize(&mut rkyv::Infallible).unwrap();
                     info!("BeaconData: {}", d);
                 } else {

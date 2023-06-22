@@ -18,9 +18,9 @@ pub async fn ground_test_gcm(device_manager: device_manager_type!()) -> ! {
             Ok(package) => {
                 info!(
                     "Received {} bytes",
-                    package.len()
+                    package.0.len
                 );
-                let rx_buffer = package.as_slice();
+                let rx_buffer = package.1.as_slice();
                 if rx_buffer.starts_with(b"Pyro 1: ") {
                     info!(
                         "Received continuity message: {}",

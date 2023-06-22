@@ -55,9 +55,9 @@ pub async fn ground_test_avionics(device_manager: device_manager_type!()) -> ! {
                 Ok(data) => {
                     info!(
                         "Received {} bytes",
-                        data.len()
+                        data.0.len
                     );
-                    let rx_buffer = data.as_slice();
+                    let rx_buffer = data.1.as_slice();
                     if rx_buffer == b"VLF3 fire 1" {
                         info!("Firing pyro 1");
                         unwrap!(pyro1_ctrl.set_enable(true).await);
