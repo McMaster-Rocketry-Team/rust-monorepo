@@ -6,6 +6,7 @@ use futures::join;
 use vlfs::{Crc, Flash, VLFS};
 
 use crate::{
+    allocator::HEAP,
     claim_devices,
     common::{
         console::{
@@ -13,15 +14,14 @@ use crate::{
             console_program::{start_console_program_2, ConsoleProgram},
         },
         device_manager::prelude::*,
+        pvlp::{PVLPSlave, PVLP},
     },
     device_manager_type,
     driver::{gps::GPS, indicator::Indicator, timer::Timer},
     vlp::{
-        application_layer::{
-            ApplicationLayerRxPackage, ApplicationLayerTxPackage, RadioApplicationClient,
-        },
-        VLPSocket,
-    }, allocator::HEAP,
+        application_layer::{ApplicationLayerRxPackage, ApplicationLayerTxPackage},
+        phy::RadioReceiveInfo,
+    },
 };
 
 #[inline(never)]
@@ -44,7 +44,7 @@ pub async fn gcm_main<const N: usize, const M: usize>(
     vlp_phy.set_output_power(22);
 
     let radio_tx = Channel::<NoopRawMutex, ApplicationLayerRxPackage, 1>::new();
-    let radio_rx = Channel::<NoopRawMutex, ApplicationLayerTxPackage, 3>::new();
+    let radio_rx = Channel::<NoopRawMutex, (RadioReceiveInfo, ApplicationLayerTxPackage), 3>::new();
 
     let vert_calibration_prog_fut = start_console_program_2(
         device_manager,
@@ -70,8 +70,13 @@ pub async fn gcm_main<const N: usize, const M: usize>(
     );
 
     let radio_fut = async {
-        let mut vlp_socket = VLPSocket::await_establish(vlp_phy).await.unwrap();
-        vlp_socket.run(device_manager.timer, radio_tx.receiver(), radio_rx.sender()).await;
+        let mut socket = PVLPSlave::new(
+            PVLP(vlp_phy),
+            device_manager.timer,
+            radio_rx.sender(),
+            radio_tx.receiver(),
+        );
+        socket.run().await;
     };
 
     #[allow(unreachable_code)]
@@ -121,12 +126,14 @@ impl<'a, const N: usize> ConsoleProgram for GCMClearStorage<'a, N> {
 
 #[derive(Clone)]
 struct GCMGetTelemetry<'a, const N: usize> {
-    receiver: Receiver<'a, NoopRawMutex, ApplicationLayerTxPackage, N>,
+    receiver: Receiver<'a, NoopRawMutex, (RadioReceiveInfo, ApplicationLayerTxPackage), N>,
     buffer: [u8; 512],
 }
 
 impl<'a, const N: usize> GCMGetTelemetry<'a, N> {
-    fn new(receiver: Receiver<'a, NoopRawMutex, ApplicationLayerTxPackage, N>) -> Self {
+    fn new(
+        receiver: Receiver<'a, NoopRawMutex, (RadioReceiveInfo, ApplicationLayerTxPackage), N>,
+    ) -> Self {
         Self {
             receiver,
             buffer: [0; 512],
@@ -140,10 +147,14 @@ impl<'a, const N: usize> ConsoleProgram for GCMGetTelemetry<'a, N> {
     }
 
     async fn run(&mut self, serial: &mut impl Serial, _device_manager: device_manager_type!()) {
-        if let Ok(package) = self.receiver.try_recv() {
+        if let Ok((info, package)) = self.receiver.try_recv() {
             match package {
                 ApplicationLayerTxPackage::Telemetry(telemetry) => {
-                    log_info!("Telemetry: {:#?}", telemetry);
+                    log_info!("Telemetry: {:?} {:?}", info, telemetry);
+                    let json_len = serde_json_core::to_slice(&info, &mut self.buffer).unwrap();
+                    let json = &self.buffer[..json_len];
+                    serial.write(json).await;
+                    serial.write(b"|").await;
                     let json_len = serde_json_core::to_slice(&telemetry, &mut self.buffer).unwrap();
                     let json = &self.buffer[..json_len];
                     serial.write(json).await;

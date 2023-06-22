@@ -1,5 +1,5 @@
 use core::ops::DerefMut;
-
+use serde::Serialize as SerdeSerialize;
 use embassy_sync::{blocking_mutex::raw::RawMutex, mutex::MutexGuard};
 use heapless::Vec;
 use lora_phy::{
@@ -26,7 +26,7 @@ const FREQ_LIST: [u32; 64] = [
     913500000, 913700000, 913900000, 914100000, 914300000, 914500000, 914700000, 914900000,
 ];
 
-#[derive(Debug, defmt::Format)]
+#[derive(SerdeSerialize, Debug, defmt::Format)]
 pub struct RadioReceiveInfo {
     pub rssi: i16,
     pub snr: i16,
