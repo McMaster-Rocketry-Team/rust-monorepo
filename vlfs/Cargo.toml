@@ -5,6 +5,7 @@ edition = "2021"
 authors = ["pegasis"]
 
 [dependencies]
+embassy = "0.1.0"
 embassy-sync = { version = "0.1.0", default-features = false }
 defmt = "0.3"
 heapless = { version = "0.7.5", default-features = false}

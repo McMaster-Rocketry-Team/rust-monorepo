@@ -203,88 +203,85 @@ where
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
-   
-    //MockFlash is a mock implementation of the Flash trait
-    pub struct MockFlash {
-        pub size_result: u32,
-        pub reset_result: Result<(), String>,
-        pub erase_sector_4kib_result: Result<(), String>,
-        pub erase_block_32kib_result: Result<(), String>,
-        pub erase_block_64kib_result: Result<(), String>,
-        pub read_4kib_result: Result<Vec<u8>, String>,
-        pub write_256b_result: Result<(), String>,
-    }
-    
-    impl Flash for MockFlash {
+    use embassy_sync::Mutex;
+    use core::pin::Pin;
 
-        type Error = String;//the trait bound `std::string::String: Format` is not satisfied
-                            //the trait `Format` is implemented for `str`
+    struct MockFlash {
+        data: Vec<u8>, // Mock data for the flash memory
+    }
+
+    #[derive(Debug)] // make MockFlashError printable
+    struct MockFlashError;
+
+    impl defmt::Format for MockFlashError {
+        fn format(&self, f: defmt::Formatter) {
+            defmt::write!(f, "MockFlashError");
+        }
+    }
+
+    impl Flash for MockFlash {
+        type Error = MockFlashError;
 
         fn size(&self) -> u32 {
-            self.size_result
+            self.data.len() as u32
         }
-    
+
         async fn reset(&mut self) -> Result<(), Self::Error> {
-            self.reset_result.clone()
+            Ok(())
         }
-    
-        async fn erase_sector_4kib(&mut self, address: u32) -> Result<(), Self::Error> {
-            self.erase_sector_4kib_result.clone()
+
+        async fn erase_sector_4kib(&mut self, _: u32) -> Result<(), Self::Error> {
+            Ok(())
         }
-    
-        async fn erase_block_32kib(&mut self, address: u32) -> Result<(), Self::Error> {
-            self.erase_block_32kib_result.clone()
+
+        async fn erase_block_32kib(&mut self, _: u32) -> Result<(), Self::Error> {
+            Ok(())
         }
-    
-        async fn erase_block_64kib(&mut self, address: u32) -> Result<(), Self::Error> {
-            self.erase_block_64kib_result.clone()
+
+        async fn erase_block_64kib(&mut self, _: u32) -> Result<(), Self::Error> {
+            Ok(())
         }
-    
+
         async fn read_4kib<'b>(
             &mut self,
-            address: u32,
-            read_length: usize,
-            read_buffer: &'b mut [u8],
+            _: u32,
+            _: usize,
+            _: &'b mut [u8],
         ) -> Result<&'b [u8], Self::Error> {
-            match self.read_4kib_result.clone() {
-                Ok(data) => {
-                    read_buffer[..(5 + read_length)].copy_from_slice(&data[..(5 + read_length)]);
-                    Ok(&read_buffer[5..(5 + read_length)])
-                }
-                Err(e) => Err(e),
-            }
+            Ok(&[])
         }
-    
+
         async fn write_256b<'b>(
             &mut self,
-            address: u32,
+            _: u32,
             write_buffer: &'b mut [u8],
         ) -> Result<(), Self::Error> {
-            self.write_256b_result.clone()
+            if self.data.len() + write_buffer.len() > self.data.capacity() {
+                Err(MockFlashError)
+            } else {
+                self.data.extend_from_slice(write_buffer);
+                Ok(())
+            }
         }
     }
 
-    //asynchronously test the read and write functions when the disk is full
-    #[actix_rt::test]
-    async fn reading_and_writing_when_full(){
-        let mut flash = MockFlash {
-            size_result: 16384*4096,
-            reset_result: Ok(()),
-            erase_sector_4kib_result: Ok(()),
-            erase_block_32kib_result: Ok(()),
-            erase_block_64kib_result: Ok(()),
-            read_4kib_result: Ok(vec![0u8; 4096]),
-            write_256b_result: Ok(()),
-        };
-        let mut read_buffer = [0u8; 5 + 4096];
-        let mut write_buffer = [0u8; 261];
-        let read_data = flash.read_4kib(0x0000_0000, 4096, &mut read_buffer).await;
-        let write_data = flash.write_256b(0x0000_0000, &mut write_buffer).await;
-        assert_eq!(read_data, Ok(&read_buffer[5..(5 + 4096)]));
-        assert_eq!(write_data, Ok(()));
+    #[embassy::test]
+    async fn test_disk_full() {
+        let max_size = 16384*4096;
+        let flash_memory = MockFlash { data: vec![0; max_size] }; // Create a MockFlash with a capacity of max_size bytes
+        let mutex_flash = Mutex::new(flash_memory);
+        let mut flash = mutex_flash.lock().await;
+
+        let mut write_buffer = vec![1u8; max_size + 1]; // Create a write buffer larger than the MockFlash's capacity
+
+        // Attempt to write data to the MockFlash
+        let result = flash.write(0, write_buffer.len(), &mut write_buffer).await;
+
+        // Check that the write operation failed as expected
+        assert!(result.is_err());
     }
+
 }
