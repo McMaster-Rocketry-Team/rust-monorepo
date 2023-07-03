@@ -64,7 +64,7 @@ pub trait Flash {
         write_buffer: &'b mut [u8],
     ) -> Result<(), Self::Error>;
 
-    /// Reads arbitary length of data from the memory device starting at the specified address.
+    /// Reads arbitrary length of data from the memory device starting at the specified address.
     /// maximum read length is 4 kb
     /// size of the buffer must be at least read_length + 5 bytes long
     /// refer to the read_4kib function for more details on the parameters and outputs as they are the same
@@ -109,7 +109,7 @@ pub trait Flash {
         Ok(&read_buffer[5..(5 + read_length)])
     }
 
-    /// write arbitary length (must be a multiple of 256 bytes)
+    /// write arbitrary length (must be a multiple of 256 bytes)
     /// address must be 256-byte-aligned
     /// length of write_buffer must be larger or equal to write_length + 5
     /// refer to the write_256b function for more details on the parameters and outputs as they are the same
@@ -143,7 +143,7 @@ pub trait Flash {
             //Update the number of bytes written.
             bytes_written += length;
         }
-        // Return Ok if no error occured during all the write operations
+        // Return Ok if no error occurred during all the write operations
         Ok(())
     }
 }
@@ -194,6 +194,7 @@ where
             .read_4kib(address, read_length, read_buffer)
             .await
     }
+    // `write_256b` writes a 256B block of the flash memory starting at the given address from the provided buffer
     async fn write_256b<'b>(
         &mut self,
         address: u32,
@@ -230,28 +231,63 @@ mod tests {
         }
 
         async fn reset(&mut self) -> Result<(), Self::Error> {
+            self.data.fill(0xFF);
             Ok(())
         }
 
-        async fn erase_sector_4kib(&mut self, _: u32) -> Result<(), Self::Error> {
+        async fn erase_sector_4kib(&mut self, address: u32) -> Result<(), Self::Error> {
+            if address as usize >= self.data.len() {
+                return Err(MockFlashError);
+            }
+
+            let end = std::cmp::min(self.data.len(), (address + 4096) as usize);
+            for byte in self.data[address as usize..end].iter_mut() {
+                *byte = 0xFF;
+            }
             Ok(())
         }
 
-        async fn erase_block_32kib(&mut self, _: u32) -> Result<(), Self::Error> {
+        async fn erase_block_32kib(&mut self, address: u32) -> Result<(), Self::Error> {
+            if address as usize >= self.data.len() {
+                return Err(MockFlashError);
+            }
+
+            let end = std::cmp::min(self.data.len(), (address + 32768) as usize);
+            for byte in self.data[address as usize..end].iter_mut() {
+                *byte = 0xFF;
+            }
             Ok(())
         }
 
-        async fn erase_block_64kib(&mut self, _: u32) -> Result<(), Self::Error> {
+        async fn erase_block_64kib(&mut self, address: u32) -> Result<(), Self::Error> {
+            if address as usize >= self.data.len() {
+                return Err(MockFlashError);
+            }
+
+            let end = std::cmp::min(self.data.len(), (address + 65536) as usize);
+            for byte in self.data[address as usize..end].iter_mut() {
+                *byte = 0xFF;
+            }
             Ok(())
         }
 
         async fn read_4kib<'b>(
             &mut self,
-            _: u32,
-            _: usize,
-            _: &'b mut [u8],
+            address: u32,
+            read_length: usize,
+            read_buffer: &'b mut [u8],
         ) -> Result<&'b [u8], Self::Error> {
-            Ok(&[])
+            if address as usize + read_length > self.data.len(){
+                Err(MockFlashError)
+            }
+            // Get the requested slice from the data vector.
+            let data_slice = &self.data[address as usize..address as usize + read_length];
+
+            // Copy the data slice into the read buffer.
+            read_buffer[..data_slice.len()].copy_from_slice(data_slice);
+
+            // Return a slice of the read buffer containing the data read.
+            Ok(&read_buffer[..data_slice.len()])
         }
 
         async fn write_256b<'b>(
@@ -268,20 +304,315 @@ mod tests {
         }
     }
 
-    #[embassy::test]
-    async fn test_disk_full() {
-        let max_size = 16384*4096;
-        let flash_memory = MockFlash { data: vec![0; max_size] }; // Create a MockFlash with a capacity of max_size bytes
+    // A function to setup and lock a new MockFlash instance.
+    fn setup_flash(size: usize) -> impl Future<Output = MutexGuard<'static, MockFlash>> {
+        let flash_memory = MockFlash { data: vec![0; size] };
         let mutex_flash = Mutex::new(flash_memory);
-        let mut flash = mutex_flash.lock().await;
+        mutex_flash.lock()
+    }
 
-        let mut write_buffer = vec![1u8; max_size + 1]; // Create a write buffer larger than the MockFlash's capacity
+    //Erase tests
+    //Normal tests
+    #[embassy::test]
+    async fn normal_erase_sector_test(){
+        let mut flash = setup_flash(4096).await;
+        let result = flash.erase_sector_4kib(0).await;
+        assert!(result.is_ok());
+    }
 
-        // Attempt to write data to the MockFlash
-        let result = flash.write(0, write_buffer.len(), &mut write_buffer).await;
+    #[embassy::test]
+    async fn normal_erase_block_32kib_test(){
+        let mut flash = setup_flash(32768).await;
+        let result = flash.erase_block_32kib(0).await;
+        assert!(result.is_ok());
+    }
 
-        // Check that the write operation failed as expected
+    #[embassy::test]
+    async fn normal_erase_block_64kib_test(){
+        let mut flash = setup_flash(65536).await;
+        let result = flash.erase_block_64kib(0).await;
+        assert!(result.is_ok());
+    }
+
+    //Error tests
+    #[embassy::test]
+    async fn test_erase_sector_beyond_flash(){
+        let mut flash = setup_flash(4096).await;
+        let result = flash.erase_sector_4kib(5000).await;
         assert!(result.is_err());
     }
 
+    #[embassy::test]
+    async fn test_erase_block_32kib_beyond_flash(){
+        let mut flash = setup_flash(32768).await;
+        let result = flash.erase_block_32kib(50000).await;
+        assert!(result.is_err());
+    }
+
+    #[embassy::test]
+    async fn test_erase_block_64kib_beyond_flash(){
+        let mut flash = setup_flash(65536).await;
+        let result = flash.erase_block_64kib(100000).await;
+        assert!(result.is_err());
+    }
+
+    //Boundary Test Cases
+    //1. address is 0
+    //2. address is 4096, 32768, and 65536
+    #[embassy::test]
+    async fn test_erase_sector_address_is_0(){
+        let mut flash = setup_flash(4096).await;
+        let result = flash.erase_sector_4kib(0).await;
+        assert!(result.is_ok());
+    }
+
+    #[embassy::test]
+    async fn test_erase_block_32kib_address_is_0(){
+        let mut flash = setup_flash(32768).await;
+        let result = flash.erase_block_32kib(0).await;
+        assert!(result.is_ok());
+    }
+
+    #[embassy::test]
+    async fn test_erase_block_64kib_address_is_0(){
+        let mut flash = setup_flash(65536).await;
+        let result = flash.erase_block_64kib(0).await;
+        assert!(result.is_ok());
+    }
+
+    #[embassy::test]
+    async fn test_erase_sector_address_is_4096(){
+        let mut flash = setup_flash(8192).await;
+        let result = flash.erase_sector_4kib(4096).await;
+        assert!(result.is_ok());
+    }
+
+    #[embassy::test]
+    async fn test_erase_block_32kib_address_is_32768(){
+        let mut flash = setup_flash(65536).await;
+        let result = flash.erase_block_32kib(32768).await;
+        assert!(result.is_ok());
+    }
+
+    #[embassy::test]
+    async fn test_erase_block_64kib_address_is_65536(){
+        let mut flash = setup_flash(131072).await;
+        let result = flash.erase_block_64kib(65536).await;
+        assert!(result.is_ok());
+    }
+
+    //Reading test functions
+    //Normal test
+    #[embassy::test]
+    async fn normal_read_test(){
+        let mut flash = setup_flash(4096).await;
+        let mut read_buffer = vec![0u8; 4096];
+        let result = flash.read_4kib(0, read_buffer.len()-5, &mut read_buffer).await;
+        assert!(result.is_ok());
+        // Check that the read buffer contains the expected data.
+        assert_eq!(read_buffer, vec![0u8; 4101]);
+    }
+
+    //Error tests
+    #[embassy::test]
+    async fn test_read_beyond_4096(){
+        let mut flash = setup_flash(4096).await;
+        let mut read_buffer = vec![0u8; 4096];
+        let result = flash.read_4kib(0, read_buffer.len() + 10, &mut read_buffer).await;
+        assert!(result.is_err());
+    }
+    #[embassy::test]
+    async fn test_read_address_beyond_flash(){
+        let mut flash = setup_flash(4096).await;
+        let mut read_buffer = vec![0u8; max_size];
+        let result = flash.read_4kib(4097, read_buffer.len()-5, &mut read_buffer).await;
+        assert!(result.is_err());
+    }
+
+    #[embassy::test]
+    async fn test_read_buffer_not_large_enough(){
+        let mut flash = setup_flash(4096).await;
+        let mut read_buffer = vec![0u8; max_size-5]; // Create a read buffer smaller than read_length
+        let result = flash.read_4kib(0, read_buffer.len(), &mut read_buffer).await;
+        assert!(result.is_err());
+    }
+
+    #[embassy::test]
+    async fn test_read_uninitialized_flash(){
+        let max_size = 4096;
+        let flash_memory = MockFlash { data: vec![] }; // Create MockFlash with no data
+        let mutex_flash = Mutex::new(flash_memory);
+        let mut flash = mutex_flash.lock().await;
+
+        let mut read_buffer = vec![0u8; max_size];
+        let result = flash.read_4kib(0, read_buffer.len()-5, &mut read_buffer).await;
+        assert!(result.is_err());
+    }
+
+
+    //Boundary Test Cases
+    //1. read_length is 0
+    //2. read_length is 4096
+    //4. address is 4096
+    //5. read_buffer is 5 bytes larger than read_length
+    // address at 0 is not tested since the address is 0 for most of the tests
+    #[embassy::test]
+    async fn test_read_length_is_0(){
+        let mut flash = setup_flash(4096).await;
+        let mut read_buffer = vec![0u8; 4096];
+        let result = flash.read_4kib(0, 0, &mut read_buffer).await;
+        assert!(result.is_err());
+    }
+
+    #[embassy::test]
+    async fn test_read_length_is_4096(){
+        let mut flash = setup_flash(4096).await;
+        let mut read_buffer = vec![0u8; 4096];
+        let result = flash.read_4kib(0, read_buffer.len()-5, &mut read_buffer).await;
+        assert!(result.is_ok());
+    }
+
+    #[embassy::test]
+    async fn test_read_address_is_4096(){
+        let mut flash = setup_flash(4096).await;
+        let mut read_buffer = vec![0u8; 4096];
+        let result = flash.read_4kib(4096, read_buffer.len()-5, &mut read_buffer).await;
+        assert!(result.is_ok());
+    }
+
+    #[embassy::test]
+    async fn test_read_buffer_is_5_bytes_larger_than_read_length(){
+        let mut flash = setup_flash(4096).await;
+        let mut read_buffer = vec![0u8; 4096];
+        let result = flash.read_4kib(0, read_buffer.len()-5, &mut read_buffer).await;
+        assert!(result.is_ok());
+    }
+
+    // Test that reading from an erased flash returns Ok and 0xFF for the data read.
+    #[embassy::test]
+    async fn test_read_erased_flash(){
+        let mut flash = setup_flash(4096).await;
+        flash.data.fill(0xFF);
+        let mut read_buffer = vec![0u8; 4096];
+        let result = flash.read_4kib(0, read_buffer.len()-5, &mut read_buffer).await;
+        assert!(result.is_ok());
+        assert_eq!(read_buffer, vec![0xFFu8; 4096]);
+    }
+
+    //Writing test functions
+
+    //Normal test
+    #[embassy::test]
+    async fn normal_write_test(){
+        let mut flash = setup_flash(4096).await;
+        let mut write_buffer = vec![1u8; 4096];
+        let result = flash.write(0, write_buffer.len()-5, &mut write_buffer).await;
+        assert!(result.is_ok());
+        // Optionally, check that the write buffer contains the expected data.
+        assert_eq!(write_buffer, vec![1u8; 4096]);
+    }
+
+    //Error tests
+    // 1. Writing more data than the flash memory's capacity
+    // 2. Trying to write to an address that is not 256-byte aligned
+    // 3. Attempting to write data when the write buffer is empty.
+    // 4. Writing data with a size that is not a multiple of 256
+    // 5. Trying to write data to a memory that is not initialized or ready.
+    // 6. Writing data when the write buffer length is less than write_length + 5.
+
+    #[embassy::test]
+    async fn test_write_disk_capacity() {
+        let mut flash =  setup_flash(16384*4096).await;
+        let mut write_buffer = vec![1u8; 16384*4096 + 1]; // Create a write buffer larger than the MockFlash's capacity
+        let result = flash.write(0, write_buffer.len()-5, &mut write_buffer).await;
+        assert!(result.is_err());
+    }
+
+    #[embassy::test]
+    async fn test_write_address_not_256_byte_aligned() {
+        let mut flash = setup_flash(4096).await;
+        let mut write_buffer = vec![1u8; 4096];
+        let result = flash.write(1, write_buffer.len()-5, &mut write_buffer).await;
+        assert!(result.is_err());
+    }
+
+    #[embassy::test]
+    async fn test_write_empty_buffer() {
+        let mut flash = setup_flash(4096).await;
+        let mut write_buffer = vec![];
+        let result = flash.write(0, write_buffer.len()-5, &mut write_buffer).await;
+        assert!(result.is_err());
+    }
+
+    #[embassy::test]
+    async fn test_write_length_not_multiple_of_256() {
+        let mut flash = setup_flash(4096).await;
+        let mut write_buffer = vec![1u8; 255];
+        let result = flash.write(0, write_buffer.len()-5, &mut write_buffer).await;
+        assert!(result.is_err());
+    }
+
+    #[embassy::test]
+    async fn test_write_uninitialized_flash() {
+        let flash_memory = MockFlash { data: vec![] }; // Create MockFlash with no data
+        let mutex_flash = Mutex::new(flash_memory);
+        let mut flash = mutex_flash.lock().await;
+        let mut write_buffer = vec![1u8; 4096];
+        let result = flash.write(0, write_buffer.len()-5, &mut write_buffer).await;
+        assert!(result.is_err());
+    }
+
+    #[embassy::test]
+    async fn test_write_buffer_too_small() {
+        let mut flash = setup_flash(4096).await;
+        let mut write_buffer = vec![1u8; 4096 - 5];
+        let result = flash.write(0, write_buffer.len(), &mut write_buffer).await;
+        assert!(result.is_err());
+    }
+
+    //Boundary Test Cases
+    // Writing data of size exactly equal to the flash memory's capacity.
+    // Writing data to the last 256-byte-aligned address in the memory.
+    // Writing exactly 256 bytes of data (the minimum allowed by the function).
+
+    #[embassy::test]
+    async fn test_write_disk_capacity_boundary() {
+        let mut flash = setup_flash(16384*4096).await;
+        let mut write_buffer = vec![1u8; 16384*4096];
+        let result = flash.write(0, write_buffer.len()-5, &mut write_buffer).await;
+        assert!(result.is_ok());
+    }
+
+    #[embassy::test]
+    async fn test_write_last_256_byte_aligned_address() {
+        let mut flash = setup_flash(4096).await;
+        let mut write_buffer = vec![1u8; 4096];
+        let result = flash.write(4096 - 256, 256, &mut write_buffer).await;
+        assert!(result.is_ok());
+    }
+
+    #[embassy::test]
+    async fn test_write_256_bytes() {
+        let mut flash = setup_flash(4096).await;
+        let mut write_buffer = vec![1u8; 256];
+        let result = flash.write(0, write_buffer.len()-5, &mut write_buffer).await;
+        assert!(result.is_ok());
+    }
+
+    //Testing file rw
+    #[embassy::test]
+    async fn test_write_and_read_files() {
+        let mut flash = setup_flash(4096).await;
+        for file_length in 1..=4096 {
+            let write_buffer = (0..file_length).map(|i| i as u8).collect::<Vec<_>>();
+            let write_result = flash.write_256b(0, &mut write_buffer.clone()).await;
+            assert!(write_result.is_ok(), "Failed to write file of length {}", file_length);
+
+            let mut read_buffer = vec![0u8; file_length];
+            let read_result = flash.read_4kib(0, file_length, &mut read_buffer).await;
+            assert!(read_result.is_ok(), "Failed to read file of length {}", file_length);
+
+            assert_eq!(read_buffer, write_buffer, "Data mismatch for file of length {}", file_length);
+        }
+    }
 }
