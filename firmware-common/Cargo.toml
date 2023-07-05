@@ -4,23 +4,51 @@ authors = ["Pegasis <me@pegasis.site>"]
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[features]
+default = ["global-allocator"]
+global-allocator = []
+log = ["dep:log", "vlfs/log"]
 
 [dependencies]
-embassy-sync = { version = "0.1.0", default-features = false }
+embassy-sync = { version = "0.2.0", default-features = false }
 bitvec = { version = "1.0.1", default-features = false }
-bytecheck = { version = "0.6.9", default-features = false}
 defmt = "0.3"
-heapless = { version = "0.7.5", default-features = false}
+log = { version = "0.4", optional = true }
+heapless = { version = "0.7.5", features = ["defmt"], default-features = false }
 rkyv = { version = "0.7.39", default-features = false, features = [
-    "validation",
     "size_32",
-    "alloc"
+    "validation",
 ] }
 nalgebra = { version = "0.32.2", default-features = false }
-ahrs = { version = "0.6.0", default-features = false }
-futures = { version = "0.3.17", default-features = false, features = ["async-await"] }
-tiny-nmea = { path = "../tiny-nmea" }
+ahrs = { version = "0.6.0", default-features = false, features = ["field_access"] }
+futures = { version = "0.3.17", default-features = false, features = [
+    "async-await",
+] } 
 vlfs = { path = "../vlfs" }
 rand = { version = "0.8.5", features = ["small_rng"], default-features = false }
-micromath = { version = "2.0.0", features = ["statistics"], default-features = false }
+micromath = { version = "2.0.0", features = [
+    "statistics",
+], default-features = false }
+lora-phy = "1.0.2"
+embedded-alloc = "0.5.0"
+embedded-hal-async = "0.2.0-alpha.1"
+nmea = { version = "0.4.0", default-features = false }
+ferraris-calibration = { path = "../ferraris-calibration", features = [
+    "defmt",
+    # "rkyv-no-std",
+] }
+bitflags = "2.2.1"
+chrono = { version = "0.4.26", default-features = false }
+num-traits = { version = "0.2.15", default-features = false }
+eskf = { git = "https://github.com/PegasisForever/eskf-rs.git", default-features = false }
+libm = "0.2.7"
+embassy-futures = "0.1.0"
+serde = { version = "1.0.164", default-features = false, features = ["derive"] }
+serde-json-core = "0.5.0"
+
+[dev-dependencies]
+futures-executor = { version = "0.3.17", features = ["thread-pool"] }
+futures-test = "0.3.17"
+futures-timer = "3.0.2"
+futures-util = { version = "0.3.17", features = ["channel"] }
+critical-section = { version = "1.1", features = ["std"] }

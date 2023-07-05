@@ -54,7 +54,7 @@ where
     pub(super) fn find_file_entry<'a>(
         &self,
         allocation_table: &'a AllocationTable,
-        file_id: u64,
+        file_id: FileID,
     ) -> Option<&'a FileEntry> {
         for file_entry in &allocation_table.file_entries {
             if file_entry.file_id == file_id {
@@ -67,7 +67,7 @@ where
     pub(super) fn find_file_entry_mut<'a>(
         &self,
         allocation_table: &'a mut AllocationTable,
-        file_id: u64,
+        file_id: FileID,
     ) -> Option<&'a mut FileEntry> {
         for file_entry in &mut allocation_table.file_entries {
             if file_entry.file_id == file_id {

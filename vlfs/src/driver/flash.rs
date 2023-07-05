@@ -1,3 +1,4 @@
+
 use core::ops::{Deref, DerefMut};
 use embassy_sync::{blocking_mutex::raw::RawMutex, mutex::MutexGuard};
 
@@ -5,7 +6,7 @@ use embassy_sync::{blocking_mutex::raw::RawMutex, mutex::MutexGuard};
 pub trait Flash {
     // Error type that will be returned by the flash driver.
     // This type must implement the defmt::Format trait.
-    type Error: defmt::Format;
+    type Error: defmt::Format + Debug;
 
     // This function returns the size of the flash memory in bytes.
     fn size(&self) -> u32;
@@ -35,7 +36,7 @@ pub trait Flash {
     /// let read_data = flash.read_4kib(0x0000_0000, 4096, &mut read_buffer).await;
     ///
     /// ```
-    ///
+    /// 
     async fn read_4kib<'b>(
         &mut self,
         address: u32,
@@ -64,11 +65,12 @@ pub trait Flash {
         write_buffer: &'b mut [u8],
     ) -> Result<(), Self::Error>;
 
-    /// Reads arbitrary length of data from the memory device starting at the specified address.
+
+    /// Reads arbitary length of data from the memory device starting at the specified address.
     /// maximum read length is 4 kb
     /// size of the buffer must be at least read_length + 5 bytes long
     /// refer to the read_4kib function for more details on the parameters and outputs as they are the same
-    ///
+    /// 
 
     async fn read<'b>(
         &mut self,
@@ -113,7 +115,7 @@ pub trait Flash {
     /// address must be 256-byte-aligned
     /// length of write_buffer must be larger or equal to write_length + 5
     /// refer to the write_256b function for more details on the parameters and outputs as they are the same
-
+    
     async fn write<'b>(
         &mut self,
         address: u32,
@@ -134,13 +136,13 @@ pub trait Flash {
             } else {
                 write_length - bytes_written
             };
-            // info!("writing {}/{} bytes", bytes_written, write_length);
+
             self.write_256b(
                 address + bytes_written as u32,
                 &mut write_buffer[bytes_written..],
             )
             .await?;
-            //Update the number of bytes written.
+            // Update the number of bytes written.
             bytes_written += length;
         }
         // Return Ok if no error occurred during all the write operations

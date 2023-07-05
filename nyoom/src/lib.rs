@@ -20,9 +20,9 @@ impl NyoomEncoder {
     // The encoded message should be written to `output_writer`.
     async fn encodeHandshake<'r, 'w, MR, const NR: usize, MW, const NW: usize>(
         &mut self,
-        handshake: (), // TODO
-        rocket_model_reader: Reader<'r, MR, NR>,
-        output_writer: Writer<'w, MW, NW>,
+        _handshake: (), // TODO
+        _rocket_model_reader: Reader<'r, MR, NR>,
+        _output_writer: Writer<'w, MW, NW>,
     ) where
         MR: RawMutex,
         MW: RawMutex,
@@ -35,8 +35,8 @@ impl NyoomEncoder {
     // The encoded message should be written to `output_writer`.
     fn encodeData<'r, 'w, MW, const NW: usize>(
         &mut self,
-        data: (), // TODO
-        output_writer: Writer<'w, MW, NW>,
+        _data: (), // TODO
+        _output_writer: Writer<'w, MW, NW>,
     ) where
         MW: RawMutex,
     {
@@ -46,7 +46,6 @@ impl NyoomEncoder {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
     #[futures_test::test]
     async fn it_works() {

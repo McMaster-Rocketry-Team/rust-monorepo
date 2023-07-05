@@ -22,6 +22,9 @@
       <sourceFolder url="file://$MODULE_DIR$/embassy/stm32-metapac/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/tiny-nmea/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/firmware-common/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/ferraris_calibration/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/nyoom/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/vlfs/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
     <orderEntry type="inheritedJdk" />

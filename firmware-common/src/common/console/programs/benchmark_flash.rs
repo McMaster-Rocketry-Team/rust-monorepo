@@ -1,18 +1,20 @@
 use core::hint::black_box;
 
-use core::cmp::Ordering::Equal;
 use defmt::*;
-use heapless::Vec;
-use micromath::statistics::Mean;
-use micromath::statistics::StdDev;
+
 use rand::{rngs::SmallRng, RngCore, SeedableRng};
 use vlfs::{
     io_traits::{AsyncReader, AsyncWriter},
-    Crc, Flash, VLFS,
+    Crc, Flash, StatFlash, VLFS,
 };
 
-use crate::driver::{serial::Serial, timer::Timer};
+use crate::{
+    common::files::BENCHMARK_FILE_TYPE,
+    driver::{serial::Serial, timer::Timer},
+    try_or_warn,
+};
 
+// TODO implement `ConsoleProgram` and add to `start_common_programs`
 pub struct BenchmarkFlash {}
 
 impl BenchmarkFlash {
@@ -28,15 +30,13 @@ impl BenchmarkFlash {
         &self,
         serial: &mut T,
         vlfs: &VLFS<F, C>,
-        timer: &I,
-    ) -> Result<(), ()>
-    where
-        F::Error: defmt::Format,
-        F: defmt::Format,
-    {
+        stat_flash: &StatFlash,
+        timer: I,
+    ) -> Result<(), ()> {
+        info!("Benchmarking flash");
+        stat_flash.reset_stat();
         let rounds = 10000usize;
         let length = rounds * 64;
-        let mut write_times = Vec::<f32, 10000>::new();
 
         let random_time = {
             let mut rng = SmallRng::seed_from_u64(
@@ -52,18 +52,17 @@ impl BenchmarkFlash {
             timer.now_mills() - start_time
         };
 
-        let file_id = 10u64;
-        let file_type = 0u16;
+        let mut max_64b_write_time = 0f64;
+        unwrap!(
+            vlfs.remove_files(|file_entry| file_entry.file_type == BENCHMARK_FILE_TYPE)
+                .await
+        );
+        let file_id = unwrap!(vlfs.create_file(BENCHMARK_FILE_TYPE).await);
 
         let write_time = {
             let mut rng = SmallRng::seed_from_u64(
                 0b1010011001010000010000000111001110111101011110001100000011100000u64,
             );
-
-            if vlfs.create_file(file_id, file_type).await.is_err() {
-                unwrap!(vlfs.remove_file(file_id).await);
-                unwrap!(vlfs.create_file(file_id, file_type).await);
-            }
 
             let start_time = timer.now_mills();
 
@@ -71,11 +70,12 @@ impl BenchmarkFlash {
             let mut buffer = [0u8; 64];
             for _ in 0..rounds {
                 rng.fill_bytes(&mut buffer);
-                let write_start_time = timer.now_micros();
+                let write_64b_start_time = timer.now_mills();
                 unwrap!(file.extend_from_slice(&buffer).await);
-                write_times
-                    .push(((timer.now_micros() - write_start_time) as f32) / 1000.0)
-                    .unwrap();
+                let write_64b_end_time = timer.now_mills() - write_64b_start_time;
+                if write_64b_end_time > max_64b_write_time {
+                    max_64b_write_time = write_64b_end_time;
+                }
             }
             unwrap!(file.close().await);
             timer.now_mills() - start_time - random_time
@@ -104,26 +104,51 @@ impl BenchmarkFlash {
             timer.now_mills() - start_time - random_time
         };
 
+        try_or_warn!(vlfs.remove_file(file_id).await);
+
+        let stat = stat_flash.get_stat();
+
         info!(
             "Write speed: {}KiB/s",
             (length as f32 / 1024.0) / (write_time as f32 / 1000.0)
         );
-        let stddev = write_times.as_slice().stddev();
-        let mean = write_times.iter().cloned().mean();
-        let max = write_times
-            .iter()
-            .cloned()
-            .max_by(|a, b| a.partial_cmp(b).unwrap_or(Equal))
-            .unwrap();
-        info!(
-            "64 bytes writing time: mean: {}ms, stddev: {}ms, max: {}ms",
-            mean, stddev, max
-        );
-
         info!(
             "Read speed: {}KiB/s",
             (length as f32 / 1024.0) / (read_time as f32 / 1000.0)
         );
+
+        info!(
+            "64 bytes writing time: mean: {}ms, max: {}ms",
+            (write_time as f32) / (rounds as f32),
+            max_64b_write_time
+        );
+        info!(
+            "Flash 256 bytes program time: mean: {}ms",
+            stat.write_256b_total_time_ms / stat.write_256b_count as f64
+        );
+        info!(
+            "Erase time: {}x64K: each {}ms,  {}x32K: each {}ms,  {}x4K: each {}ms",
+            stat.erase_block_64kib_count,
+            stat.erase_block_64kib_total_time_ms / stat.erase_block_64kib_count as f64,
+            stat.erase_block_32kib_count,
+            stat.erase_block_32kib_total_time_ms / stat.erase_block_32kib_count as f64,
+            stat.erase_sector_4kib_count,
+            stat.erase_sector_4kib_total_time_ms / stat.erase_sector_4kib_count as f64
+        );
+
+        let total_erase_time = stat.erase_block_64kib_total_time_ms
+            + stat.erase_block_32kib_total_time_ms
+            + stat.erase_sector_4kib_total_time_ms;
+        info!(
+            "Total erase time: {}ms,  Total write time: {}ms,  Total read time: {}ms",
+            total_erase_time, stat.write_256b_total_time_ms, stat.read_4kib_total_time_ms
+        );
+        info!(
+            "Erase / write ratio: {}",
+            total_erase_time / stat.write_256b_total_time_ms
+        );
+
+        try_or_warn!(serial.write(&[0]).await);
 
         Ok(())
     }

@@ -1,193 +1,123 @@
-use crate::{
-    driver::{buzzer::Buzzer, pyro::PyroChannel, serial::Serial, timer::Timer},
-    heapless_format_bytes,
+use core::{cell::RefCell, future::poll_fn, task::Poll};
+use embassy_futures::yield_now;
+
+use crate::{common::multi_waker::MultiWakerRegistration, driver::serial::Serial};
+use embassy_sync::{
+    blocking_mutex::raw::NoopRawMutex,
+    blocking_mutex::Mutex as BlockingMutex,
+    mutex::{Mutex, MutexGuard},
 };
-use defmt::{info, unwrap, warn};
-use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
-use futures::future::join;
-use heapless::String;
 use heapless::Vec;
-use rand::{rngs::SmallRng, RngCore, SeedableRng};
-use vlfs::{
-    io_traits::{AsyncReader, AsyncWriter, Writer},
-    Crc, FileReader, FileWriter, Flash, VLFS,
-};
 
-use super::programs::{
-    benchmark_flash::BenchmarkFlash, read_nyoom::ReadNyoom, write_file::WriteFile,
-};
-
-pub struct Console<I: Timer, T: Serial, F: Flash, C: Crc, P: PyroChannel, B: Buzzer>
-where
-    F::Error: defmt::Format,
-    F: defmt::Format,
-{
-    timer: I,
-    serial: Mutex<CriticalSectionRawMutex, T>,
-    vlfs: VLFS<F, C>,
-    pyro: P,
-    buzzer: Mutex<CriticalSectionRawMutex, B>,
+struct ConsoleState<const N: usize> {
+    current_command_id: Option<u64>,
+    wakers_reg: MultiWakerRegistration<N>,
+    command_ids_listening: Vec<u64, N>,
 }
 
-impl<I: Timer, T: Serial, F: Flash, C: Crc, P: PyroChannel, B: Buzzer> Console<I, T, F, C, P, B>
-where
-    F::Error: defmt::Format,
-    F: defmt::Format,
-{
-    pub fn new(timer: I, serial: T, vlfs: VLFS<F, C>, pyro: P, buzzer: B) -> Self {
+pub struct Console<S: Serial, const N: usize> {
+    serial: Mutex<NoopRawMutex, S>,
+    state: BlockingMutex<NoopRawMutex, RefCell<ConsoleState<N>>>,
+}
+
+impl<S: Serial, const N: usize> Console<S, N> {
+    pub fn new(serial: S) -> Self {
         Self {
-            timer,
             serial: Mutex::new(serial),
-            vlfs,
-            pyro,
-            buzzer: Mutex::new(buzzer),
+            state: BlockingMutex::new(RefCell::new(ConsoleState {
+                current_command_id: None,
+                wakers_reg: MultiWakerRegistration::new(),
+                command_ids_listening: Vec::new(),
+            })),
         }
     }
 
-    pub async fn run(&mut self) -> ! {
-        self.run_console().await
+    pub async fn wait_for_command(&self, waiting_command_id: u64) -> ConsoleSerialGuard<S, N> {
+        self.state.lock(|state| {
+            let mut state = state.borrow_mut();
+            state
+                .command_ids_listening
+                .push(waiting_command_id)
+                .unwrap(); // TODO handle already listening
+        });
+        poll_fn(|ctx| {
+            self.state.lock(|state| {
+                let mut state = state.borrow_mut();
+                if state.current_command_id == Some(waiting_command_id) {
+                    state.current_command_id = None;
+                    let index = state
+                        .command_ids_listening
+                        .iter()
+                        .position(|id| *id == waiting_command_id)
+                        .unwrap();
+                    state.command_ids_listening.swap_remove(index);
+                    Poll::Ready(ConsoleSerialGuard::new(&self))
+                } else {
+                    state.wakers_reg.register(ctx.waker()).unwrap(); // FIXME unwrap
+                    Poll::Pending
+                }
+            })
+        })
+        .await
     }
 
-    async fn run_console(&self) -> ! {
-        let write_file = WriteFile::new();
-        let read_nyoom = ReadNyoom::new();
-        let benchmark_flash = BenchmarkFlash::new();
-        let mut serial = self.serial.lock().await;
+    pub async fn run_dispatcher(&self) -> ! {
         let mut command_buffer = [0u8; 8];
-
         loop {
-            unwrap!(serial.read_all(&mut command_buffer).await);
+            let mut serial = self.serial.lock().await;
+            if serial.read_all(&mut command_buffer).await.is_err() {
+                continue;
+            };
+            drop(serial);
             let command_id = u64::from_be_bytes(command_buffer);
+            log_info!("Received command: {:x}", command_id);
 
-            if command_id == write_file.id() {
-                unwrap!(write_file.start(&mut serial, &self.vlfs).await);
-            } else if command_id == read_nyoom.id() {
-                unwrap!(read_nyoom.start(&mut serial, &self.vlfs).await);
-            } else if command_id == benchmark_flash.id() {
-                unwrap!(
-                    benchmark_flash
-                        .start(&mut serial, &self.vlfs, &self.timer)
-                        .await
-                );
-            } else {
-                info!("Unknown command: {:X}", command_id);
+            let has_listener = self.state.lock(|state| {
+                let mut state = state.borrow_mut();
+                let has_listener = state
+                    .command_ids_listening
+                    .iter()
+                    .position(|id| *id == command_id)
+                    .is_some();
+                if has_listener {
+                    state.current_command_id = Some(command_id);
+                    state.wakers_reg.wake();
+                }
+                has_listener
+            });
+
+            if has_listener {
+                yield_now().await;
+                while self
+                    .state
+                    .lock(|state| state.borrow().current_command_id != None)
+                {
+                    yield_now().await;
+                }
             }
         }
+    }
+}
 
-        // let mut opened_write_files = Vec::<FileWriter<F, C>, 2>::new();
-        // let mut opened_read_files = Vec::<FileReader<F, C>, 2>::new();
-        // loop {
-        //     let command = self.read_command().await.unwrap();
-        //     let command = command.as_str();
-        //     let command = command.split_ascii_whitespace().collect::<Vec<&str, 10>>();
-        //     if command.len() == 0 {
-        //         continue;
-        //     }
-        //     if command[0] == "fs.ls" {
-        //         let files_iter = self.vlfs.files_iter().await;
-        //         self.writeln(heapless_format_bytes!(64, "{} files:", files_iter.len()))
-        //             .await;
-        //         for file in files_iter {
-        //             let (size, sectors) = unwrap!(self.vlfs.get_file_size(file.file_id).await);
-        //             self.writeln(heapless_format_bytes!(
-        //                 64,
-        //                 "ID: {:#18X}  type: {:#6X}  size: {}  sectors: {}",
-        //                 file.file_id,
-        //                 file.file_type,
-        //                 size,
-        //                 sectors,
-        //             ))
-        //             .await;
-        //         }
-        //     } else if command[0] == "fs.test" {
-        //         unwrap!(self.vlfs.create_file(0x1, 0x0).await);
-        //         let mut file_writer = unwrap!(self.vlfs.open_file_for_write(0x1).await);
-        //         unwrap!(file_writer.extend_from_slice(b"12345"));
-        //         unwrap!(file_writer.close().await);
-        //     } else if command[0] == "fs.touch" {
-        //         let id = u64::from_str_radix(command[1], 16).unwrap();
-        //         let typ = u16::from_str_radix(command[2], 16).unwrap();
-        //         unwrap!(self.vlfs.create_file(id, typ).await);
-        //         self.writeln(b"File created").await;
-        //     } else if command[0] == "fs.rm" {
-        //         let id = u64::from_str_radix(command[1], 16).unwrap();
-        //         let result = self.vlfs.remove_file(id).await;
-        //         if result.is_err() {
-        //             self.writeln(b"File is in use").await;
-        //         } else {
-        //             self.writeln(b"File removed").await;
-        //         }
-        //     } else if command[0] == "fs.open.write" {
-        //         let id = u64::from_str_radix(command[1], 16).unwrap();
-        //         opened_write_files
-        //             .push(unwrap!(self.vlfs.open_file_for_write(id).await))
-        //             .unwrap();
-        //         self.writeln(heapless_format_bytes!(
-        //             32,
-        //             "File Descriptor: {:#X}",
-        //             opened_write_files.len() - 1
-        //         ))
-        //         .await;
-        //     } else if command[0] == "fs.open.read" {
-        //         let id = u64::from_str_radix(command[1], 16).unwrap();
-        //         opened_read_files
-        //             .push(self.vlfs.open_file_for_read(id).await.unwrap())
-        //             .unwrap();
-        //         self.writeln(heapless_format_bytes!(
-        //             32,
-        //             "File Descriptor: {:#X}",
-        //             opened_read_files.len() - 1
-        //         ))
-        //         .await;
-        //     } else if command[0] == "fs.close.write" {
-        //         let fd = usize::from_str_radix(command[1], 16).unwrap();
-        //         let file_writer = opened_write_files.remove(fd);
-        //         unwrap!(file_writer.close().await);
-        //         self.writeln(b"Closed").await;
-        //     } else if command[0] == "fs.close.read" {
-        //         let fd = usize::from_str_radix(command[1], 16).unwrap();
-        //         let file_reader = opened_read_files.remove(fd);
-        //         file_reader.close().await;
-        //         self.writeln(b"Closed").await;
-        //     } else if command[0] == "fs.write" {
-        //         let fd = usize::from_str_radix(command[1], 16).unwrap();
-        //         let file_writer = opened_write_files.get_mut(fd).unwrap();
-        //         unwrap!(file_writer.extend_from_slice(command[2].as_bytes()));
-        //         self.writeln(b"OK").await;
-        //     } else if command[0] == "fs.write.flush" {
-        //         let fd = usize::from_str_radix(command[1], 16).unwrap();
-        //         let file_writer = opened_write_files.get_mut(fd).unwrap();
-        //         unwrap!(file_writer.flush().await);
-        //         self.writeln(b"OK").await;
-        //     } else if command[0] == "fs.read" {
-        //         let fd = usize::from_str_radix(command[1], 16).unwrap();
-        //         let mut buffer = [0u8; 64];
-        //         let file_reader = opened_read_files.get_mut(fd).unwrap();
-        //         let result = unwrap!(file_reader.read_slice(&mut buffer, 64).await);
-        //         self.writeln(result).await;
-        //     } else if command[0] == "fs.rm" {
-        //         let id = u64::from_str_radix(command[1], 16).unwrap();
-        //         unwrap!(self.vlfs.remove_file(id).await);
-        //         self.writeln(b"Removed").await;
-        //     } else if command[0] == "buzzer" {
-        //         let mut buzzer = self.buzzer.lock().await;
-        //         buzzer.set_frequency(2900).await;
-        //         loop {
-        //             buzzer.set_enable(true).await;
-        //             self.timer.sleep(1500).await;
-        //             buzzer.set_enable(false).await;
-        //             self.timer.sleep(1000).await;
-        //         }
-        //     } else if command[0] == "sys.reset" {
-        //         // cortex_m::peripheral::SCB::sys_reset();
-        //     } else if command[0] == "f" {
-        //         // self.pyro.set_enable(true).await;
-        //         // self.timer.sleep(100).await;
-        //         // self.pyro.set_enable(false).await;
-        //         // self.writeln(b"Pyro fired!").await;
-        //     } else {
-        //         self.writeln(b"Unknown command!").await;
-        //     }
-        // }
+pub struct ConsoleSerialGuard<'b, S: Serial, const N: usize> {
+    serial_mutex_guard: MutexGuard<'b, NoopRawMutex, S>,
+}
+
+impl<'b, S: Serial, const N: usize> ConsoleSerialGuard<'b, S, N> {
+    fn new<'a: 'b>(console: &'a Console<S, N>) -> Self {
+        let serial_mutex_guard = console.serial.try_lock().unwrap();
+        Self { serial_mutex_guard }
+    }
+}
+
+impl<'b, S: Serial, const N: usize> Serial for ConsoleSerialGuard<'b, S, N> {
+    type Error = S::Error;
+
+    async fn write(&mut self, data: &[u8]) -> Result<(), S::Error> {
+        self.serial_mutex_guard.write(data).await
+    }
+
+    async fn read(&mut self, buffer: &mut [u8]) -> Result<usize, S::Error> {
+        self.serial_mutex_guard.read(buffer).await
     }
 }

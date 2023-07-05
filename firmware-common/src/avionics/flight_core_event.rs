@@ -1,0 +1,30 @@
+use embassy_sync::{blocking_mutex::raw::RawMutex, channel::Sender};
+
+use crate::common::telemetry::telemetry_data::AvionicsState;
+
+#[derive(Debug, Clone, Copy)]
+pub enum FlightCoreEvent {
+    CriticalError,
+    Ignition,
+    Apogee,
+    DeployMain,
+    DeployDrogue,
+    Landed,
+    DidNotReachMinApogee,
+    ChangeState(AvionicsState),
+    ChangeAltitude(f32),
+}
+
+pub trait FlightCoreEventDispatcher {
+    fn dispatch(&mut self, event: FlightCoreEvent);
+}
+
+impl<'ch, M: RawMutex, const N: usize> FlightCoreEventDispatcher
+    for Sender<'ch, M, FlightCoreEvent, N>
+{
+    fn dispatch(&mut self, event: FlightCoreEvent) {
+        if self.try_send(event).is_err() {
+            log_warn!("FlightCoreEventDispatcher: event queue full");
+        }
+    }
+}

@@ -25,3 +25,9 @@ pub trait RNG {
         buffer[0]
     }
 }
+
+pub struct DummyRNG {}
+
+impl RNG for DummyRNG {
+    async fn next_bytes(&mut self, _buffer: &mut [u8]) {}
+}

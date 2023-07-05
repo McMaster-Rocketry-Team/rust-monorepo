@@ -1,32 +1,70 @@
 pub trait AsyncReader {
     type Error;
+    type ReadStatus;
 
     async fn read_slice<'b>(
         &mut self,
         buffer: &'b mut [u8],
         length: usize,
-    ) -> Result<&'b [u8], Self::Error>;
+    ) -> Result<(&'b [u8], Self::ReadStatus), Self::Error>;
 
-    async fn read_u8(&mut self, buffer: &mut [u8]) -> Result<u8, Self::Error> {
-        Ok(self.read_slice(buffer, 1).await?[0])
+    async fn read_all<'b>(
+        &mut self,
+        read_buffer: &'b mut [u8],
+    ) -> Result<(&'b [u8], Self::ReadStatus), Self::Error> {
+        self.read_slice(read_buffer, read_buffer.len()).await
     }
 
-    async fn read_u16(&mut self, buffer: &mut [u8]) -> Result<u16, Self::Error> {
-        Ok(u16::from_be_bytes(
-            self.read_slice(buffer, 2).await?.try_into().unwrap(),
-        ))
+    async fn read_u8(
+        &mut self,
+        buffer: &mut [u8],
+    ) -> Result<(Option<u8>, Self::ReadStatus), Self::Error> {
+        self.read_slice(buffer, 1).await.map(|(buffer, status)| {
+            if buffer.len() == 1 {
+                (Some(buffer[0]), status)
+            } else {
+                (None, status)
+            }
+        })
     }
 
-    async fn read_u32(&mut self, buffer: &mut [u8]) -> Result<u32, Self::Error> {
-        Ok(u32::from_be_bytes(
-            self.read_slice(buffer, 4).await?.try_into().unwrap(),
-        ))
+    async fn read_u16(
+        &mut self,
+        buffer: &mut [u8],
+    ) -> Result<(Option<u16>, Self::ReadStatus), Self::Error> {
+        self.read_slice(buffer, 2).await.map(|(buffer, status)| {
+            if buffer.len() == 2 {
+                (Some(u16::from_be_bytes(buffer.try_into().unwrap())), status)
+            } else {
+                (None, status)
+            }
+        })
     }
 
-    async fn read_u64(&mut self, buffer: &mut [u8]) -> Result<u64, Self::Error> {
-        Ok(u64::from_be_bytes(
-            self.read_slice(buffer, 8).await?.try_into().unwrap(),
-        ))
+    async fn read_u32(
+        &mut self,
+        buffer: &mut [u8],
+    ) -> Result<(Option<u32>, Self::ReadStatus), Self::Error> {
+        self.read_slice(buffer, 4).await.map(|(buffer, status)| {
+            if buffer.len() == 4 {
+                (Some(u32::from_be_bytes(buffer.try_into().unwrap())), status)
+            } else {
+                (None, status)
+            }
+        })
+    }
+
+    async fn read_u64(
+        &mut self,
+        buffer: &mut [u8],
+    ) -> Result<(Option<u64>, Self::ReadStatus), Self::Error> {
+        self.read_slice(buffer, 8).await.map(|(buffer, status)| {
+            if buffer.len() == 8 {
+                (Some(u64::from_be_bytes(buffer.try_into().unwrap())), status)
+            } else {
+                (None, status)
+            }
+        })
     }
 }
 

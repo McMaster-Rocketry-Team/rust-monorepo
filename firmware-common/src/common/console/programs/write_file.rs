@@ -2,6 +2,8 @@ use defmt::{info, unwrap};
 use vlfs::{io_traits::AsyncWriter, Crc, Flash, VLFS};
 
 use crate::driver::serial::Serial;
+
+// TODO implement `ConsoleProgram` and add to `start_common_programs`
 pub struct WriteFile {}
 
 impl WriteFile {
@@ -17,22 +19,13 @@ impl WriteFile {
         &self,
         serial: &mut T,
         vlfs: &VLFS<F, C>,
-    ) -> Result<(), ()>
-    where
-        F::Error: defmt::Format,
-        F: defmt::Format,
-    {
+    ) -> Result<(), ()> {
         let mut buffer = [0u8; 64];
-        unwrap!(serial.read_all(&mut buffer[..(8 + 2 + 4)]).await);
-        let file_id = u64::from_be_bytes((&buffer[0..8]).try_into().unwrap());
-        let file_type = u16::from_be_bytes((&buffer[8..10]).try_into().unwrap());
-        let file_size = u32::from_be_bytes((&buffer[10..14]).try_into().unwrap());
+        unwrap!(serial.read_all(&mut buffer[..(2 + 4)]).await);
+        let file_type = u16::from_be_bytes((&buffer[0..2]).try_into().unwrap()).into();
+        let file_size = u32::from_be_bytes((&buffer[2..6]).try_into().unwrap());
 
-        if vlfs.create_file(file_id, file_type).await.is_err() {
-            unwrap!(vlfs.remove_file(file_id).await);
-            unwrap!(vlfs.create_file(file_id, file_type).await);
-        }
-
+        let file_id = unwrap!(vlfs.create_file(file_type).await);
         info!(
             "File created with id: {:X}, total size: {}",
             file_id, file_size
@@ -61,6 +54,7 @@ impl WriteFile {
         unwrap!(file.close().await);
 
         let (size, sector) = unwrap!(vlfs.get_file_size(file_id).await);
+        serial.write(&file_id.0.to_be_bytes()).await;
         info!("File saved! size: {}, sector: {}", size, sector);
 
         Ok(())

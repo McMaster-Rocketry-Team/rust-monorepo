@@ -5,8 +5,9 @@ use crate::{
     utils::io_traits::{AsyncReader, AsyncWriter},
     utils::rwlock::RwLock,
 };
-use embassy_sync::blocking_mutex::Mutex as BlockingMutex;
 use embassy_sync::mutex::Mutex;
+
+use embassy_sync::blocking_mutex::Mutex as BlockingMutex;
 use heapless::Vec;
 
 impl<F, C> VLFS<F, C>
@@ -17,17 +18,14 @@ where
     pub fn new(flash: F, crc: C) -> Self {
         Self {
             allocation_table: RwLock::new(AllocationTableWrapper::default()),
-            sectors_mng: BlockingMutex::new(RefCell::new(SectorsMng {
-                sector_map: BitArray::<_, Lsb0>::new([0u32; SECTOR_MAP_ARRAY_SIZE]),
-                free_sectors_count: (SECTORS_COUNT - ALLOC_TABLES_SECTORS_USED) as u32,
-                rng: SmallRng::seed_from_u64(0),
-            })),
+            sectors_mng: RwLock::new(SectorsMng::new()),
             flash: Mutex::new(flash),
             crc: Mutex::new(crc),
+            rng: BlockingMutex::new(RefCell::new(SmallRng::seed_from_u64(0))),
         }
     }
 
-    pub async fn init(&mut self) -> Result<(), VLFSError<F>> {
+    pub async fn init(&mut self) -> Result<(), VLFSError<F::Error>> {
         if self.read_allocation_table().await? {
             let at = self.allocation_table.read().await;
             info!(
@@ -36,40 +34,41 @@ where
             );
             drop(at);
             self.read_free_sectors().await?;
-            self.sectors_mng.lock(|sectors_mng| {
-                let sectors_mng = sectors_mng.borrow();
 
-                let total_sectors = SECTORS_COUNT - ALLOC_TABLES_SECTORS_USED;
-                let used_sectors = total_sectors - sectors_mng.free_sectors_count as usize;
-                let free_space =
-                    (sectors_mng.free_sectors_count as usize * MAX_SECTOR_DATA_SIZE) / 1024;
-                info!(
-                    "{} out of {} sectors used, avaliable space: {}KiB",
-                    used_sectors, total_sectors, free_space,
-                );
-            });
+            let sectors_mng = self.sectors_mng.read().await;
+            let total_sectors = SECTORS_COUNT - ALLOC_TABLES_SECTORS_USED;
+            let used_sectors = total_sectors - sectors_mng.sector_map.free_sectors_count as usize;
+            let free_space =
+                (sectors_mng.sector_map.free_sectors_count as usize * MAX_SECTOR_DATA_SIZE) / 1024;
+            info!(
+                "{} out of {} sectors used, avaliable space: {}KiB",
+                used_sectors, total_sectors, free_space,
+            );
         } else {
             info!("No valid allocation table found, creating a new one");
             self.write_allocation_table().await?;
         }
 
         let crc = self.crc.get_mut();
-        self.sectors_mng.lock(|sectors_mng| {
-            let mut sectors_mng = sectors_mng.borrow_mut();
-            let crc = crc.calculate_u32(&sectors_mng.sector_map.data);
-            sectors_mng.rng = SmallRng::seed_from_u64(crc as u64 + ((crc as u64) << 32));
+        let mut sectors_mng = self.sectors_mng.write().await;
+        let crc = crc.calculate_u32(&sectors_mng.sector_map.map_4k.data);
+        sectors_mng.rng = SmallRng::seed_from_u64(crc as u64 + ((crc as u64) << 32));
+
+        self.rng.lock(|rng| {
+            rng.replace(SmallRng::seed_from_u64(sectors_mng.rng.next_u64()));
         });
+
         info!("VLFS initialized");
         Ok(())
     }
 
-    async fn read_free_sectors(&mut self) -> Result<(), VLFSError<F>> {
+    async fn read_free_sectors(&mut self) -> Result<(), VLFSError<F::Error>> {
         let at = self.allocation_table.read().await;
         for file_entry in &at.allocation_table.file_entries {
             let mut current_sector_index = file_entry.first_sector_index;
             while let Some(sector_index) = current_sector_index {
                 trace!("at sector {:#X}", sector_index);
-                self.claim_sector(sector_index);
+                self.claim_sector(sector_index).await;
 
                 let mut buffer = [0u8; 5 + 8];
                 let next_sector_index_address =
@@ -78,7 +77,7 @@ where
                     .get_mut()
                     .read(next_sector_index_address, 8, &mut buffer)
                     .await
-                    .map_err(VLFSError::from_flash)?;
+                    .map_err(VLFSError::FlashError)?;
                 let next_sector_index = find_most_common_u16_out_of_4(&buffer[5..13]).unwrap();
                 trace!("next_sector_index: {}", next_sector_index);
                 current_sector_index = if next_sector_index == 0xFFFF {
@@ -92,7 +91,7 @@ where
         Ok(())
     }
 
-    async fn read_allocation_table(&mut self) -> Result<bool, VLFSError<F>> {
+    async fn read_allocation_table(&mut self) -> Result<bool, VLFSError<F::Error>> {
         let mut found_valid_table = false;
         let mut at = self.allocation_table.write().await;
 
@@ -107,7 +106,8 @@ where
             let read_result = reader
                 .read_slice(&mut read_buffer, 12)
                 .await
-                .map_err(VLFSError::from_flash)?;
+                .map_err(VLFSError::FlashError)?
+                .0;
             let version = u32::from_be_bytes((&read_result[0..4]).try_into().unwrap());
             let sequence_number = u32::from_be_bytes((&read_result[4..8]).try_into().unwrap());
             let file_count = u32::from_be_bytes((&read_result[8..12]).try_into().unwrap());
@@ -123,15 +123,25 @@ where
                 continue;
             }
             let mut files: Vec<FileEntry, MAX_FILES> = Vec::<FileEntry, MAX_FILES>::new();
+            let mut max_file_id = Some(FileID(0u64));
             for _ in 0..file_count {
                 let read_result = reader
                     .read_slice(&mut read_buffer, 12)
                     .await
-                    .map_err(VLFSError::from_flash)?;
-                let file_id = u64::from_be_bytes((&read_result[0..8]).try_into().unwrap());
-                let file_type = u16::from_be_bytes((&read_result[8..10]).try_into().unwrap());
+                    .map_err(VLFSError::FlashError)?
+                    .0;
+                let file_id = u64::from_be_bytes((&read_result[0..8]).try_into().unwrap()).into();
+                let file_type =
+                    u16::from_be_bytes((&read_result[8..10]).try_into().unwrap()).into();
                 let first_sector_index =
                     u16::from_be_bytes((&read_result[10..12]).try_into().unwrap());
+                if let Some(value) = max_file_id {
+                    if file_id > value {
+                        max_file_id = Some(file_id);
+                    }
+                } else {
+                    max_file_id = Some(file_id);
+                }
                 files
                     .push(FileEntry {
                         file_id,
@@ -150,7 +160,9 @@ where
             let expected_crc = reader
                 .read_u32(&mut read_buffer)
                 .await
-                .map_err(VLFSError::from_flash)?;
+                .map_err(VLFSError::FlashError)?
+                .0
+                .expect("Read from flash should always return the desired length");
             if actual_crc == expected_crc {
                 info!("CRC match!");
             } else {
@@ -163,18 +175,21 @@ where
 
             if sequence_number > at.allocation_table.sequence_number {
                 found_valid_table = true;
-                at.allocation_table = AllocationTable {
-                    sequence_number,
-                    file_entries: files,
+                *at = AllocationTableWrapper {
+                    allocation_table: AllocationTable {
+                        sequence_number,
+                        file_entries: files,
+                    },
+                    allocation_table_index: i,
+                    max_file_id,
                 };
-                at.allocation_table_index = i;
             }
         }
 
         Ok(found_valid_table)
     }
 
-    pub(super) async fn write_allocation_table(&self) -> Result<(), VLFSError<F>> {
+    pub(super) async fn write_allocation_table(&self) -> Result<(), VLFSError<F::Error>> {
         let mut at = self.allocation_table.write().await;
         at.allocation_table_index = (at.allocation_table_index + 1) % TABLE_COUNT;
         at.allocation_table.sequence_number += 1;
@@ -187,7 +202,7 @@ where
         flash
             .erase_block_32kib(at_address)
             .await
-            .map_err(VLFSError::from_flash)?;
+            .map_err(VLFSError::FlashError)?;
 
         let mut crc = self.crc.lock().await;
         let mut writer = FlashWriter::new(at_address, &mut flash, &mut crc);
@@ -195,44 +210,43 @@ where
         writer
             .extend_from_u32(VLFS_VERSION)
             .await
-            .map_err(VLFSError::from_flash)?;
+            .map_err(VLFSError::FlashError)?;
         writer
             .extend_from_u32(at.allocation_table.sequence_number)
             .await
-            .map_err(VLFSError::from_flash)?;
+            .map_err(VLFSError::FlashError)?;
         writer
             .extend_from_u32(at.allocation_table.file_entries.len() as u32)
             .await
-            .map_err(VLFSError::from_flash)?;
+            .map_err(VLFSError::FlashError)?;
 
         for file in &at.allocation_table.file_entries {
             writer
-                .extend_from_u64(file.file_id)
+                .extend_from_u64(file.file_id.0)
                 .await
-                .map_err(VLFSError::from_flash)?;
+                .map_err(VLFSError::FlashError)?;
             writer
-                .extend_from_u16(file.file_type)
+                .extend_from_u16(file.file_type.0)
                 .await
-                .map_err(VLFSError::from_flash)?;
+                .map_err(VLFSError::FlashError)?;
             if let Some(first_sector_index) = file.first_sector_index {
                 writer
                     .extend_from_u16(first_sector_index)
                     .await
-                    .map_err(VLFSError::from_flash)?;
+                    .map_err(VLFSError::FlashError)?;
             } else {
                 writer
                     .extend_from_u16(0xFFFF)
                     .await
-                    .map_err(VLFSError::from_flash)?;
+                    .map_err(VLFSError::FlashError)?;
             }
         }
 
-        info!("CRC: {}", writer.get_crc());
         writer
             .extend_from_u32(writer.get_crc())
             .await
-            .map_err(VLFSError::from_flash)?;
-        writer.flush().await.map_err(VLFSError::from_flash)?;
+            .map_err(VLFSError::FlashError)?;
+        writer.flush().await.map_err(VLFSError::FlashError)?;
 
         Ok(())
     }

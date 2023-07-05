@@ -2,147 +2,137 @@
 #![feature(async_fn_in_trait)]
 #![feature(impl_trait_projections)]
 #![feature(let_chains)]
+#![feature(try_blocks)]
+#![feature(async_closure)]
 
-use common::console::console::Console;
-use defmt::*;
-use driver::{
-    adc::ADC, arming::HardwareArming, barometer::Barometer, buzzer::Buzzer, gps::GPS, imu::IMU,
-    indicator::Indicator, lora::LoRa, meg::Megnetometer, pyro::PyroChannel, rng::RNG,
-    serial::Serial, timer::Timer,
+mod fmt;
+
+use futures::join;
+
+use crate::{
+    avionics::avionics_main,
+    common::{
+        console::{console::Console, programs::start_common_programs::start_common_programs},
+        device_manager::prelude::*,
+    },
+    ground_test::gcm::ground_test_gcm,
 };
-use futures::future::join3;
-use vlfs::{Crc, Flash, VLFS};
+use defmt::*;
+use vlfs::{StatFlash, VLFS};
 
+use futures::{future::select, pin_mut};
+
+use crate::driver::timer::VLFSTimerWrapper;
+use crate::gcm::gcm_main;
+use crate::ground_test::avionics::ground_test_avionics;
+use crate::{
+    beacon::{beacon_receiver::beacon_receiver, beacon_sender::beacon_sender},
+    common::device_mode::{read_device_mode, write_device_mode},
+};
+pub use common::device_manager::DeviceManager;
+pub use common::device_mode::DeviceMode;
+
+pub use common::vlp;
+mod allocator;
 mod avionics;
+mod beacon;
 mod common;
 pub mod driver;
 mod gcm;
-mod utils;
+mod ground_test;
+pub mod utils;
 
-pub async fn init<
-    T: Timer,
-    F: Flash + defmt::Format,
-    C: Crc,
-    I: IMU,
-    V: ADC,
-    A: ADC,
-    P1: PyroChannel,
-    P2: PyroChannel,
-    P3: PyroChannel,
-    ARM: HardwareArming,
-    S: Serial,
-    B: Buzzer,
-    M: Megnetometer,
-    // L: LoRa,
-    R: RNG,
-    IS: Indicator,
-    IE: Indicator,
-    BA: Barometer,
-    G: GPS,
->(
-    timer: T,
-    mut flash: F,
-    crc: C,
-    mut imu: I,
-    mut batt_voltmeter: V,
-    mut batt_ammeter: A,
-    mut pyro1: P1,
-    mut pyro2: P2,
-    mut pyro3: P3,
-    mut arming_switch: ARM,
-    mut serial: S,
-    mut buzzer: B,
-    mut meg: M,
-    // mut lora: L,
-    mut rng: R,
-    mut status_indicator: IS,
-    mut error_indicator: IE,
-    mut barometer: BA,
-    mut gps: G,
-) {
+pub async fn init(
+    device_manager: device_manager_type!(mut),
+    device_mode_overwrite: Option<DeviceMode>,
+) -> ! {
+    claim_devices!(device_manager, flash, crc, usb, serial);
+    let timer = device_manager.timer;
+
+    let stat_flash = StatFlash::new();
+    let mut flash = stat_flash.get_flash(flash, VLFSTimerWrapper(timer));
     flash.reset().await.ok();
     let mut fs = VLFS::new(flash, crc);
     unwrap!(fs.init().await);
-    gps.reset().await;
 
-    // let mut usb_buffer = [0u8; 64];
-    // timer.sleep(2000).await;
-
-    let indicator_fut = async {
-        loop {
-            timer.sleep(2000).await;
-            status_indicator.set_enable(true).await;
-            timer.sleep(10).await;
-            status_indicator.set_enable(false).await;
+    let usb_connected = {
+        let timeout_fut = timer.sleep(500.0);
+        let usb_wait_connection_fut = usb.wait_connection();
+        pin_mut!(timeout_fut);
+        pin_mut!(usb_wait_connection_fut);
+        match select(timeout_fut, usb_wait_connection_fut).await {
+            futures::future::Either::Left(_) => {
+                info!("USB not connected");
+                false
+            }
+            futures::future::Either::Right(_) => {
+                info!("USB connected");
+                true
+            }
         }
     };
 
-    let imu_fut = async {
-        // loop {
-        //     let _ = imu.read().await;
-        // }
+    let serial_console = Console::<_, 20>::new(serial);
+    let serial_console_common_programs_fut =
+        start_common_programs(device_manager, &serial_console, &fs);
+    let usb_console = Console::<_, 20>::new(usb);
+    let usb_console_common_programs_fut = start_common_programs(device_manager, &usb_console, &fs);
+
+    let main_fut = async {
+        if usb_connected {
+            info!("USB connected on boot, stopping main");
+            claim_devices!(device_manager, status_indicator, error_indicator);
+            loop {
+                status_indicator.set_enable(true).await;
+                error_indicator.set_enable(false).await;
+                timer.sleep(1000.0).await;
+                status_indicator.set_enable(false).await;
+                error_indicator.set_enable(true).await;
+                timer.sleep(1000.0).await;
+            }
+        }
+
+        let device_mode = if let Some(device_mode_overwrite) = device_mode_overwrite {
+            log_info!("Using device mode overwrite: {:?}", device_mode_overwrite);
+            device_mode_overwrite
+        } else {
+            if let Some(device_mode_) = read_device_mode(&fs).await {
+                log_info!("Read device mode from disk: {:?}", device_mode_);
+                device_mode_
+            } else {
+                log_info!("No device mode file found, creating one");
+                try_or_warn!(write_device_mode(&fs, DeviceMode::Avionics).await);
+                DeviceMode::Avionics
+            }
+        };
+
+        // info!("Starting in mode GROUND TEST");
+        // ground_test_avionics(device_manager).await;
+        // ground_test_gcm(device_manager).await;
+
+        info!("Starting in mode {}", device_mode);
+        match device_mode {
+            DeviceMode::Avionics => avionics_main(&fs, device_manager).await,
+            DeviceMode::GCM => {
+                gcm_main::<20, 20>(&fs, device_manager, &serial_console, &usb_console).await
+            }
+            DeviceMode::BeaconSender => beacon_sender(&fs, device_manager, false).await,
+            DeviceMode::BeaconReceiver => beacon_receiver(&fs, device_manager).await,
+            DeviceMode::GroundTestAvionics => ground_test_avionics(device_manager).await,
+            DeviceMode::GroundTestGCM => ground_test_gcm(device_manager).await,
+        };
     };
 
-    // barometer.reset().await.unwrap();
-    // let baro_fut = async {
-    //     loop {
-    //         timer.sleep(1000).await;
-    //         info!("baro: {}", barometer.read().await);
-    //     }
-    // };
-
-    let mut console = Console::new(timer, serial, fs, pyro3, buzzer);
-    join3(console.run(), indicator_fut, imu_fut).await;
-
-    return;
-
-    // meg.reset(false).await.unwrap();
-    let mut time = timer.now_micros();
-    loop {
-        let _ = imu.read().await;
-        let new_time = timer.now_micros();
-        // info!(
-        //     "{}Hz",
-        //     (1.0 / (((new_time - time) as f64) / 1000.0 / 1000.0)) as u32
-        // );
-        time = new_time;
-        // info!(
-        //     "battery: {}V, {}A",
-        //     batt_voltmeter.read().await,
-        //     batt_ammeter.read().await
-        // );
-        // info!("arming: {}", arming_switch.read_arming().await);
-        // info!("pyro1 cont: {}", pyro1.read_continuity().await);
-        // buzzer.set_enable(true).await;
-        // timer.sleep(500).await;
-        // info!("meg: {}", meg.read().await);
-        // timer.sleep(500).await;
-        // let len = usb.read_packet(&mut usb_buffer).await;
-        // if let Ok(len) = len {
-        //     info!("usb: {}", &usb_buffer[0..len]);
-        // }
+    #[allow(unreachable_code)]
+    {
+        join!(
+            main_fut,
+            serial_console.run_dispatcher(),
+            usb_console.run_dispatcher(),
+            serial_console_common_programs_fut,
+            usb_console_common_programs_fut
+        );
     }
 
-    // count down 5s, log every 1s
-    // for i in 0..5 {
-    //     info!(
-    //         "arming: {}  chan 3 cont: {}",
-    //         arming_switch.read_arming().await,
-    //         pyro3.read_continuity().await
-    //     );
-    //     info!(
-    //         "voltage: {}  current: {}",
-    //         batt_voltmeter.read().await,
-    //         batt_ammeter.read().await
-    //     );
-    //     info!("countdown: {}", 5 - i);
-    //     timer.sleep(1000).await;
-    //
-
-    // loop {
-    //     pyro3.set_enable(true).await;
-    //     timer.sleep(1).await;
-    //     pyro3.set_enable(false).await;
-    //     timer.sleep(15).await;
-    // }
+    defmt::unreachable!()
 }
