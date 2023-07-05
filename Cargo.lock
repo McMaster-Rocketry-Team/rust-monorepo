@@ -1130,8 +1130,9 @@ dependencies = [
  "actix-rt",
  "bitvec",
  "defmt",
- "embassy-sync 0.1.0",
+ "embassy-sync 0.2.0",
  "futures",
+ "futures-test",
  "heapless",
  "rand",
 ]
