@@ -5,7 +5,8 @@ use crate::virt_drivers::{
     pyro::VirtualPyro,
     sensors::{VirtualBaro, VirtualIMU},
     serial::VirtualSerial,
-    timer::TokioTimer, vlp_phy::{MockPhyParticipant, self},
+    timer::TokioTimer,
+    vlp_phy::{self, MockPhyParticipant},
 };
 use firmware_common::{
     driver::{
@@ -25,7 +26,9 @@ use firmware_common::{
         sys_reset::PanicSysReset,
         usb::DummyUSB,
     },
-    init, DeviceManager, vlp::phy::VLPPhy,
+    init,
+    vlp::phy::VLPPhy,
+    DeviceManager,
 };
 use std::thread;
 use std::{
@@ -41,7 +44,7 @@ pub fn start_avionics_thread(
     baro: VirtualBaro,
     serial: VirtualSerial,
     debugger: Debugger,
-    vlp_phy:MockPhyParticipant,
+    vlp_phy: MockPhyParticipant,
     arming: VirtualHardwareArming,
     pyro_1: VirtualPyro,
     pyro_2: VirtualPyro,
@@ -69,7 +72,7 @@ async fn avionics(
     imu: impl IMU,
     baro: impl Barometer,
     serial: impl Serial,
-    vlp_phy:impl VLPPhy,
+    vlp_phy: impl VLPPhy,
     arming: impl HardwareArming,
     pyro_1: impl PyroCtrl,
     pyro_2: impl PyroCtrl,

@@ -5,11 +5,7 @@ use vlfs::{io_traits::AsyncReader, Crc, Flash, LsFileEntry, VLFSError, VLFS};
 
 pub async fn read_up_right_vector(fs: &VLFS<impl Flash, impl Crc>) -> Option<Vector3<f32>> {
     let file = fs.find_file_by_type(AVIONICS_UP_RIGHT_FILE_TYPE).await;
-    if let Some(LsFileEntry {
-        file_id,
-        ..
-    }) = file
-    {
+    if let Some(LsFileEntry { file_id, .. }) = file {
         if let Ok(mut reader) = fs.open_file_for_read(file_id).await {
             let mut buffer = [0u8; 12];
             let result = match reader.read_slice(&mut buffer, 12).await {

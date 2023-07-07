@@ -357,7 +357,7 @@ mod tests {
     };
     use futures_timer::Delay;
 
-    use super::{*, phy::RadioReceiveInfo};
+    use super::{phy::RadioReceiveInfo, *};
 
     #[inline(never)]
     #[no_mangle]
@@ -435,20 +435,22 @@ mod tests {
             self.sender.send(Vec::from_slice(payload).unwrap()).await;
         }
 
-        async fn rx(&mut self) -> Result<(RadioReceiveInfo,Vec<u8, MAX_PAYLOAD_LENGTH>), RadioError> {
-            let received=self.receiver.recv().await;
+        async fn rx(
+            &mut self,
+        ) -> Result<(RadioReceiveInfo, Vec<u8, MAX_PAYLOAD_LENGTH>), RadioError> {
+            let received = self.receiver.recv().await;
             let info = RadioReceiveInfo {
                 rssi: 0,
                 snr: 0,
                 len: received.len() as u8,
             };
-            Ok((info,received))
+            Ok((info, received))
         }
 
         async fn rx_with_timeout(
             &mut self,
             _timeout_ms: u32,
-        ) -> Result<(RadioReceiveInfo,Vec<u8, MAX_PAYLOAD_LENGTH>), RadioError> {
+        ) -> Result<(RadioReceiveInfo, Vec<u8, MAX_PAYLOAD_LENGTH>), RadioError> {
             let rxfut = self.rx();
             pin_mut!(rxfut);
             match select(Delay::new(Duration::from_millis(_timeout_ms as u64)), rxfut).await {

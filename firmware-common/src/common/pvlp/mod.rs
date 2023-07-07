@@ -76,7 +76,11 @@ impl<Y: VLPPhy, T: Timer> PVLPMaster<Y, T> {
     ) -> Option<ApplicationLayerRxPackage> {
         self.phy.set_frequency(self.get_frequency());
         self.phy.tx(package).await;
-        if let Some((_, Some(rx_package))) = self.phy.rx_with_timeout::<ApplicationLayerRxPackage>(1500).await {
+        if let Some((_, Some(rx_package))) = self
+            .phy
+            .rx_with_timeout::<ApplicationLayerRxPackage>(1500)
+            .await
+        {
             Some(rx_package)
         } else {
             None

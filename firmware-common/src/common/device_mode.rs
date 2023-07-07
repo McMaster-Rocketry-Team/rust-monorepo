@@ -34,11 +34,7 @@ pub async fn read_device_mode(fs: &VLFS<impl Flash, impl Crc>) -> Option<DeviceM
     let mut files_iter = fs.files_iter(Some(DEVICE_MODE_FILE_TYPE)).await;
     let file = files_iter.next();
     drop(files_iter);
-    if let Some(LsFileEntry {
-        file_id,
-        ..
-    }) = file
-    {
+    if let Some(LsFileEntry { file_id, .. }) = file {
         if let Ok(mut reader) = fs.open_file_for_read(file_id).await {
             let mut buffer = [0u8; 1];
             let read_result = reader.read_u8(&mut buffer).await;

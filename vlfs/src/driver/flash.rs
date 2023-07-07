@@ -1,5 +1,7 @@
-
-use core::ops::{Deref, DerefMut};
+use core::{
+    fmt::Debug,
+    ops::{Deref, DerefMut},
+};
 use embassy_sync::{blocking_mutex::raw::RawMutex, mutex::MutexGuard};
 
 /// A Flash driver is represented here
@@ -36,7 +38,7 @@ pub trait Flash {
     /// let read_data = flash.read_4kib(0x0000_0000, 4096, &mut read_buffer).await;
     ///
     /// ```
-    /// 
+    ///
     async fn read_4kib<'b>(
         &mut self,
         address: u32,
@@ -65,12 +67,11 @@ pub trait Flash {
         write_buffer: &'b mut [u8],
     ) -> Result<(), Self::Error>;
 
-
     /// Reads arbitary length of data from the memory device starting at the specified address.
     /// maximum read length is 4 kb
     /// size of the buffer must be at least read_length + 5 bytes long
     /// refer to the read_4kib function for more details on the parameters and outputs as they are the same
-    /// 
+    ///
 
     async fn read<'b>(
         &mut self,
@@ -115,7 +116,7 @@ pub trait Flash {
     /// address must be 256-byte-aligned
     /// length of write_buffer must be larger or equal to write_length + 5
     /// refer to the write_256b function for more details on the parameters and outputs as they are the same
-    
+
     async fn write<'b>(
         &mut self,
         address: u32,
@@ -208,126 +209,36 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{Flash, MutexGuard, *};
-    use embassy_sync::blocking_mutex::Mutex;
-    use futures::Future;
-    //import VLFS
+    use super::{Flash, *};
+    use crate::driver::dummy_crc::DummyCrc;
     use crate::fs::VLFS;
-    use crate::driver::
-
-    struct MockFlash {
-        data: Vec<u8>,
-    }
-    struct MockCrc; //ToDo: implement crc trait
-
-    #[derive(Debug)] // make MockFlashError printable
-    struct MockFlashError;
-
-    impl defmt::Format for MockFlashError {
-        fn format(&self, f: defmt::Formatter) {
-            defmt::write!(f, "MockFlashError");
-        }
-    }
-
-    impl Flash for MockFlash {
-        type Error = MockFlashError;
-
-        fn size(&self) -> u32 {
-            self.data.len() as u32
-        }
-
-        async fn reset(&mut self) -> Result<(), Self::Error> {
-            self.data.fill(0xFF);
-            Ok(())
-        }
-
-        async fn erase_sector_4kib(&mut self, address: u32) -> Result<(), Self::Error> {
-            if address as usize >= self.data.len() {
-                return Err(MockFlashError);
-            }
-
-            let end = std::cmp::min(self.data.len(), (address + 4096) as usize);
-            for byte in self.data[address as usize..end].iter_mut() {
-                *byte = 0xFF;
-            }
-            Ok(())
-        }
-
-        async fn erase_block_32kib(&mut self, address: u32) -> Result<(), Self::Error> {
-            if address as usize >= self.data.len() {
-                return Err(MockFlashError);
-            }
-
-            let end = std::cmp::min(self.data.len(), (address + 32768) as usize);
-            for byte in self.data[address as usize..end].iter_mut() {
-                *byte = 0xFF;
-            }
-            Ok(())
-        }
-
-        async fn erase_block_64kib(&mut self, address: u32) -> Result<(), Self::Error> {
-            if address as usize >= self.data.len() {
-                return Err(MockFlashError);
-            }
-
-            let end = std::cmp::min(self.data.len(), (address + 65536) as usize);
-            for byte in self.data[address as usize..end].iter_mut() {
-                *byte = 0xFF;
-            }
-            Ok(())
-        }
-
-        async fn read_4kib<'b>(
-            &mut self,
-            address: u32,
-            read_length: usize,
-            read_buffer: &'b mut [u8],
-        ) -> Result<&'b [u8], Self::Error> {
-            if address as usize + read_length > self.data.len() {
-                Err(MockFlashError)
-            }
-            // Get the requested slice from the data vector.
-            let data_slice = &self.data[address as usize..address as usize + read_length];
-
-            // Copy the data slice into the read buffer.
-            read_buffer[..data_slice.len()].copy_from_slice(data_slice);
-
-            // Return a slice of the read buffer containing the data read.
-            Ok(&read_buffer[..data_slice.len()])
-        }
-
-        async fn write_256b<'b>(
-            &mut self,
-            _: u32,
-            write_buffer: &'b mut [u8],
-        ) -> Result<(), Self::Error> {
-            if self.data.len() + write_buffer.len() > self.data.capacity() {
-                Err(MockFlashError)
-            } else {
-                self.data.extend_from_slice(write_buffer);
-                Ok(())
-            }
-        }
-    }
+    use futures::lock::Mutex;
+    use std::sync::Arc;
+    use vlfs_host::file_flash::FileFlash;
 
     // A function to setup and lock a new MockFlash instance.
-    fn setup_flash(size: usize) -> VLFS<MockFlash, MockCrc> {
-        let flash_memory = MockFlash {
-            data: vec![0; size],
+    fn setup_flash(size: usize) -> Arc<Mutex<VLFS<MockFlash, DummyCrc>>> {
+        let flash_memory = FileFlash{
+            path: tempfile::Builder::new()
+                .tempfile()
+                .unwrap()
+                .into_temp_path()
+                .to_path_buf(),
         };
-        let dummy_crc = MockCrc;
+        
+        let dummy_crc = DummyCrc {};
 
-        let vlfs = VLFS::new(flash_memory, dummy_crc);
-        let mutex_flash = Mutex::new(vlfs);
-        mutex_flash.lock()
+        let vlfs = VLFS::new(flash_memory, dummy_crc); //
+        Arc::new(Mutex::new(vlfs))
     }
 
     //Erase tests
     //Normal tests
     #[futures_test::test]
     async fn normal_erase_sector_test() {
-        let mut flash = setup_flash(4096).await;
-        let result = flash.erase_sector_4kib(0).await;
+        let flash = setup_flash(4096);
+        let mut flash = flash.lock().await;
+        // let result = flash.gnhj
         assert!(result.is_ok());
     }
 

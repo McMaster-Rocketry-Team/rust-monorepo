@@ -23,14 +23,10 @@ pub async fn beacon_receiver(
     claim_devices!(device_manager, vlp_phy);
 
     loop {
-        
         match vlp_phy.rx().await {
             Ok(data) => {
-                info!(
-                    "Received {} bytes",
-                    data.0.len
-                );
-                
+                info!("Received {} bytes", data.0.len);
+
                 if let Ok(archived) = check_archived_root::<BeaconData>(&data.1) {
                     let d: BeaconData = archived.deserialize(&mut rkyv::Infallible).unwrap();
                     info!("BeaconData: {}", d);
