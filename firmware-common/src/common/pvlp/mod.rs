@@ -51,7 +51,7 @@ const FREQ_LIST: [u32; 8] = [
 pub struct PVLPMaster<Y: VLPPhy, T: Timer> {
     phy: PVLP<Y>,
     timer: T,
-    start_time: f64,
+    start_time: Option<f64>,
 }
 
 impl<Y: VLPPhy, T: Timer> PVLPMaster<Y, T> {
@@ -59,12 +59,15 @@ impl<Y: VLPPhy, T: Timer> PVLPMaster<Y, T> {
         Self {
             phy,
             timer,
-            start_time: timer.now_mills(),
+            start_time: None,
         }
     }
 
-    fn get_frequency(&self) -> u32 {
-        let time = self.timer.now_mills() - self.start_time;
+    fn get_frequency(&mut self) -> u32 {
+        if self.start_time.is_none() {
+            self.start_time = Some(self.timer.now_mills());
+        }
+        let time = self.timer.now_mills() - self.start_time.unwrap();
         let index = (time / 17000.0) as usize;
         let index = index % FREQ_LIST.len();
         FREQ_LIST[index]
@@ -74,9 +77,15 @@ impl<Y: VLPPhy, T: Timer> PVLPMaster<Y, T> {
         &mut self,
         package: ApplicationLayerTxPackage,
     ) -> Option<ApplicationLayerRxPackage> {
-        self.phy.set_frequency(self.get_frequency());
+        let freq = self.get_frequency();
+        log_info!("tx on freq: {}", freq);
+        self.phy.set_frequency(freq);
         self.phy.tx(package).await;
-        if let Some((_, Some(rx_package))) = self.phy.rx_with_timeout::<ApplicationLayerRxPackage>(1500).await {
+        if let Some((_, Some(rx_package))) = self
+            .phy
+            .rx_with_timeout::<ApplicationLayerRxPackage>(1500)
+            .await
+        {
             Some(rx_package)
         } else {
             None
@@ -122,18 +131,20 @@ impl<'a, 'b, Y: VLPPhy, T: Timer, const N: usize, const M: usize> PVLPSlave<'a, 
     }
 
     fn calculate_airtime(&self, len: u8) -> f64 {
-        return (len * 8) as f64 / 980.0 * 1000.0;
+        return (len as f64 * 8.0) / 980.0 * 1000.0;
     }
 
     pub async fn run(&mut self) -> ! {
         loop {
             let (freq, timeout) = self.get_frequency();
+            log_info!("rx on freq: {} for {}s", freq, timeout as f64 / 1000.0);
             self.phy.set_frequency(freq);
             let rx = self
                 .phy
                 .rx_with_timeout::<ApplicationLayerTxPackage>(timeout)
                 .await;
             if let Some((info, Some(package))) = rx {
+                log_info!("{:?} {:?}", info, package);
                 if self.master_start_time.is_none() {
                     log_info!("master start time set");
                     self.master_start_time =
@@ -143,6 +154,8 @@ impl<'a, 'b, Y: VLPPhy, T: Timer, const N: usize, const M: usize> PVLPSlave<'a, 
                 if let Ok(tx_package) = self.tx.try_recv() {
                     self.phy.tx(tx_package).await;
                 }
+            } else {
+                log_info!("rx timeout {:?}", rx);
             }
         }
     }

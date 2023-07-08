@@ -108,7 +108,7 @@ impl<'a, R: RadioKind + 'static, T: Timer> PhysicalVLPPhy<'a, R, T> {
         self.phy
             .create_modulation_params(
                 SpreadingFactor::_12,
-                Bandwidth::_500KHz,
+                Bandwidth::_125KHz,
                 CodingRate::_4_8,
                 freq,
             )
@@ -118,6 +118,7 @@ impl<'a, R: RadioKind + 'static, T: Timer> PhysicalVLPPhy<'a, R, T> {
 
 impl<'a, R: RadioKind + 'static, T: Timer> VLPPhy for PhysicalVLPPhy<'a, R, T> {
     async fn tx(&mut self, payload: &[u8]) {
+        log_info!("phy TX: {:?}", payload);
         let modulation_params = self.create_modulation_params();
         let mut tx_params = self
             .phy
@@ -221,6 +222,7 @@ impl<'a, R: RadioKind + 'static, T: Timer> VLPPhy for PhysicalVLPPhy<'a, R, T> {
                     snr: status.snr,
                     len: bytes,
                 };
+                log_info!("phy RX: {:?}", &buf[..(bytes as usize)]);
                 Ok((info, Vec::<u8, MAX_PAYLOAD_LENGTH>::from_slice(&buf[..(bytes as usize)]).unwrap()))
             }
             Ok(Err(e)) => Err(e),

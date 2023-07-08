@@ -1,3 +1,5 @@
+use core::{mem::size_of, ops::Deref};
+
 use embassy_sync::{
     blocking_mutex::raw::RawMutex,
     channel::{Receiver, Sender},
@@ -5,12 +7,13 @@ use embassy_sync::{
 use rkyv::{
     check_archived_root,
     ser::{serializers::BufferSerializer, Serializer},
-    Archive, Deserialize, Serialize,
+    AlignedBytes, Archive, Deserialize, Serialize,
 };
 
 use super::{phy::VLPPhy, Priority, VLPError, VLPSocket};
 use crate::{common::telemetry::telemetry_data::TelemetryData, driver::timer::Timer};
-use heapless::Vec;
+use core::fmt::Write;
+use heapless::{String, Vec};
 
 pub trait RadioApplicationPackage: Sized {
     fn encode(self) -> Vec<u8, 222>;
@@ -84,34 +87,47 @@ pub enum ApplicationLayerRxPackage {
     VerticalCalibration,
     ClearStorage,
     SoftArming(bool),
-    Synced,
 }
 
+// FIXME use rkyv
 impl RadioApplicationPackage for ApplicationLayerRxPackage {
     fn encode(self) -> Vec<u8, 222> {
         let mut buffer = Vec::<u8, 222>::new();
         unsafe {
             buffer.push_unchecked(0x69);
-            for _ in 0..core::mem::size_of::<<ApplicationLayerRxPackage as Archive>::Archived>() {
-                buffer.push_unchecked(0);
+            match self {
+                ApplicationLayerRxPackage::VerticalCalibration => {
+                    buffer.push_unchecked(0x00);
+                },
+                ApplicationLayerRxPackage::ClearStorage => {
+                    buffer.push_unchecked(0x01);
+                },
+                ApplicationLayerRxPackage::SoftArming(true) => {
+                    buffer.push_unchecked(0x02);
+                },
+                ApplicationLayerRxPackage::SoftArming(false) => {
+                    buffer.push_unchecked(0x03);
+                },
             }
         }
-        let mut serializer = BufferSerializer::new(buffer.split_at_mut(1).1);
-        serializer.serialize_value(&self).unwrap();
         buffer
     }
 
     fn decode(package: Vec<u8, 222>) -> Option<ApplicationLayerRxPackage> {
-        if package.len() == 0 || package[0] != 0x69 {
+        log_info!("decoding package: {:?}", package.as_slice());
+        if package.len() != 2 || package[0] != 0x69 {
+            log_warn!("VLP: decode failed: not start with 0x69");
             return None;
         }
-        if let Ok(archived) =
-            check_archived_root::<ApplicationLayerRxPackage>(&package.as_slice()[1..])
-        {
-            let d: ApplicationLayerRxPackage = archived.deserialize(&mut rkyv::Infallible).unwrap();
-            Some(d)
-        } else {
-            None
+        match package[1] {
+            0x00 => Some(ApplicationLayerRxPackage::VerticalCalibration),
+            0x01 => Some(ApplicationLayerRxPackage::ClearStorage),
+            0x02 => Some(ApplicationLayerRxPackage::SoftArming(true)),
+            0x03 => Some(ApplicationLayerRxPackage::SoftArming(false)),
+            _ => {
+                log_warn!("VLP: decode failed: unknown command");
+                None
+            }
         }
     }
 }
@@ -122,6 +138,7 @@ pub enum ApplicationLayerTxPackage {
     Telemetry(TelemetryData),
 }
 
+// FIXME use rkyv
 impl RadioApplicationPackage for ApplicationLayerTxPackage {
     fn encode(self) -> Vec<u8, 222> {
         match self {
@@ -129,26 +146,49 @@ impl RadioApplicationPackage for ApplicationLayerTxPackage {
                 let mut buffer = Vec::<u8, 222>::new();
                 unsafe {
                     buffer.push_unchecked(0x69);
-                    for _ in 0..core::mem::size_of::<<TelemetryData as Archive>::Archived>() {
-                        buffer.push_unchecked(0);
+                    telemetry.max_altitude.to_be_bytes().iter().for_each(|b| {
+                        buffer.push_unchecked(*b);
+                    });
+                    if let Some((lat, lon)) = telemetry.lat_lon {
+                        lat.to_be_bytes().iter().for_each(|b| {
+                            buffer.push_unchecked(*b);
+                        });
+                        lon.to_be_bytes().iter().for_each(|b| {
+                            buffer.push_unchecked(*b);
+                        });
+                    } else {
+                        for _ in 0..16 {
+                            buffer.push_unchecked(0);
+                        }
                     }
+                    buffer.push_unchecked(if telemetry.software_armed {1}else {0});
+                    buffer.push_unchecked(if telemetry.hardware_armed {1}else {0});
                 }
-                let mut serializer = BufferSerializer::new(buffer.split_at_mut(1).1);
-                serializer.serialize_value(&telemetry).unwrap();
+
                 buffer
             }
         }
     }
 
     fn decode(package: Vec<u8, 222>) -> Option<ApplicationLayerTxPackage> {
-        if package.len() == 0 || package[0] != 0x69 {
+        log_info!("decoding package: {:?}", package.as_slice());
+        if package.len() != 4 + 8 + 8+2 + 1 || package[0] != 0x69 {
+            log_warn!("VLP: decode failed: not start with 0x69");
             return None;
         }
-        if let Ok(archived) = check_archived_root::<TelemetryData>(&package.as_slice()[1..]) {
-            let d: TelemetryData = archived.deserialize(&mut rkyv::Infallible).unwrap();
-            Some(ApplicationLayerTxPackage::Telemetry(d))
-        } else {
-            None
-        }
+        let bytes = &package.as_slice()[1..];
+        let max_altitude = f32::from_be_bytes(bytes[0..4].try_into().unwrap());
+        let lat = f64::from_be_bytes(bytes[4..12].try_into().unwrap());
+        let lon = f64::from_be_bytes(bytes[12..20].try_into().unwrap());
+        let software_armed = bytes[20] == 1;
+        let hardware_armed = bytes[21] == 1;
+
+        let mut telemetry = TelemetryData::default();
+        telemetry.max_altitude = max_altitude;
+        telemetry.lat_lon = Some((lat, lon));
+        telemetry.software_armed = software_armed;
+        telemetry.hardware_armed = hardware_armed;
+
+        Some(ApplicationLayerTxPackage::Telemetry(telemetry))
     }
 }

@@ -74,24 +74,24 @@ impl<T: Timer> GPSParser<T> {
                     .parse(&nmea_sentence.sentence.as_str())
                     .is_ok();
                 if !success {
-                    warn!(
-                        "Failed to parse NMEA sentence {}",
-                        &nmea_sentence
-                            .sentence
-                            .as_str()
-                            .trim_end_matches(|c| c == '\r' || c == '\n')
-                    );
+                    // warn!(
+                    //     "Failed to parse NMEA sentence {}",
+                    //     &nmea_sentence
+                    //         .sentence
+                    //         .as_str()
+                    //         .trim_end_matches(|c| c == '\r' || c == '\n')
+                    // );
                 } else {
                     self.updated.lock(|updated| {
                         *updated.borrow_mut() = true;
                     });
-                    debug!(
-                        "GPS: {}",
-                        &nmea_sentence
-                            .sentence
-                            .as_str()
-                            .trim_end_matches(|c| c == '\r' || c == '\n')
-                    );
+                    // debug!(
+                    //     "GPS: {}",
+                    //     &nmea_sentence
+                    //         .sentence
+                    //         .as_str()
+                    //         .trim_end_matches(|c| c == '\r' || c == '\n')
+                    // );
                 }
             });
         }

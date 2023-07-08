@@ -519,9 +519,6 @@ pub async fn avionics_main(
                             s.borrow_mut().software_armed = software_armed;
                         });
                     }
-                    ApplicationLayerRxPackage::Synced => {
-                        // noop
-                    }
                 }
             }
         };
@@ -572,7 +569,7 @@ pub async fn avionics_main(
 
     let telemetry_fut = async {
         let mut telemetry_ticker = Ticker::every(timer, 3000.0);
-        let mut last_telemetry_timestamp = 0.0f64;
+        let mut last_telemetry_timestamp = -60_000.0f64;
         loop {
             let should_throttle = !arming_state.lock(|s| (*s.borrow()).is_armed())
                 || telemetry_data.lock(|d| d.borrow().avionics_state == AvionicsState::Landed);

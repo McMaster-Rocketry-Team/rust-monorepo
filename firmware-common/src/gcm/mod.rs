@@ -68,6 +68,22 @@ pub async fn gcm_main<const N: usize, const M: usize>(
         console2,
         GCMGetTelemetry::new(radio_rx.receiver()),
     );
+    let softarm_prog_fut = start_console_program_2(
+        device_manager,
+        console1,
+        console2,
+        GCMSoftArm {
+            sender: radio_tx.sender(),
+        },
+    );
+    let softdearm_prog_fut = start_console_program_2(
+        device_manager,
+        console1,
+        console2,
+        GCMSoftDearm {
+            sender: radio_tx.sender(),
+        },
+    );
 
     let radio_fut = async {
         let mut socket = PVLPSlave::new(
@@ -85,7 +101,9 @@ pub async fn gcm_main<const N: usize, const M: usize>(
             vert_calibration_prog_fut,
             clear_storage_prog_fut,
             get_telemetry_prog_fut,
-            radio_fut
+            radio_fut,
+            softarm_prog_fut,
+            softdearm_prog_fut,
         );
     }
 }
@@ -120,6 +138,40 @@ impl<'a, const N: usize> ConsoleProgram for GCMClearStorage<'a, N> {
     async fn run(&mut self, _serial: &mut impl Serial, _device_manager: device_manager_type!()) {
         self.sender
             .send(ApplicationLayerRxPackage::ClearStorage)
+            .await;
+    }
+}
+
+#[derive(Clone)]
+struct GCMSoftArm<'a, const N: usize> {
+    sender: Sender<'a, NoopRawMutex, ApplicationLayerRxPackage, N>,
+}
+
+impl<'a, const N: usize> ConsoleProgram for GCMSoftArm<'a, N> {
+    fn id(&self) -> u64 {
+        0x13
+    }
+
+    async fn run(&mut self, _serial: &mut impl Serial, _device_manager: device_manager_type!()) {
+        self.sender
+            .send(ApplicationLayerRxPackage::SoftArming(true))
+            .await;
+    }
+}
+
+#[derive(Clone)]
+struct GCMSoftDearm<'a, const N: usize> {
+    sender: Sender<'a, NoopRawMutex, ApplicationLayerRxPackage, N>,
+}
+
+impl<'a, const N: usize> ConsoleProgram for GCMSoftDearm<'a, N> {
+    fn id(&self) -> u64 {
+        0x14
+    }
+
+    async fn run(&mut self, _serial: &mut impl Serial, _device_manager: device_manager_type!()) {
+        self.sender
+            .send(ApplicationLayerRxPackage::SoftArming(false))
             .await;
     }
 }
