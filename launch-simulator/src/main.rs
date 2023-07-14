@@ -3,11 +3,6 @@
 #![feature(let_chains)]
 #![feature(try_blocks)]
 
-use std::{
-    f32::consts::PI,
-    sync::{Arc, Barrier},
-};
-
 use avionics::start_avionics_thread;
 use bevy::{
     log::{Level, LogPlugin},
@@ -17,8 +12,10 @@ use bevy::{
 use bevy_egui::{egui, EguiContexts, EguiPlugin};
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use bevy_rapier3d::prelude::*;
+use clap::Parser;
 use firmware_common::{
     driver::debugger::DebuggerTargetEvent, vlp::application_layer::ApplicationLayerRxPackage,
+    DeviceMode,
 };
 use ground_test::create_ground_test;
 use keyframe::animation_system;
@@ -26,6 +23,10 @@ use launch::{create_launch, ignition_handler, set_launch_angle};
 use motor::{motor_ignitor, motor_system};
 use orientation_logger::{orientation_logger_system, setup_orientation_logger};
 use rocket::{rocket_camera_tracking, rocket_chute_system, rocket_pyro_receiver_system};
+use std::{
+    f32::consts::PI,
+    sync::{Arc, Barrier},
+};
 use virt_drivers::{
     arming::{create_hardware_arming, VirtualHardwareArmingController},
     debugger::{create_debugger, DebuggerHost},
@@ -49,7 +50,16 @@ pub const AVIONICS_X_LEN: f32 = 0.04;
 pub const AVIONICS_Y_LEN: f32 = 0.02;
 pub const AVIONICS_Z_LEN: f32 = 0.05;
 
+#[derive(Parser, Debug, Resource)]
+#[command()]
+struct Args {
+    #[arg(short, long)]
+    mode: Option<DeviceMode>,
+}
+
 fn main() {
+    let args = Args::parse();
+    println!("Mode: {:?}", args.mode);
     App::new()
         .add_plugins(
             DefaultPlugins
@@ -66,6 +76,7 @@ fn main() {
                     filter: "wgpu=error,launch_simulator=trace,firmware_common=trace".to_string(),
                 }),
         )
+        .insert_resource(args)
         .add_plugin(EguiPlugin)
         .add_plugin(RapierPhysicsPlugin::<NoUserData>::default())
         .add_plugin(RapierDebugRenderPlugin::default())
@@ -147,7 +158,7 @@ fn setup_physics(mut commands: Commands) {
         .insert(TransformBundle::from(Transform::from_xyz(0.0, 5.0, 0.0)));
 }
 
-fn setup_virtual_avionics(mut commands: Commands) {
+fn setup_virtual_avionics(mut commands: Commands, args: Res<Args>) {
     let (debugger, debugger_host) = create_debugger();
     let (serial_a, serial_b) = create_virtual_serial();
     let (sensor_tx, imu, baro) = create_sensors();
@@ -168,7 +179,7 @@ fn setup_virtual_avionics(mut commands: Commands) {
     commands.spawn(ReadyBarrier(Some(ready_barrier.clone())));
 
     start_avionics_thread(
-        "./launch-simulator/avionics.fl".into(),
+        "./avionics.fl".into(),
         imu,
         baro,
         serial_a,
@@ -177,6 +188,7 @@ fn setup_virtual_avionics(mut commands: Commands) {
         arming,
         pyro_1,
         pyro_2,
+        args.mode,
         ready_barrier,
     );
 }

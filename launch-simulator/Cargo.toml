@@ -13,6 +13,7 @@ bevy_rapier3d = { git = "https://github.com/robertdodd/bevy_rapier.git", branch 
 ] }
 firmware-common = { path = "../firmware-common", default-features = false, features = [
     "log",
+    "clap",
 ] }
 tokio = { version = "1.28.2", features = ["full"] }
 vlfs = { path = "../vlfs" }
@@ -29,3 +30,4 @@ csv = "1.2.2"
 heapless = "0.7.16"
 lora-phy = "1.2.0"
 futures = "0.3.28"
+clap = { version = "4.3.11", features = ["derive"] }

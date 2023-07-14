@@ -8,6 +8,7 @@ edition = "2021"
 default = ["global-allocator"]
 global-allocator = []
 log = ["dep:log", "vlfs/log"]
+clap = ["dep:clap"]
 
 [dependencies]
 embassy-sync = { version = "0.2.0", default-features = false }
@@ -45,6 +46,7 @@ libm = "0.2.7"
 embassy-futures = "0.1.0"
 serde = { version = "1.0.164", default-features = false, features = ["derive"] }
 serde-json-core = "0.5.0"
+clap = { version = "4.3.11", features = ["derive"], optional= true }
 
 [dev-dependencies]
 futures-executor = { version = "0.3.17", features = ["thread-pool"] }

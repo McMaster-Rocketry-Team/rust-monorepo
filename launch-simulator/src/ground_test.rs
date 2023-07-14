@@ -2,6 +2,7 @@ use std::f32::consts::PI;
 
 use bevy::prelude::*;
 use bevy_rapier3d::prelude::*;
+use tokio::time::Sleep;
 
 use crate::{rocket::RocketMarker, AvionicsMarker, UIEvent};
 
@@ -34,6 +35,7 @@ pub fn create_ground_test(
                     linvel: Vec3::ZERO,
                     angvel: Vec3::ZERO,
                 })
+                .insert(Sleeping::disabled())
                 .insert(ColliderMassProperties::Mass(BODY_TUBE_MASS))
                 .insert(RocketMarker::BodyTube)
                 .insert(AvionicsMarker)
@@ -48,6 +50,7 @@ pub fn create_ground_test(
                 .build();
             commands
                 .spawn(RigidBody::Dynamic)
+                .insert(Sleeping::disabled())
                 .insert(Collider::cone(
                     NOSE_CONE_LENGTH / 2.0,
                     ROCKET_DIAMETER / 2.0,
@@ -85,6 +88,7 @@ pub fn create_ground_test(
                     MOTOR_TUBE_LENGTH / 2.0,
                     ROCKET_DIAMETER / 2.0,
                 ))
+                .insert(Sleeping::disabled())
                 .insert(Restitution::coefficient(0.1))
                 .insert(Damping {
                     linear_damping: 0.02,

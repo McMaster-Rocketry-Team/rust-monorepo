@@ -5,16 +5,16 @@ use crate::virt_drivers::{
     pyro::VirtualPyro,
     sensors::{VirtualBaro, VirtualIMU},
     serial::VirtualSerial,
-    timer::TokioTimer, vlp_phy::{MockPhyParticipant, self},
+    timer::TokioTimer,
+    vlp_phy::MockPhyParticipant,
 };
 use firmware_common::{
     driver::{
         adc::DummyADC,
         arming::HardwareArming,
-        barometer::{Barometer, DummyBarometer},
+        barometer::Barometer,
         camera::DummyCamera,
         debugger::Debugger as DebuggerDriver,
-        dummy_radio_kind::DummyRadioKind,
         gps::{DummyGPS, DummyGPSCtrl},
         imu::IMU,
         indicator::DummyIndicator,
@@ -25,7 +25,9 @@ use firmware_common::{
         sys_reset::PanicSysReset,
         usb::DummyUSB,
     },
-    init, DeviceManager, vlp::phy::VLPPhy,
+    init,
+    vlp::phy::VLPPhy,
+    DeviceManager, DeviceMode,
 };
 use std::thread;
 use std::{
@@ -41,10 +43,11 @@ pub fn start_avionics_thread(
     baro: VirtualBaro,
     serial: VirtualSerial,
     debugger: Debugger,
-    vlp_phy:MockPhyParticipant,
+    vlp_phy: MockPhyParticipant,
     arming: VirtualHardwareArming,
     pyro_1: VirtualPyro,
     pyro_2: VirtualPyro,
+    mode: Option<DeviceMode>,
     ready_barrier: Arc<Barrier>,
 ) {
     thread::spawn(move || {
@@ -59,6 +62,7 @@ pub fn start_avionics_thread(
             pyro_1,
             pyro_2,
             debugger,
+            mode,
         );
     });
 }
@@ -69,11 +73,12 @@ async fn avionics(
     imu: impl IMU,
     baro: impl Barometer,
     serial: impl Serial,
-    vlp_phy:impl VLPPhy,
+    vlp_phy: impl VLPPhy,
     arming: impl HardwareArming,
     pyro_1: impl PyroCtrl,
     pyro_2: impl PyroCtrl,
     debugger: impl DebuggerDriver,
+    mode: Option<DeviceMode>,
 ) {
     let timer = TokioTimer {};
     let mut device_manager = DeviceManager::new(
@@ -102,5 +107,5 @@ async fn avionics(
         debugger,
     );
 
-    init(&mut device_manager, None).await;
+    init(&mut device_manager, mode).await;
 }

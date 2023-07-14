@@ -1,4 +1,4 @@
-#![cfg_attr(not(test), no_std)]
+#![cfg_attr(not(any(test, feature = "clap")), no_std)]
 #![feature(async_fn_in_trait)]
 #![feature(impl_trait_projections)]
 #![feature(let_chains)]
