@@ -412,8 +412,7 @@ fn degree_to_rad(vec: Vector3<f32>) -> Vector3<f32> {
 fn tick_benchmark() -> f32 //c: &mut Criterion
 { 
 
-    //NEED TO CREATE INSTANCE OF FLIGHT CORE BUT NOT SURE WHAT TO PASS IN???
-
+    
     let flight_core_events: Channel<NoopRawMutex, FlightCoreEvent, 3> = Channel::<NoopRawMutex, FlightCoreEvent, 3>::new();
 
     let mut rocket_upright_accel: Vector3<f32> = todo!();
