@@ -136,3 +136,4 @@ pub async fn init(
 
     defmt::unreachable!()
 }
+

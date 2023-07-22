@@ -7,6 +7,9 @@ use super::flight_core_event::FlightCoreEventDispatcher;
 use crate::common::moving_average::NoSumSMA;
 use crate::common::sensor_snapshot::PartialSensorSnapshot;
 use crate::common::telemetry::telemetry_data::AvionicsState;
+use embassy_sync::blocking_mutex::raw::NoopRawMutex;
+use embassy_sync::channel::Channel;
+//use criterion::Bencher;
 use eskf::ESKF;
 use ferraris_calibration::CalibrationInfo;
 use heapless::Deque;
@@ -15,6 +18,10 @@ use micromath::F32Ext;
 use nalgebra::Matrix3;
 use nalgebra::UnitQuaternion;
 use nalgebra::Vector3;
+//use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use crate::avionics::FlightCoreConfig;
+use crate::avionics::BlockingMutex;
+
 
 pub struct Variances {
     pub acc: Vector3<f32>,
@@ -149,7 +156,7 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
         }
     }
 
-    pub fn tick(&mut self, mut snapshot: PartialSensorSnapshot) {
+    pub fn tick(&mut self, mut snapshot: PartialSensorSnapshot) { 
         if self.critical_error {
             return;
         }
@@ -392,10 +399,47 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
 
         self.last_snapshot_timestamp = Some(snapshot.timestamp);
     }
+
+
 }
 
 // using FRD (Front-X Right-Y Down-Z)
 
 fn degree_to_rad(vec: Vector3<f32>) -> Vector3<f32> {
     Vector3::new(vec.x.to_radians(), vec.y.to_radians(), vec.z.to_radians())
+}
+
+fn tick_benchmark() -> f32 //c: &mut Criterion
+{ 
+
+    //NEED TO CREATE INSTANCE OF FLIGHT CORE BUT NOT SURE WHAT TO PASS IN???
+
+    let flight_core_events: Channel<NoopRawMutex, FlightCoreEvent, 3> = Channel::<NoopRawMutex, FlightCoreEvent, 3>::new();
+
+    let mut rocket_upright_accel: Vector3<f32> = todo!();
+
+    let variances:Variances = Variances { acc: Vector3::new(1.0,1.0,1.0), gyro: Vector3::new(1.0,1.0,1.0), baro_altemeter: (1.0) };
+
+
+    const MARAUDER_2_FLIGHT_CONFIG: FlightCoreConfig = FlightCoreConfig {
+        drogue_chute_minimum_time_ms: 20_000.0,
+        drogue_chute_minimum_altitude_agl: 2000.0,
+        drogue_chute_delay_ms: 2000.0,
+        main_chute_delay_ms: 0.0,
+        main_chute_altitude_agl: 365.0, // 1200 ft
+    };
+
+    let mut  flight_core = FlightCore::new(
+        MARAUDER_2_FLIGHT_CONFIG,
+        flight_core_events.sender(),
+        rocket_upright_accel,
+        variances
+    );
+    
+
+
+    // flight_core.tick(snapshot)
+
+
+
 }

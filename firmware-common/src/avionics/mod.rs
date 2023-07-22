@@ -267,7 +267,7 @@ pub async fn avionics_main(
     let telemetry_data: BlockingMutex<NoopRawMutex, RefCell<TelemetryData>> =
         BlockingMutex::new(RefCell::new(TelemetryData::default()));
 
-    let flight_core_events = Channel::<NoopRawMutex, FlightCoreEvent, 3>::new();
+    let flight_core_events: Channel<NoopRawMutex, FlightCoreEvent, 3> = Channel::<NoopRawMutex, FlightCoreEvent, 3>::new();
 
     let gps_fut = gps_parser.run(&mut gps);
 
