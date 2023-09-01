@@ -6,6 +6,7 @@ authors = ["pegasis"]
 
 [features]
 log = ["dep:log"]
+std = []
 
 [dependencies]
 embassy-sync = { version = "0.2.0", default-features = false }

@@ -6,47 +6,6 @@
 pub use file_flash::FileFlash;
 
 mod file_flash;
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use vlfs::{
-        io_traits::{AsyncReader, AsyncWriter},
-        DummyCrc, FileType, VLFS,
-    };
+mod tests;
 
-    #[tokio::test]
-    async fn it_works() {
-        let path = tempfile::Builder::new()
-            .tempfile()
-            .unwrap()
-            .into_temp_path()
-            .to_path_buf();
-
-        let file_id = {
-            let flash = FileFlash::new(path.clone()).await.unwrap();
-            let mut vlfs = VLFS::new(flash, DummyCrc {});
-            vlfs.init().await.unwrap();
-
-            let file_id = vlfs.create_file(FileType(0)).await.unwrap();
-            let mut file = vlfs.open_file_for_write(file_id).await.unwrap();
-            file.extend_from_slice(&[10u8; 156]).await.unwrap();
-            file.close().await.unwrap();
-
-            file_id
-        };
-
-        {
-            let flash = FileFlash::new(path.clone()).await.unwrap();
-            let mut vlfs = VLFS::new(flash, DummyCrc {});
-            vlfs.init().await.unwrap();
-
-            let mut file = vlfs.open_file_for_read(file_id).await.unwrap();
-            let mut buffer = [0u8; 156];
-            let (buffer, _) = file.read_all(&mut buffer).await.unwrap();
-            file.close().await;
-
-            assert_eq!(buffer, [10u8; 156]);
-        }
-    }
-}

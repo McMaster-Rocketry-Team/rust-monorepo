@@ -6,15 +6,20 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-defmt = { version = "0.3.4", features = [ "unstable-test" ] }
+defmt = { version = "0.3.4", features = ["unstable-test"] }
 random-access-disk = { version = "3.0.0", default-features = false, features = [
     "tokio",
     "libc",
 ] }
 random-access-storage = "5.0.0"
 tokio = { version = "1.28.2", features = ["full"] }
-vlfs = { path = "../vlfs" }
+vlfs = { path = "../vlfs", features = ["std","log"]}
 
 [dev-dependencies]
 tempfile = "3.6.0"
 critical-section = { version = "1.1", features = ["std"] }
+function_name = "0.3.0"
+project-root = "0.2.2"
+replace_with = "0.1.7"
+futures = "0.3.28"
+rand = "0.8"

@@ -55,3 +55,14 @@ macro_rules! log_error {
         }
     };
 }
+
+macro_rules! log_panic {
+    ($s:literal $(, $x:expr)* $(,)?) => {
+        {
+            #[cfg(feature = "log")]
+            ::core::panic!($s $(, $x)*);
+
+            ::defmt::panic!($s $(, $x)*);
+        }
+    };
+}

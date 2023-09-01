@@ -39,12 +39,19 @@ const MAX_SECTOR_DATA_SIZE: usize = 4016;
 const ALLOC_TABLES_SECTORS_USED: usize = TABLE_COUNT * 32 * 1024 / SECTOR_SIZE;
 const DATA_REGION_SECTORS: usize = SECTORS_COUNT - ALLOC_TABLES_SECTORS_USED; // must be a multiple of 16 & aligned to 16
 
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, defmt::Format)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, defmt::Format)]
 pub struct FileID(pub u64);
 
 impl From<u64> for FileID {
     fn from(v: u64) -> Self {
         Self(v)
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::hash::Hash for FileID {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.0.hash(state);
     }
 }
 
