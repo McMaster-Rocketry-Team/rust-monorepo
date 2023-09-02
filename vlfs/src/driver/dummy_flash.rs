@@ -6,7 +6,7 @@ pub struct DummyFlash {}
 impl Flash for DummyFlash {
     type Error = ();
 
-    fn size(&self) -> u32 {
+    async fn size(&self) -> u32 {
         262144 * 256
     }
 

@@ -11,7 +11,7 @@ where
     C: Crc,
 {
     address: u32,
-    flash: &'a mut F,
+    pub(crate) flash: &'a mut F,
     crc: U8Crc<'a, C>,
 }
 
@@ -31,6 +31,14 @@ where
 
     pub fn get_crc(&self) -> u32 {
         self.crc.read_crc()
+    }
+
+    pub fn set_address(&mut self, address: u32) {
+        self.address = address;
+    }
+
+    pub fn get_address(&self) -> u32 {
+        self.address
     }
 }
 
@@ -63,7 +71,7 @@ where
     C: Crc,
 {
     page_address: u32,
-    flash: &'a mut F,
+    pub(crate) flash: &'a mut F,
     crc: U8Crc<'a, C>,
     buffer: [u8; 5 + 256],
     buffer_offset: usize,

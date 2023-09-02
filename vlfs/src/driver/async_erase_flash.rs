@@ -6,7 +6,7 @@ pub trait AsyncEraseFlash {
     type Error: defmt::Format + Debug;
 
     // This function returns the size of the flash memory in bytes.
-    fn size(&self) -> u32;
+    async fn size(&self) -> u32;
 
     // "reboots" the flash device, returning it to a known state
     async fn reset(&mut self) -> Result<(), Self::Error>;

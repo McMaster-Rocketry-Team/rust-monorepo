@@ -45,7 +45,8 @@ pub struct FileID(pub u64);
 
 impl FileID {
     pub(crate) fn increment(&mut self) {
-        self.0 += 1;
+        self.0 += 2;
+        self.0 &= !1; // set last bit to 0
     }
 }
 
@@ -92,20 +93,9 @@ where
         Ok(self.find_file_entry(file_id).await?.is_some())
     }
 
-    pub async fn create_file(&self, file_type: FileType) -> Result<FileID, VLFSError<F::Error>> {
-        let mut at = self.allocation_table.write().await;
-        at.max_file_id.increment();
-        let file_id = at.max_file_id;
-        drop(at);
-
-        let file_entry = FileEntry::new(file_id, file_type);
-        self.write_new_file_entry(file_entry).await?;
-        Ok(file_id)
-    }
-
     pub async fn remove_file(&self, file_id: FileID) -> Result<(), VLFSError<F::Error>> {
         let mut current_sector_index =
-            if let Some(file_entry) = self.find_file_entry(file_id).await? {
+            if let Some((file_entry, _)) = self.find_file_entry(file_id).await? {
                 if file_entry.opened {
                     return Err(VLFSError::FileInUse);
                 }
@@ -114,7 +104,6 @@ where
             } else {
                 return Err(VLFSError::FileDoesNotExist);
             };
-
 
         // update sectors list
         let mut buffer = [0u8; 5 + 8];
@@ -145,8 +134,7 @@ where
         file_id: FileID,
     ) -> Result<(usize, usize), VLFSError<F::Error>> {
         trace!("get file size start");
-        let at = self.allocation_table.read().await;
-        if let Some(file_entry) = self.find_file_entry(file_id).await? {
+        if let Some((file_entry, _)) = self.find_file_entry(file_id).await? {
             let mut size: usize = 0;
             let mut sectors: usize = 0;
             let mut current_sector_index = file_entry.first_sector_index;

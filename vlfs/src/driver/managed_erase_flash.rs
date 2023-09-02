@@ -81,8 +81,8 @@ impl<AF: AsyncEraseFlash, T: Timer> ManagedEraseFlash<AF, T> {
 impl<AF: AsyncEraseFlash, T: Timer> Flash for ManagedEraseFlash<AF, T> {
     type Error = AF::Error;
 
-    fn size(&self) -> u32 {
-        self.flash.size()
+    async fn size(&self) -> u32 {
+        self.flash.size().await
     }
 
     async fn reset(&mut self) -> Result<(), Self::Error> {

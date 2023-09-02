@@ -1,3 +1,7 @@
+use async_iterator::Iterator;
+
+use crate::{io_traits::AsyncReader, utils::flash_io::FlashReader, DummyCrc};
+
 use super::*;
 
 impl<F, C> VLFS<F, C>
@@ -8,19 +12,22 @@ where
     /// Trying to create or delete files while iterating over the files will result in a deadlock.
     ///
     /// To delete multiple files, use [`remove_files`](Self::remove_files) instead.
-    pub fn files_iter(&self, file_type: Option<FileType>) -> FilesIterator<F, C> {
-        FilesIterator {
-            i: 0,
-            vlfs: self,
-            file_type,
-        }
+    pub fn files_iter(&self) -> FilesIterator<F, C> {
+        FilesIterator { i: 0, vlfs: self }
     }
 
     pub async fn find_file_by_type(&self, file_type: FileType) -> Option<FileEntry> {
-        let mut iter = self.files_iter(Some(file_type));
-        let file = iter.next();
-        drop(iter);
-        file
+        let mut iter = self.files_iter();
+        while let Some(file_entry) = iter.next().await {
+            if let Ok(file_entry) = file_entry {
+                if file_entry.file_type == file_type {
+                    return Some(file_entry);
+                }
+            } else {
+                log_warn!("skipping corropted file entry");
+            }
+        }
+        None
     }
 }
 
@@ -29,47 +36,43 @@ where
     F: Flash,
     C: Crc,
 {
-    i: usize,
+    i: u16,
     vlfs: &'a VLFS<F, C>,
-    file_type: Option<FileType>,
 }
 
-impl<'a, F, C> FilesIterator<'a, F, C>
+impl<'a, F, C> async_iterator::Iterator for FilesIterator<'a, F, C>
 where
     F: Flash,
     C: Crc,
 {
-    pub async fn len(&self) -> usize {
-        self.vlfs.allocation_table.read().await.file_count as usize
-    }
-}
+    type Item = Result<FileEntry, VLFSError<F::Error>>;
 
-impl<'a, F, C> Iterator for FilesIterator<'a, F, C>
-where
-    F: Flash,
-    C: Crc,
-{
-    type Item = FileEntry;
+    async fn next(&mut self) -> Option<Self::Item> {
+        let at = self.vlfs.allocation_table.read().await;
+        if self.i >= at.file_count {
+            return None;
+        }
 
-    fn next(&mut self) -> Option<Self::Item> {
-        defmt::todo!()
-        // let file_entries = &self.at.allocation_table.file_entries;
+        let address = at.address_of_file_entry(self.i);
+        let mut flash = self.vlfs.flash.lock().await;
+        let mut buffer = [0u8; 5 + 12];
+        let mut dummy_crc = DummyCrc {};
+        let mut reader = FlashReader::new(address, &mut flash, &mut dummy_crc);
 
-        // if let Some(file_type) = self.file_type {
-        //     while self.i < file_entries.len() {
-        //         let entry = &file_entries[self.i];
-        //         self.i += 1;
-
-        //         if entry.file_type == file_type {
-        //             return Some(entry.into());
-        //         }
-        //     }
-
-        //     return None;
-        // } else {
-        //     let result = file_entries.get(self.i).map(|entry| entry.into());
-        //     self.i += 1;
-        //     return result;
-        // }
+        match reader
+            .read_slice(&mut buffer, 12)
+            .await
+            .map_err(VLFSError::FlashError)
+        {
+            Ok((read_result, _)) => match FileEntry::deserialize(read_result) {
+                Ok(mut file_entry) => {
+                    self.i += 1;
+                    file_entry.opened = self.vlfs.is_file_opened(file_entry.file_id).await;
+                    return Some(Ok(file_entry));
+                }
+                Err(e) => return Some(Err(e.into())),
+            },
+            Err(e) => return Some(Err(e)),
+        };
     }
 }

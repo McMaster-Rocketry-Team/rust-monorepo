@@ -31,7 +31,7 @@ impl From<RandomAccessError> for RandomAccessErrorWrapper {
 impl Flash for FileFlash {
     type Error = RandomAccessErrorWrapper;
 
-    fn size(&self) -> u32 {
+    async fn size(&self) -> u32 {
         SIZE
     }
 

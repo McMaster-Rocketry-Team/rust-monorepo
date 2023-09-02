@@ -8,6 +8,6 @@ impl Crc for DummyCrc {
     fn feed(&mut self, _word: u32) {}
 
     fn read(&self) -> u32 {
-        0
+        0x69696969
     }
 }

@@ -84,8 +84,8 @@ macro_rules! run_with_stat {
 impl<'a, F: Flash, T: Timer> Flash for StatFlashFlash<'a, F, T> {
     type Error = F::Error;
 
-    fn size(&self) -> u32 {
-        self.flash.size()
+    async fn size(&self) -> u32 {
+        self.flash.size().await
     }
 
     async fn reset(&mut self) -> Result<(), F::Error> {

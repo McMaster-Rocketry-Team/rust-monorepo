@@ -1,8 +1,9 @@
 use core::{
     fmt::Debug,
-    ops::{Deref, DerefMut},
+    ops::{Deref, DerefMut}, cell::RefCell,
 };
-use embassy_sync::{blocking_mutex::raw::RawMutex, mutex::MutexGuard};
+use embassy_sync::{blocking_mutex::raw::RawMutex, mutex::{MutexGuard, Mutex}};
+use embassy_sync::blocking_mutex::Mutex as BlockingMutex;
 
 /// A Flash driver is represented here
 pub trait Flash {
@@ -11,7 +12,7 @@ pub trait Flash {
     type Error: defmt::Format + Debug;
 
     // This function returns the size of the flash memory in bytes.
-    fn size(&self) -> u32;
+    async fn size(&self) -> u32;
 
     // "reboots" the flash device, returning it to a known state
     async fn reset(&mut self) -> Result<(), Self::Error>;
@@ -158,8 +159,8 @@ where
     type Error = T::Error;
 
     // `size` returns the total size of the flash memory, in bytes
-    fn size(&self) -> u32 {
-        self.deref().size()
+    async fn size(&self) -> u32 {
+        self.deref().size().await
     }
 
     // `reset` erases all contents of the flash memory
@@ -199,5 +200,61 @@ where
         write_buffer: &'b mut [u8],
     ) -> Result<(), Self::Error> {
         self.deref_mut().write_256b(address, write_buffer).await
+    }
+}
+
+
+// the performance of this implementation is worse than the one above 
+// since it locks the mutex every time a function is called
+impl<M, T> Flash for &Mutex<M, T>
+where
+    M: RawMutex, // M is a type that implements the `RawMutex` trait
+    T: Flash, // T is a type that implements the `Flash` trait. This is the type of the wrapped object
+{
+    // `Error` is the error type of the wrapped `T` object
+    type Error = T::Error;
+
+    // `size` returns the total size of the flash memory, in bytes
+    async fn size(&self) -> u32 {
+        self.deref().lock().await.size().await
+    }
+
+    // `reset` erases all contents of the flash memory
+    async fn reset(&mut self) -> Result<(), Self::Error> {
+        self.deref().lock().await.reset().await
+    }
+
+    // `erase_sector_4kib` erases a 4KB sector of the flash memory starting at the given address
+    async fn erase_sector_4kib(&mut self, address: u32) -> Result<(), Self::Error> {
+        self.deref().lock().await.erase_sector_4kib(address).await
+    }
+
+    // `erase_block_32kib` erases a 32KB block of the flash memory starting at the given address
+    async fn erase_block_32kib(&mut self, address: u32) -> Result<(), Self::Error> {
+        self.deref().lock().await.erase_block_32kib(address).await
+    }
+
+    // `erase_block_64kib` erases a 64KB block of the flash memory starting at the given address
+    async fn erase_block_64kib(&mut self, address: u32) -> Result<(), Self::Error> {
+        self.deref().lock().await.erase_block_64kib(address).await
+    }
+
+    // `read_4kib` reads a 4KB block of the flash memory starting at the given address into the provided buffer
+    async fn read_4kib<'b>(
+        &mut self,
+        address: u32,
+        read_length: usize,
+        read_buffer: &'b mut [u8],
+    ) -> Result<&'b [u8], Self::Error> {
+        self.deref().lock().await
+            .read_4kib(address, read_length, read_buffer)
+            .await
+    }
+    async fn write_256b<'b>(
+        &mut self,
+        address: u32,
+        write_buffer: &'b mut [u8],
+    ) -> Result<(), Self::Error> {
+        self.deref().lock().await.write_256b(address, write_buffer).await
     }
 }

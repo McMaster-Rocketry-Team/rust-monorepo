@@ -45,3 +45,17 @@ impl CopyFromU16x4 for [u8] {
         (&mut self[6..8]).copy_from_slice(be_bytes);
     }
 }
+
+pub(super) fn count_bits(slice: &[u8]) -> u32 {
+    let mut count = 0;
+
+    for &byte in slice {
+        let mut n = byte;
+        while n != 0 {
+            n &= n - 1;
+            count += 1;
+        }
+    }
+
+    count
+}

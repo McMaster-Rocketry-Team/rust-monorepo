@@ -1,3 +1,5 @@
+use super::allocation_table::CorruptedFileEntry;
+
 #[derive(defmt::Format, Debug)]
 pub enum VLFSError<FlashError: defmt::Format> {
     FlashError(FlashError),
@@ -9,5 +11,12 @@ pub enum VLFSError<FlashError: defmt::Format> {
     DeviceFull,
     WritingQueueFull,
     CorruptedPage { address: u32 },
+    CorruptedFileEntry,
     FileClosed,
+}
+
+impl<FlashError: defmt::Format> From<CorruptedFileEntry> for VLFSError<FlashError> {
+    fn from(_: CorruptedFileEntry) -> Self {
+        Self::CorruptedFileEntry
+    }
 }

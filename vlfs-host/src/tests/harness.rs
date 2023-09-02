@@ -49,9 +49,9 @@ impl VLFSTestingHarness {
     }
 
     pub async fn create_file(&mut self, file_type: FileType) -> FileID {
-        let file_id = self.vlfs.create_file(file_type).await.unwrap();
-        self.files.insert(file_id, (file_type, Vec::new()));
-        file_id
+        let file_entry = self.vlfs.create_file(file_type).await.unwrap();
+        self.files.insert(file_entry.file_id, (file_type, Vec::new()));
+        file_entry.file_id
     }
 
     pub async fn open_file_for_write(&mut self, file_id: FileID) {

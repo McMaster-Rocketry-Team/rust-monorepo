@@ -51,6 +51,9 @@ Note: Multiple allocation tables are used for wear-leveling purpose.
 - Power loss resilience when initiating append to an existing file (I think this is the only case where a power loss will corrupt flushed data)
 - Error handling for `find_most_common_u16_out_of_4`
 - `create_file_and_open` method
+- Don't save the entire allocation table in memory
+- Doubly linked list in data region
+- Data length and next sector index repeated 3 times
 
 # Long-term Todo
 

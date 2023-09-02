@@ -13,7 +13,7 @@ where
         &self,
         file_id: FileID,
     ) -> Result<FileReader<F, C>, VLFSError<F::Error>> {
-        if let Some(file_entry) = self.find_file_entry(file_id).await? {
+        if let Some((file_entry,_)) = self.find_file_entry(file_id).await? {
             log_info!(
                 "Opening file {:?} with id {:?} for read",
                 file_id,
