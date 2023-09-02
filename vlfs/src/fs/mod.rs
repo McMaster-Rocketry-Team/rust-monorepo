@@ -1,7 +1,6 @@
 use core::cell::RefCell;
 
 use crate::driver::{crc::Crc, flash::Flash};
-use crate::LsFileEntry;
 use bitvec::prelude::*;
 use defmt::*;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
@@ -10,12 +9,14 @@ use embassy_sync::mutex::Mutex;
 use rand::rngs::SmallRng;
 use rand::{RngCore, SeedableRng};
 
+use self::allocation_table::{AllocationTable, FileEntry};
 use self::sector_management::SectorsMng;
 use self::{error::VLFSError, utils::find_most_common_u16_out_of_4};
 use heapless::Vec;
 
-use crate::utils::rwlock::{RwLock, RwLockReadGuard};
+use crate::utils::rwlock::RwLock;
 
+pub mod allocation_table;
 pub mod error;
 pub mod init;
 pub mod iter;
@@ -24,7 +25,7 @@ pub mod sector_management;
 pub mod utils;
 pub mod writer;
 
-const VLFS_VERSION: u32 = 17;
+const VLFS_VERSION: u32 = 18;
 const SECTORS_COUNT: usize = 16384; // for 512M-bit flash (W25Q512JV)
 const SECTOR_SIZE: usize = 4096;
 const PAGE_SIZE: usize = 256;
@@ -41,6 +42,12 @@ const DATA_REGION_SECTORS: usize = SECTORS_COUNT - ALLOC_TABLES_SECTORS_USED; //
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, defmt::Format)]
 pub struct FileID(pub u64);
+
+impl FileID {
+    pub(crate) fn increment(&mut self) {
+        self.0 += 1;
+    }
+}
 
 impl From<u64> for FileID {
     fn from(v: u64) -> Self {
@@ -64,62 +71,12 @@ impl From<u16> for FileType {
     }
 }
 
-#[derive(Debug, Clone)]
-struct FileEntry {
-    file_id: FileID,
-    file_type: FileType,
-    first_sector_index: Option<u16>, // None means the file is empty
-    opened: bool,
-}
-
-impl FileEntry {
-    fn new(file_id: FileID, file_type: FileType) -> Self {
-        Self {
-            file_id,
-            file_type,
-            first_sector_index: None,
-            opened: false,
-        }
-    }
-}
-
-// serialized size must fit in half a block (32kib)
-struct AllocationTable {
-    sequence_number: u32,
-    file_entries: Vec<FileEntry, MAX_FILES>,
-}
-
-impl Default for AllocationTable {
-    fn default() -> Self {
-        Self {
-            sequence_number: 0,
-            file_entries: Vec::new(),
-        }
-    }
-}
-
-struct AllocationTableWrapper {
-    allocation_table: AllocationTable,
-    allocation_table_index: usize, // which half block is the allocation table in
-    max_file_id: Option<FileID>,
-}
-
-impl Default for AllocationTableWrapper {
-    fn default() -> Self {
-        Self {
-            allocation_table: AllocationTable::default(),
-            allocation_table_index: TABLE_COUNT - 1,
-            max_file_id: None,
-        }
-    }
-}
-
 pub struct VLFS<F, C>
 where
     F: Flash,
     C: Crc,
 {
-    allocation_table: RwLock<NoopRawMutex, AllocationTableWrapper, 10>,
+    allocation_table: RwLock<NoopRawMutex, AllocationTable, 10>,
     sectors_mng: RwLock<NoopRawMutex, SectorsMng, 10>,
     flash: Mutex<NoopRawMutex, F>,
     crc: Mutex<NoopRawMutex, C>,
@@ -131,42 +88,33 @@ where
     F: Flash,
     C: Crc,
 {
-    pub async fn exists(&self, file_id: FileID) -> bool {
-        let at = self.allocation_table.read().await;
-        self.find_file_entry(&at.allocation_table, file_id)
-            .is_some()
+    pub async fn exists(&self, file_id: FileID) -> Result<bool, VLFSError<F::Error>> {
+        Ok(self.find_file_entry(file_id).await?.is_some())
     }
 
     pub async fn create_file(&self, file_type: FileType) -> Result<FileID, VLFSError<F::Error>> {
         let mut at = self.allocation_table.write().await;
-        let file_id = at.max_file_id.map_or(0, |v| v.0 + 1).into();
+        at.max_file_id.increment();
+        let file_id = at.max_file_id;
+        drop(at);
 
         let file_entry = FileEntry::new(file_id, file_type);
-        at.allocation_table
-            .file_entries
-            .push(file_entry)
-            .map_err(|_| VLFSError::MaxFilesReached)?;
-        at.max_file_id = Some(file_id);
-        drop(at);
-        self.write_allocation_table().await?;
+        self.write_new_file_entry(file_entry).await?;
         Ok(file_id)
     }
 
     pub async fn remove_file(&self, file_id: FileID) -> Result<(), VLFSError<F::Error>> {
-        let mut current_sector_index: Option<u16> = None;
-        let mut at = self.allocation_table.write().await;
-        for i in 0..at.allocation_table.file_entries.len() {
-            if at.allocation_table.file_entries[i].file_id == file_id {
-                if at.allocation_table.file_entries[i].opened {
+        let mut current_sector_index =
+            if let Some(file_entry) = self.find_file_entry(file_id).await? {
+                if file_entry.opened {
                     return Err(VLFSError::FileInUse);
                 }
-                current_sector_index = at.allocation_table.file_entries[i].first_sector_index;
-                at.allocation_table.file_entries.swap_remove(i);
-                break;
-            }
-        }
-        drop(at);
-        self.write_allocation_table().await?;
+                self.delete_file_entry(file_id).await?;
+                file_entry.first_sector_index
+            } else {
+                return Err(VLFSError::FileDoesNotExist);
+            };
+
 
         // update sectors list
         let mut buffer = [0u8; 5 + 8];
@@ -192,66 +140,13 @@ where
         Ok(())
     }
 
-    pub async fn remove_files<P: Fn(LsFileEntry) -> bool>(
-        &self,
-        predicate: P,
-    ) -> Result<(), VLFSError<F::Error>> {
-        let mut at = self.allocation_table.write().await;
-        let mut flash = self.flash.lock().await;
-
-        let delete_result: Result<(), VLFSError<F::Error>> = try {
-            let mut buffer = [0u8; 5 + 8];
-            let mut i = 0;
-            while let Some(file_entry) = at.allocation_table.file_entries.get(i) {
-                if predicate(file_entry.into()) {
-                    if file_entry.opened {
-                        Err(VLFSError::FileInUse)?;
-                    }
-
-                    let mut current_sector_index = file_entry.first_sector_index;
-
-                    // delete file entry
-                    at.allocation_table.file_entries.swap_remove(i);
-
-                    // update sectors list
-                    while let Some(sector_index) = current_sector_index {
-                        let address = sector_index as u32 * SECTOR_SIZE as u32;
-                        let address = address + SECTOR_SIZE as u32 - 8;
-
-                        let read_result = flash
-                            .read(address, 8, &mut buffer)
-                            .await
-                            .map_err(VLFSError::FlashError)?;
-                        let next_sector_index = find_most_common_u16_out_of_4(read_result).unwrap();
-                        self.return_sector(sector_index).await;
-                        current_sector_index = if next_sector_index == 0xFFFF {
-                            None
-                        } else {
-                            Some(next_sector_index)
-                        };
-                    }
-                } else {
-                    i += 1;
-                }
-            }
-
-            ()
-        };
-
-        drop(at);
-        drop(flash);
-        self.write_allocation_table().await?;
-
-        delete_result
-    }
-
     pub async fn get_file_size(
         &self,
         file_id: FileID,
     ) -> Result<(usize, usize), VLFSError<F::Error>> {
         trace!("get file size start");
         let at = self.allocation_table.read().await;
-        if let Some(file_entry) = self.find_file_entry(&at.allocation_table, file_id) {
+        if let Some(file_entry) = self.find_file_entry(file_id).await? {
             let mut size: usize = 0;
             let mut sectors: usize = 0;
             let mut current_sector_index = file_entry.first_sector_index;

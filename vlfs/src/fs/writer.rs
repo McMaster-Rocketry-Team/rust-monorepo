@@ -14,8 +14,7 @@ where
         &self,
         file_id: FileID,
     ) -> Result<FileWriter<F, C>, VLFSError<F::Error>> {
-        let mut at = self.allocation_table.write().await;
-        if let Some(file_entry) = self.find_file_entry_mut(&mut at.allocation_table, file_id) {
+        if let Some(file_entry) = self.find_file_entry(file_id).await? {
             log_info!(
                 "Opening file {:?} with id {:?} for write",
                 file_id,
@@ -24,10 +23,10 @@ where
             if file_entry.opened {
                 return Err(VLFSError::FileInUse);
             }
-            file_entry.opened = true;
+            self.mark_file_opened(file_id).await?;
 
             let new_sector_index = self.claim_avaliable_sector_and_erase().await?;
-            let new_file = if let Some(first_sector_index) = file_entry.first_sector_index {
+            if let Some(first_sector_index) = file_entry.first_sector_index {
                 // this file has been written to before,
                 // update "index of next sector" in the last sector
 
@@ -97,23 +96,13 @@ where
                         .map_err(VLFSError::FlashError)?;
                 }
                 self.return_sector(temp_sector_index).await;
-
-                false
             } else {
                 // this file haven't been written to before,
                 // update allocation table
-                file_entry.first_sector_index = Some(new_sector_index);
-                true
+                self.set_file_first_sector_index(file_id, new_sector_index).await?;
             };
 
-            let result = Ok(FileWriter::new(self, new_sector_index, file_entry.file_id));
-            drop(at);
-
-            if new_file {
-                self.write_allocation_table().await?;
-            }
-
-            return result;
+            return Ok(FileWriter::new(self, new_sector_index, file_entry.file_id));
         }
 
         Err(VLFSError::FileDoesNotExist)
@@ -252,18 +241,12 @@ where
         // shouldn't happen a lot in real world use cases, ignore for now
         self._flush(0xFFFF).await?;
 
-        let mut at = self.vlfs.allocation_table.write().await;
-        let file_entry = self
-            .vlfs
-            .find_file_entry_mut(&mut at.allocation_table, self.file_id)
-            .unwrap();
         log_info!(
-            "Closing file {:?} with id {:?} for write",
-            file_entry.file_id,
-            file_entry.file_type
+            "Closing file with id {:?} for write",
+            self.file_id,
         );
 
-        file_entry.opened = false;
+        self.vlfs.mark_file_closed(self.file_id).await;
 
         self.closed = true;
         Ok(())

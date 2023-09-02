@@ -15,9 +15,10 @@ pub use driver::managed_erase_flash::{EraseTune, ManagedEraseFlash};
 pub use driver::stat_flash::{Stat, StatFlash, StatFlashFlash};
 pub use driver::timer::Timer;
 pub use fs::error::VLFSError;
-pub use fs::iter::{FilesIterator, LsFileEntry};
+pub use fs::iter::FilesIterator;
 pub use fs::reader::{FileReader, VLFSReadStatus};
 pub use fs::writer::FileWriter;
+pub use fs::allocation_table::FileEntry;
 pub use fs::{FileID, FileType, VLFS};
 pub use utils::io_traits;
 

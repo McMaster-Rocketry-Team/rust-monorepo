@@ -17,7 +17,7 @@ where
 {
     pub fn new(flash: F, crc: C) -> Self {
         Self {
-            allocation_table: RwLock::new(AllocationTableWrapper::default()),
+            allocation_table: RwLock::new(AllocationTable::default()),
             sectors_mng: RwLock::new(SectorsMng::new()),
             flash: Mutex::new(flash),
             crc: Mutex::new(crc),
@@ -26,13 +26,14 @@ where
     }
 
     pub async fn init(&mut self) -> Result<(), VLFSError<F::Error>> {
-        if self.read_allocation_table().await? {
+        if self.read_latest_allocation_table().await? {
             let at = self.allocation_table.read().await;
             info!(
                 "Found valid allocation table, file count: {}",
-                at.allocation_table.file_entries.len()
+                at.file_count
             );
             drop(at);
+
             self.read_free_sectors().await?;
 
             let sectors_mng = self.sectors_mng.read().await;
@@ -46,7 +47,7 @@ where
             );
         } else {
             info!("No valid allocation table found, creating a new one");
-            self.write_allocation_table().await?;
+            self.write_empty_allocation_table().await?;
         }
 
         let crc = self.crc.get_mut();
@@ -63,8 +64,7 @@ where
     }
 
     async fn read_free_sectors(&mut self) -> Result<(), VLFSError<F::Error>> {
-        let at = self.allocation_table.read().await;
-        for file_entry in &at.allocation_table.file_entries {
+        for file_entry in self.files_iter(None) {
             let mut current_sector_index = file_entry.first_sector_index;
             while let Some(sector_index) = current_sector_index {
                 trace!("at sector {:#X}", sector_index);
@@ -74,7 +74,8 @@ where
                 let next_sector_index_address =
                     (sector_index as usize * SECTOR_SIZE + SECTOR_SIZE - 8) as u32;
                 self.flash
-                    .get_mut()
+                    .lock()
+                    .await
                     .read(next_sector_index_address, 8, &mut buffer)
                     .await
                     .map_err(VLFSError::FlashError)?;
@@ -91,163 +92,163 @@ where
         Ok(())
     }
 
-    async fn read_allocation_table(&mut self) -> Result<bool, VLFSError<F::Error>> {
-        let mut found_valid_table = false;
-        let mut at = self.allocation_table.write().await;
+    // async fn read_allocation_table(&mut self) -> Result<bool, VLFSError<F::Error>> {
+    //     let mut found_valid_table = false;
+    //     let mut at = self.allocation_table.write().await;
 
-        for i in 0..TABLE_COUNT {
-            info!("Reading allocation table #{}", i + 1);
+    //     for i in 0..TABLE_COUNT {
+    //         info!("Reading allocation table #{}", i + 1);
 
-            let flash = self.flash.get_mut();
-            let crc = self.crc.get_mut();
-            let mut read_buffer = [0u8; 5 + 12];
-            let mut reader = FlashReader::new((i * 32 * 1024).try_into().unwrap(), flash, crc);
+    //         let flash = self.flash.get_mut();
+    //         let crc = self.crc.get_mut();
+    //         let mut read_buffer = [0u8; 5 + 12];
+    //         let mut reader = FlashReader::new((i * 32 * 1024).try_into().unwrap(), flash, crc);
 
-            let read_result = reader
-                .read_slice(&mut read_buffer, 12)
-                .await
-                .map_err(VLFSError::FlashError)?
-                .0;
-            let version = u32::from_be_bytes((&read_result[0..4]).try_into().unwrap());
-            let sequence_number = u32::from_be_bytes((&read_result[4..8]).try_into().unwrap());
-            let file_count = u32::from_be_bytes((&read_result[8..12]).try_into().unwrap());
-            if version != VLFS_VERSION {
-                warn!(
-                    "Version mismatch, expected: {}, actual: {}",
-                    VLFS_VERSION, version
-                );
-                continue;
-            }
-            if file_count > MAX_FILES as u32 {
-                warn!("file_count > MAX_FILES");
-                continue;
-            }
-            let mut files: Vec<FileEntry, MAX_FILES> = Vec::<FileEntry, MAX_FILES>::new();
-            let mut max_file_id = Some(FileID(0u64));
-            for _ in 0..file_count {
-                let read_result = reader
-                    .read_slice(&mut read_buffer, 12)
-                    .await
-                    .map_err(VLFSError::FlashError)?
-                    .0;
-                let file_id = u64::from_be_bytes((&read_result[0..8]).try_into().unwrap()).into();
-                let file_type =
-                    u16::from_be_bytes((&read_result[8..10]).try_into().unwrap()).into();
-                let first_sector_index =
-                    u16::from_be_bytes((&read_result[10..12]).try_into().unwrap());
-                if let Some(value) = max_file_id {
-                    if file_id > value {
-                        max_file_id = Some(file_id);
-                    }
-                } else {
-                    max_file_id = Some(file_id);
-                }
-                files
-                    .push(FileEntry {
-                        file_id,
-                        file_type,
-                        first_sector_index: if first_sector_index == 0xFFFF {
-                            None
-                        } else {
-                            Some(first_sector_index)
-                        },
-                        opened: false,
-                    })
-                    .unwrap();
-            }
+    //         let read_result = reader
+    //             .read_slice(&mut read_buffer, 12)
+    //             .await
+    //             .map_err(VLFSError::FlashError)?
+    //             .0;
+    //         let version = u32::from_be_bytes((&read_result[0..4]).try_into().unwrap());
+    //         let sequence_number = u32::from_be_bytes((&read_result[4..8]).try_into().unwrap());
+    //         let file_count = u32::from_be_bytes((&read_result[8..12]).try_into().unwrap());
+    //         if version != VLFS_VERSION {
+    //             warn!(
+    //                 "Version mismatch, expected: {}, actual: {}",
+    //                 VLFS_VERSION, version
+    //             );
+    //             continue;
+    //         }
+    //         if file_count > MAX_FILES as u32 {
+    //             warn!("file_count > MAX_FILES");
+    //             continue;
+    //         }
+    //         let mut files: Vec<FileEntry, MAX_FILES> = Vec::<FileEntry, MAX_FILES>::new();
+    //         let mut max_file_id = Some(FileID(0u64));
+    //         for _ in 0..file_count {
+    //             let read_result = reader
+    //                 .read_slice(&mut read_buffer, 12)
+    //                 .await
+    //                 .map_err(VLFSError::FlashError)?
+    //                 .0;
+    //             let file_id = u64::from_be_bytes((&read_result[0..8]).try_into().unwrap()).into();
+    //             let file_type =
+    //                 u16::from_be_bytes((&read_result[8..10]).try_into().unwrap()).into();
+    //             let first_sector_index =
+    //                 u16::from_be_bytes((&read_result[10..12]).try_into().unwrap());
+    //             if let Some(value) = max_file_id {
+    //                 if file_id > value {
+    //                     max_file_id = Some(file_id);
+    //                 }
+    //             } else {
+    //                 max_file_id = Some(file_id);
+    //             }
+    //             files
+    //                 .push(FileEntry {
+    //                     file_id,
+    //                     file_type,
+    //                     first_sector_index: if first_sector_index == 0xFFFF {
+    //                         None
+    //                     } else {
+    //                         Some(first_sector_index)
+    //                     },
+    //                     opened: false,
+    //                 })
+    //                 .unwrap();
+    //         }
 
-            let actual_crc = reader.get_crc();
-            let expected_crc = reader
-                .read_u32(&mut read_buffer)
-                .await
-                .map_err(VLFSError::FlashError)?
-                .0
-                .expect("Read from flash should always return the desired length");
-            if actual_crc == expected_crc {
-                info!("CRC match!");
-            } else {
-                warn!(
-                    "CRC mismatch! expected: {}, actual: {}",
-                    expected_crc, actual_crc
-                );
-                continue;
-            }
+    //         let actual_crc = reader.get_crc();
+    //         let expected_crc = reader
+    //             .read_u32(&mut read_buffer)
+    //             .await
+    //             .map_err(VLFSError::FlashError)?
+    //             .0
+    //             .expect("Read from flash should always return the desired length");
+    //         if actual_crc == expected_crc {
+    //             info!("CRC match!");
+    //         } else {
+    //             warn!(
+    //                 "CRC mismatch! expected: {}, actual: {}",
+    //                 expected_crc, actual_crc
+    //             );
+    //             continue;
+    //         }
 
-            if sequence_number > at.allocation_table.sequence_number {
-                found_valid_table = true;
-                *at = AllocationTableWrapper {
-                    allocation_table: AllocationTable {
-                        sequence_number,
-                        file_entries: files,
-                    },
-                    allocation_table_index: i,
-                    max_file_id,
-                };
-            }
-        }
+    //         if sequence_number > at.allocation_table.sequence_number {
+    //             found_valid_table = true;
+    //             *at = AllocationTableWrapper {
+    //                 allocation_table: AllocationTable {
+    //                     sequence_number,
+    //                     file_entries: files,
+    //                 },
+    //                 allocation_table_index: i,
+    //                 max_file_id,
+    //             };
+    //         }
+    //     }
 
-        Ok(found_valid_table)
-    }
+    //     Ok(found_valid_table)
+    // }
 
-    pub(super) async fn write_allocation_table(&self) -> Result<(), VLFSError<F::Error>> {
-        let mut at = self.allocation_table.write().await;
-        at.allocation_table_index = (at.allocation_table_index + 1) % TABLE_COUNT;
-        at.allocation_table.sequence_number += 1;
-        drop(at);
+    // pub(super) async fn write_allocation_table(&self) -> Result<(), VLFSError<F::Error>> {
+    //     let mut at = self.allocation_table.write().await;
+    //     at.allocation_table_index = (at.allocation_table_index + 1) % TABLE_COUNT;
+    //     at.allocation_table.sequence_number += 1;
+    //     drop(at);
 
-        let at = self.allocation_table.read().await;
-        let at_address = (at.allocation_table_index * 32 * 1024) as u32;
+    //     let at = self.allocation_table.read().await;
+    //     let at_address = (at.allocation_table_index * 32 * 1024) as u32;
 
-        let mut flash = self.flash.lock().await;
-        flash
-            .erase_block_32kib(at_address)
-            .await
-            .map_err(VLFSError::FlashError)?;
+    //     let mut flash = self.flash.lock().await;
+    //     flash
+    //         .erase_block_32kib(at_address)
+    //         .await
+    //         .map_err(VLFSError::FlashError)?;
 
-        let mut crc = self.crc.lock().await;
-        let mut writer = FlashWriter::new(at_address, &mut flash, &mut crc);
+    //     let mut crc = self.crc.lock().await;
+    //     let mut writer = FlashWriter::new(at_address, &mut flash, &mut crc);
 
-        writer
-            .extend_from_u32(VLFS_VERSION)
-            .await
-            .map_err(VLFSError::FlashError)?;
-        writer
-            .extend_from_u32(at.allocation_table.sequence_number)
-            .await
-            .map_err(VLFSError::FlashError)?;
-        writer
-            .extend_from_u32(at.allocation_table.file_entries.len() as u32)
-            .await
-            .map_err(VLFSError::FlashError)?;
+    //     writer
+    //         .extend_from_u32(VLFS_VERSION)
+    //         .await
+    //         .map_err(VLFSError::FlashError)?;
+    //     writer
+    //         .extend_from_u32(at.allocation_table.sequence_number)
+    //         .await
+    //         .map_err(VLFSError::FlashError)?;
+    //     writer
+    //         .extend_from_u32(at.allocation_table.file_entries.len() as u32)
+    //         .await
+    //         .map_err(VLFSError::FlashError)?;
 
-        for file in &at.allocation_table.file_entries {
-            writer
-                .extend_from_u64(file.file_id.0)
-                .await
-                .map_err(VLFSError::FlashError)?;
-            writer
-                .extend_from_u16(file.file_type.0)
-                .await
-                .map_err(VLFSError::FlashError)?;
-            if let Some(first_sector_index) = file.first_sector_index {
-                writer
-                    .extend_from_u16(first_sector_index)
-                    .await
-                    .map_err(VLFSError::FlashError)?;
-            } else {
-                writer
-                    .extend_from_u16(0xFFFF)
-                    .await
-                    .map_err(VLFSError::FlashError)?;
-            }
-        }
+    //     for file in &at.allocation_table.file_entries {
+    //         writer
+    //             .extend_from_u64(file.file_id.0)
+    //             .await
+    //             .map_err(VLFSError::FlashError)?;
+    //         writer
+    //             .extend_from_u16(file.file_type.0)
+    //             .await
+    //             .map_err(VLFSError::FlashError)?;
+    //         if let Some(first_sector_index) = file.first_sector_index {
+    //             writer
+    //                 .extend_from_u16(first_sector_index)
+    //                 .await
+    //                 .map_err(VLFSError::FlashError)?;
+    //         } else {
+    //             writer
+    //                 .extend_from_u16(0xFFFF)
+    //                 .await
+    //                 .map_err(VLFSError::FlashError)?;
+    //         }
+    //     }
 
-        writer
-            .extend_from_u32(writer.get_crc())
-            .await
-            .map_err(VLFSError::FlashError)?;
-        writer.flush().await.map_err(VLFSError::FlashError)?;
+    //     writer
+    //         .extend_from_u32(writer.get_crc())
+    //         .await
+    //         .map_err(VLFSError::FlashError)?;
+    //     writer.flush().await.map_err(VLFSError::FlashError)?;
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 }

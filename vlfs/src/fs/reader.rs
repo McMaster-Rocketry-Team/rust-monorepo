@@ -13,8 +13,7 @@ where
         &self,
         file_id: FileID,
     ) -> Result<FileReader<F, C>, VLFSError<F::Error>> {
-        let mut at = self.allocation_table.write().await;
-        if let Some(file_entry) = self.find_file_entry_mut(&mut at.allocation_table, file_id) {
+        if let Some(file_entry) = self.find_file_entry(file_id).await? {
             log_info!(
                 "Opening file {:?} with id {:?} for read",
                 file_id,
@@ -23,9 +22,10 @@ where
             if file_entry.opened {
                 return Err(VLFSError::FileInUse);
             }
-            file_entry.opened = true;
 
-            return Ok(FileReader::new(self, &file_entry));
+            self.mark_file_opened(file_id).await?;
+
+            return Ok(FileReader::new(self, file_entry.first_sector_index, file_id));
         }
         Err(VLFSError::FileDoesNotExist)
     }
@@ -68,14 +68,14 @@ where
     F: Flash,
     C: Crc,
 {
-    fn new(vlfs: &'a VLFS<F, C>, file_entry: &FileEntry) -> Self {
+    fn new(vlfs: &'a VLFS<F, C>, first_sector_index: Option<u16>,file_id:FileID) -> Self {
         Self {
             vlfs,
             sector_data_length: SectorDataLength::NotRead,
             sector_read_data_length: 0,
-            current_sector_index: file_entry.first_sector_index,
+            current_sector_index: first_sector_index,
             current_page_index: 0,
-            file_id: file_entry.file_id,
+            file_id: file_id,
             page_buffer: [0u8; 5 + PAGE_SIZE],
             page_buffer_read_ahead_range: (0, 0),
             closed: false,
@@ -215,17 +215,11 @@ where
     }
 
     pub async fn close(mut self) {
-        let mut at = self.vlfs.allocation_table.write().await;
-        let file_entry = self
-            .vlfs
-            .find_file_entry_mut(&mut at.allocation_table, self.file_id)
-            .unwrap();
         log_info!(
-            "Closing file {:?} with id {:?} for read",
-            file_entry.file_id,
-            file_entry.file_type
+            "Closing file with id {:?} for read",
+            self.file_id,
         );
-        file_entry.opened = false;
+        self.vlfs.mark_file_closed(self.file_id).await;
         self.closed = true;
     }
 }

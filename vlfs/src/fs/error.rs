@@ -2,7 +2,8 @@
 pub enum VLFSError<FlashError: defmt::Format> {
     FlashError(FlashError),
     FileAlreadyExists,
-    MaxFilesReached,
+    TooManyFiles,
+    TooManyFilesOpen,
     FileInUse,
     FileDoesNotExist,
     DeviceFull,
