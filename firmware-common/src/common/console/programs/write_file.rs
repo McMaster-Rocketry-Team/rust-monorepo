@@ -25,7 +25,8 @@ impl WriteFile {
         let file_type = u16::from_be_bytes((&buffer[0..2]).try_into().unwrap()).into();
         let file_size = u32::from_be_bytes((&buffer[2..6]).try_into().unwrap());
 
-        let file_id = unwrap!(vlfs.create_file(file_type).await);
+        let file = unwrap!(vlfs.create_file(file_type).await);
+        let file_id = file.file_id;
         info!(
             "File created with id: {:X}, total size: {}",
             file_id, file_size

@@ -137,10 +137,10 @@ pub async fn avionics_main(
     let timer = device_manager.timer;
     claim_devices!(device_manager, buzzer);
 
-    let sensors_file_id = unwrap!(fs.create_file(AVIONICS_SENSORS_FILE_TYPE).await.ok());
-    let mut sensors_file = unwrap!(fs.open_file_for_write(sensors_file_id).await.ok());
-    let log_file_id = unwrap!(fs.create_file(AVIONICS_LOG_FILE_TYPE).await.ok());
-    let mut logs_file = unwrap!(fs.open_file_for_write(log_file_id).await.ok());
+    let sensors_file = unwrap!(fs.create_file(AVIONICS_SENSORS_FILE_TYPE).await.ok());
+    let mut sensors_file = unwrap!(fs.open_file_for_write(sensors_file.file_id).await.ok());
+    let log_file = unwrap!(fs.create_file(AVIONICS_LOG_FILE_TYPE).await.ok());
+    let mut logs_file = unwrap!(fs.open_file_for_write(log_file.file_id).await.ok());
 
     let landed = BlockingMutex::<NoopRawMutex, _>::new(RefCell::new(false));
     let sensors_file_should_write_all = BlockingMutex::<NoopRawMutex, _>::new(RefCell::new(false));

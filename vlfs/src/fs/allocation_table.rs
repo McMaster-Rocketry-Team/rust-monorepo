@@ -29,7 +29,7 @@ impl FileEntry {
     }
 
     pub(crate) fn serialize<'a>(&self, buffer: &'a mut [u8]) -> &'a [u8] {
-        // there are always even number of 1s in the serialized file entry
+        // there are always odd number of 1s in the serialized file entry
         (&mut buffer[0..2]).copy_from_slice(&self.file_type.0.to_be_bytes());
         if let Some(first_sector_index) = self.first_sector_index {
             (&mut buffer[2..4]).copy_from_slice(&first_sector_index.to_be_bytes());
@@ -37,7 +37,7 @@ impl FileEntry {
             (&mut buffer[2..4]).copy_from_slice(&0xFFFFu16.to_be_bytes());
         }
         (&mut buffer[4..12]).copy_from_slice(&self.file_id.0.to_be_bytes());
-        let checksum_bit = (count_bits(&buffer[0..12]) as u8) & 1;
+        let checksum_bit = !(count_bits(&buffer[0..12]) as u8) & 1;
         buffer[11] |= checksum_bit;
 
         &buffer[0..12]
@@ -45,7 +45,7 @@ impl FileEntry {
 
     pub(crate) fn deserialize(buffer: &[u8]) -> Result<Self, CorruptedFileEntry> {
         let ones_count = count_bits(&buffer[0..12]);
-        if ones_count % 2 != 0 {
+        if ones_count % 2 != 1 {
             return Err(CorruptedFileEntry);
         }
 
@@ -158,25 +158,34 @@ where
         let mut reader = FlashReader::new(0, &mut flash, &mut dummy_crc);
         let mut left = 0;
         let mut right = file_count - 1;
-        while left <= right {
+
+        while left < right {
             let mid = (left + right) / 2;
             reader.set_address(at.address_of_file_entry(mid));
             let (read_result, _) = reader
                 .read_slice(&mut buffer, 12)
                 .await
                 .map_err(VLFSError::FlashError)?;
-            let mut file_entry = FileEntry::deserialize(read_result)?;
+            let file_entry = FileEntry::deserialize(read_result)?;
             if file_entry.file_id < file_id {
                 left = mid + 1;
-            } else if file_entry.file_id > file_id {
-                right = mid - 1;
             } else {
-                file_entry.opened = self.is_file_opened(file_id).await;
-                return Ok(Some((file_entry, mid)));
+                right = mid; // FIXME
             }
         }
 
-        Ok(None)
+        reader.set_address(at.address_of_file_entry(left));
+        let (read_result, _) = reader
+            .read_slice(&mut buffer, 12)
+            .await
+            .map_err(VLFSError::FlashError)?;
+        let mut file_entry = FileEntry::deserialize(read_result)?;
+        if file_entry.file_id == file_id {
+            file_entry.opened = self.is_file_opened(file_id).await;
+            return Ok(Some((file_entry, left)));
+        } else {
+            return Ok(None);
+        }
     }
 
     pub(super) async fn delete_file_entry(
@@ -344,6 +353,7 @@ where
         at.max_file_id.increment();
         let old_at_address = at.address();
         at.increment_position();
+        at.file_count += 1;
         let at_address = at.address();
         let file_id = at.max_file_id;
 
@@ -373,7 +383,7 @@ where
         // copy existing file entries
         // TODO optimize this, we can read multiple file entries at once at the expense of more memory
         let mut buffer = [0u8; 5 + 12];
-        for _ in 0..at.file_count {
+        for _ in 0..at.file_count - 1 {
             reader
                 .read_slice(&mut buffer, 12)
                 .await
@@ -399,8 +409,6 @@ where
             .map_err(VLFSError::FlashError)?;
 
         writer.flush().await.map_err(VLFSError::FlashError)?;
-
-        at.file_count += 1;
 
         Ok(file_entry)
     }

@@ -5,6 +5,8 @@ use vlfs::FileType;
 #[named]
 #[tokio::test]
 async fn write_read() {
+    env_logger::init();
+    
     let path = get_test_image_path!();
 
     let mut harness = VLFSTestingHarness::new(path).await;

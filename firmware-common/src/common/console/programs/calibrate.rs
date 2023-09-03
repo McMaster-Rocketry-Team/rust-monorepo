@@ -147,11 +147,11 @@ impl<'a, F: Flash, C: Crc> ConsoleProgram for Calibrate<'a, F, C> {
                     let cal_info = calibrator.get_calibration_info().unwrap();
                     info!("{}", cal_info);
                     unwrap!(
-                        self.vlfs.remove_files(|file_entry| file_entry.file_type == CALIBRATION_FILE_TYPE)
+                        self.vlfs.remove_files_with_type(CALIBRATION_FILE_TYPE)
                             .await
                     );
-                    let file_id = unwrap!(self.vlfs.create_file(CALIBRATION_FILE_TYPE).await);
-                    let mut file = unwrap!(self.vlfs.open_file_for_write(file_id).await);
+                    let file = unwrap!(self.vlfs.create_file(CALIBRATION_FILE_TYPE).await);
+                    let mut file = unwrap!(self.vlfs.open_file_for_write(file.file_id).await);
 
                     let mut buffer = [0u8; 156];
                     cal_info.serialize(&mut buffer);

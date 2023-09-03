@@ -9,15 +9,18 @@ where
     F: Flash,
     C: Crc,
 {
-    /// Trying to create or delete files while iterating over the files will result in a deadlock.
-    ///
-    /// To delete multiple files, use [`remove_files`](Self::remove_files) instead.
-    pub fn files_iter(&self) -> FilesIterator<F, C> {
-        FilesIterator { i: 0, vlfs: self }
+    /// Deleting files while iterating over the files is supported.
+    /// Creating files while iterating over the files is not supported. (will skip a file)
+    pub async fn files_iter(&self) -> FilesIterator<F, C> {
+        let at = self.allocation_table.read().await;
+        FilesIterator {
+            reverse_i: at.file_count,
+            vlfs: self,
+        }
     }
 
     pub async fn find_file_by_type(&self, file_type: FileType) -> Option<FileEntry> {
-        let mut iter = self.files_iter();
+        let mut iter = self.files_iter().await;
         while let Some(file_entry) = iter.next().await {
             if let Ok(file_entry) = file_entry {
                 if file_entry.file_type == file_type {
@@ -36,7 +39,8 @@ where
     F: Flash,
     C: Crc,
 {
-    i: u16,
+    // using reverse_i so that we can remove files while iterating
+    reverse_i: u16,
     vlfs: &'a VLFS<F, C>,
 }
 
@@ -48,12 +52,16 @@ where
     type Item = Result<FileEntry, VLFSError<F::Error>>;
 
     async fn next(&mut self) -> Option<Self::Item> {
-        let at = self.vlfs.allocation_table.read().await;
-        if self.i >= at.file_count {
+        if self.reverse_i == 0xFFFF {
             return None;
         }
+        let at = self.vlfs.allocation_table.read().await;
+        if self.reverse_i > at.file_count {
+            return None;
+        }
+        let i = at.file_count - self.reverse_i;
 
-        let address = at.address_of_file_entry(self.i);
+        let address = at.address_of_file_entry(i);
         let mut flash = self.vlfs.flash.lock().await;
         let mut buffer = [0u8; 5 + 12];
         let mut dummy_crc = DummyCrc {};
@@ -64,14 +72,20 @@ where
             .await
             .map_err(VLFSError::FlashError)
         {
-            Ok((read_result, _)) => match FileEntry::deserialize(read_result) {
-                Ok(mut file_entry) => {
-                    self.i += 1;
-                    file_entry.opened = self.vlfs.is_file_opened(file_entry.file_id).await;
-                    return Some(Ok(file_entry));
+            Ok((read_result, _)) => {
+                if self.reverse_i == 0 {
+                    self.reverse_i = 0xFFFF;
+                } else {
+                    self.reverse_i -= 1;
                 }
-                Err(e) => return Some(Err(e.into())),
-            },
+                match FileEntry::deserialize(read_result) {
+                    Ok(mut file_entry) => {
+                        file_entry.opened = self.vlfs.is_file_opened(file_entry.file_id).await;
+                        return Some(Ok(file_entry));
+                    }
+                    Err(e) => return Some(Err(e.into())),
+                }
+            }
             Err(e) => return Some(Err(e)),
         };
     }

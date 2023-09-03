@@ -1,5 +1,5 @@
 use vlfs::io_traits::{AsyncReader, AsyncWriter};
-use vlfs::{Crc, Flash, LsFileEntry, VLFSError, VLFS};
+use vlfs::{Crc, Flash, VLFSError, VLFS};
 #[cfg(feature = "clap")] 
 use clap::ValueEnum;
 use super::files::DEVICE_MODE_FILE_TYPE;
@@ -33,21 +33,13 @@ impl TryFrom<u8> for DeviceMode {
 }
 
 pub async fn read_device_mode(fs: &VLFS<impl Flash, impl Crc>) -> Option<DeviceMode> {
-    let mut files_iter = fs.files_iter(Some(DEVICE_MODE_FILE_TYPE)).await;
-    let file = files_iter.next();
-    drop(files_iter);
-    if let Some(LsFileEntry {
-        file_id,
-        ..
-    }) = file
-    {
-        if let Ok(mut reader) = fs.open_file_for_read(file_id).await {
-            let mut buffer = [0u8; 1];
-            let read_result = reader.read_u8(&mut buffer).await;
-            reader.close().await;
-            if let Ok((Some(value), _)) = read_result {
-                return value.try_into().ok();
-            }
+    let file = fs.find_file_by_type(DEVICE_MODE_FILE_TYPE).await?;
+    if let Ok(mut reader) = fs.open_file_for_read(file.file_id).await {
+        let mut buffer = [0u8; 1];
+        let read_result = reader.read_u8(&mut buffer).await;
+        reader.close().await;
+        if let Ok((Some(value), _)) = read_result {
+            return value.try_into().ok();
         }
     }
     None
@@ -57,11 +49,13 @@ pub async fn write_device_mode<F: Flash>(
     fs: &VLFS<F, impl Crc>,
     mode: DeviceMode,
 ) -> Result<(), VLFSError<F::Error>> {
-    fs.remove_files(|file_entry| file_entry.file_type == DEVICE_MODE_FILE_TYPE)
-        .await?;
+    let file = fs.find_file_by_type(DEVICE_MODE_FILE_TYPE).await;
+    if let Some(file) = file {
+        fs.remove_file(file.file_id).await?;
+    }
 
-    let file_id = fs.create_file(DEVICE_MODE_FILE_TYPE).await?;
-    let mut writer = fs.open_file_for_write(file_id).await?;
+    let file = fs.create_file(DEVICE_MODE_FILE_TYPE).await?;
+    let mut writer = fs.open_file_for_write(file.file_id).await?;
     writer.extend_from_slice(&[mode as u8]).await?;
     writer.close().await?;
     Ok(())

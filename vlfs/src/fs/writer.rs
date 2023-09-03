@@ -119,7 +119,7 @@ where
     buffer_offset: usize,
     sector_data_length: u16,
     current_sector_index: u16,
-    file_id: FileID,
+    pub file_id: FileID,
 
     closed: bool,
 }

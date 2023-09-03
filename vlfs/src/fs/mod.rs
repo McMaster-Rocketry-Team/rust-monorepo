@@ -1,6 +1,7 @@
 use core::cell::RefCell;
 
 use crate::driver::{crc::Crc, flash::Flash};
+use async_iterator::Iterator;
 use bitvec::prelude::*;
 use defmt::*;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
@@ -127,6 +128,31 @@ where
         }
 
         Ok(())
+    }
+
+    pub async fn remove_files(
+        &self,
+        predicate: impl Fn(&FileEntry) -> bool,
+    ) -> Result<(), VLFSError<F::Error>> {
+        let mut iter = self.files_iter().await;
+        while let Some(file_entry) = iter.next().await {
+            if let Ok(file_entry) = file_entry {
+                if predicate(&file_entry) {
+                    self.remove_file(file_entry.file_id).await?;
+                }
+            } else {
+                log_warn!("skipping corropted file entry");
+            }
+        }
+        Ok(())
+    }
+
+    pub async fn remove_files_with_type(
+        &self,
+        file_type: FileType,
+    ) -> Result<(), VLFSError<F::Error>> {
+        self.remove_files(|file_entry| file_entry.file_type == file_type)
+            .await
     }
 
     pub async fn get_file_size(
