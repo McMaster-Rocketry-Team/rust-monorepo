@@ -11,8 +11,8 @@ use super::{utils::count_bits, *};
 #[derive(Debug, Clone, defmt::Format)]
 pub struct FileEntry {
     pub opened: bool,
-    pub file_id: FileID,
-    pub file_type: FileType,
+    pub id: FileID,
+    pub typ: FileType,
     pub(super) first_sector_index: Option<u16>, // None means the file is empty
 }
 
@@ -22,21 +22,21 @@ impl FileEntry {
     pub(crate) fn new(file_id: FileID, file_type: FileType) -> Self {
         Self {
             opened: false,
-            file_id,
-            file_type,
+            id: file_id,
+            typ: file_type,
             first_sector_index: None,
         }
     }
 
     pub(crate) fn serialize<'a>(&self, buffer: &'a mut [u8]) -> &'a [u8] {
         // there are always odd number of 1s in the serialized file entry
-        (&mut buffer[0..2]).copy_from_slice(&self.file_type.0.to_be_bytes());
+        (&mut buffer[0..2]).copy_from_slice(&self.typ.0.to_be_bytes());
         if let Some(first_sector_index) = self.first_sector_index {
             (&mut buffer[2..4]).copy_from_slice(&first_sector_index.to_be_bytes());
         } else {
             (&mut buffer[2..4]).copy_from_slice(&0xFFFFu16.to_be_bytes());
         }
-        (&mut buffer[4..12]).copy_from_slice(&self.file_id.0.to_be_bytes());
+        (&mut buffer[4..12]).copy_from_slice(&self.id.0.to_be_bytes());
         let checksum_bit = !(count_bits(&buffer[0..12]) as u8) & 1;
         buffer[11] |= checksum_bit;
 
@@ -54,8 +54,8 @@ impl FileEntry {
         let file_id = FileID(u64::from_be_bytes((&buffer[4..12]).try_into().unwrap()) & !1);
         Ok(Self {
             opened: false,
-            file_id,
-            file_type,
+            id: file_id,
+            typ: file_type,
             first_sector_index: if first_sector_index == 0xFFFF {
                 None
             } else {
@@ -167,7 +167,7 @@ where
                 .await
                 .map_err(VLFSError::FlashError)?;
             let file_entry = FileEntry::deserialize(read_result)?;
-            if file_entry.file_id < file_id {
+            if file_entry.id < file_id {
                 left = mid + 1;
             } else {
                 right = mid; // FIXME
@@ -180,7 +180,7 @@ where
             .await
             .map_err(VLFSError::FlashError)?;
         let mut file_entry = FileEntry::deserialize(read_result)?;
-        if file_entry.file_id == file_id {
+        if file_entry.id == file_id {
             file_entry.opened = self.is_file_opened(file_id).await;
             return Ok(Some((file_entry, left)));
         } else {

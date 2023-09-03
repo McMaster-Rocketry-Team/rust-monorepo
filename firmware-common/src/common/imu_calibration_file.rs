@@ -5,8 +5,8 @@ use vlfs::io_traits::AsyncReader;
 use vlfs::{Crc, Flash, VLFS};
 
 pub async fn read_imu_calibration_file(fs: &VLFS<impl Flash, impl Crc>) -> Option<CalibrationInfo> {
-    if let Some(file_entry) = fs.find_file_by_type(CALIBRATION_FILE_TYPE).await {
-        let mut file = unwrap!(fs.open_file_for_read(file_entry.file_id).await);
+    if let Some(file) = fs.find_file_by_type(CALIBRATION_FILE_TYPE).await {
+        let mut file = unwrap!(fs.open_file_for_read(file.id).await);
         let mut buffer = [0u8; 156];
         let result = match file.read_slice(&mut buffer, 156).await {
             Ok((buffer, _)) => {

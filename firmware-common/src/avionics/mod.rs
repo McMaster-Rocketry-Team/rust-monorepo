@@ -138,9 +138,9 @@ pub async fn avionics_main(
     claim_devices!(device_manager, buzzer);
 
     let sensors_file = unwrap!(fs.create_file(AVIONICS_SENSORS_FILE_TYPE).await.ok());
-    let mut sensors_file = unwrap!(fs.open_file_for_write(sensors_file.file_id).await.ok());
+    let mut sensors_file = unwrap!(fs.open_file_for_write(sensors_file.id).await.ok());
     let log_file = unwrap!(fs.create_file(AVIONICS_LOG_FILE_TYPE).await.ok());
-    let mut logs_file = unwrap!(fs.open_file_for_write(log_file.file_id).await.ok());
+    let mut logs_file = unwrap!(fs.open_file_for_write(log_file.id).await.ok());
 
     let landed = BlockingMutex::<NoopRawMutex, _>::new(RefCell::new(false));
     let sensors_file_should_write_all = BlockingMutex::<NoopRawMutex, _>::new(RefCell::new(false));
@@ -498,10 +498,10 @@ pub async fn avionics_main(
                     }
                     ApplicationLayerRxPackage::ClearStorage => {
                         log_info!("Clearing storage");
-                        fs.remove_files(|entry| {
-                            !entry.opened
-                                && (entry.file_type == AVIONICS_LOG_FILE_TYPE
-                                    || entry.file_type == AVIONICS_SENSORS_FILE_TYPE)
+                        fs.remove_files(|file| {
+                            !file.opened
+                                && (file.typ == AVIONICS_LOG_FILE_TYPE
+                                    || file.typ == AVIONICS_SENSORS_FILE_TYPE)
                         })
                         .await
                         .unwrap();

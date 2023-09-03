@@ -34,7 +34,7 @@ impl TryFrom<u8> for DeviceMode {
 
 pub async fn read_device_mode(fs: &VLFS<impl Flash, impl Crc>) -> Option<DeviceMode> {
     let file = fs.find_file_by_type(DEVICE_MODE_FILE_TYPE).await?;
-    if let Ok(mut reader) = fs.open_file_for_read(file.file_id).await {
+    if let Ok(mut reader) = fs.open_file_for_read(file.id).await {
         let mut buffer = [0u8; 1];
         let read_result = reader.read_u8(&mut buffer).await;
         reader.close().await;
@@ -51,11 +51,11 @@ pub async fn write_device_mode<F: Flash>(
 ) -> Result<(), VLFSError<F::Error>> {
     let file = fs.find_file_by_type(DEVICE_MODE_FILE_TYPE).await;
     if let Some(file) = file {
-        fs.remove_file(file.file_id).await?;
+        fs.remove_file(file.id).await?;
     }
 
     let file = fs.create_file(DEVICE_MODE_FILE_TYPE).await?;
-    let mut writer = fs.open_file_for_write(file.file_id).await?;
+    let mut writer = fs.open_file_for_write(file.id).await?;
     writer.extend_from_slice(&[mode as u8]).await?;
     writer.close().await?;
     Ok(())

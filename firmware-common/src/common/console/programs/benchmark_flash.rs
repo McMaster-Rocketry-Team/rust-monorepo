@@ -66,7 +66,7 @@ impl BenchmarkFlash {
 
             let start_time = timer.now_mills();
 
-            let mut file = unwrap!(vlfs.open_file_for_write(file.file_id).await);
+            let mut file = unwrap!(vlfs.open_file_for_write(file.id).await);
             let mut buffer = [0u8; 64];
             for _ in 0..rounds {
                 rng.fill_bytes(&mut buffer);
@@ -89,7 +89,7 @@ impl BenchmarkFlash {
             let start_time = timer.now_mills();
             let mut buffer = [0u8; 64];
             let mut buffer_expected = [0u8; 64];
-            let mut file = unwrap!(vlfs.open_file_for_read(file.file_id).await);
+            let mut file = unwrap!(vlfs.open_file_for_read(file.id).await);
             for _ in 0..rounds {
                 unwrap!(file.read_slice(&mut buffer, 64).await);
                 rng.fill_bytes(&mut buffer_expected);
@@ -104,7 +104,7 @@ impl BenchmarkFlash {
             timer.now_mills() - start_time - random_time
         };
 
-        try_or_warn!(vlfs.remove_file(file.file_id).await);
+        try_or_warn!(vlfs.remove_file(file.id).await);
 
         let stat = stat_flash.get_stat();
 

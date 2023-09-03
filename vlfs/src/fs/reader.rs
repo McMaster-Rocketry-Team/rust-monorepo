@@ -17,7 +17,7 @@ where
             log_info!(
                 "Opening file {:?} with id {:?} for read",
                 file_id,
-                file_entry.file_type
+                file_entry.typ
             );
             if file_entry.opened {
                 return Err(VLFSError::FileInUse);

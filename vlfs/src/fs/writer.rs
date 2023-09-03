@@ -18,7 +18,7 @@ where
             log_info!(
                 "Opening file {:?} with id {:?} for write",
                 file_id,
-                file_entry.file_type
+                file_entry.typ
             );
             if file_entry.opened {
                 return Err(VLFSError::FileInUse);
@@ -102,7 +102,7 @@ where
                 self.set_file_first_sector_index(file_id, Some(new_sector_index)).await?;
             };
 
-            return Ok(FileWriter::new(self, new_sector_index, file_entry.file_id));
+            return Ok(FileWriter::new(self, new_sector_index, file_entry.id));
         }
 
         Err(VLFSError::FileDoesNotExist)

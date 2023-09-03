@@ -34,7 +34,7 @@ pub async fn beacon_sender(
     let mut vlp_phy = if use_lora { Some(vlp_phy) } else { None };
 
     let file = unwrap!(fs.create_file(BEACON_SENDER_LOG_FILE_TYPE).await);
-    let mut log_file = unwrap!(fs.open_file_for_write(file.file_id).await);
+    let mut log_file = unwrap!(fs.open_file_for_write(file.id).await);
     log_file
         .extend_from_slice(b"\n\nBeacon Started =================\n")
         .await

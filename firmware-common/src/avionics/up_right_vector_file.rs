@@ -6,7 +6,7 @@ use vlfs::{io_traits::AsyncReader, Crc, Flash, VLFSError, VLFS};
 pub async fn read_up_right_vector(fs: &VLFS<impl Flash, impl Crc>) -> Option<Vector3<f32>> {
     let file = fs.find_file_by_type(AVIONICS_UP_RIGHT_FILE_TYPE).await;
     if let Some(file) = file {
-        if let Ok(mut reader) = fs.open_file_for_read(file.file_id).await {
+        if let Ok(mut reader) = fs.open_file_for_read(file.id).await {
             let mut buffer = [0u8; 12];
             let result = match reader.read_slice(&mut buffer, 12).await {
                 Ok((buffer, _)) if buffer.len() == 12 => {
@@ -42,7 +42,7 @@ pub async fn write_up_right_vector<F: Flash>(
     buffer[8..12].copy_from_slice(&vector.z.to_be_bytes());
 
     let file = fs.create_file(AVIONICS_UP_RIGHT_FILE_TYPE).await?;
-    let mut writer = fs.open_file_for_write(file.file_id).await?;
+    let mut writer = fs.open_file_for_write(file.id).await?;
     writer.extend_from_slice(&buffer).await?;
     writer.close().await?;
     log_info!("up right vector saved");

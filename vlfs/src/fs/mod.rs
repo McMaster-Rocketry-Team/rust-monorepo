@@ -138,7 +138,7 @@ where
         while let Some(file_entry) = iter.next().await {
             if let Ok(file_entry) = file_entry {
                 if predicate(&file_entry) {
-                    self.remove_file(file_entry.file_id).await?;
+                    self.remove_file(file_entry.id).await?;
                 }
             } else {
                 log_warn!("skipping corropted file entry");
@@ -151,7 +151,7 @@ where
         &self,
         file_type: FileType,
     ) -> Result<(), VLFSError<F::Error>> {
-        self.remove_files(|file_entry| file_entry.file_type == file_type)
+        self.remove_files(|file_entry| file_entry.typ == file_type)
             .await
     }
 

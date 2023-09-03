@@ -151,7 +151,7 @@ impl<'a, F: Flash, C: Crc> ConsoleProgram for Calibrate<'a, F, C> {
                             .await
                     );
                     let file = unwrap!(self.vlfs.create_file(CALIBRATION_FILE_TYPE).await);
-                    let mut file = unwrap!(self.vlfs.open_file_for_write(file.file_id).await);
+                    let mut file = unwrap!(self.vlfs.open_file_for_write(file.id).await);
 
                     let mut buffer = [0u8; 156];
                     cal_info.serialize(&mut buffer);

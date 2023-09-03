@@ -23,7 +23,7 @@ where
         let mut iter = self.files_iter().await;
         while let Some(file_entry) = iter.next().await {
             if let Ok(file_entry) = file_entry {
-                if file_entry.file_type == file_type {
+                if file_entry.typ == file_type {
                     return Some(file_entry);
                 }
             } else {
@@ -80,7 +80,7 @@ where
                 }
                 match FileEntry::deserialize(read_result) {
                     Ok(mut file_entry) => {
-                        file_entry.opened = self.vlfs.is_file_opened(file_entry.file_id).await;
+                        file_entry.opened = self.vlfs.is_file_opened(file_entry.id).await;
                         return Some(Ok(file_entry));
                     }
                     Err(e) => return Some(Err(e.into())),
