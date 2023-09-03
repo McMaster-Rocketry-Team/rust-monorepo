@@ -46,8 +46,7 @@ pub struct FileID(pub u64);
 
 impl FileID {
     pub(crate) fn increment(&mut self) {
-        self.0 += 2;
-        self.0 &= !1; // set last bit to 0
+        self.0 += 1;
     }
 }
 

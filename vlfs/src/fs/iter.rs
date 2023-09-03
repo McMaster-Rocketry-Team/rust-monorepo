@@ -63,12 +63,12 @@ where
 
         let address = at.address_of_file_entry(i);
         let mut flash = self.vlfs.flash.lock().await;
-        let mut buffer = [0u8; 5 + 12];
+        let mut buffer = [0u8; 5 + 13];
         let mut dummy_crc = DummyCrc {};
         let mut reader = FlashReader::new(address, &mut flash, &mut dummy_crc);
 
         match reader
-            .read_slice(&mut buffer, 12)
+            .read_slice(&mut buffer, 13)
             .await
             .map_err(VLFSError::FlashError)
         {

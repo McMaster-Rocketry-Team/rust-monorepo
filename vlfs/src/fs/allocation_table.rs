@@ -4,7 +4,7 @@ use crate::{
     DummyCrc,
 };
 
-use super::{utils::count_bits, *};
+use super::*;
 
 // only repersent the state of the file when the struct is created
 // does not update after that
@@ -28,8 +28,99 @@ impl FileEntry {
         }
     }
 
-    pub(crate) fn serialize<'a>(&self, buffer: &'a mut [u8]) -> &'a [u8] {
-        // there are always odd number of 1s in the serialized file entry
+    pub(super) fn hamming_encode(buffer: [u8; 13]) -> [u8; 13] {
+        let mut buffer: BitArray<_, Lsb0> = BitArray::new(buffer);
+        buffer.copy_within(57..96, 65);
+        buffer.copy_within(26..57, 33);
+        buffer.copy_within(11..26, 17);
+        buffer.copy_within(4..11, 9);
+        buffer.copy_within(1..4, 5);
+        buffer.copy_within(0..1, 3);
+
+        buffer.set(0, false);
+        for parity_bit_i in 1..8 {
+            buffer.set(1 << (parity_bit_i - 1), false);
+        }
+
+        let mut parity_bits: BitArray<_, Lsb0> = BitArray::new([0b11111111u8; 1]);
+        for bit_i in 1..104 {
+            for parity_bit_i in 1..8 {
+                if bit_i & (1 << (parity_bit_i - 1)) != 0 {
+                    let new_parity_bit = parity_bits[parity_bit_i] ^ buffer[bit_i];
+                    parity_bits.set(parity_bit_i, new_parity_bit);
+                }
+            }
+        }
+        for parity_bit_i in 1..8 {
+            buffer.set(1 << (parity_bit_i - 1), parity_bits[parity_bit_i]);
+        }
+
+        let mut parity_bit_whole = true;
+        for bit_i in 1..104 {
+            parity_bit_whole ^= buffer[bit_i];
+        }
+        buffer.set(0, parity_bit_whole);
+
+        buffer.into_inner()
+    }
+
+    pub(super) fn hamming_decode(buffer: [u8; 13]) -> Result<[u8; 12], ()> {
+        let mut buffer: BitArray<_, Lsb0> = BitArray::new(buffer);
+
+        let mut parity_bits: BitArray<_, Lsb0> = BitArray::new([0b11111111u8; 1]);
+        for bit_i in 1..104 {
+            for parity_bit_i in 1..8 {
+                if bit_i & (1 << (parity_bit_i - 1)) != 0 {
+                    let new_parity_bit = parity_bits[parity_bit_i] ^ buffer[bit_i];
+                    parity_bits.set(parity_bit_i, new_parity_bit);
+                }
+            }
+        }
+
+        let error_i = (parity_bits.into_inner()[0] >> 1) as usize;
+
+        let mut parity_whole = true;
+        for bit_i in 0..104 {
+            parity_whole ^= buffer[bit_i];
+        }
+
+        match (error_i, parity_whole) {
+            (0, true) => {
+                // whole block parity bit error, do nothing
+            }
+            (0, false) => {
+                // no error, do nothing
+            }
+            (104..128, true) => {
+                // three or more bits error
+                return Err(());
+            }
+            (error_i, true) => {
+                // one bit error
+                let corrected_bit = !buffer[error_i];
+                buffer.set(error_i, corrected_bit);
+            }
+            (_, false) => {
+                // two bit error
+                return Err(());
+            }
+        }
+
+        buffer.copy_within(3..4, 0);
+        buffer.copy_within(5..8, 1);
+        buffer.copy_within(9..16, 4);
+        buffer.copy_within(17..32, 11);
+        buffer.copy_within(33..64, 26);
+        buffer.copy_within(65..104, 57);
+
+        let mut result = [0u8; 12];
+        result.copy_from_slice(&buffer.into_inner()[0..12]);
+
+        Ok(result)
+    }
+
+    pub(crate) fn serialize(&self)->[u8;13] {
+        let mut buffer = [0u8; 13];
         (&mut buffer[0..2]).copy_from_slice(&self.typ.0.to_be_bytes());
         if let Some(first_sector_index) = self.first_sector_index {
             (&mut buffer[2..4]).copy_from_slice(&first_sector_index.to_be_bytes());
@@ -37,17 +128,13 @@ impl FileEntry {
             (&mut buffer[2..4]).copy_from_slice(&0xFFFFu16.to_be_bytes());
         }
         (&mut buffer[4..12]).copy_from_slice(&self.id.0.to_be_bytes());
-        let checksum_bit = !(count_bits(&buffer[0..12]) as u8) & 1;
-        buffer[11] |= checksum_bit;
 
-        &buffer[0..12]
+        Self::hamming_encode(buffer)
     }
 
+    // expect a 13 byte buffer
     pub(crate) fn deserialize(buffer: &[u8]) -> Result<Self, CorruptedFileEntry> {
-        let ones_count = count_bits(&buffer[0..12]);
-        if ones_count % 2 != 1 {
-            return Err(CorruptedFileEntry);
-        }
+        let buffer = Self::hamming_decode(buffer.try_into().unwrap()).map_err(|_| CorruptedFileEntry)?;
 
         let file_type = FileType(u16::from_be_bytes((&buffer[0..2]).try_into().unwrap()));
         let first_sector_index = u16::from_be_bytes((&buffer[2..4]).try_into().unwrap());
@@ -62,6 +149,40 @@ impl FileEntry {
                 Some(first_sector_index)
             },
         })
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::FileEntry;
+
+    #[test]
+    fn hamming_encode() {
+        let data = [0x69u8; 12];
+        let mut buffer = [0u8; 13];
+        (&mut buffer[0..12]).copy_from_slice(&data);
+
+        let encoded = FileEntry::hamming_encode(buffer);
+        // {
+        //     use bitvec::prelude::*;
+        //     let buffer: BitArray<_, Lsb0> = BitArray::new(encoded.clone());
+
+        //     for bit in buffer.iter() {
+        //         print!("{}", if *bit { "1" } else { "0" });
+        //     }
+        //     println!("");
+        // }
+
+        for byte in 0..12 {
+            for bit in 0..8 {
+                let mut encoded = encoded.clone();
+                encoded[byte] ^= 1 << bit;
+
+                let decoded = FileEntry::hamming_decode(encoded).unwrap();
+
+                assert_eq!(data, decoded, "byte {} bit {}", byte, bit);
+            }
+        }
     }
 }
 
@@ -93,7 +214,7 @@ impl AllocationTable {
 
     // does not garuntee that the file entry is valid
     pub(super) fn address_of_file_entry(&self, i: u16) -> u32 {
-        self.address() + 22 + (i as u32) * 12
+        self.address() + 22 + (i as u32) * 13
     }
 
     pub(super) fn increment_position(&mut self) {
@@ -153,7 +274,7 @@ where
         let at = self.allocation_table.read().await;
         let file_count = at.file_count;
 
-        let mut buffer = [0u8; 5 + 12];
+        let mut buffer = [0u8; 5 + 13];
         let mut dummy_crc = DummyCrc {};
         let mut reader = FlashReader::new(0, &mut flash, &mut dummy_crc);
         let mut left = 0;
@@ -163,7 +284,7 @@ where
             let mid = (left + right) / 2;
             reader.set_address(at.address_of_file_entry(mid));
             let (read_result, _) = reader
-                .read_slice(&mut buffer, 12)
+                .read_slice(&mut buffer, 13)
                 .await
                 .map_err(VLFSError::FlashError)?;
             let file_entry = FileEntry::deserialize(read_result)?;
@@ -176,7 +297,7 @@ where
 
         reader.set_address(at.address_of_file_entry(left));
         let (read_result, _) = reader
-            .read_slice(&mut buffer, 12)
+            .read_slice(&mut buffer, 13)
             .await
             .map_err(VLFSError::FlashError)?;
         let mut file_entry = FileEntry::deserialize(read_result)?;
@@ -223,10 +344,10 @@ where
 
             // copy entries before the deleted entry
             // TODO optimize this, we can read multiple file entries at once at the expense of more memory
-            let mut buffer = [0u8; 5 + 12];
+            let mut buffer = [0u8; 5 + 13];
             for _ in 0..file_entry_i {
                 reader
-                    .read_slice(&mut buffer, 12)
+                    .read_slice(&mut buffer, 13)
                     .await
                     .map_err(VLFSError::FlashError)?;
                 writer
@@ -235,13 +356,13 @@ where
                     .map_err(VLFSError::FlashError)?;
             }
 
-            reader.set_address(reader.get_address() + 12);
+            reader.set_address(reader.get_address() + 13);
 
             // copy entries after the deleted entry
             // TODO optimize this, we can read multiple file entries at once at the expense of more memory
             for _ in file_entry_i + 1..at.file_count {
                 reader
-                    .read_slice(&mut buffer, 12)
+                    .read_slice(&mut buffer, 13)
                     .await
                     .map_err(VLFSError::FlashError)?;
                 writer
@@ -301,10 +422,10 @@ where
 
             // copy entries before the updated entry
             // TODO optimize this, we can read multiple file entries at once at the expense of more memory
-            let mut buffer = [0u8; 5 + 12];
+            let mut buffer = [0u8; 5 + 13];
             for _ in 0..file_entry_i {
                 reader
-                    .read_slice(&mut buffer, 12)
+                    .read_slice(&mut buffer, 13)
                     .await
                     .map_err(VLFSError::FlashError)?;
                 writer
@@ -316,16 +437,16 @@ where
             // write updated file entry
             file_entry.first_sector_index = first_sector_index;
             writer
-                .extend_from_slice(file_entry.serialize(&mut buffer))
+                .extend_from_slice(&file_entry.serialize())
                 .await
                 .map_err(VLFSError::FlashError)?;
-            reader.set_address(reader.get_address() + 12);
+            reader.set_address(reader.get_address() + 13);
 
             // copy entries after the updated entry
             // TODO optimize this, we can read multiple file entries at once at the expense of more memory
             for _ in file_entry_i + 1..at.file_count {
                 reader
-                    .read_slice(&mut buffer, 12)
+                    .read_slice(&mut buffer, 13)
                     .await
                     .map_err(VLFSError::FlashError)?;
                 writer
@@ -382,10 +503,10 @@ where
 
         // copy existing file entries
         // TODO optimize this, we can read multiple file entries at once at the expense of more memory
-        let mut buffer = [0u8; 5 + 12];
+        let mut buffer = [0u8; 5 + 13];
         for _ in 0..at.file_count - 1 {
             reader
-                .read_slice(&mut buffer, 12)
+                .read_slice(&mut buffer, 13)
                 .await
                 .map_err(VLFSError::FlashError)?;
             writer
@@ -398,7 +519,7 @@ where
         // there are always even number of 1s in the file entry
         let file_entry = FileEntry::new(file_id, file_type);
         writer
-            .extend_from_slice(file_entry.serialize(&mut buffer))
+            .extend_from_slice(&file_entry.serialize())
             .await
             .map_err(VLFSError::FlashError)?;
 
@@ -455,7 +576,7 @@ where
             // TODO optimize this, we can read multiple file entries at once at the expense of more memory
             for _ in 0..file_count {
                 reader
-                    .read_slice(&mut read_buffer, 12)
+                    .read_slice(&mut read_buffer, 13)
                     .await
                     .map_err(VLFSError::FlashError)?;
             }
