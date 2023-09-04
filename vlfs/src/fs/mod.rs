@@ -25,6 +25,7 @@ pub mod reader;
 pub mod sector_management;
 pub mod utils;
 pub mod writer;
+pub mod hamming;
 
 const VLFS_VERSION: u32 = 18;
 const SECTORS_COUNT: usize = 16384; // for 512M-bit flash (W25Q512JV)

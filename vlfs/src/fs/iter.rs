@@ -14,7 +14,7 @@ where
     pub async fn files_iter(&self) -> FilesIterator<F, C> {
         let at = self.allocation_table.read().await;
         FilesIterator {
-            reverse_i: at.file_count,
+            reverse_i: at.header.file_count,
             vlfs: self,
         }
     }
@@ -56,10 +56,10 @@ where
             return None;
         }
         let at = self.vlfs.allocation_table.read().await;
-        if self.reverse_i > at.file_count {
+        if self.reverse_i > at.header.file_count {
             return None;
         }
-        let i = at.file_count - self.reverse_i;
+        let i = at.header.file_count - self.reverse_i;
 
         let address = at.address_of_file_entry(i);
         let mut flash = self.vlfs.flash.lock().await;

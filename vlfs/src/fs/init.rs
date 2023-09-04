@@ -1,15 +1,12 @@
 use super::{error::VLFSError, utils::find_most_common_u16_out_of_4, *};
 use crate::{
     driver::{crc::Crc, flash::Flash},
-    utils::flash_io::{FlashReader, FlashWriter},
-    utils::io_traits::{AsyncReader, AsyncWriter},
     utils::rwlock::RwLock,
 };
 use async_iterator::Iterator;
 use embassy_sync::mutex::Mutex;
 
 use embassy_sync::blocking_mutex::Mutex as BlockingMutex;
-use heapless::Vec;
 
 impl<F, C> VLFS<F, C>
 where
@@ -31,7 +28,7 @@ where
             let at = self.allocation_table.read().await;
             info!(
                 "Found valid allocation table, file count: {}",
-                at.file_count
+                at.header.file_count
             );
             drop(at);
 
