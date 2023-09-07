@@ -19,3 +19,7 @@ async fn write_read() {
     harness.open_file_for_read(file_id).await;
     harness.read_file(file_id, 1000).await;
 }
+
+// test for disk full
+// test for opening a file twice (should not work)
+// test for opening a file that doesn't exist

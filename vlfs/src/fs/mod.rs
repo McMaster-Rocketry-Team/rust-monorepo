@@ -36,10 +36,11 @@ const MAX_DATA_LENGTH_PER_PAGE: usize = PAGE_SIZE - 4;
 const MAX_DATA_LENGTH_LAST_PAGE: usize = PAGE_SIZE - 4 - 8 - 8;
 const MAX_DATA_LENGTH_PER_SECTION: usize =
     (PAGES_PER_SECTOR - 1) * MAX_DATA_LENGTH_PER_PAGE + MAX_DATA_LENGTH_LAST_PAGE;
-const MAX_FILES: usize = 256; // can be as large as 2728
 const TABLE_COUNT: usize = 4;
+const TABLE_SIZE: usize = 32 * 1024;
+const MAX_FILES: usize = (TABLE_SIZE - 26 - 4) / 13;
 const MAX_SECTOR_DATA_SIZE: usize = 4016;
-const ALLOC_TABLES_SECTORS_USED: usize = TABLE_COUNT * 32 * 1024 / SECTOR_SIZE;
+const ALLOC_TABLES_SECTORS_USED: usize = TABLE_COUNT * TABLE_SIZE / SECTOR_SIZE;
 const DATA_REGION_SECTORS: usize = SECTORS_COUNT - ALLOC_TABLES_SECTORS_USED; // must be a multiple of 16 & aligned to 16
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, defmt::Format)]
