@@ -61,7 +61,7 @@ where
         Ok(())
     }
 
-    async fn read_free_sectors(&mut self) -> Result<(), VLFSError<F::Error>> {
+    pub async fn read_free_sectors(&mut self) -> Result<(), VLFSError<F::Error>> {
         let mut iter = self.files_iter().await;
         while let Some(file_entry) = iter.next().await {
             if let Ok(file_entry) = file_entry {
