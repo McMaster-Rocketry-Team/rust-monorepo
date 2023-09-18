@@ -1,8 +1,5 @@
 use bevy::prelude::Component;
-use firmware_common::driver::debugger::{
-    Debugger as DebuggerDriver,
-    DebuggerTargetEvent,
-};
+use firmware_common::driver::debugger::{Debugger as DebuggerDriver, DebuggerTargetEvent};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 #[derive(Component)]
 pub struct DebuggerHost {

@@ -19,14 +19,13 @@ use crate::utils::rwlock::RwLock;
 
 pub mod allocation_table;
 pub mod error;
+pub mod hamming;
 pub mod init;
 pub mod iter;
 pub mod reader;
 pub mod sector_management;
 pub mod utils;
 pub mod writer;
-pub mod hamming;
-
 
 const VLFS_VERSION: u32 = 18;
 const SECTORS_COUNT: usize = 16384; // for 512M-bit flash (W25Q512JV)
@@ -208,13 +207,12 @@ where
         Err(VLFSError::FileDoesNotExist)
     }
 
-    // This function will return the # of bytes of free space in a vlfs instance in the most optimal situation. 
+    // This function will return the # of bytes of free space in a vlfs instance in the most optimal situation.
     // Since one sector can be only assigned to one file, If a file is 1kb, it will occupy the entire 4kb sector
-    pub async fn free(&mut self) -> u32{
+    pub async fn free(&mut self) -> u32 {
         let sectors_mng = self.sectors_mng.read().await;
         let free_sector_count = sectors_mng.sector_map.free_sectors_count as u32;
-        let free_space =
-            (free_sector_count as usize * MAX_SECTOR_DATA_SIZE) as u32;
+        let free_space = (free_sector_count as usize * MAX_SECTOR_DATA_SIZE) as u32;
 
         free_space
     }

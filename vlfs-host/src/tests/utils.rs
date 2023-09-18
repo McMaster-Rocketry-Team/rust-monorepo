@@ -10,7 +10,7 @@ macro_rules! get_test_image_path {
         if path.exists() {
             std::fs::remove_file(&path).unwrap();
         }
-        
+
         path
     }};
 }

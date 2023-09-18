@@ -1,6 +1,9 @@
 use crate::{
     io_traits::{AsyncReader, AsyncWriter},
-    utils::{flash_io::{FlashReader, FlashWriter}, debug_bytes::DebugBytes},
+    utils::{
+        debug_bytes::DebugBytes,
+        flash_io::{FlashReader, FlashWriter},
+    },
     DummyCrc,
 };
 
@@ -160,12 +163,11 @@ impl AllocationTable {
     pub(super) fn address_of_file_entry(&self, i: u16) -> u32 {
         self.address() + 26 + (i as u32) * 13
     }
-    
+
     pub(super) fn increment_position(&mut self) {
         self.allocation_table_position = (self.allocation_table_position + 1) % TABLE_COUNT;
         self.header.sequence_number += 1;
     }
-
 }
 
 impl<F, C> VLFS<F, C>
@@ -559,6 +561,4 @@ where
 
         Ok(())
     }
-
-    
 }

@@ -22,7 +22,6 @@ pub use fs::reader::{FileReader, VLFSReadStatus};
 pub use fs::writer::FileWriter;
 pub use fs::{FileID, FileType, VLFS};
 pub use utils::io_traits;
-pub use fs::init;
 
 mod driver;
 mod fs;

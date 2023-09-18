@@ -61,7 +61,7 @@ where
         Ok(())
     }
 
-    pub async fn read_free_sectors(&mut self) -> Result<(), VLFSError<F::Error>> {
+    async fn read_free_sectors(&mut self) -> Result<(), VLFSError<F::Error>> {
         let mut iter = self.files_iter().await;
         while let Some(file_entry) = iter.next().await {
             if let Ok(file_entry) = file_entry {
@@ -69,7 +69,7 @@ where
                 while let Some(sector_index) = current_sector_index {
                     trace!("at sector {:#X}", sector_index);
                     self.claim_sector(sector_index).await;
-    
+
                     let mut buffer = [0u8; 5 + 8];
                     let next_sector_index_address =
                         (sector_index as usize * SECTOR_SIZE + SECTOR_SIZE - 8) as u32;
@@ -87,7 +87,7 @@ where
                         Some(next_sector_index)
                     };
                 }
-            }else{
+            } else {
                 log_warn!("skipping corropted file entry");
             }
         }

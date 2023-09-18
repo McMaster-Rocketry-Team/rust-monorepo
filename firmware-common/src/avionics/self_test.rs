@@ -1,4 +1,4 @@
-use crate::{common::device_manager::prelude::*, claim_devices};
+use crate::{claim_devices, common::device_manager::prelude::*};
 use defmt::unwrap;
 
 pub async fn self_test(device_manager: device_manager_type!()) -> bool {

@@ -122,7 +122,7 @@ impl VLFSTestingHarness {
         file_reader.close().await;
     }
 
-    pub async fn validate_free_space(&mut self){
+    pub async fn validate_free_space(&mut self) {
         todo!()
     }
 }

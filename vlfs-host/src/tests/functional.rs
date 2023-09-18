@@ -6,7 +6,7 @@ use vlfs::FileType;
 #[tokio::test]
 async fn write_read() {
     env_logger::init();
-    
+
     let path = get_test_image_path!();
 
     let mut harness = VLFSTestingHarness::new(path).await;
@@ -25,16 +25,13 @@ async fn write_read() {
 #[tokio::test]
 async fn disk_full() {
     env_logger::init();
-    
+
     let path = get_test_image_path!();
 
     let mut harness = VLFSTestingHarness::new(path).await;
     let file_id = harness.create_file(FileType(0)).await;
     // TODO: simulate a file with max size in memory and on disk and test with said vlfs instance
 }
-
-
-
 
 // test for opening a file twice (should not work)
 // test for opening a file that doesn't exist

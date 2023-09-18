@@ -14,7 +14,7 @@ where
         &self,
         file_id: FileID,
     ) -> Result<FileWriter<F, C>, VLFSError<F::Error>> {
-        if let Some((file_entry,_)) = self.find_file_entry(file_id).await? {
+        if let Some((file_entry, _)) = self.find_file_entry(file_id).await? {
             log_info!(
                 "Opening file {:?} with id {:?} for write",
                 file_id,
@@ -99,7 +99,8 @@ where
             } else {
                 // this file haven't been written to before,
                 // update allocation table
-                self.set_file_first_sector_index(file_id, Some(new_sector_index)).await?;
+                self.set_file_first_sector_index(file_id, Some(new_sector_index))
+                    .await?;
             };
 
             return Ok(FileWriter::new(self, new_sector_index, file_entry.id));
@@ -241,10 +242,7 @@ where
         // shouldn't happen a lot in real world use cases, ignore for now
         self._flush(0xFFFF).await?;
 
-        log_info!(
-            "Closing file with id {:?} for write",
-            self.file_id,
-        );
+        log_info!("Closing file with id {:?} for write", self.file_id,);
 
         self.vlfs.mark_file_closed(self.file_id).await;
 
