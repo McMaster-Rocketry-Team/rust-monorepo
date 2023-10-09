@@ -5,7 +5,7 @@ use rand::Rng;
 use replace_with::replace_with_or_abort;
 use vlfs::{
     io_traits::{AsyncReader, AsyncWriter},
-    DummyCrc, FileID, FileReader, FileType, FileWriter, VLFS,
+    DummyCrc, FileID, FileReader, FileType, FileWriter, VLFSError, VLFS,
 };
 
 use crate::FileFlash;
@@ -77,6 +77,36 @@ impl VLFSTestingHarness {
             .1
             .extend_from_slice(vec.as_slice());
         file_writer.extend_from_slice(vec.as_slice()).await.unwrap();
+    }
+
+    // This function appends a file with random data, and returns the result of the append operation
+    pub async fn append_file_with_result(
+        &mut self,
+        file_id: FileID,
+        length: usize,
+    ) -> Result<(), VLFSError<()>> {
+        let file_writer = self.file_writers.get_mut(&file_id).unwrap();
+
+        let mut rng = rand::thread_rng();
+        let mut vec = Vec::with_capacity(length);
+
+        for _ in 0..length {
+            vec.push(rng.gen::<u8>());
+        }
+
+        if let Some(file) = self.files.get_mut(&file_id) {
+            if let Some(slice) = file.1.get_mut(..vec.len()) {
+                slice.copy_from_slice(vec.as_slice());
+            } else {
+                return Err(VLFSError::DeviceFull);
+            }
+        } else {
+            return Err(VLFSError::DeviceFull);
+        }
+
+        file_writer.extend_from_slice(vec.as_slice()).await;
+
+        Ok(())
     }
 
     pub async fn flush_file(&mut self, file_id: FileID) {
