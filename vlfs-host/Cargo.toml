@@ -15,6 +15,7 @@ random-access-storage = "5.0.0"
 tokio = { version = "1.28.2", features = ["full"] }
 vlfs = { path = "../vlfs", features = ["std", "log"] }
 env_logger = "0.10.0"
+ctrlc = "3.1.5"
 
 [dev-dependencies]
 tempfile = "3.6.0"

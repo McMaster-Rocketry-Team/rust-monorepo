@@ -8,7 +8,7 @@ use vlfs::{
     DummyCrc, FileID, FileReader, FileType, FileWriter, VLFSError, VLFS,
 };
 
-use crate::FileFlash;
+use crate::{file_flash::RandomAccessErrorWrapper, FileFlash};
 
 pub struct VLFSTestingHarness {
     flash_image_path: PathBuf,
@@ -84,8 +84,9 @@ impl VLFSTestingHarness {
         &mut self,
         file_id: FileID,
         length: usize,
-    ) -> Result<(), VLFSError<()>> {
+    ) -> Result<(), VLFSError<RandomAccessErrorWrapper>> {
         let file_writer = self.file_writers.get_mut(&file_id).unwrap();
+        let file = self.files.get_mut(&file_id).unwrap();
 
         let mut rng = rand::thread_rng();
         let mut vec = Vec::with_capacity(length);
@@ -94,19 +95,9 @@ impl VLFSTestingHarness {
             vec.push(rng.gen::<u8>());
         }
 
-        if let Some(file) = self.files.get_mut(&file_id) {
-            if let Some(slice) = file.1.get_mut(..vec.len()) {
-                slice.copy_from_slice(vec.as_slice());
-            } else {
-                return Err(VLFSError::DeviceFull);
-            }
-        } else {
-            return Err(VLFSError::DeviceFull);
-        }
-
-        file_writer.extend_from_slice(vec.as_slice()).await;
-
-        Ok(())
+        file.1.extend_from_slice(vec.as_slice());
+        let result = file_writer.extend_from_slice(vec.as_slice()).await;
+        result
     }
 
     pub async fn flush_file(&mut self, file_id: FileID) {
