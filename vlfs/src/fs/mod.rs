@@ -27,6 +27,8 @@ pub mod sector_management;
 pub mod utils;
 pub mod writer;
 
+
+
 const VLFS_VERSION: u32 = 18;
 const SECTORS_COUNT: usize = 16384; // for 512M-bit flash (W25Q512JV)
 const SECTOR_SIZE: usize = 4096;
@@ -215,6 +217,11 @@ where
         let free_space = (free_sector_count as usize * MAX_SECTOR_DATA_SIZE) as u32;
 
         free_space
+    }
+
+    // returns a usable Flash instance
+    pub async fn get_flash(&mut self) -> &embassy_sync::mutex::Mutex<NoopRawMutex, F> {
+        &self.flash
     }
 }
 

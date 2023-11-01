@@ -1,6 +1,10 @@
+use std::{ops::DerefMut, array};
+
 use crate::{get_test_image_path, tests::harness::VLFSTestingHarness};
 use function_name::named;
-use vlfs::{FileType, VLFSError};
+use vlfs::{FileType, VLFSError, VLFS, DummyCrc, Flash};
+
+use crate::FileFlash;
 
 #[named]
 #[tokio::test]
@@ -19,6 +23,53 @@ async fn write_read() {
     harness.open_file_for_read(file_id).await;
     harness.read_file(file_id, 1000).await;
 }
+
+#[named]
+#[tokio::test]
+
+async fn write_to_array(){
+    env_logger::init();
+
+    let mut lower = 0;
+    let mut upper = 64 * 1024 * 1024;
+    // Create a 64MB vector. 64MB = 64 * 1024 * 1024 bytes = 67108864 bytes => 67108864 8 bit integers
+    let mut vec_u8: Vec<u8> = vec![0; 67108864];
+    
+    while lower <= upper {
+        let mid = (lower + upper) / 2;
+    
+        println!(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<");
+        println!(
+            ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>{}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<",
+            mid
+        );
+        println!(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>><<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<");
+
+
+        let path = get_test_image_path!();
+        
+
+        let file_flash = FileFlash::new(path.clone()).await.unwrap();
+        let mut vlfs = VLFS::new(file_flash, DummyCrc {});
+        
+        let flash_mutex = vlfs.get_flash().await;
+        let mut flash_guard = flash_mutex.lock().await;
+
+        let result = flash_guard.write(vec_u8.as_ptr() as u32, mid, &mut vec_u8).await;
+
+        if result.is_err() {
+            upper = mid - 1;
+        } else {
+            lower = mid + 1;
+        }
+
+        vec_u8.clear();
+    }
+
+    println!("Max file size is {}", lower);
+
+}
+
 
 // test for disk full
 #[named]

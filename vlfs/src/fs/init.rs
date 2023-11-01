@@ -91,7 +91,6 @@ where
                 log_warn!("skipping corropted file entry");
             }
         }
-
         Ok(())
     }
 }
