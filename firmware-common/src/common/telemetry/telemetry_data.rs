@@ -1,7 +1,18 @@
 use rkyv::{Archive, Deserialize, Serialize};
 use serde::Serialize as SerdeSerialize;
 
-#[derive(SerdeSerialize,Archive, Deserialize, Serialize, Debug, Copy, Clone, defmt::Format, Default, PartialEq)]
+#[derive(
+    SerdeSerialize,
+    Archive,
+    Deserialize,
+    Serialize,
+    Debug,
+    Copy,
+    Clone,
+    defmt::Format,
+    Default,
+    PartialEq,
+)]
 #[archive(check_bytes)]
 pub enum AvionicsState {
     #[default]

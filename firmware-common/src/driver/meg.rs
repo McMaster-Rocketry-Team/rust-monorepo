@@ -1,4 +1,4 @@
-use core::fmt::{Write, Debug};
+use core::fmt::{Debug, Write};
 use heapless::String;
 use rkyv::{Archive, Deserialize, Serialize};
 

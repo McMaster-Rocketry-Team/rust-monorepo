@@ -147,7 +147,8 @@ impl<'a, F: Flash, C: Crc> ConsoleProgram for Calibrate<'a, F, C> {
                     let cal_info = calibrator.get_calibration_info().unwrap();
                     info!("{}", cal_info);
                     unwrap!(
-                        self.vlfs.remove_files_with_type(CALIBRATION_FILE_TYPE)
+                        self.vlfs
+                            .remove_files_with_type(CALIBRATION_FILE_TYPE)
                             .await
                     );
                     let file = unwrap!(self.vlfs.create_file(CALIBRATION_FILE_TYPE).await);

@@ -1,9 +1,13 @@
 use core::{
+    cell::RefCell,
     fmt::Debug,
-    ops::{Deref, DerefMut}, cell::RefCell,
+    ops::{Deref, DerefMut},
 };
-use embassy_sync::{blocking_mutex::raw::RawMutex, mutex::{MutexGuard, Mutex}};
 use embassy_sync::blocking_mutex::Mutex as BlockingMutex;
+use embassy_sync::{
+    blocking_mutex::raw::RawMutex,
+    mutex::{Mutex, MutexGuard},
+};
 
 /// A Flash driver is represented here
 pub trait Flash {
@@ -203,8 +207,7 @@ where
     }
 }
 
-
-// the performance of this implementation is worse than the one above 
+// the performance of this implementation is worse than the one above
 // since it locks the mutex every time a function is called
 impl<M, T> Flash for &Mutex<M, T>
 where
@@ -246,7 +249,9 @@ where
         read_length: usize,
         read_buffer: &'b mut [u8],
     ) -> Result<&'b [u8], Self::Error> {
-        self.deref().lock().await
+        self.deref()
+            .lock()
+            .await
             .read_4kib(address, read_length, read_buffer)
             .await
     }
@@ -255,6 +260,10 @@ where
         address: u32,
         write_buffer: &'b mut [u8],
     ) -> Result<(), Self::Error> {
-        self.deref().lock().await.write_256b(address, write_buffer).await
+        self.deref()
+            .lock()
+            .await
+            .write_256b(address, write_buffer)
+            .await
     }
 }

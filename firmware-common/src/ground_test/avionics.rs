@@ -1,11 +1,11 @@
-use defmt::{info, unwrap};
-use futures::future::join;
 use crate::{
     claim_devices,
     common::device_manager::prelude::*,
     device_manager_type,
     driver::{gps::GPS, indicator::Indicator, timer::Timer},
 };
+use defmt::{info, unwrap};
+use futures::future::join;
 use heapless::String;
 
 #[inline(never)]
@@ -46,17 +46,11 @@ pub async fn ground_test_avionics(device_manager: device_manager_type!()) -> ! {
 
             info!("{}", lora_message.as_str());
 
-            vlp_phy.tx(
-                lora_message.as_bytes(),
-            )
-            .await;
+            vlp_phy.tx(lora_message.as_bytes()).await;
 
             match vlp_phy.rx_with_timeout(1000).await {
                 Ok(data) => {
-                    info!(
-                        "Received {} bytes",
-                        data.0.len
-                    );
+                    info!("Received {} bytes", data.0.len);
                     let rx_buffer = data.1.as_slice();
                     if rx_buffer == b"VLF3 fire 1" {
                         info!("Firing pyro 1");

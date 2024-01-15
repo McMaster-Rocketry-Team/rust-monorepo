@@ -53,10 +53,7 @@ impl BenchmarkFlash {
         };
 
         let mut max_64b_write_time = 0f64;
-        unwrap!(
-            vlfs.remove_files_with_type(BENCHMARK_FILE_TYPE)
-                .await
-        );
+        unwrap!(vlfs.remove_files_with_type(BENCHMARK_FILE_TYPE).await);
         let file = unwrap!(vlfs.create_file(BENCHMARK_FILE_TYPE).await);
 
         let write_time = {

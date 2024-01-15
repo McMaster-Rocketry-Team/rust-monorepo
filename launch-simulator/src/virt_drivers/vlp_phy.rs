@@ -12,7 +12,7 @@ use firmware_common::vlp::{
     application_layer::{
         ApplicationLayerRxPackage, ApplicationLayerTxPackage, RadioApplicationPackage,
     },
-    phy::{VLPPhy, RadioReceiveInfo},
+    phy::{RadioReceiveInfo, VLPPhy},
     Priority, VLPSocket,
 };
 use futures::{
@@ -45,7 +45,7 @@ impl VLPPhy for MockPhyParticipant {
         self.tx.send(Vec::from_slice(payload).unwrap());
     }
 
-    async fn rx(&mut self) -> Result<(RadioReceiveInfo,Vec<u8, 222>), RadioError> {
+    async fn rx(&mut self) -> Result<(RadioReceiveInfo, Vec<u8, 222>), RadioError> {
         self.rx.changed().await;
         let received = self.rx.borrow().clone();
         let info = RadioReceiveInfo {
@@ -56,7 +56,10 @@ impl VLPPhy for MockPhyParticipant {
         Ok((info, received))
     }
 
-    async fn rx_with_timeout(&mut self, _timeout_ms: u32) -> Result<(RadioReceiveInfo,Vec<u8, 222>), RadioError> {
+    async fn rx_with_timeout(
+        &mut self,
+        _timeout_ms: u32,
+    ) -> Result<(RadioReceiveInfo, Vec<u8, 222>), RadioError> {
         let rxfut = self.rx();
         pin_mut!(rxfut);
         let sleep_fut = sleep(Duration::from_millis(_timeout_ms as u64));
@@ -73,8 +76,7 @@ impl VLPPhy for MockPhyParticipant {
 
     fn set_output_power(&mut self, power: i32) {}
 
-    fn set_frequency(&mut self, frequency: u32) {
-    }
+    fn set_frequency(&mut self, frequency: u32) {}
 }
 
 #[derive(Component)]

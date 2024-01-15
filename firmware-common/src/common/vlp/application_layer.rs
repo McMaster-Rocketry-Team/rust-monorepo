@@ -98,16 +98,16 @@ impl RadioApplicationPackage for ApplicationLayerRxPackage {
             match self {
                 ApplicationLayerRxPackage::VerticalCalibration => {
                     buffer.push_unchecked(0x00);
-                },
+                }
                 ApplicationLayerRxPackage::ClearStorage => {
                     buffer.push_unchecked(0x01);
-                },
+                }
                 ApplicationLayerRxPackage::SoftArming(true) => {
                     buffer.push_unchecked(0x02);
-                },
+                }
                 ApplicationLayerRxPackage::SoftArming(false) => {
                     buffer.push_unchecked(0x03);
-                },
+                }
             }
         }
         buffer
@@ -161,8 +161,8 @@ impl RadioApplicationPackage for ApplicationLayerTxPackage {
                             buffer.push_unchecked(0);
                         }
                     }
-                    buffer.push_unchecked(if telemetry.software_armed {1}else {0});
-                    buffer.push_unchecked(if telemetry.hardware_armed {1}else {0});
+                    buffer.push_unchecked(if telemetry.software_armed { 1 } else { 0 });
+                    buffer.push_unchecked(if telemetry.hardware_armed { 1 } else { 0 });
                 }
 
                 buffer
@@ -172,7 +172,7 @@ impl RadioApplicationPackage for ApplicationLayerTxPackage {
 
     fn decode(package: Vec<u8, 222>) -> Option<ApplicationLayerTxPackage> {
         log_info!("decoding package: {:?}", package.as_slice());
-        if package.len() != 4 + 8 + 8+2 + 1 || package[0] != 0x69 {
+        if package.len() != 4 + 8 + 8 + 2 + 1 || package[0] != 0x69 {
             log_warn!("VLP: decode failed: not start with 0x69");
             return None;
         }

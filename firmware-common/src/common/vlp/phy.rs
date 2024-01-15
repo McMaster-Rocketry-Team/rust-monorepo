@@ -1,5 +1,4 @@
 use core::ops::DerefMut;
-use serde::Serialize as SerdeSerialize;
 use embassy_sync::{blocking_mutex::raw::RawMutex, mutex::MutexGuard};
 use heapless::Vec;
 use lora_phy::{
@@ -7,6 +6,7 @@ use lora_phy::{
     mod_traits::RadioKind,
     LoRa,
 };
+use serde::Serialize as SerdeSerialize;
 
 use crate::{
     driver::timer::{DelayUsWrapper, Timer},
@@ -223,7 +223,10 @@ impl<'a, R: RadioKind + 'static, T: Timer> VLPPhy for PhysicalVLPPhy<'a, R, T> {
                     len: bytes,
                 };
                 log_info!("phy RX: {:?}", &buf[..(bytes as usize)]);
-                Ok((info, Vec::<u8, MAX_PAYLOAD_LENGTH>::from_slice(&buf[..(bytes as usize)]).unwrap()))
+                Ok((
+                    info,
+                    Vec::<u8, MAX_PAYLOAD_LENGTH>::from_slice(&buf[..(bytes as usize)]).unwrap(),
+                ))
             }
             Ok(Err(e)) => Err(e),
             Err(_) => Err(RadioError::ReceiveTimeout),

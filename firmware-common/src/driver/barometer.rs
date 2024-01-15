@@ -1,7 +1,7 @@
 use super::timer::Timer;
+use core::fmt::Debug;
 use libm::powf;
 use rkyv::{Archive, Deserialize, Serialize};
-use core::fmt::Debug;
 
 #[derive(defmt::Format, Debug, Clone, Default, Archive, Deserialize, Serialize)]
 pub struct BaroReading {
