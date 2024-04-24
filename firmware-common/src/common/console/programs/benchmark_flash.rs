@@ -8,11 +8,7 @@ use vlfs::{
     Crc, Flash, StatFlash, VLFS,
 };
 
-use crate::{
-    common::files::BENCHMARK_FILE_TYPE,
-    driver::{serial::Serial, timer::Timer},
-    try_or_warn,
-};
+use crate::{common::files::BENCHMARK_FILE_TYPE, driver::serial::Serial, try_or_warn, Clock};
 
 // TODO implement `ConsoleProgram` and add to `start_common_programs`
 pub struct BenchmarkFlash {}
@@ -26,12 +22,12 @@ impl BenchmarkFlash {
         0x2
     }
 
-    pub async fn start<T: Serial, F: Flash, C: Crc, I: Timer>(
+    pub async fn start<T: Serial, F: Flash, C: Crc, K: Clock>(
         &self,
         serial: &mut T,
         vlfs: &VLFS<F, C>,
         stat_flash: &StatFlash,
-        timer: I,
+        clock: K,
     ) -> Result<(), ()> {
         info!("Benchmarking flash");
         stat_flash.reset_stat();
@@ -43,20 +39,17 @@ impl BenchmarkFlash {
                 0b1010011001010000010000000111001110111101011110001100000011100000u64,
             );
 
-            let start_time = timer.now_mills();
+            let start_time = clock.now_ms();
             let mut buffer = [0u8; 64];
             for _ in 0..rounds {
                 rng.fill_bytes(&mut buffer);
                 black_box(&buffer);
             }
-            timer.now_mills() - start_time
+            clock.now_ms() - start_time
         };
 
         let mut max_64b_write_time = 0f64;
-        unwrap!(
-            vlfs.remove_files_with_type(BENCHMARK_FILE_TYPE)
-                .await
-        );
+        unwrap!(vlfs.remove_files_with_type(BENCHMARK_FILE_TYPE).await);
         let file = unwrap!(vlfs.create_file(BENCHMARK_FILE_TYPE).await);
 
         let write_time = {
@@ -64,21 +57,21 @@ impl BenchmarkFlash {
                 0b1010011001010000010000000111001110111101011110001100000011100000u64,
             );
 
-            let start_time = timer.now_mills();
+            let start_time = clock.now_ms();
 
             let mut file = unwrap!(vlfs.open_file_for_write(file.id).await);
             let mut buffer = [0u8; 64];
             for _ in 0..rounds {
                 rng.fill_bytes(&mut buffer);
-                let write_64b_start_time = timer.now_mills();
+                let write_64b_start_time = clock.now_ms();
                 unwrap!(file.extend_from_slice(&buffer).await);
-                let write_64b_end_time = timer.now_mills() - write_64b_start_time;
+                let write_64b_end_time = clock.now_ms() - write_64b_start_time;
                 if write_64b_end_time > max_64b_write_time {
                     max_64b_write_time = write_64b_end_time;
                 }
             }
             unwrap!(file.close().await);
-            timer.now_mills() - start_time - random_time
+            clock.now_ms() - start_time - random_time
         };
 
         let read_time = {
@@ -86,7 +79,7 @@ impl BenchmarkFlash {
                 0b1010011001010000010000000111001110111101011110001100000011100000u64,
             );
 
-            let start_time = timer.now_mills();
+            let start_time = clock.now_ms();
             let mut buffer = [0u8; 64];
             let mut buffer_expected = [0u8; 64];
             let mut file = unwrap!(vlfs.open_file_for_read(file.id).await);
@@ -101,7 +94,7 @@ impl BenchmarkFlash {
                 }
             }
             file.close().await;
-            timer.now_mills() - start_time - random_time
+            clock.now_ms() - start_time - random_time
         };
 
         try_or_warn!(vlfs.remove_file(file.id).await);

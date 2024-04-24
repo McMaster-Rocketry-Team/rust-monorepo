@@ -4,10 +4,9 @@ use embassy_sync::{
 };
 
 use crate::{
-    driver::{radio::RadioReceiveInfo, timer::Timer},
-    vlp::application_layer::{
+    driver::radio::RadioReceiveInfo, vlp::application_layer::{
             ApplicationLayerRxPackage, ApplicationLayerTxPackage, RadioApplicationPackage,
-        }, RadioPhy,
+        }, Clock, RadioPhy
 };
 
 pub struct PVLP<T: RadioPhy>(pub T);
@@ -52,26 +51,26 @@ const FREQ_LIST: [u32; 8] = [
     902300000, 903900000, 905500000, 907100000, 908700000, 910300000, 911900000, 913500000,
 ];
 
-pub struct PVLPMaster<Y: RadioPhy, T: Timer> {
+pub struct PVLPMaster<Y: RadioPhy, C: Clock> {
     phy: PVLP<Y>,
-    timer: T,
+    clock: C,
     start_time: Option<f64>,
 }
 
-impl<Y: RadioPhy, T: Timer> PVLPMaster<Y, T> {
-    pub fn new(phy: PVLP<Y>, timer: T) -> Self {
+impl<Y: RadioPhy, C: Clock> PVLPMaster<Y, C> {
+    pub fn new(phy: PVLP<Y>, clock: C) -> Self {
         Self {
             phy,
-            timer,
+            clock,
             start_time: None,
         }
     }
 
     fn get_frequency(&mut self) -> u32 {
         if self.start_time.is_none() {
-            self.start_time = Some(self.timer.now_mills());
+            self.start_time = Some(self.clock.now_ms());
         }
-        let time = self.timer.now_mills() - self.start_time.unwrap();
+        let time = self.clock.now_ms() - self.start_time.unwrap();
         let index = (time / 17000.0) as usize;
         let index = index % FREQ_LIST.len();
         FREQ_LIST[index]
@@ -97,24 +96,24 @@ impl<Y: RadioPhy, T: Timer> PVLPMaster<Y, T> {
     }
 }
 
-pub struct PVLPSlave<'a, 'b, Y: RadioPhy, T: Timer, const N: usize, const M: usize> {
+pub struct PVLPSlave<'a, 'b, Y: RadioPhy, C:Clock, const N: usize, const M: usize> {
     phy: PVLP<Y>,
-    timer: T,
+    clock: C,
     master_start_time: Option<f64>,
     rx: Sender<'a, NoopRawMutex, (RadioReceiveInfo, ApplicationLayerTxPackage), N>,
     tx: Receiver<'b, NoopRawMutex, ApplicationLayerRxPackage, M>,
 }
 
-impl<'a, 'b, Y: RadioPhy, T: Timer, const N: usize, const M: usize> PVLPSlave<'a, 'b, Y, T, N, M> {
+impl<'a, 'b, Y: RadioPhy, C: Clock, const N: usize, const M: usize> PVLPSlave<'a, 'b, Y, C, N, M> {
     pub fn new(
         phy: PVLP<Y>,
-        timer: T,
+        clock: C,
         rx: Sender<'a, NoopRawMutex, (RadioReceiveInfo, ApplicationLayerTxPackage), N>,
         tx: Receiver<'b, NoopRawMutex, ApplicationLayerRxPackage, M>,
     ) -> Self {
         Self {
             phy,
-            timer,
+            clock,
             master_start_time: None,
             rx,
             tx,
@@ -124,7 +123,7 @@ impl<'a, 'b, Y: RadioPhy, T: Timer, const N: usize, const M: usize> PVLPSlave<'a
     // returns the current frequency, and the time (ms) until the next frequency change
     fn get_frequency(&self) -> (u32, u32) {
         if let Some(master_start_time) = self.master_start_time {
-            let time = self.timer.now_mills() - master_start_time;
+            let time = self.clock.now_ms() - master_start_time;
             let index = (time / 17000.0) as usize;
             let index = index % FREQ_LIST.len();
             let time_until_next = 17000 - (time % 17000.0) as u32;
@@ -152,7 +151,7 @@ impl<'a, 'b, Y: RadioPhy, T: Timer, const N: usize, const M: usize> PVLPSlave<'a
                 if self.master_start_time.is_none() {
                     log_info!("master start time set");
                     self.master_start_time =
-                        Some(self.timer.now_mills() - self.calculate_airtime(info.len) - 50.0);
+                        Some(self.clock.now_ms() - self.calculate_airtime(info.len) - 50.0);
                 }
                 self.rx.try_send((info, package)).ok();
                 if let Ok(tx_package) = self.tx.try_receive() {

@@ -10,7 +10,7 @@ use crate::{
         device_manager::prelude::*, files::BEACON_SENDER_LOG_FILE_TYPE, gps_parser::GPSParser,
     },
     device_manager_type,
-    driver::{gps::GPS, indicator::Indicator, timer::Timer},
+    driver::{gps::GPS, indicator::Indicator},
 };
 use core::{cell::RefCell, fmt::Write};
 use embassy_sync::blocking_mutex::{raw::NoopRawMutex, Mutex as BlockingMutex};
@@ -26,12 +26,12 @@ pub async fn beacon_sender(
     claim_devices!(
         device_manager,
         gps,
-        vlp_phy,
+        radio_phy,
         error_indicator,
         status_indicator
     );
-    let timer = device_manager.timer;
-    let mut vlp_phy = if use_lora { Some(vlp_phy) } else { None };
+    let clock = device_manager.clock;
+    let mut vlp_phy = if use_lora { Some(radio_phy) } else { None };
 
     let file = unwrap!(fs.create_file(BEACON_SENDER_LOG_FILE_TYPE).await);
     let mut log_file = unwrap!(fs.open_file_for_write(file.id).await);
@@ -43,11 +43,12 @@ pub async fn beacon_sender(
     let satellites_count = BlockingMutex::<NoopRawMutex, _>::new(RefCell::new(0u32));
     let locked = BlockingMutex::<NoopRawMutex, _>::new(RefCell::new(false));
 
-    let gps_parser = GPSParser::new(timer);
+    let gps_parser = GPSParser::new(clock);
     // todo log gps location to file
 
     let gps_fut = gps_parser.run(&mut gps);
 
+    let mut delay = device_manager.delay;
     let beacon_fut = async {
         loop {
             let nmea = gps_parser.get_nmea();
@@ -75,7 +76,7 @@ pub async fn beacon_sender(
             }
 
             let mut log_str = String::<32>::new();
-            core::write!(&mut log_str, "{} | Beacon send!\n", timer.now_mills()).unwrap();
+            core::write!(&mut log_str, "{} | Beacon send!\n", clock.now_ms()).unwrap();
             log_file.extend_from_slice(log_str.as_bytes()).await.ok();
             info!(
                 "{}",
@@ -84,10 +85,11 @@ pub async fn beacon_sender(
                     .trim_end_matches(|c| c == '\r' || c == '\n')
             );
 
-            timer.sleep(1000.0).await;
+            delay.delay_ms(1000).await;
         }
     };
 
+    let mut delay = device_manager.delay;
     let indicator_fut = async {
         loop {
             let satellites_count: u32 = satellites_count.lock(|v| *v.borrow());
@@ -97,12 +99,12 @@ pub async fn beacon_sender(
 
             for _ in 0..(satellites_count + 1) {
                 status_indicator.set_enable(true).await;
-                timer.sleep(20.0).await;
+                delay.delay_ms(20).await;
                 status_indicator.set_enable(false).await;
-                timer.sleep(50.0).await;
+                delay.delay_ms(50).await;
             }
 
-            timer.sleep(1000.0).await;
+            delay.delay_ms(1000).await;
         }
     };
 

@@ -2,7 +2,7 @@ use core::fmt::{Write, Debug};
 use heapless::String;
 use rkyv::{Archive, Deserialize, Serialize};
 
-use super::timer::Timer;
+use embedded_hal_async::delay::DelayNs;
 
 #[derive(Archive, Deserialize, Serialize, Debug, Clone)]
 pub struct MegReading {
@@ -31,17 +31,17 @@ pub trait Megnetometer {
     async fn read(&mut self) -> Result<MegReading, Self::Error>;
 }
 
-pub struct DummyMegnetometer<T: Timer> {
-    timer: T,
+pub struct DummyMegnetometer<D: DelayNs> {
+    delay: D,
 }
 
-impl<T: Timer> DummyMegnetometer<T> {
-    pub fn new(timer: T) -> Self {
-        Self { timer }
+impl<D: DelayNs> DummyMegnetometer<D> {
+    pub fn new(delay: D) -> Self {
+        Self { delay }
     }
 }
 
-impl<T: Timer> Megnetometer for DummyMegnetometer<T> {
+impl<D: DelayNs> Megnetometer for DummyMegnetometer<D> {
     type Error = ();
 
     async fn reset(&mut self) -> Result<(), ()> {
@@ -49,7 +49,7 @@ impl<T: Timer> Megnetometer for DummyMegnetometer<T> {
     }
 
     async fn read(&mut self) -> Result<MegReading, ()> {
-        self.timer.sleep(1.0).await;
+        self.delay.delay_ms(1).await;
         Ok(MegReading {
             timestamp: 0.0,
             meg: [0.0, 0.0, 0.0],

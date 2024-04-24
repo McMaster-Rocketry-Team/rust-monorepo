@@ -1,6 +1,4 @@
 #![cfg_attr(not(any(test, feature = "std")), no_std)]
-#![feature(async_fn_in_trait)]
-#![feature(impl_trait_projections)]
 #![feature(let_chains)]
 #![feature(try_blocks)]
 #![feature(exclusive_range_pattern)]

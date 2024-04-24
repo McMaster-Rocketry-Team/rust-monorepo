@@ -1,4 +1,4 @@
-use super::timer::Timer;
+use embedded_hal_async::delay::DelayNs;
 
 pub trait HardwareArming {
     type Error: defmt::Format;
@@ -6,22 +6,22 @@ pub trait HardwareArming {
     async fn read_arming(&mut self) -> Result<bool, Self::Error>;
 }
 
-pub struct DummyHardwareArming<T: Timer> {
-    timer: T,
+pub struct DummyHardwareArming<D: DelayNs> {
+    delay: D,
 }
 
-impl<T: Timer> DummyHardwareArming<T> {
-    pub fn new(timer: T) -> Self {
-        Self { timer }
+impl<D: DelayNs> DummyHardwareArming<D> {
+    pub fn new(delay: D) -> Self {
+        Self { delay }
     }
 }
 
-impl<T: Timer> HardwareArming for DummyHardwareArming<T> {
+impl<D: DelayNs> HardwareArming for DummyHardwareArming<D> {
     type Error = ();
 
     async fn wait_arming_change(&mut self) -> Result<bool, Self::Error> {
         loop {
-            self.timer.sleep(1000.0).await;
+            self.delay.delay_ms(1000).await;
         }
     }
 

@@ -51,7 +51,7 @@ use crate::{
     device_manager_type,
     driver::{
         barometer::BaroReading, debugger::DebuggerTargetEvent, gps::GPS, indicator::Indicator,
-        meg::MegReading, timer::Timer,
+        meg::MegReading,
     },
 };
 use heapless::Vec;
@@ -134,7 +134,6 @@ pub async fn avionics_main(
         unsafe { HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE) }
     }
 
-    let timer = device_manager.timer;
     claim_devices!(device_manager, buzzer);
 
     let sensors_file = unwrap!(fs.create_file(AVIONICS_SENSORS_FILE_TYPE).await.ok());
@@ -202,22 +201,23 @@ pub async fn avionics_main(
         }
     };
 
+    let mut delay = device_manager.delay;
     if self_test(device_manager).await {
-        buzzer.play(2000, 50.0).await;
-        timer.sleep(150.0).await;
-        buzzer.play(2000, 50.0).await;
-        timer.sleep(150.0).await;
-        buzzer.play(3000, 50.0).await;
-        timer.sleep(150.0).await;
-        buzzer.play(3000, 50.0).await;
+        buzzer.play(2000, 50).await;
+        delay.delay_ms(150).await;
+        buzzer.play(2000, 50).await;
+        delay.delay_ms(150).await;
+        buzzer.play(3000, 50).await;
+        delay.delay_ms(150).await;
+        buzzer.play(3000, 50).await;
     } else {
-        buzzer.play(3000, 50.0).await;
-        timer.sleep(150.0).await;
-        buzzer.play(3000, 50.0).await;
-        timer.sleep(150.0).await;
-        buzzer.play(2000, 50.0).await;
-        timer.sleep(150.0).await;
-        buzzer.play(2000, 50.0).await;
+        buzzer.play(3000, 50).await;
+        delay.delay_ms(150).await;
+        buzzer.play(3000, 50).await;
+        delay.delay_ms(150).await;
+        buzzer.play(2000, 50).await;
+        delay.delay_ms(150).await;
+        buzzer.play(2000, 50).await;
     }
 
     let shared_buzzer_channel = PubSubChannel::<NoopRawMutex, Vec<BuzzerTone, 7>, 2, 1, 1>::new();
@@ -228,9 +228,9 @@ pub async fn avionics_main(
             let tones = sub.next_message_pure().await;
             for tone in tones {
                 if let Some(frequency) = tone.0 {
-                    buzzer.play(frequency, tone.1 as f64).await;
+                    buzzer.play(frequency, tone.1).await;
                 } else {
-                    timer.sleep(tone.1 as f64).await;
+                    delay.delay_ms(tone.1).await;
                 }
             }
         }
@@ -246,10 +246,11 @@ pub async fn avionics_main(
         batt_voltmeter,
         pyro1_cont,
         pyro2_cont,
-        vlp_phy,
+        radio_phy,
         camera
     );
-    vlp_phy.set_output_power(22);
+    let clock = device_manager.clock;
+    radio_phy.set_output_power(22);
     unwrap!(imu.wait_for_power_on().await);
     unwrap!(imu.reset().await);
     unwrap!(barometer.reset().await);
@@ -257,7 +258,7 @@ pub async fn avionics_main(
 
     let imu = Mutex::<NoopRawMutex, _>::new(imu);
 
-    let gps_parser = GPSParser::new(timer);
+    let gps_parser = GPSParser::new(clock);
 
     let cal_info = read_imu_calibration_file(fs).await;
 
@@ -277,7 +278,7 @@ pub async fn avionics_main(
     }));
 
     let radio_fut = async {
-        let mut socket = PVLPMaster::new(PVLP(vlp_phy), timer);
+        let mut socket = PVLPMaster::new(PVLP(radio_phy), clock);
 
         loop {
             let tx_package = radio_tx.receive().await;
@@ -288,6 +289,7 @@ pub async fn avionics_main(
         }
     };
 
+    let mut delay = device_manager.delay;
     let main_fut = async {
         // TODO buzzer
         let rocket_upright_acc: BlockingMutex<NoopRawMutex, RefCell<Option<Vector3<f32>>>> =
@@ -297,12 +299,12 @@ pub async fn avionics_main(
             Option<FlightCore<Sender<NoopRawMutex, FlightCoreEvent, 3>>>,
         > = Mutex::new(None);
 
-        let mut imu_ticker = Ticker::every(timer, 5.0);
+        let mut imu_ticker = Ticker::every(clock, delay, 5.0);
         let imu_channel = PubSubChannel::<NoopRawMutex, IMUReading, 1, 1, 1>::new();
-        let mut baro_ticker = Ticker::every(timer, 5.0);
+        let mut baro_ticker = Ticker::every(clock, delay, 5.0);
         let baro_channel = PubSubChannel::<NoopRawMutex, BaroReading, 1, 1, 1>::new();
-        let mut meg_ticker = Ticker::every(timer, 50.0);
-        let mut batt_volt_ticker = Ticker::every(timer, 5.0);
+        let mut meg_ticker = Ticker::every(clock, delay, 50.0);
+        let mut batt_volt_ticker = Ticker::every(clock, delay, 5.0);
 
         let pyro1_cont_fut = async {
             let cont = unwrap!(pyro1_cont.read_continuity().await);
@@ -376,7 +378,7 @@ pub async fn avionics_main(
                     sensors_file_channel.publish_immediate(SensorReading::GPS(nmea));
                 }
 
-                timer.sleep(5.0).await;
+                delay.delay_ms(5).await;
             }
         };
 
@@ -403,7 +405,7 @@ pub async fn avionics_main(
                     });
                     sensors_file_channel.publish_immediate(SensorReading::BatteryVoltage(
                         BatteryVoltage {
-                            timestamp: timer.now_mills(),
+                            timestamp: clock.now_ms(),
                             voltage: batt_volt_reading,
                         },
                     ));
@@ -442,15 +444,15 @@ pub async fn avionics_main(
                             drop(flight_core);
 
                             let mut tones = Vec::new();
-                            tones.push(BuzzerTone(Some(2000), 500.0)).unwrap();
-                            tones.push(BuzzerTone(None, 500.0)).unwrap();
-                            tones.push(BuzzerTone(Some(3000), 500.0)).unwrap();
+                            tones.push(BuzzerTone(Some(2000), 500)).unwrap();
+                            tones.push(BuzzerTone(None, 500)).unwrap();
+                            tones.push(BuzzerTone(Some(3000), 500)).unwrap();
                             shared_buzzer_channel.publish_immediate(tones);
                         } else {
                             let mut tones = Vec::new();
-                            tones.push(BuzzerTone(Some(3000), 500.0)).unwrap();
-                            tones.push(BuzzerTone(None, 500.0)).unwrap();
-                            tones.push(BuzzerTone(Some(2000), 500.0)).unwrap();
+                            tones.push(BuzzerTone(Some(3000), 500)).unwrap();
+                            tones.push(BuzzerTone(None, 500)).unwrap();
+                            tones.push(BuzzerTone(Some(2000), 500)).unwrap();
                             shared_buzzer_channel.publish_immediate(tones);
                         }
                     } else {
@@ -465,13 +467,14 @@ pub async fn avionics_main(
             }
         };
 
+        let mut delay = device_manager.delay;
         let radio_fut = async {
             loop {
                 match radio_rx.receive().await {
                     ApplicationLayerRxPackage::VerticalCalibration => {
                         log_info!("Vertical calibration");
                         if !arming_state.lock(|s| (*s.borrow()).is_armed()) {
-                            let mut ticker = Ticker::every(timer, 1.0);
+                            let mut ticker = Ticker::every(clock, delay, 1.0);
                             let mut acc_sum = Vector3::<f32>::zeros();
                             let mut imu = imu.lock().await;
                             for _ in 0..100 {
@@ -488,11 +491,11 @@ pub async fn avionics_main(
                             write_up_right_vector(fs, acc_sum).await.unwrap();
 
                             let mut tones = Vec::new();
-                            tones.push(BuzzerTone(Some(2700), 500.0)).unwrap();
-                            tones.push(BuzzerTone(None, 250.0)).unwrap();
-                            tones.push(BuzzerTone(Some(2700), 50.0)).unwrap();
-                            tones.push(BuzzerTone(None, 150.0)).unwrap();
-                            tones.push(BuzzerTone(Some(2700), 50.0)).unwrap();
+                            tones.push(BuzzerTone(Some(2700), 500)).unwrap();
+                            tones.push(BuzzerTone(None, 250)).unwrap();
+                            tones.push(BuzzerTone(Some(2700), 50)).unwrap();
+                            tones.push(BuzzerTone(None, 150)).unwrap();
+                            tones.push(BuzzerTone(Some(2700), 50)).unwrap();
                             shared_buzzer_channel.publish_immediate(tones);
                         }
                     }
@@ -506,11 +509,11 @@ pub async fn avionics_main(
                         .await
                         .unwrap();
                         let mut tones = Vec::new();
-                        tones.push(BuzzerTone(Some(2700), 500.0)).unwrap();
-                        tones.push(BuzzerTone(None, 250.0)).unwrap();
-                        tones.push(BuzzerTone(Some(2700), 50.0)).unwrap();
-                        tones.push(BuzzerTone(None, 150.0)).unwrap();
-                        tones.push(BuzzerTone(Some(3700), 50.0)).unwrap();
+                        tones.push(BuzzerTone(Some(2700), 500)).unwrap();
+                        tones.push(BuzzerTone(None, 250)).unwrap();
+                        tones.push(BuzzerTone(Some(2700), 50)).unwrap();
+                        tones.push(BuzzerTone(None, 150)).unwrap();
+                        tones.push(BuzzerTone(Some(3700), 50)).unwrap();
                         shared_buzzer_channel.publish_immediate(tones);
                     }
                     ApplicationLayerRxPackage::SoftArming(software_armed) => {
@@ -523,6 +526,7 @@ pub async fn avionics_main(
             }
         };
 
+        let mut delay = device_manager.delay;
         let flight_core_fut = async {
             let mut imu_sub = imu_channel.subscriber().unwrap();
             let mut baro_sub = baro_channel.subscriber().unwrap();
@@ -545,7 +549,7 @@ pub async fn avionics_main(
                         }
                     }
                 }
-                timer.sleep(5.0).await;
+                delay.delay_ms(5).await;
             }
         };
 
@@ -567,19 +571,20 @@ pub async fn avionics_main(
         }
     };
 
+    let mut delay = device_manager.delay;
     let telemetry_fut = async {
-        let mut telemetry_ticker = Ticker::every(timer, 3000.0);
+        let mut telemetry_ticker = Ticker::every(clock,delay, 3000.);
         let mut last_telemetry_timestamp = -60_000.0f64;
         loop {
             let should_throttle = !arming_state.lock(|s| (*s.borrow()).is_armed())
                 || telemetry_data.lock(|d| d.borrow().avionics_state == AvionicsState::Landed);
-            if should_throttle && timer.now_mills() - last_telemetry_timestamp <= 60_000.0 {
+            if should_throttle && clock.now_ms() - last_telemetry_timestamp <= 60_000.0 {
                 telemetry_ticker.next().await;
                 continue;
             }
 
             let mut telemetry_data = telemetry_data.lock(|d| d.borrow().clone());
-            telemetry_data.timestamp = timer.now_mills();
+            telemetry_data.timestamp = clock.now_ms();
             last_telemetry_timestamp = telemetry_data.timestamp;
             log_info!("Sending telemetry {:?}", telemetry_data);
             radio_tx
@@ -589,8 +594,9 @@ pub async fn avionics_main(
         }
     };
 
+    let mut delay = device_manager.delay;
     let camera_ctrl_future = async {
-        let mut ticker = Ticker::every(timer, 3000.0);
+        let mut ticker = Ticker::every(clock, delay, 3000.0);
         let mut is_recording = false;
 
         loop {
@@ -600,7 +606,7 @@ pub async fn avionics_main(
                 camera.set_recording(true).await;
                 is_recording = true;
             } else if !should_record && is_recording {
-                timer.sleep(60_000.0).await;
+                delay.delay_ms(60_000).await;
                 camera.set_recording(false).await;
                 is_recording = false;
             }
@@ -608,6 +614,7 @@ pub async fn avionics_main(
         }
     };
 
+    let mut delay = device_manager.delay;
     let flight_core_event_consumer = async {
         let receiver = flight_core_events.receiver();
         // pyro1: main, pyro2: drogue
@@ -635,12 +642,12 @@ pub async fn avionics_main(
                 }
                 FlightCoreEvent::DeployMain => {
                     pyro1_ctrl.set_enable(true).await.ok();
-                    timer.sleep(3000.0);
+                    delay.delay_ms(3000);
                     pyro1_ctrl.set_enable(false).await.ok();
                 }
                 FlightCoreEvent::DeployDrogue => {
                     pyro2_ctrl.set_enable(true).await.ok();
-                    timer.sleep(3000.0);
+                    delay.delay_ms(3000);
                     pyro2_ctrl.set_enable(false).await.ok();
                 }
                 FlightCoreEvent::Landed => {
@@ -666,18 +673,19 @@ pub async fn avionics_main(
         }
     };
 
-    let mut landed_buzzing_ticker = Ticker::every(timer, 5000.0);
+    let delay = device_manager.delay;
+    let mut landed_buzzing_ticker = Ticker::every(clock, delay, 5000.0);
     let landed_buzzing_fut = async {
         loop {
             if landed.lock(|s| *s.borrow()) {
                 let mut tones = Vec::new();
-                tones.push(BuzzerTone(Some(2700), 50.0)).unwrap();
-                tones.push(BuzzerTone(None, 150.0)).unwrap();
-                tones.push(BuzzerTone(Some(2700), 50.0)).unwrap();
-                tones.push(BuzzerTone(None, 500.0)).unwrap();
-                tones.push(BuzzerTone(Some(2700), 50.0)).unwrap();
-                tones.push(BuzzerTone(None, 150.0)).unwrap();
-                tones.push(BuzzerTone(Some(2700), 50.0)).unwrap();
+                tones.push(BuzzerTone(Some(2700), 50)).unwrap();
+                tones.push(BuzzerTone(None, 150)).unwrap();
+                tones.push(BuzzerTone(Some(2700), 50)).unwrap();
+                tones.push(BuzzerTone(None, 500)).unwrap();
+                tones.push(BuzzerTone(Some(2700), 50)).unwrap();
+                tones.push(BuzzerTone(None, 150)).unwrap();
+                tones.push(BuzzerTone(Some(2700), 50)).unwrap();
                 shared_buzzer_channel.publish_immediate(tones);
             }
             landed_buzzing_ticker.next().await;
@@ -706,7 +714,7 @@ const MARAUDER_2_FLIGHT_CONFIG: FlightCoreConfig = FlightCoreConfig {
 };
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-struct BuzzerTone(Option<u32>, f32);
+struct BuzzerTone(Option<u32>, u32);
 
 struct ArmingState {
     pub hardware_armed: bool,

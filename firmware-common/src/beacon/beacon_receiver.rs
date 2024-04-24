@@ -3,7 +3,7 @@ use vlfs::{Crc, Flash, VLFS};
 
 use crate::{
     allocator::HEAP, beacon::beacon_data::BeaconData, claim_devices,
-    common::device_manager::prelude::*, device_manager_type, driver::timer::Timer,
+    common::device_manager::prelude::*, device_manager_type,
 };
 use rkyv::{check_archived_root, Deserialize};
 
@@ -20,11 +20,11 @@ pub async fn beacon_receiver(
         unsafe { HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE) }
     }
 
-    claim_devices!(device_manager, vlp_phy);
+    claim_devices!(device_manager, radio_phy);
 
     loop {
         
-        match vlp_phy.rx().await {
+        match radio_phy.rx().await {
             Ok(data) => {
                 info!(
                     "Received {} bytes",

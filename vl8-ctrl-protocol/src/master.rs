@@ -4,7 +4,8 @@ use core::task::Waker;
 use defmt::{warn, Format};
 use embassy_sync::blocking_mutex::Mutex as BlockingMutex;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
-use firmware_common::driver::{serial::Serial, timer::Timer};
+use embedded_hal_async::delay::DelayNs;
+use firmware_common::driver::serial::Serial;
 
 use crate::multi_waker::MultiWakerRegistration;
 use crate::packages::camera::CameraCtrl;
@@ -17,9 +18,9 @@ use crate::{
     DeviceInfo, Event, GetDevice, PollEvent, PyroCtrl,
 };
 
-pub struct Master<S: Serial, T: Timer> {
+pub struct Master<S: Serial, D:DelayNs+Copy> {
     serial: Mutex<NoopRawMutex, S>,
-    timer: T,
+    delay:D,
     pub(crate) last_event: BlockingMutex<NoopRawMutex, RefCell<Option<Event>>>,
     pub(crate) wakers_reg: BlockingMutex<NoopRawMutex, RefCell<MultiWakerRegistration<10>>>,
 }
@@ -32,11 +33,11 @@ pub enum RequestError<E: Format> {
     Timeout,
 }
 
-impl<S: Serial, T: Timer> Master<S, T> {
-    pub fn new(serial: S, timer: T) -> Self {
+impl<S: Serial, D:DelayNs+Copy> Master<S, D> {
+    pub fn new(serial: S, delay:D) -> Self {
         Self {
             serial: Mutex::new(serial),
-            timer,
+            delay,
             last_event: BlockingMutex::new(RefCell::new(None)),
             wakers_reg: BlockingMutex::new(RefCell::new(MultiWakerRegistration::new())),
         }
@@ -53,7 +54,7 @@ impl<S: Serial, T: Timer> Master<S, T> {
             .await
             .map_err(RequestError::SerialError)?;
 
-        let len = match run_with_timeout(self.timer, 30.0, serial.read(buffer)).await {
+        let len = match run_with_timeout(self.delay, 30.0, serial.read(buffer)).await {
             Ok(Ok(len)) => len,
             Ok(Err(e)) => return Err(RequestError::SerialError(e)),
             Err(_) => return Err(RequestError::Timeout),

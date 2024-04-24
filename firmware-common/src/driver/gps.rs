@@ -2,7 +2,7 @@ use core::ops::DerefMut;
 use embassy_sync::{blocking_mutex::raw::RawMutex, mutex::MutexGuard};
 use heapless::String;
 
-use super::timer::Timer;
+use embedded_hal_async::delay::DelayNs;
 
 pub struct NmeaSentence {
     pub sentence: String<84>,
@@ -23,20 +23,20 @@ where
     }
 }
 
-pub struct DummyGPS<T: Timer> {
-    timer: T,
+pub struct DummyGPS<D: DelayNs> {
+    delay: D,
 }
 
-impl<T: Timer> DummyGPS<T> {
-    pub fn new(timer: T) -> Self {
-        Self { timer }
+impl<D: DelayNs> DummyGPS<D> {
+    pub fn new(delay: D) -> Self {
+        Self { delay }
     }
 }
 
-impl<T: Timer> GPS for DummyGPS<T> {
+impl<D: DelayNs> GPS for DummyGPS<D> {
     async fn next_nmea_sentence(&mut self) -> NmeaSentence {
         loop {
-            self.timer.sleep(1000.0).await;
+            self.delay.delay_ms(1_000).await;
         }
     }
 }

@@ -1,28 +1,34 @@
-use crate::driver::timer::Timer;
+use embedded_hal_async::delay::DelayNs;
 
-pub struct Ticker<T: Timer> {
+use crate::Clock;
+
+pub struct Ticker<C: Clock, D: DelayNs> {
     expires_at_ms: f64,
     pub duration_ms: f64,
-    timer: T,
+    clock: C,
+    delay: D,
 }
 
-impl<T: Timer> Ticker<T> {
-    pub fn every(timer: T, duration_ms: f64) -> Self {
-        let expires_at_ms = timer.now_mills() + duration_ms;
+impl<C: Clock, D: DelayNs> Ticker<C, D> {
+    pub fn every(clock: C, delay: D, duration_ms: f64) -> Self {
+        let expires_at_ms = clock.now_ms() + duration_ms;
         Self {
             expires_at_ms,
             duration_ms,
-            timer,
+            clock,
+            delay,
         }
     }
 
     pub async fn next(&mut self) -> f64 {
-        let now = self.timer.now_mills();
+        let now = self.clock.now_ms();
         let elapsed = now - self.expires_at_ms + self.duration_ms;
         if now > self.expires_at_ms {
             self.expires_at_ms = now + self.duration_ms;
         } else {
-            self.timer.sleep(self.expires_at_ms - now).await;
+            self.delay
+                .delay_us(((self.expires_at_ms - now) * 1000.0) as u32)
+                .await;
             self.expires_at_ms += self.duration_ms;
         }
         elapsed

@@ -1,9 +1,10 @@
+use crate::Flash;
 use core::cell::RefCell;
-
-use crate::{Flash, Timer};
 use defmt::Format;
 use embassy_sync::blocking_mutex::{raw::NoopRawMutex, Mutex as BlockingMutex};
 use paste::paste;
+
+use super::timer::Timer;
 
 #[derive(Debug, Format, Clone, Default)]
 pub struct Stat {
@@ -44,7 +45,11 @@ impl StatFlash {
         })
     }
 
-    pub fn get_flash<'a, F: Flash, T: Timer>(&self, flash: F, timer: T) -> StatFlashFlash<F, T> {
+    pub fn get_flash<'a, F: Flash, T: Timer>(
+        &self,
+        flash: F,
+        timer: T,
+    ) -> StatFlashFlash<F, T> {
         StatFlashFlash::new(flash, timer, self)
     }
 }
@@ -67,9 +72,9 @@ impl<'a, F: Flash, T: Timer> StatFlashFlash<'a, F, T> {
 
 macro_rules! run_with_stat {
     ($self:ident, $func:ident, $($arg:expr),*) => {{
-        let start = $self.timer.now_mills();
+        let start = $self.timer.now_ms();
         let result = $self.flash.$func($($arg),*).await;
-        let end = $self.timer.now_mills();
+        let end = $self.timer.now_ms();
         $self.stat_flash.stat.lock(|stat|{
             let mut stat = stat.borrow_mut();
             paste!{

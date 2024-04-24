@@ -1,6 +1,7 @@
 use core::cmp::min;
 
-use super::{serial::Serial, timer::Timer};
+use super::serial::Serial;
+use embedded_hal_async::delay::DelayNs;
 
 pub trait USB {
     type Error: defmt::Format;
@@ -25,17 +26,17 @@ impl<T: USB> Serial for T {
     }
 }
 
-pub struct DummyUSB<T: Timer> {
-    timer: T,
+pub struct DummyUSB<D: DelayNs> {
+    delay: D,
 }
 
-impl<T: Timer> DummyUSB<T> {
-    pub fn new(timer: T) -> Self {
-        Self { timer }
+impl<D: DelayNs> DummyUSB<D> {
+    pub fn new(delay: D) -> Self {
+        Self { delay }
     }
 }
 
-impl<T: Timer> USB for DummyUSB<T> {
+impl<D: DelayNs> USB for DummyUSB<D> {
     type Error = ();
 
     async fn write_64b(&mut self, _data: &[u8]) -> Result<(), Self::Error> {
@@ -44,13 +45,13 @@ impl<T: Timer> USB for DummyUSB<T> {
 
     async fn read(&mut self, _buffer: &mut [u8]) -> Result<usize, Self::Error> {
         loop {
-            self.timer.sleep(1000.0).await;
+            self.delay.delay_ms(1000).await;
         }
     }
 
     async fn wait_connection(&mut self) {
         loop {
-            self.timer.sleep(1000.0).await;
+            self.delay.delay_ms(1000).await;
         }
     }
 }

@@ -2,7 +2,7 @@ use core::fmt::Debug;
 
 pub use ferraris_calibration::IMUReading;
 
-use super::timer::Timer;
+use embedded_hal_async::delay::DelayNs;
 
 pub trait IMU {
     type Error: defmt::Format + Debug;
@@ -12,17 +12,17 @@ pub trait IMU {
     async fn read(&mut self) -> Result<IMUReading, Self::Error>;
 }
 
-pub struct DummyIMU<T: Timer> {
-    timer: T,
+pub struct DummyIMU<D: DelayNs> {
+    delay: D,
 }
 
-impl<T: Timer> DummyIMU<T> {
-    pub fn new(timer: T) -> Self {
-        Self { timer }
+impl<D: DelayNs> DummyIMU<D> {
+    pub fn new(delay: D) -> Self {
+        Self { delay }
     }
 }
 
-impl<T: Timer> IMU for DummyIMU<T> {
+impl<D: DelayNs> IMU for DummyIMU<D> {
     type Error = ();
 
     async fn wait_for_power_on(&mut self) -> Result<(), ()> {
@@ -34,7 +34,7 @@ impl<T: Timer> IMU for DummyIMU<T> {
     }
 
     async fn read(&mut self) -> Result<IMUReading, ()> {
-        self.timer.sleep(1.0).await;
+        self.delay.delay_ms(1).await;
         Ok(IMUReading {
             timestamp: 0.0,
             acc: [0.0, 0.0, 0.0],

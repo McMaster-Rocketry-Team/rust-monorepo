@@ -384,15 +384,15 @@ dependencies = [
 
 [[package]]
 name = "embedded-hal"
-version = "1.0.0-rc.1"
+version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2894bc2f0457b8ca3d6b8ab8aad64d9337583672494013457f86c5a9146c0e22"
+checksum = "361a90feb7004eca4019fb28352a9465666b24f840f5c3cddf0ff13920590b89"
 
 [[package]]
 name = "embedded-hal-async"
-version = "1.0.0-rc.1"
+version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "76a8a3517745342155b3b00895a0f78417a453fb800d97a8bf4777d5720acde9"
+checksum = "0c4c685bbef7fe13c3c6dd4da26841ed3980ef33e841cddfa15ce8a8fb3f1884"
 dependencies = [
  "embedded-hal",
 ]
@@ -1659,6 +1659,7 @@ version = "0.1.0"
 dependencies = [
  "defmt",
  "embassy-sync",
+ "embedded-hal-async",
  "firmware-common",
  "futures",
  "heapless 0.8.0",
@@ -1674,6 +1675,7 @@ dependencies = [
  "critical-section",
  "defmt",
  "embassy-sync",
+ "embedded-hal-async",
  "futures",
  "futures-executor",
  "futures-test",

@@ -17,7 +17,7 @@ use crate::{
         pvlp::{PVLPSlave, PVLP},
     },
     device_manager_type,
-    driver::{gps::GPS, indicator::Indicator, radio::RadioReceiveInfo, timer::Timer},
+    driver::{gps::GPS, indicator::Indicator, radio::RadioReceiveInfo},
     vlp::application_layer::{ApplicationLayerRxPackage, ApplicationLayerTxPackage},
 };
 
@@ -36,9 +36,9 @@ pub async fn gcm_main<const N: usize, const M: usize>(
         unsafe { HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE) }
     }
 
-    claim_devices!(device_manager, vlp_phy);
+    claim_devices!(device_manager, radio_phy);
 
-    vlp_phy.set_output_power(22);
+    radio_phy.set_output_power(22);
 
     let radio_tx = Channel::<NoopRawMutex, ApplicationLayerRxPackage, 1>::new();
     let radio_rx = Channel::<NoopRawMutex, (RadioReceiveInfo, ApplicationLayerTxPackage), 3>::new();
@@ -84,8 +84,8 @@ pub async fn gcm_main<const N: usize, const M: usize>(
 
     let radio_fut = async {
         let mut socket = PVLPSlave::new(
-            PVLP(vlp_phy),
-            device_manager.timer,
+            PVLP(radio_phy),
+            device_manager.clock,
             radio_rx.sender(),
             radio_tx.receiver(),
         );

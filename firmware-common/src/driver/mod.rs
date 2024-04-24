@@ -12,6 +12,6 @@ pub mod pyro;
 pub mod rng;
 pub mod serial;
 pub mod sys_reset;
-pub mod timer;
+pub mod clock;
 pub mod usb;
 pub mod radio;

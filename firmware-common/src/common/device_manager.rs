@@ -1,3 +1,4 @@
+use embedded_hal_async::delay::DelayNs;
 use vlfs::{Crc, Flash};
 
 use crate::driver::{
@@ -15,7 +16,7 @@ use crate::driver::{
     rng::RNG,
     serial::Serial,
     sys_reset::SysReset,
-    timer::Timer,
+    clock::Clock,
     usb::USB,
     radio::RadioPhy,
 };
@@ -25,7 +26,8 @@ use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
 pub struct DeviceManager<
     DB: Debugger,
     D: SysReset,
-    T: Timer,
+    T: Clock,
+    DL: DelayNs + Copy,
     F: Flash,
     C: Crc,
     I: IMU,
@@ -68,7 +70,7 @@ pub struct DeviceManager<
     pub(crate) usb: Mutex<NoopRawMutex, U>,
     pub(crate) buzzer: Mutex<NoopRawMutex, B>,
     pub(crate) meg: Mutex<NoopRawMutex, M>,
-    pub(crate) vlp_phy: Mutex<NoopRawMutex, L>,
+    pub(crate) radio_phy: Mutex<NoopRawMutex, L>,
     pub(crate) rng: Mutex<NoopRawMutex, R>,
     pub(crate) status_indicator: Mutex<NoopRawMutex, IS>,
     pub(crate) error_indicator: Mutex<NoopRawMutex, IE>,
@@ -76,14 +78,16 @@ pub struct DeviceManager<
     pub(crate) gps: Mutex<NoopRawMutex, G>,
     pub(crate) gps_ctrl: Mutex<NoopRawMutex, GT>,
     pub(crate) camera: Mutex<NoopRawMutex, CAM>,
-    pub(crate) timer: T,
+    pub(crate) clock: T,
+    pub(crate) delay: DL,
     pub(crate) debugger: DB,
 }
 
 impl<
         DB: Debugger,
         D: SysReset,
-        T: Timer,
+        T: Clock,
+        DL: DelayNs + Copy,
         F: Flash,
         C: Crc,
         I: IMU,
@@ -113,6 +117,7 @@ impl<
         DB,
         D,
         T,
+        DL,
         F,
         C,
         I,
@@ -141,7 +146,8 @@ impl<
 {
     pub fn new(
         sys_reset: D,
-        timer: T,
+        clock: T,
+        delay:DL,
         flash: F,
         crc: C,
         imu: I,
@@ -155,7 +161,7 @@ impl<
         usb: U,
         buzzer: B,
         meg: M,
-        vlp_phy: L,
+        radio_phy: L,
         rng: R,
         status_indicator: IS,
         error_indicator: IE,
@@ -183,7 +189,7 @@ impl<
             usb: Mutex::new(usb),
             buzzer: Mutex::new(buzzer),
             meg: Mutex::new(meg),
-            vlp_phy: Mutex::new(vlp_phy),
+            radio_phy: Mutex::new(radio_phy),
             rng: Mutex::new(rng),
             status_indicator: Mutex::new(status_indicator),
             error_indicator: Mutex::new(error_indicator),
@@ -191,7 +197,8 @@ impl<
             gps: Mutex::new(gps.0),
             gps_ctrl: Mutex::new(gps.1),
             camera: Mutex::new(camera),
-            timer,
+            clock,
+            delay,
         }
     }
 }
@@ -226,7 +233,8 @@ macro_rules! device_manager_type{
     () => { &DeviceManager<
     impl Debugger,
     impl SysReset,
-    impl Timer,
+    impl Clock,
+    impl embedded_hal_async::delay::DelayNs + Copy,
     impl Flash,
     impl Crc,
     impl IMU,
@@ -256,7 +264,8 @@ macro_rules! device_manager_type{
 (mut) => { &mut DeviceManager<
     impl Debugger,
     impl SysReset,
-    impl Timer,
+    impl Clock,
+    impl embedded_hal_async::delay::DelayNs + Copy,
     impl Flash,
     impl Crc,
     impl IMU,
@@ -301,7 +310,7 @@ pub mod prelude {
     pub use crate::driver::rng::RNG;
     pub use crate::driver::serial::Serial;
     pub use crate::driver::sys_reset::SysReset;
-    pub use crate::driver::timer::Timer;
+    pub use crate::driver::clock::Clock;
     pub use crate::driver::usb::USB;
     pub use crate::driver::radio::RadioPhy;
     pub use vlfs::{Crc, Flash};

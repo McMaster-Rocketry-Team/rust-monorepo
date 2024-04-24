@@ -1,4 +1,4 @@
-use super::timer::Timer;
+use embedded_hal_async::delay::DelayNs;
 
 pub trait Continuity {
     type Error: defmt::Format;
@@ -11,22 +11,22 @@ pub trait PyroCtrl {
     async fn set_enable(&mut self, enable: bool) -> Result<(), Self::Error>;
 }
 
-pub struct DummyContinuity<T: Timer> {
-    timer: T,
+pub struct DummyContinuity<D: DelayNs> {
+    delay: D,
 }
 
-impl<T: Timer> DummyContinuity<T> {
-    pub fn new(timer: T) -> Self {
-        Self { timer }
+impl<D: DelayNs> DummyContinuity<D> {
+    pub fn new(delay: D) -> Self {
+        Self { delay }
     }
 }
 
-impl<T: Timer> Continuity for DummyContinuity<T> {
+impl<D: DelayNs> Continuity for DummyContinuity<D> {
     type Error = ();
 
     async fn wait_continuity_change(&mut self) -> Result<bool, Self::Error> {
         loop {
-            self.timer.sleep(1000.0).await;
+            self.delay.delay_ms(1).await;
         }
     }
 

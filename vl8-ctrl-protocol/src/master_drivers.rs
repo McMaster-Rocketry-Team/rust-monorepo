@@ -4,20 +4,22 @@ use core::{future::poll_fn, task::Poll};
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::blocking_mutex::Mutex as BlockingMutex;
 use embassy_sync::signal::Signal;
+use embedded_hal_async::delay::DelayNs;
+use firmware_common::driver::clock::Clock;
 use firmware_common::driver::{
     arming::HardwareArming as ArmingDriver, camera::Camera as CameraCtrlDriver, gps::NmeaSentence,
     gps::GPS as GPSDriver, pyro::Continuity as ContinuityDriver, pyro::PyroCtrl as PyroCtrlDriver,
-    serial::Serial, timer::Timer,
+    serial::Serial,
 };
 use heapless::String;
 
-pub struct MasterPyroCtrl<'a, S: Serial, T: Timer> {
-    master: &'a Master<S, T>,
+pub struct MasterPyroCtrl<'a, S: Serial, D: DelayNs + Copy> {
+    master: &'a Master<S, D>,
     pyro_channel: u8,
 }
 
-impl<'a, S: Serial, T: Timer> MasterPyroCtrl<'a, S, T> {
-    pub fn new(master: &'a Master<S, T>, pyro_channel: u8) -> Self {
+impl<'a, S: Serial, D: DelayNs + Copy> MasterPyroCtrl<'a, S, D> {
+    pub fn new(master: &'a Master<S, D>, pyro_channel: u8) -> Self {
         Self {
             master,
             pyro_channel,
@@ -25,7 +27,7 @@ impl<'a, S: Serial, T: Timer> MasterPyroCtrl<'a, S, T> {
     }
 }
 
-impl<'a, S: Serial, T: Timer> PyroCtrlDriver for MasterPyroCtrl<'a, S, T> {
+impl<'a, S: Serial, D: DelayNs + Copy> PyroCtrlDriver for MasterPyroCtrl<'a, S, D> {
     type Error = RequestError<S::Error>;
 
     async fn set_enable(&mut self, enable: bool) -> Result<(), RequestError<S::Error>> {
@@ -34,15 +36,15 @@ impl<'a, S: Serial, T: Timer> PyroCtrlDriver for MasterPyroCtrl<'a, S, T> {
     }
 }
 
-pub struct MasterPyroContinuity<'a, S: Serial, T: Timer> {
-    master: &'a Master<S, T>,
+pub struct MasterPyroContinuity<'a, S: Serial, D: DelayNs + Copy> {
+    master: &'a Master<S, D>,
     pyro_channel: u8,
     signal: Signal<NoopRawMutex, bool>,
     continuity: BlockingMutex<NoopRawMutex, RefCell<bool>>,
 }
 
-impl<'a, S: Serial, T: Timer> MasterPyroContinuity<'a, S, T> {
-    pub fn new(master: &'a Master<S, T>, pyro_channel: u8) -> Self {
+impl<'a, S: Serial, D: DelayNs + Copy> MasterPyroContinuity<'a, S, D> {
+    pub fn new(master: &'a Master<S, D>, pyro_channel: u8) -> Self {
         Self {
             master,
             pyro_channel,
@@ -68,7 +70,9 @@ impl<'a, S: Serial, T: Timer> MasterPyroContinuity<'a, S, T> {
                 if let Some(Event::Continuity {
                     pyro_channel,
                     continuity,
-                }) = *last_event && pyro_channel == self.pyro_channel {
+                }) = *last_event
+                    && pyro_channel == self.pyro_channel
+                {
                     last_event.take();
                     self.continuity.lock(|c| *c.borrow_mut() = continuity);
                     self.signal.signal(continuity);
@@ -83,7 +87,7 @@ impl<'a, S: Serial, T: Timer> MasterPyroContinuity<'a, S, T> {
     }
 }
 
-impl<'a, S: Serial, T: Timer> ContinuityDriver for &MasterPyroContinuity<'a, S, T> {
+impl<'a, S: Serial, D: DelayNs + Copy> ContinuityDriver for &MasterPyroContinuity<'a, S, D> {
     type Error = ();
 
     async fn wait_continuity_change(&mut self) -> Result<bool, ()> {
@@ -95,14 +99,14 @@ impl<'a, S: Serial, T: Timer> ContinuityDriver for &MasterPyroContinuity<'a, S, 
     }
 }
 
-pub struct MasterHardwareArming<'a, S: Serial, T: Timer> {
-    master: &'a Master<S, T>,
+pub struct MasterHardwareArming<'a, S: Serial, D: DelayNs + Copy> {
+    master: &'a Master<S, D>,
     signal: Signal<NoopRawMutex, bool>,
     armed: BlockingMutex<NoopRawMutex, RefCell<bool>>,
 }
 
-impl<'a, S: Serial, T: Timer> MasterHardwareArming<'a, S, T> {
-    pub fn new(master: &'a Master<S, T>) -> Self {
+impl<'a, S: Serial, D: DelayNs + Copy> MasterHardwareArming<'a, S, D> {
+    pub fn new(master: &'a Master<S, D>) -> Self {
         Self {
             master,
             signal: Signal::new(),
@@ -139,7 +143,7 @@ impl<'a, S: Serial, T: Timer> MasterHardwareArming<'a, S, T> {
     }
 }
 
-impl<'a, S: Serial, T: Timer> ArmingDriver for &MasterHardwareArming<'a, S, T> {
+impl<'a, S: Serial, D: DelayNs + Copy> ArmingDriver for &MasterHardwareArming<'a, S, D> {
     type Error = ();
 
     async fn wait_arming_change(&mut self) -> Result<bool, ()> {
@@ -151,20 +155,20 @@ impl<'a, S: Serial, T: Timer> ArmingDriver for &MasterHardwareArming<'a, S, T> {
     }
 }
 
-pub struct MasterGPS<'a, S: Serial, T: Timer> {
-    master: &'a Master<S, T>,
+pub struct MasterGPS<'a, S: Serial, D: DelayNs + Copy, K: Clock> {
+    master: &'a Master<S, D>,
     signal: Signal<NoopRawMutex, ()>,
     sentence: BlockingMutex<NoopRawMutex, RefCell<Option<NmeaSentence>>>,
-    timer: T,
+    clock: K,
 }
 
-impl<'a, S: Serial, T: Timer> MasterGPS<'a, S, T> {
-    pub fn new(master: &'a Master<S, T>, timer: T) -> Self {
+impl<'a, S: Serial, D: DelayNs + Copy, K: Clock> MasterGPS<'a, S, D, K> {
+    pub fn new(master: &'a Master<S, D>, clock: K) -> Self {
         Self {
             master,
             signal: Signal::new(),
             sentence: BlockingMutex::new(RefCell::new(None)),
-            timer,
+            clock,
         }
     }
 
@@ -180,7 +184,7 @@ impl<'a, S: Serial, T: Timer> MasterGPS<'a, S, T> {
                                 .take(length as usize)
                                 .map(|c| c as char),
                         ),
-                        timestamp: self.timer.now_mills(),
+                        timestamp: self.clock.now_ms(),
                     };
                     last_event.take();
                     self.sentence
@@ -197,7 +201,7 @@ impl<'a, S: Serial, T: Timer> MasterGPS<'a, S, T> {
     }
 }
 
-impl<'a, S: Serial, T: Timer> GPSDriver for &MasterGPS<'a, S, T> {
+impl<'a, S: Serial, D: DelayNs + Copy, K: Clock> GPSDriver for &MasterGPS<'a, S, D, K> {
     async fn next_nmea_sentence(&mut self) -> NmeaSentence {
         loop {
             self.signal.wait().await;
@@ -209,17 +213,17 @@ impl<'a, S: Serial, T: Timer> GPSDriver for &MasterGPS<'a, S, T> {
     }
 }
 
-pub struct MasterCameraCtrl<'a, S: Serial, T: Timer> {
-    master: &'a Master<S, T>,
+pub struct MasterCameraCtrl<'a, S: Serial, D: DelayNs + Copy> {
+    master: &'a Master<S, D>,
 }
 
-impl<'a, S: Serial, T: Timer> MasterCameraCtrl<'a, S, T> {
-    pub fn new(master: &'a Master<S, T>) -> Self {
+impl<'a, S: Serial, D: DelayNs + Copy> MasterCameraCtrl<'a, S, D> {
+    pub fn new(master: &'a Master<S, D>) -> Self {
         Self { master }
     }
 }
 
-impl<'a, S: Serial, T: Timer> CameraCtrlDriver for MasterCameraCtrl<'a, S, T> {
+impl<'a, S: Serial, D: DelayNs + Copy> CameraCtrlDriver for MasterCameraCtrl<'a, S, D> {
     type Error = RequestError<S::Error>;
 
     async fn set_recording(&mut self, is_recording: bool) -> Result<(), RequestError<S::Error>> {

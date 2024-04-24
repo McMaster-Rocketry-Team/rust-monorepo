@@ -4,6 +4,7 @@ use embassy_sync::{
     blocking_mutex::raw::RawMutex,
     channel::{Receiver, Sender},
 };
+use embedded_hal_async::delay::DelayNs;
 use rkyv::{
     check_archived_root,
     ser::{serializers::BufferSerializer, Serializer},
@@ -11,7 +12,7 @@ use rkyv::{
 };
 
 use super::{Priority, VLPError, VLPSocket};
-use crate::{common::telemetry::telemetry_data::TelemetryData, driver::{radio::RadioPhy, timer::Timer}};
+use crate::{common::telemetry::telemetry_data::TelemetryData, driver::{radio::RadioPhy}};
 use core::fmt::Write;
 use heapless::{String, Vec};
 
@@ -27,12 +28,12 @@ pub trait RadioApplicationClient {
         R: RawMutex,
         TXP: RadioApplicationPackage,
         RXP: RadioApplicationPackage,
-        T: Timer,
+        D: DelayNs,
         const TXN: usize,
         const RXN: usize,
     >(
         &mut self,
-        timer: T,
+        delay: D,
         radio_tx: Receiver<R, TXP, TXN>,
         radio_rx: Sender<R, RXP, RXN>,
     ) -> !;
@@ -47,17 +48,17 @@ impl<P: RadioPhy> RadioApplicationClient for VLPSocket<P> {
         R: RawMutex,
         TXP: RadioApplicationPackage,
         RXP: RadioApplicationPackage,
-        T: Timer,
+        D: DelayNs,
         const TXN: usize,
         const RXN: usize,
     >(
         &mut self,
-        timer: T,
+        mut delay: D,
         radio_tx: Receiver<'a, R, TXP, TXN>,
         radio_rx: Sender<'b, R, RXP, RXN>,
     ) -> ! {
         loop {
-            timer.sleep(100.0).await;
+            delay.delay_ms(100).await;
             match self.prio {
                 Priority::Driver => {
                     if let Ok(tx_package) = radio_tx.try_receive() {

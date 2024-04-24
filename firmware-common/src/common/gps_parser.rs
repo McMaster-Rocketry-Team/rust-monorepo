@@ -1,10 +1,9 @@
 use core::{cell::RefCell, ops::Deref};
 
-use defmt::{debug, warn};
 use nmea::Nmea;
 use rkyv::{Archive, Deserialize, Serialize};
 
-use crate::driver::{gps::GPS, timer::Timer};
+use crate::{driver::gps::GPS, Clock};
 use embassy_sync::blocking_mutex::{raw::NoopRawMutex, Mutex as BlockingMutex};
 
 #[derive(Archive, Deserialize, Serialize, Debug, Clone)]
@@ -38,18 +37,18 @@ impl<T: Deref<Target = Nmea>> From<(f64, T)> for GPSLocation {
     }
 }
 
-pub struct GPSParser<T: Timer> {
+pub struct GPSParser<T: Clock> {
     nmea: BlockingMutex<NoopRawMutex, RefCell<Nmea>>,
     updated: BlockingMutex<NoopRawMutex, RefCell<bool>>,
-    timer: T,
+    clock: T,
 }
 
-impl<T: Timer> GPSParser<T> {
-    pub fn new(timer: T) -> Self {
+impl<T: Clock> GPSParser<T> {
+    pub fn new(clock: T) -> Self {
         Self {
             nmea: BlockingMutex::new(RefCell::new(Nmea::default())),
             updated: BlockingMutex::new(RefCell::new(false)),
-            timer,
+            clock,
         }
     }
 
@@ -58,7 +57,7 @@ impl<T: Timer> GPSParser<T> {
             *updated.borrow_mut() = false;
         });
         self.nmea
-            .lock(|nmea| (self.timer.now_mills(), nmea.borrow()).into())
+            .lock(|nmea| (self.clock.now_ms(), nmea.borrow()).into())
     }
 
     pub fn get_updated(&self) -> bool {

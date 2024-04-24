@@ -1,4 +1,4 @@
-use super::timer::Timer;
+use embedded_hal_async::delay::DelayNs;
 
 pub trait ADC {
     type Error: defmt::Format;
@@ -6,21 +6,21 @@ pub trait ADC {
     async fn read(&mut self) -> Result<f32, Self::Error>;
 }
 
-pub struct DummyADC<T: Timer> {
-    timer: T,
+pub struct DummyADC<D: DelayNs> {
+    delay: D,
 }
 
-impl<T: Timer> DummyADC<T> {
-    pub fn new(timer: T) -> Self {
-        Self { timer }
+impl<D: DelayNs> DummyADC<D> {
+    pub fn new(delay: D) -> Self {
+        Self { delay }
     }
 }
 
-impl<T: Timer> ADC for DummyADC<T> {
+impl<D: DelayNs> ADC for DummyADC<D> {
     type Error = ();
 
     async fn read(&mut self) -> Result<f32, ()> {
-        self.timer.sleep(1.0).await;
+        self.delay.delay_ms(1).await;
         Ok(0.0)
     }
 }

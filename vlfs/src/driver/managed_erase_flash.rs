@@ -1,11 +1,13 @@
 use core::ops::Range;
 
-use crate::{Flash, Timer};
+use embedded_hal_async::delay::DelayNs;
+
+use crate::Flash;
 
 use super::async_erase_flash::AsyncEraseFlash;
 
 pub struct EraseTune {
-    pub erase_ms_every_write_256b: f64,
+    pub erase_us_every_write_256b: u32,
 }
 
 enum EraseState {
@@ -13,20 +15,20 @@ enum EraseState {
     Erasing { range: Range<u32>, suspended: bool },
 }
 
-pub struct ManagedEraseFlash<AF: AsyncEraseFlash, T: Timer> {
+pub struct ManagedEraseFlash<AF: AsyncEraseFlash, D: DelayNs> {
     flash: AF,
     erase_state: EraseState,
     tune: EraseTune,
-    timer: T,
+    delay: D,
 }
 
-impl<AF: AsyncEraseFlash, T: Timer> ManagedEraseFlash<AF, T> {
-    pub fn new(flash: AF, timer: T, tune: EraseTune) -> Self {
+impl<AF: AsyncEraseFlash, D: DelayNs> ManagedEraseFlash<AF, D> {
+    pub fn new(flash: AF, delay: D, tune: EraseTune) -> Self {
         Self {
             flash,
             erase_state: EraseState::Idle,
             tune,
-            timer,
+            delay,
         }
     }
 
@@ -78,7 +80,7 @@ impl<AF: AsyncEraseFlash, T: Timer> ManagedEraseFlash<AF, T> {
     }
 }
 
-impl<AF: AsyncEraseFlash, T: Timer> Flash for ManagedEraseFlash<AF, T> {
+impl<AF: AsyncEraseFlash, D: DelayNs> Flash for ManagedEraseFlash<AF, D> {
     type Error = AF::Error;
 
     async fn size(&self) -> u32 {
@@ -162,7 +164,7 @@ impl<AF: AsyncEraseFlash, T: Timer> Flash for ManagedEraseFlash<AF, T> {
         } = &self.erase_state
         {
             self.resume_erase().await?;
-            self.timer.sleep(self.tune.erase_ms_every_write_256b).await;
+            self.delay.delay_us(self.tune.erase_us_every_write_256b).await;
 
             if !self.flash.is_busy().await? {
                 self.erase_state = EraseState::Idle;

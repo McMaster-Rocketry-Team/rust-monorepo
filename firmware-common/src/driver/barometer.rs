@@ -1,4 +1,4 @@
-use super::timer::Timer;
+use embedded_hal_async::delay::DelayNs;
 use libm::powf;
 use rkyv::{Archive, Deserialize, Serialize};
 use core::fmt::Debug;
@@ -27,16 +27,17 @@ pub trait Barometer {
     async fn read(&mut self) -> Result<BaroReading, Self::Error>;
 }
 
-pub struct DummyBarometer<T: Timer> {
-    timer: T,
+pub struct DummyBarometer<D: DelayNs> {
+    delay: D,
 }
 
-impl<T: Timer> DummyBarometer<T> {
-    pub fn new(timer: T) -> Self {
-        Self { timer }
+impl<D: DelayNs> DummyBarometer<D> {
+    pub fn new(delay: D) -> Self {
+        Self { delay }
     }
 }
-impl<T: Timer> Barometer for DummyBarometer<T> {
+
+impl<D: DelayNs> Barometer for DummyBarometer<D> {
     type Error = ();
 
     async fn reset(&mut self) -> Result<(), ()> {
@@ -44,7 +45,7 @@ impl<T: Timer> Barometer for DummyBarometer<T> {
     }
 
     async fn read(&mut self) -> Result<BaroReading, ()> {
-        self.timer.sleep(1.0).await;
+        self.delay.delay_ms(1).await;
         Ok(BaroReading {
             timestamp: 0.0,
             temperature: 0.0,

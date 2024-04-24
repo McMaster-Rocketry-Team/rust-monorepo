@@ -1,6 +1,4 @@
 #![cfg_attr(not(any(test, feature = "clap")), no_std)]
-#![feature(async_fn_in_trait)]
-#![feature(impl_trait_projections)]
 #![feature(generic_const_exprs)]
 #![feature(let_chains)]
 #![feature(try_blocks)]
@@ -19,11 +17,10 @@ use crate::{
     ground_test::gcm::ground_test_gcm,
 };
 use defmt::*;
-use vlfs::{StatFlash, VLFS};
+use vlfs::{StatFlash, VLFS, Timer as VLFSTimer};
 
 use futures::{future::select, pin_mut};
 
-use crate::driver::timer::VLFSTimerWrapper;
 use crate::gcm::gcm_main;
 use crate::ground_test::avionics::ground_test_avionics;
 use crate::{
@@ -43,21 +40,31 @@ mod gcm;
 mod ground_test;
 pub mod utils;
 
+#[derive(Clone)]
+struct VLFSTimerWrapper<T:Clock>(T);
+
+impl<T:Clock> VLFSTimer for VLFSTimerWrapper<T>{
+    fn now_ms(&self) -> f64 {
+        self.0.now_ms()
+    }
+}
+
 pub async fn init(
     device_manager: device_manager_type!(mut),
     device_mode_overwrite: Option<DeviceMode>,
 ) -> ! {
     claim_devices!(device_manager, flash, crc, usb, serial);
-    let timer = device_manager.timer;
+    let clock = device_manager.clock;
+    let mut delay = device_manager.delay;
 
     let stat_flash = StatFlash::new();
-    let mut flash = stat_flash.get_flash(flash, VLFSTimerWrapper(timer));
+    let mut flash = stat_flash.get_flash(flash, VLFSTimerWrapper(clock));
     flash.reset().await.ok();
     let mut fs = VLFS::new(flash, crc);
     unwrap!(fs.init().await);
 
     let usb_connected = {
-        let timeout_fut = timer.sleep(500.0);
+        let timeout_fut = delay.delay_ms(500);
         let usb_wait_connection_fut = usb.wait_connection();
         pin_mut!(timeout_fut);
         pin_mut!(usb_wait_connection_fut);
@@ -86,10 +93,10 @@ pub async fn init(
             loop {
                 status_indicator.set_enable(true).await;
                 error_indicator.set_enable(false).await;
-                timer.sleep(1000.0).await;
+                delay.delay_ms(1000).await;
                 status_indicator.set_enable(false).await;
                 error_indicator.set_enable(true).await;
-                timer.sleep(1000.0).await;
+                delay.delay_ms(1000).await;
             }
         }
 

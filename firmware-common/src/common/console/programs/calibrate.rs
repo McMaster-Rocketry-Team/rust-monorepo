@@ -1,5 +1,6 @@
 use defmt::*;
 
+use embedded_hal_async::delay::DelayNs;
 use ferraris_calibration::interactive_calibrator::{
     Axis, Direction, Event, InteractiveCalibrator, InteractiveCalibratorState::*,
 };
@@ -13,111 +14,117 @@ use crate::{
     },
     device_manager_type,
     driver::{
-        buzzer::Buzzer, debugger::DebuggerTargetEvent, imu::IMU, serial::Serial, timer::Timer,
+        buzzer::Buzzer, debugger::DebuggerTargetEvent, imu::IMU, serial::Serial,
     },
 };
 
-pub struct Calibrate<'a, F: Flash, C: Crc> {
+pub struct Calibrate<'a, F: Flash, C: Crc, D:DelayNs+Copy> {
     vlfs: &'a VLFS<F, C>,
+    delay: D,
 }
 
-impl<'a, F: Flash, C: Crc> Calibrate<'a, F, C> {
-    pub fn new(vlfs: &'a VLFS<F, C>) -> Self {
-        Self { vlfs }
+impl<'a, F: Flash, C: Crc, D:DelayNs+Copy> Calibrate<'a, F, C, D> {
+    pub fn new(vlfs: &'a VLFS<F, C>, delay:D) -> Self {
+        Self { vlfs , delay}
     }
 
-    async fn waiting_still_sound(&self, buzzer: &mut impl Buzzer, timer: impl Timer) {
+    async fn waiting_still_sound(&self, buzzer: &mut impl Buzzer) {
+        let mut delay = self.delay;
         for _ in 0..2 {
-            buzzer.play(1000, 50.0).await;
-            timer.sleep(150.0).await;
-            buzzer.play(1250, 50.0).await;
-            timer.sleep(150.0).await;
+            buzzer.play(1000, 50).await;
+            delay.delay_ms(150).await;
+            buzzer.play(1250, 50).await;
+            delay.delay_ms(150).await;
         }
     }
 
-    async fn axis_sound(&self, axis: Axis, buzzer: &mut impl Buzzer, timer: impl Timer) {
+    async fn axis_sound(&self, axis: Axis, buzzer: &mut impl Buzzer) {
+        let mut delay = self.delay;
         let beep_count = match axis {
             Axis::X => 1,
             Axis::Y => 2,
             Axis::Z => 3,
         };
         for _ in 0..beep_count {
-            buzzer.play(2700, 50.0).await;
-            timer.sleep(150.0).await;
+            buzzer.play(2700, 50).await;
+            delay.delay_ms(150).await;
         }
 
-        timer.sleep(250.0).await;
+        delay.delay_ms(250).await;
     }
 
     async fn direction_sound(
         &self,
         direction: Direction,
         buzzer: &mut impl Buzzer,
-        timer: impl Timer,
     ) {
+        let mut delay = self.delay;
         match direction {
             Direction::Plus => {
-                buzzer.play(2000, 50.0).await;
-                timer.sleep(150.0).await;
-                buzzer.play(3500, 50.0).await;
+                buzzer.play(2000, 50).await;
+                delay.delay_ms(150).await;
+                buzzer.play(3500, 50).await;
             }
             Direction::Minus => {
-                buzzer.play(3500, 50.0).await;
-                timer.sleep(150.0).await;
-                buzzer.play(2000, 50.0).await;
+                buzzer.play(3500, 50).await;
+                delay.delay_ms(150).await;
+                buzzer.play(2000, 50).await;
             }
             Direction::Rotation => {
                 for frequency in (2000..3500).step_by(100) {
-                    buzzer.play(frequency, 4.0).await;
+                    buzzer.play(frequency, 4).await;
                 }
             }
         }
-        timer.sleep(400.0).await;
+        delay.delay_ms(400).await;
     }
 
-    async fn event_sound(&self, event: Event, buzzer: &mut impl Buzzer, timer: impl Timer) {
+    async fn event_sound(&self, event: Event, buzzer: &mut impl Buzzer) {
+        let mut delay = self.delay;
         match event {
             Event::Start => {
-                buzzer.play(1500, 25.0).await;
-                timer.sleep(75.0).await;
-                buzzer.play(1500, 25.0).await;
+                buzzer.play(1500, 25).await;
+                delay.delay_ms(75).await;
+                buzzer.play(1500, 25).await;
             }
             Event::End => {
-                buzzer.play(1500, 250.0).await;
+                buzzer.play(1500, 250).await;
             }
             Event::Variance => {}
         }
     }
 
-    async fn success_sound<B: Buzzer, TI: Timer>(&self, buzzer: &mut B, timer: TI) {
+    async fn success_sound<B: Buzzer>(&self, buzzer: &mut B) {
+        let mut delay = self.delay;
         for i in 0..4 {
-            buzzer.play(1000 + i * 250, 50.0).await;
-            timer.sleep(150.0).await;
+            buzzer.play(1000 + i * 250, 50).await;
+            delay.delay_ms(150).await;
         }
     }
 
-    async fn failure_sound<B: Buzzer, TI: Timer>(&self, buzzer: &mut B, timer: TI) {
+    async fn failure_sound<B: Buzzer>(&self, buzzer: &mut B) {
+        let mut delay = self.delay;
         for i in (0..4).rev() {
-            buzzer.play(1000 + i * 250, 50.0).await;
-            timer.sleep(150.0).await;
+            buzzer.play(1000 + i * 250, 50).await;
+            delay.delay_ms(150).await;
         }
     }
 }
 
-impl<'a, F: Flash, C: Crc> ConsoleProgram for Calibrate<'a, F, C> {
+impl<'a, F: Flash, C: Crc, D:DelayNs+Copy> ConsoleProgram for Calibrate<'a, F, C, D> {
     fn id(&self) -> u64 {
         0x05
     }
 
     async fn run(&mut self, serial: &mut impl Serial, device_manager: device_manager_type!()) {
-        let timer = device_manager.timer;
+        let delay = self.delay;
         let debugger = device_manager.debugger.clone();
         claim_devices!(device_manager, buzzer, imu);
         // TODO move this to main
         unwrap!(imu.wait_for_power_on().await);
         unwrap!(imu.reset().await);
 
-        let mut ticker = Ticker::every(timer, 5.0);
+        let mut ticker = Ticker::every(device_manager.clock, delay, 5.0);
         let mut calibrator = InteractiveCalibrator::new(Some(0.05), None, None);
         loop {
             ticker.next().await;
@@ -125,18 +132,18 @@ impl<'a, F: Flash, C: Crc> ConsoleProgram for Calibrate<'a, F, C> {
             let next_state = calibrator.process(&reading);
             if let Some(state) = next_state {
                 match state {
-                    WaitingStill => self.waiting_still_sound(&mut buzzer, timer).await,
+                    WaitingStill => self.waiting_still_sound(&mut buzzer).await,
                     State(axis, direction, event) if event != Event::Variance => {
-                        self.axis_sound(axis, &mut buzzer, timer).await;
-                        self.direction_sound(direction, &mut buzzer, timer).await;
-                        self.event_sound(event, &mut buzzer, timer).await;
+                        self.axis_sound(axis, &mut buzzer).await;
+                        self.direction_sound(direction, &mut buzzer).await;
+                        self.event_sound(event, &mut buzzer).await;
                     }
                     State(_, _, _) => {}
                     Success => {
-                        self.success_sound(&mut buzzer, timer).await;
+                        self.success_sound(&mut buzzer).await;
                     }
                     Failure => {
-                        self.failure_sound(&mut buzzer, timer).await;
+                        self.failure_sound(&mut buzzer).await;
                     }
                     Idle => {}
                 }

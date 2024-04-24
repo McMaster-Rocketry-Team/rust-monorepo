@@ -2,7 +2,7 @@ use core::ops::DerefMut;
 
 use embassy_sync::{blocking_mutex::raw::RawMutex, mutex::MutexGuard};
 
-use super::timer::Timer;
+use embedded_hal_async::delay::DelayNs;
 
 pub trait Serial {
     type Error: defmt::Format;
@@ -42,17 +42,17 @@ where
     }
 }
 
-pub struct DummySerial<T: Timer> {
-    timer: T,
+pub struct DummySerial<D: DelayNs> {
+    delay: D,
 }
 
-impl<T: Timer> DummySerial<T> {
-    pub fn new(timer: T) -> Self {
-        Self { timer }
+impl<D: DelayNs> DummySerial<D> {
+    pub fn new(delay: D) -> Self {
+        Self { delay }
     }
 }
 
-impl<T: Timer> Serial for DummySerial<T> {
+impl<D: DelayNs> Serial for DummySerial<D> {
     type Error = ();
 
     async fn write(&mut self, _data: &[u8]) -> Result<(), Self::Error> {
@@ -61,7 +61,7 @@ impl<T: Timer> Serial for DummySerial<T> {
 
     async fn read(&mut self, _buffer: &mut [u8]) -> Result<usize, Self::Error> {
         loop {
-            self.timer.sleep(1000.0).await;
+            self.delay.delay_ms(1000).await;
         }
     }
 }

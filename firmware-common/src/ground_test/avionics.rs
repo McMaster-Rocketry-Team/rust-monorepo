@@ -4,16 +4,15 @@ use crate::{
     claim_devices,
     common::device_manager::prelude::*,
     device_manager_type,
-    driver::{gps::GPS, indicator::Indicator, timer::Timer},
+    driver::{gps::GPS, indicator::Indicator},
 };
 use heapless::String;
 
 #[inline(never)]
 pub async fn ground_test_avionics(device_manager: device_manager_type!()) -> ! {
-    let timer = device_manager.timer;
     claim_devices!(
         device_manager,
-        vlp_phy,
+        radio_phy,
         pyro1_cont,
         pyro1_ctrl,
         pyro2_cont,
@@ -21,15 +20,17 @@ pub async fn ground_test_avionics(device_manager: device_manager_type!()) -> ! {
         status_indicator
     );
 
+    let mut delay = device_manager.delay;
     let indicator_fut = async {
         loop {
             status_indicator.set_enable(true).await;
-            timer.sleep(50.0).await;
+            delay.delay_ms(50).await;
             status_indicator.set_enable(false).await;
-            timer.sleep(2000.0).await;
+            delay.delay_ms(2000).await;
         }
     };
 
+    let mut delay=device_manager.delay;
     let avionics_fut = async {
         loop {
             let mut lora_message = String::<50>::new();
@@ -46,12 +47,12 @@ pub async fn ground_test_avionics(device_manager: device_manager_type!()) -> ! {
 
             info!("{}", lora_message.as_str());
 
-            vlp_phy.tx(
+            radio_phy.tx(
                 lora_message.as_bytes(),
             )
             .await;
 
-            match vlp_phy.rx_with_timeout(1000).await {
+            match radio_phy.rx_with_timeout(1000).await {
                 Ok(Some(data)) => {
                     info!(
                         "Received {} bytes",
@@ -61,12 +62,12 @@ pub async fn ground_test_avionics(device_manager: device_manager_type!()) -> ! {
                     if rx_buffer == b"VLF3 fire 1" {
                         info!("Firing pyro 1");
                         unwrap!(pyro1_ctrl.set_enable(true).await);
-                        timer.sleep(1000.0).await;
+                        delay.delay_ms(1000).await;
                         unwrap!(pyro1_ctrl.set_enable(false).await);
                     } else if rx_buffer == b"VLF3 fire 2" {
                         info!("Firing pyro 2");
                         unwrap!(pyro2_ctrl.set_enable(true).await);
-                        timer.sleep(1000.0).await;
+                        delay.delay_ms(1000).await;
                         unwrap!(pyro2_ctrl.set_enable(false).await);
                     }
                 }
@@ -78,7 +79,7 @@ pub async fn ground_test_avionics(device_manager: device_manager_type!()) -> ! {
                 }
             }
 
-            timer.sleep(2000.0).await;
+            delay.delay_ms(2000).await;
         }
     };
 
