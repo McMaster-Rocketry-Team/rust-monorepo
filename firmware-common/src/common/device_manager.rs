@@ -17,10 +17,9 @@ use crate::driver::{
     sys_reset::SysReset,
     timer::Timer,
     usb::USB,
+    radio::RadioPhy,
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
-
-use super::vlp::phy::VLPPhy;
 
 #[allow(dead_code)]
 pub struct DeviceManager<
@@ -43,7 +42,7 @@ pub struct DeviceManager<
     U: USB,
     B: Buzzer,
     M: Megnetometer,
-    L: VLPPhy,
+    L: RadioPhy,
     R: RNG,
     IS: Indicator,
     IE: Indicator,
@@ -101,7 +100,7 @@ impl<
         U: USB,
         B: Buzzer,
         M: Megnetometer,
-        L: VLPPhy,
+        L: RadioPhy,
         R: RNG,
         IS: Indicator,
         IE: Indicator,
@@ -244,7 +243,7 @@ macro_rules! device_manager_type{
     impl USB,
     impl Buzzer,
     impl Megnetometer,
-    impl VLPPhy,
+    impl RadioPhy,
     impl RNG,
     impl Indicator,
     impl Indicator,
@@ -274,7 +273,7 @@ macro_rules! device_manager_type{
     impl USB,
     impl Buzzer,
     impl Megnetometer,
-    impl VLPPhy,
+    impl RadioPhy,
     impl RNG,
     impl Indicator,
     impl Indicator,
@@ -287,7 +286,6 @@ macro_rules! device_manager_type{
 
 pub mod prelude {
     pub use super::DeviceManager;
-    pub use crate::common::vlp::phy::VLPPhy;
     pub use crate::device_manager_type;
     pub use crate::driver::adc::ADC;
     pub use crate::driver::arming::HardwareArming;
@@ -305,5 +303,6 @@ pub mod prelude {
     pub use crate::driver::sys_reset::SysReset;
     pub use crate::driver::timer::Timer;
     pub use crate::driver::usb::USB;
+    pub use crate::driver::radio::RadioPhy;
     pub use vlfs::{Crc, Flash};
 }

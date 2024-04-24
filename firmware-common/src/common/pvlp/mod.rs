@@ -4,18 +4,15 @@ use embassy_sync::{
 };
 
 use crate::{
-    driver::timer::Timer,
-    vlp::{
-        application_layer::{
+    driver::{radio::RadioReceiveInfo, timer::Timer},
+    vlp::application_layer::{
             ApplicationLayerRxPackage, ApplicationLayerTxPackage, RadioApplicationPackage,
-        },
-        phy::{RadioReceiveInfo, VLPPhy},
-    },
+        }, RadioPhy,
 };
 
-pub struct PVLP<T: VLPPhy>(pub T);
+pub struct PVLP<T: RadioPhy>(pub T);
 
-impl<T: VLPPhy> PVLP<T> {
+impl<T: RadioPhy> PVLP<T> {
     async fn tx<P: RadioApplicationPackage>(&mut self, package: P) {
         self.0.tx(&package.encode()).await;
     }
@@ -32,11 +29,18 @@ impl<T: VLPPhy> PVLP<T> {
         &mut self,
         timeout_ms: u32,
     ) -> Option<(RadioReceiveInfo, Option<P>)> {
-        self.0
+        let result = self.0
             .rx_with_timeout(timeout_ms)
-            .await
-            .map(|(info, data)| (info, P::decode(data)))
-            .ok()
+            .await;
+
+        match result {
+            Ok(Some((info, data))) =>Some((info, P::decode(data))),
+            Ok(None) => None,
+            Err(e) => {
+                log_warn!("rx_with_timeout error: {:?}", e);
+                None
+            },
+        }
     }
 
     fn set_frequency(&mut self, freq: u32) {
@@ -48,13 +52,13 @@ const FREQ_LIST: [u32; 8] = [
     902300000, 903900000, 905500000, 907100000, 908700000, 910300000, 911900000, 913500000,
 ];
 
-pub struct PVLPMaster<Y: VLPPhy, T: Timer> {
+pub struct PVLPMaster<Y: RadioPhy, T: Timer> {
     phy: PVLP<Y>,
     timer: T,
     start_time: Option<f64>,
 }
 
-impl<Y: VLPPhy, T: Timer> PVLPMaster<Y, T> {
+impl<Y: RadioPhy, T: Timer> PVLPMaster<Y, T> {
     pub fn new(phy: PVLP<Y>, timer: T) -> Self {
         Self {
             phy,
@@ -93,7 +97,7 @@ impl<Y: VLPPhy, T: Timer> PVLPMaster<Y, T> {
     }
 }
 
-pub struct PVLPSlave<'a, 'b, Y: VLPPhy, T: Timer, const N: usize, const M: usize> {
+pub struct PVLPSlave<'a, 'b, Y: RadioPhy, T: Timer, const N: usize, const M: usize> {
     phy: PVLP<Y>,
     timer: T,
     master_start_time: Option<f64>,
@@ -101,7 +105,7 @@ pub struct PVLPSlave<'a, 'b, Y: VLPPhy, T: Timer, const N: usize, const M: usize
     tx: Receiver<'b, NoopRawMutex, ApplicationLayerRxPackage, M>,
 }
 
-impl<'a, 'b, Y: VLPPhy, T: Timer, const N: usize, const M: usize> PVLPSlave<'a, 'b, Y, T, N, M> {
+impl<'a, 'b, Y: RadioPhy, T: Timer, const N: usize, const M: usize> PVLPSlave<'a, 'b, Y, T, N, M> {
     pub fn new(
         phy: PVLP<Y>,
         timer: T,
@@ -151,7 +155,7 @@ impl<'a, 'b, Y: VLPPhy, T: Timer, const N: usize, const M: usize> PVLPSlave<'a, 
                         Some(self.timer.now_mills() - self.calculate_airtime(info.len) - 50.0);
                 }
                 self.rx.try_send((info, package)).ok();
-                if let Ok(tx_package) = self.tx.try_recv() {
+                if let Ok(tx_package) = self.tx.try_receive() {
                     self.phy.tx(tx_package).await;
                 }
             } else {

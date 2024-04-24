@@ -17,11 +17,8 @@ use crate::{
         pvlp::{PVLPSlave, PVLP},
     },
     device_manager_type,
-    driver::{gps::GPS, indicator::Indicator, timer::Timer},
-    vlp::{
-        application_layer::{ApplicationLayerRxPackage, ApplicationLayerTxPackage},
-        phy::RadioReceiveInfo,
-    },
+    driver::{gps::GPS, indicator::Indicator, radio::RadioReceiveInfo, timer::Timer},
+    vlp::application_layer::{ApplicationLayerRxPackage, ApplicationLayerTxPackage},
 };
 
 #[inline(never)]
@@ -199,7 +196,7 @@ impl<'a, const N: usize> ConsoleProgram for GCMGetTelemetry<'a, N> {
     }
 
     async fn run(&mut self, serial: &mut impl Serial, _device_manager: device_manager_type!()) {
-        if let Ok((info, package)) = self.receiver.try_recv() {
+        if let Ok((info, package)) = self.receiver.try_receive() {
             match package {
                 ApplicationLayerTxPackage::Telemetry(telemetry) => {
                     log_info!("Telemetry: {:?} {:?}", info, telemetry);

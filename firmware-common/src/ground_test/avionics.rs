@@ -52,7 +52,7 @@ pub async fn ground_test_avionics(device_manager: device_manager_type!()) -> ! {
             .await;
 
             match vlp_phy.rx_with_timeout(1000).await {
-                Ok(data) => {
+                Ok(Some(data)) => {
                     info!(
                         "Received {} bytes",
                         data.0.len
@@ -69,6 +69,9 @@ pub async fn ground_test_avionics(device_manager: device_manager_type!()) -> ! {
                         timer.sleep(1000.0).await;
                         unwrap!(pyro2_ctrl.set_enable(false).await);
                     }
+                }
+                Ok(None)=>{
+                    info!("rx Timeout");
                 }
                 Err(lora_error) => {
                     info!("Radio Error: {:?}", lora_error);

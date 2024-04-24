@@ -2,11 +2,6 @@ use core::ops::DerefMut;
 use serde::Serialize as SerdeSerialize;
 use embassy_sync::{blocking_mutex::raw::RawMutex, mutex::MutexGuard};
 use heapless::Vec;
-use lora_phy::{
-    mod_params::{Bandwidth, CodingRate, ModulationParams, RadioError, SpreadingFactor},
-    mod_traits::RadioKind,
-    LoRa,
-};
 
 use crate::{
     driver::timer::{DelayUsWrapper, Timer},
@@ -25,64 +20,6 @@ const FREQ_LIST: [u32; 64] = [
     911900000, 912100000, 912300000, 912500000, 912700000, 912900000, 913100000, 913300000,
     913500000, 913700000, 913900000, 914100000, 914300000, 914500000, 914700000, 914900000,
 ];
-
-#[derive(SerdeSerialize, Debug, defmt::Format)]
-pub struct RadioReceiveInfo {
-    pub rssi: i16,
-    pub snr: i16,
-    pub len: u8,
-}
-
-pub trait VLPPhy {
-    async fn tx(&mut self, payload: &[u8]);
-    async fn rx(&mut self) -> Result<(RadioReceiveInfo, Vec<u8, MAX_PAYLOAD_LENGTH>), RadioError>;
-    async fn rx_with_timeout(
-        &mut self,
-        timeout_ms: u32,
-    ) -> Result<(RadioReceiveInfo, Vec<u8, MAX_PAYLOAD_LENGTH>), RadioError>;
-
-    fn set_frequency(&mut self, frequency: u32);
-    fn increment_frequency(&mut self);
-    fn reset_frequency(&mut self);
-    fn set_output_power(&mut self, power: i32);
-}
-
-impl<'a, M, T> VLPPhy for MutexGuard<'a, M, T>
-where
-    M: RawMutex,
-    T: VLPPhy,
-{
-    async fn tx(&mut self, payload: &[u8]) {
-        self.deref_mut().tx(payload).await
-    }
-
-    async fn rx(&mut self) -> Result<(RadioReceiveInfo, Vec<u8, MAX_PAYLOAD_LENGTH>), RadioError> {
-        self.deref_mut().rx().await
-    }
-
-    async fn rx_with_timeout(
-        &mut self,
-        timeout_ms: u32,
-    ) -> Result<(RadioReceiveInfo, Vec<u8, MAX_PAYLOAD_LENGTH>), RadioError> {
-        self.deref_mut().rx_with_timeout(timeout_ms).await
-    }
-
-    fn increment_frequency(&mut self) {
-        self.deref_mut().increment_frequency()
-    }
-
-    fn set_frequency(&mut self, frequency: u32) {
-        self.deref_mut().set_frequency(frequency)
-    }
-
-    fn reset_frequency(&mut self) {
-        self.deref_mut().reset_frequency()
-    }
-
-    fn set_output_power(&mut self, power: i32) {
-        self.deref_mut().set_output_power(power)
-    }
-}
 
 pub struct PhysicalVLPPhy<'a, R: RadioKind + 'static, T: Timer> {
     phy: &'a mut LoRa<R>,

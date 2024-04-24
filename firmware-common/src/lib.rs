@@ -1,6 +1,7 @@
 #![cfg_attr(not(any(test, feature = "clap")), no_std)]
 #![feature(async_fn_in_trait)]
 #![feature(impl_trait_projections)]
+#![feature(generic_const_exprs)]
 #![feature(let_chains)]
 #![feature(try_blocks)]
 #![feature(async_closure)]

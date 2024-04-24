@@ -112,18 +112,18 @@ mod tests {
 
     #[test]
     fn gll() {
-        let result = parse(&String::from(
+        let result = parse(&String::try_from(
             "$GNGLL,4315.68533,N,07955.20234,W,080023.000,A,A*5D\r\n",
-        ))
+        ).unwrap())
         .unwrap();
         assert_eq!(format!("{:?}", result), "GLL { talker: \"GN\", latitude: 43.26142, longitude: -79.92004, utc: Time { hour: 8, minute: 0, second: 23, millisecond: 0 } }");
     }
 
     #[test]
     fn gsv() {
-        let result = parse(&String::from(
+        let result = parse(&String::try_from(
             "$GPGSV,2,2,07,23,62,115,24,24,42,057,20,32,52,272,21*4A\r\n",
-        ))
+        ).unwrap())
         .unwrap();
         assert_eq!(
             format!("{:?}", result),

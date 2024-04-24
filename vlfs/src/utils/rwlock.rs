@@ -66,7 +66,7 @@ where
                         true
                     }
                     LockedState::WriteLocked => {
-                        s.waker.register(cx.waker()).unwrap(); // TODO return error
+                        s.waker.register(cx.waker()); // TODO could go wrong?
                         false
                     }
                 }
@@ -96,7 +96,7 @@ where
                         true
                     }
                     _ => {
-                        s.waker.register(cx.waker()).unwrap();
+                        s.waker.register(cx.waker()); // TODO could go wrong?
                         false
                     }
                 }

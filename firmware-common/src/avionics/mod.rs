@@ -280,7 +280,7 @@ pub async fn avionics_main(
         let mut socket = PVLPMaster::new(PVLP(vlp_phy), timer);
 
         loop {
-            let tx_package = radio_tx.recv().await;
+            let tx_package = radio_tx.receive().await;
             let rx = socket.tx_and_rx(tx_package).await;
             if let Some(rx_package) = rx {
                 radio_rx.send(rx_package).await;
@@ -467,7 +467,7 @@ pub async fn avionics_main(
 
         let radio_fut = async {
             loop {
-                match radio_rx.recv().await {
+                match radio_rx.receive().await {
                     ApplicationLayerRxPackage::VerticalCalibration => {
                         log_info!("Vertical calibration");
                         if !arming_state.lock(|s| (*s.borrow()).is_armed()) {
@@ -614,7 +614,7 @@ pub async fn avionics_main(
         claim_devices!(device_manager, pyro1_ctrl, pyro2_ctrl);
         let debugger = device_manager.debugger.clone();
         loop {
-            let event = receiver.recv().await;
+            let event = receiver.receive().await;
             match event {
                 FlightCoreEvent::ChangeAltitude(_) => {}
                 _ => {

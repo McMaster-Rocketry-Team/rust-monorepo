@@ -6,7 +6,7 @@ members = [
     "vlfs",
     "ferraris-calibration",
     "vl8-ctrl-protocol",
-    "launch-simulator",
+    # "launch-simulator",
     "vlfs-host",
 ]
 resolver = "2"

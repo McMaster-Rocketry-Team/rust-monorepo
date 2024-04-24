@@ -10,8 +10,8 @@ use rkyv::{
     AlignedBytes, Archive, Deserialize, Serialize,
 };
 
-use super::{phy::VLPPhy, Priority, VLPError, VLPSocket};
-use crate::{common::telemetry::telemetry_data::TelemetryData, driver::timer::Timer};
+use super::{Priority, VLPError, VLPSocket};
+use crate::{common::telemetry::telemetry_data::TelemetryData, driver::{radio::RadioPhy, timer::Timer}};
 use core::fmt::Write;
 use heapless::{String, Vec};
 
@@ -38,8 +38,8 @@ pub trait RadioApplicationClient {
     ) -> !;
 }
 
-impl<P: VLPPhy> RadioApplicationClient for VLPSocket<P> {
-    type Error = VLPError;
+impl<P: RadioPhy> RadioApplicationClient for VLPSocket<P> {
+    type Error = P::Error;
 
     async fn run<
         'a,
@@ -60,7 +60,7 @@ impl<P: VLPPhy> RadioApplicationClient for VLPSocket<P> {
             timer.sleep(100.0).await;
             match self.prio {
                 Priority::Driver => {
-                    if let Ok(tx_package) = radio_tx.try_recv() {
+                    if let Ok(tx_package) = radio_tx.try_receive() {
                         self.transmit(tx_package.encode()).await;
                     } else {
                         self.handoff().await;
