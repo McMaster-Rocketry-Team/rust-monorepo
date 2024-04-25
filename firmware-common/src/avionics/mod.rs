@@ -258,7 +258,7 @@ pub async fn avionics_main(
 
     let imu = Mutex::<NoopRawMutex, _>::new(imu);
 
-    let gps_parser = GPSParser::new(clock);
+    let gps_parser = GPSParser::new();
 
     let cal_info = read_imu_calibration_file(fs).await;
 
