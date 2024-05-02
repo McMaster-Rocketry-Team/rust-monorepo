@@ -10,7 +10,7 @@ use embassy_sync::{blocking_mutex::{raw::NoopRawMutex, Mutex as BlockingMutex}, 
 #[derive(Archive, Deserialize, Serialize, Debug, Clone, defmt::Format)]
 pub struct GPSLocation {
     pub timestamp: f64,
-    pub gps_timestamp: Option<i64>,
+    pub gps_timestamp: Option<i64>, // in seconds
     pub lat_lon: Option<(f64, f64)>,
     pub altitude: Option<f32>,
     pub num_of_fix_satellites: u32,
@@ -92,6 +92,13 @@ impl GPSParser {
         let parse_fut = async {
             loop {
                 let nmea_sentence = signal.wait().await;
+                log_trace!(
+                    "NMEA sentence {}",
+                    &nmea_sentence
+                        .sentence
+                        .as_str()
+                        .trim_end_matches(|c| c == '\r' || c == '\n'),
+                );
                 self.nmea.lock(|nmea| {
                     let mut nmea = nmea.borrow_mut();
                     match nmea.1.parse(&nmea_sentence.sentence.as_str()) {

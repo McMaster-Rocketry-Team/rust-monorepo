@@ -251,7 +251,6 @@ pub async fn avionics_main(
     );
     let clock = device_manager.clock;
     radio_phy.set_output_power(22);
-    unwrap!(imu.wait_for_power_on().await);
     unwrap!(imu.reset().await);
     unwrap!(barometer.reset().await);
     unwrap!(meg.reset().await);

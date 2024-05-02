@@ -3,7 +3,6 @@ use defmt::unwrap;
 
 pub async fn self_test(device_manager: device_manager_type!()) -> bool {
     claim_devices!(device_manager, imu, barometer, meg);
-    unwrap!(imu.wait_for_power_on().await);
     unwrap!(imu.reset().await);
     unwrap!(barometer.reset().await);
     unwrap!(meg.reset().await);

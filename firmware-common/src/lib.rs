@@ -6,6 +6,9 @@
 
 mod fmt;
 
+use common::utc_clock::UtcClockTask;
+use driver::gps::{GPSParser, GPSPPS};
+use embedded_hal_async::delay::DelayNs;
 use futures::join;
 
 use crate::{
@@ -17,7 +20,7 @@ use crate::{
     ground_test::gcm::ground_test_gcm,
 };
 use defmt::*;
-use vlfs::{StatFlash, VLFS, Timer as VLFSTimer};
+use vlfs::{StatFlash, Timer as VLFSTimer, VLFS};
 
 use futures::{future::select, pin_mut};
 
@@ -41,12 +44,41 @@ mod ground_test;
 pub mod utils;
 
 #[derive(Clone)]
-struct VLFSTimerWrapper<T:Clock>(T);
+struct VLFSTimerWrapper<T: Clock>(T);
 
-impl<T:Clock> VLFSTimer for VLFSTimerWrapper<T>{
+impl<T: Clock> VLFSTimer for VLFSTimerWrapper<T> {
     fn now_ms(&self) -> f64 {
         self.0.now_ms()
     }
+}
+
+pub async fn testMain(
+    clock: impl Clock,
+    mut gps: impl GPS,
+    pps: impl GPSPPS,
+    mut delay: impl DelayNs,
+) {
+    gps.reset().await;
+
+    let parser = GPSParser::new();
+    let gps_parser_fut = parser.run(&mut gps);
+
+    let utc_clock_task = UtcClockTask::new(clock);
+    let utc_clock_task_fut = utc_clock_task.run(pps, &parser, clock);
+    let utc_clock = utc_clock_task.get_clock();
+
+    let display_fut = async {
+        loop {
+            delay.delay_ms(10).await;
+            if utc_clock.ready() {
+                info!("UTC: {}", (utc_clock.now_ms() / 1000.0) as i64);
+            }else{
+                // info!("UTC not ready");
+            }
+        }
+    };
+
+    join!(gps_parser_fut, utc_clock_task_fut, display_fut);
 }
 
 pub async fn init(

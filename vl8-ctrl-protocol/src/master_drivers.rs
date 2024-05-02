@@ -211,6 +211,10 @@ impl<'a, S: Serial, D: DelayNs + Copy, K: Clock> GPSDriver for &MasterGPS<'a, S,
             }
         }
     }
+
+    async fn reset(&mut self) {
+        // noop
+    }
 }
 
 pub struct MasterCameraCtrl<'a, S: Serial, D: DelayNs + Copy> {

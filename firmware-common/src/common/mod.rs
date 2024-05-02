@@ -9,7 +9,9 @@ mod multi_waker;
 pub mod sensor_snapshot;
 pub mod telemetry;
 pub mod ticker;
+pub mod utc_clock;
+pub mod pvlp;
+
 #[macro_use]
 pub mod vlp;
 
-pub mod pvlp;

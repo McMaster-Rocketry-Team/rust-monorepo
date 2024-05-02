@@ -130,10 +130,6 @@ pub struct VirtualIMU {
 impl IMU for VirtualIMU {
     type Error = ();
 
-    async fn wait_for_power_on(&mut self) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
     async fn reset(&mut self) -> Result<(), Self::Error> {
         Ok(())
     }

@@ -121,7 +121,6 @@ impl<'a, F: Flash, C: Crc, D:DelayNs+Copy> ConsoleProgram for Calibrate<'a, F, C
         let debugger = device_manager.debugger.clone();
         claim_devices!(device_manager, buzzer, imu);
         // TODO move this to main
-        unwrap!(imu.wait_for_power_on().await);
         unwrap!(imu.reset().await);
 
         let mut ticker = Ticker::every(device_manager.clock, delay, 5.0);

@@ -7,7 +7,6 @@ use embedded_hal_async::delay::DelayNs;
 pub trait IMU {
     type Error: defmt::Format + Debug;
 
-    async fn wait_for_power_on(&mut self) -> Result<(), Self::Error>;
     async fn reset(&mut self) -> Result<(), Self::Error>;
     async fn read(&mut self) -> Result<IMUReading, Self::Error>;
 }
@@ -24,10 +23,6 @@ impl<D: DelayNs> DummyIMU<D> {
 
 impl<D: DelayNs> IMU for DummyIMU<D> {
     type Error = ();
-
-    async fn wait_for_power_on(&mut self) -> Result<(), ()> {
-        Ok(())
-    }
 
     async fn reset(&mut self) -> Result<(), ()> {
         Ok(())
