@@ -1,11 +1,14 @@
 use core::{cell::RefCell, ops::Deref};
 
+use crate::driver::gps::{NmeaSentence, GPS};
 use chrono::{TimeZone, Utc};
+use embassy_sync::{
+    blocking_mutex::{raw::NoopRawMutex, Mutex as BlockingMutex},
+    signal::Signal,
+};
+use futures::join;
 use nmea::Nmea;
 use rkyv::{Archive, Deserialize, Serialize};
-use futures::join;
-use crate::driver::gps::{NmeaSentence, GPS};
-use embassy_sync::{blocking_mutex::{raw::NoopRawMutex, Mutex as BlockingMutex}, signal::Signal};
 
 #[derive(Archive, Deserialize, Serialize, Debug, Clone, defmt::Format)]
 pub struct GPSLocation {

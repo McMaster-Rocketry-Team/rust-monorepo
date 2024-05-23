@@ -7,18 +7,18 @@ use crate::driver::{
     barometer::Barometer,
     buzzer::Buzzer,
     camera::Camera,
+    clock::Clock,
     debugger::Debugger,
     gps::GPS,
     imu::IMU,
     indicator::Indicator,
     meg::Megnetometer,
     pyro::{Continuity, PyroCtrl},
+    radio::RadioPhy,
     rng::RNG,
     serial::Serial,
     sys_reset::SysReset,
-    clock::Clock,
     usb::USB,
-    radio::RadioPhy,
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
 
@@ -143,7 +143,7 @@ impl<
     pub fn new(
         sys_reset: D,
         clock: T,
-        delay:DL,
+        delay: DL,
         flash: F,
         crc: C,
         imu: I,
@@ -294,17 +294,17 @@ pub mod prelude {
     pub use crate::driver::barometer::Barometer;
     pub use crate::driver::buzzer::Buzzer;
     pub use crate::driver::camera::Camera;
+    pub use crate::driver::clock::Clock;
     pub use crate::driver::debugger::Debugger;
     pub use crate::driver::gps::GPS;
     pub use crate::driver::imu::IMU;
     pub use crate::driver::indicator::Indicator;
     pub use crate::driver::meg::Megnetometer;
     pub use crate::driver::pyro::{Continuity, PyroCtrl};
+    pub use crate::driver::radio::RadioPhy;
     pub use crate::driver::rng::RNG;
     pub use crate::driver::serial::Serial;
     pub use crate::driver::sys_reset::SysReset;
-    pub use crate::driver::clock::Clock;
     pub use crate::driver::usb::USB;
-    pub use crate::driver::radio::RadioPhy;
     pub use vlfs::{Crc, Flash};
 }

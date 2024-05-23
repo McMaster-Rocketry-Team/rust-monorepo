@@ -200,7 +200,7 @@ impl<L: RadioPhy> VLPSocket<L> {
                         }
                     }
                     Err(e) => {
-                        if let VLPError::<L>::SessionReset = e{
+                        if let VLPError::<L>::SessionReset = e {
                             self.do_establish().await;
                             packet.seqnum = self.next_seqnum;
                             self.next_seqnum = self.next_seqnum.wrapping_add(1);
@@ -303,11 +303,13 @@ impl<L: RadioPhy> VLPSocket<L> {
         loop {
             match self.phy.rx_with_timeout(2000).await {
                 Ok(resp) => {
-                    if let Some(resp) = resp{
+                    if let Some(resp) = resp {
                         match Packet::deserialize(resp.1) {
                             Ok(recv) => {
                                 // Validate seqnum against record. Re-tx if mismatch
-                                if recv.flags.contains(Flags::ACK) && recv.seqnum == self.next_seqnum {
+                                if recv.flags.contains(Flags::ACK)
+                                    && recv.seqnum == self.next_seqnum
+                                {
                                     log_info!("ACK recvd");
                                     self.next_seqnum = self.next_seqnum.wrapping_add(1);
                                     self.phy.increment_frequency();
@@ -327,9 +329,9 @@ impl<L: RadioPhy> VLPSocket<L> {
                                 self.phy.tx(&packet[..]).await;
                             }
                         }
-                    }else{
+                    } else {
                         log_info!("retx (timeout)");
-                    self.phy.tx(&packet[..]).await;
+                        self.phy.tx(&packet[..]).await;
                     }
                 }
                 Err(e) => {

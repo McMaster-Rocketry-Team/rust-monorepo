@@ -18,9 +18,9 @@ use crate::{
     DeviceInfo, Event, GetDevice, PollEvent, PyroCtrl,
 };
 
-pub struct Master<S: Serial, D:DelayNs+Copy> {
+pub struct Master<S: Serial, D: DelayNs + Copy> {
     serial: Mutex<NoopRawMutex, S>,
-    delay:D,
+    delay: D,
     pub(crate) last_event: BlockingMutex<NoopRawMutex, RefCell<Option<Event>>>,
     pub(crate) wakers_reg: BlockingMutex<NoopRawMutex, RefCell<MultiWakerRegistration<10>>>,
 }
@@ -33,8 +33,8 @@ pub enum RequestError<E: Format> {
     Timeout,
 }
 
-impl<S: Serial, D:DelayNs+Copy> Master<S, D> {
-    pub fn new(serial: S, delay:D) -> Self {
+impl<S: Serial, D: DelayNs + Copy> Master<S, D> {
+    pub fn new(serial: S, delay: D) -> Self {
         Self {
             serial: Mutex::new(serial),
             delay,

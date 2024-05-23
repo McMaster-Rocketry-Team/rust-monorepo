@@ -13,19 +13,17 @@ use crate::{
         files::CALIBRATION_FILE_TYPE, ticker::Ticker,
     },
     device_manager_type,
-    driver::{
-        buzzer::Buzzer, debugger::DebuggerTargetEvent, imu::IMU, serial::Serial,
-    },
+    driver::{buzzer::Buzzer, debugger::DebuggerTargetEvent, imu::IMU, serial::Serial},
 };
 
-pub struct Calibrate<'a, F: Flash, C: Crc, D:DelayNs+Copy> {
+pub struct Calibrate<'a, F: Flash, C: Crc, D: DelayNs + Copy> {
     vlfs: &'a VLFS<F, C>,
     delay: D,
 }
 
-impl<'a, F: Flash, C: Crc, D:DelayNs+Copy> Calibrate<'a, F, C, D> {
-    pub fn new(vlfs: &'a VLFS<F, C>, delay:D) -> Self {
-        Self { vlfs , delay}
+impl<'a, F: Flash, C: Crc, D: DelayNs + Copy> Calibrate<'a, F, C, D> {
+    pub fn new(vlfs: &'a VLFS<F, C>, delay: D) -> Self {
+        Self { vlfs, delay }
     }
 
     async fn waiting_still_sound(&self, buzzer: &mut impl Buzzer) {
@@ -53,11 +51,7 @@ impl<'a, F: Flash, C: Crc, D:DelayNs+Copy> Calibrate<'a, F, C, D> {
         delay.delay_ms(250).await;
     }
 
-    async fn direction_sound(
-        &self,
-        direction: Direction,
-        buzzer: &mut impl Buzzer,
-    ) {
+    async fn direction_sound(&self, direction: Direction, buzzer: &mut impl Buzzer) {
         let mut delay = self.delay;
         match direction {
             Direction::Plus => {
@@ -111,7 +105,7 @@ impl<'a, F: Flash, C: Crc, D:DelayNs+Copy> Calibrate<'a, F, C, D> {
     }
 }
 
-impl<'a, F: Flash, C: Crc, D:DelayNs+Copy> ConsoleProgram for Calibrate<'a, F, C, D> {
+impl<'a, F: Flash, C: Crc, D: DelayNs + Copy> ConsoleProgram for Calibrate<'a, F, C, D> {
     fn id(&self) -> u64 {
         0x05
     }
@@ -153,7 +147,8 @@ impl<'a, F: Flash, C: Crc, D:DelayNs+Copy> ConsoleProgram for Calibrate<'a, F, C
                     let cal_info = calibrator.get_calibration_info().unwrap();
                     info!("{}", cal_info);
                     unwrap!(
-                        self.vlfs.remove_files_with_type(CALIBRATION_FILE_TYPE)
+                        self.vlfs
+                            .remove_files_with_type(CALIBRATION_FILE_TYPE)
                             .await
                     );
                     let file = unwrap!(self.vlfs.create_file(CALIBRATION_FILE_TYPE).await);

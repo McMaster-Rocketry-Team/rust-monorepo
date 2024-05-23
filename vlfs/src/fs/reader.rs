@@ -13,7 +13,7 @@ where
         &self,
         file_id: FileID,
     ) -> Result<FileReader<F, C>, VLFSError<F::Error>> {
-        if let Some((file_entry,_)) = self.find_file_entry(file_id).await? {
+        if let Some((file_entry, _)) = self.find_file_entry(file_id).await? {
             log_info!(
                 "Opening file {:?} with id {:?} for read",
                 file_id,
@@ -25,7 +25,11 @@ where
 
             self.mark_file_opened(file_id).await?;
 
-            return Ok(FileReader::new(self, file_entry.first_sector_index, file_id));
+            return Ok(FileReader::new(
+                self,
+                file_entry.first_sector_index,
+                file_id,
+            ));
         }
         Err(VLFSError::FileDoesNotExist)
     }
@@ -68,7 +72,7 @@ where
     F: Flash,
     C: Crc,
 {
-    fn new(vlfs: &'a VLFS<F, C>, first_sector_index: Option<u16>,file_id:FileID) -> Self {
+    fn new(vlfs: &'a VLFS<F, C>, first_sector_index: Option<u16>, file_id: FileID) -> Self {
         Self {
             vlfs,
             sector_data_length: SectorDataLength::NotRead,
@@ -107,7 +111,9 @@ where
                     .await
                     .map_err(VLFSError::FlashError)?;
                 let sector_data_length = find_most_common_u16_out_of_4(read_result);
-                if let Some(sector_data_length) = sector_data_length && sector_data_length <= MAX_DATA_LENGTH_PER_SECTION as u16 {
+                if let Some(sector_data_length) = sector_data_length
+                    && sector_data_length <= MAX_DATA_LENGTH_PER_SECTION as u16
+                {
                     self.sector_data_length = SectorDataLength::Read(sector_data_length);
                 } else {
                     self.sector_data_length = SectorDataLength::Unknown;
@@ -215,10 +221,7 @@ where
     }
 
     pub async fn close(mut self) {
-        log_info!(
-            "Closing file with id {:?} for read",
-            self.file_id,
-        );
+        log_info!("Closing file with id {:?} for read", self.file_id,);
         self.vlfs.mark_file_closed(self.file_id).await;
         self.closed = true;
     }

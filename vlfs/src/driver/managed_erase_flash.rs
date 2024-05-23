@@ -164,7 +164,9 @@ impl<AF: AsyncEraseFlash, D: DelayNs> Flash for ManagedEraseFlash<AF, D> {
         } = &self.erase_state
         {
             self.resume_erase().await?;
-            self.delay.delay_us(self.tune.erase_us_every_write_256b).await;
+            self.delay
+                .delay_us(self.tune.erase_us_every_write_256b)
+                .await;
 
             if !self.flash.is_busy().await? {
                 self.erase_state = EraseState::Idle;

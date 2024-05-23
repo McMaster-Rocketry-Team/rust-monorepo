@@ -178,17 +178,19 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
                 (dt / 1000.0) as f32,
             );
 
-            if let Some(baro_reading) = &snapshot.baro_reading &&
-            let BaroFilterOutput {
-                should_ignore: false,
-                baro_reading,
-            } = self.baro_filter.feed(baro_reading)
+            if let Some(baro_reading) = &snapshot.baro_reading
+                && let BaroFilterOutput {
+                    should_ignore: false,
+                    baro_reading,
+                } = self.baro_filter.feed(baro_reading)
             {
                 let mut altitude = baro_reading.altitude();
                 if let Some(baro_altimeter_offset) = self.baro_altimeter_offset {
                     altitude += baro_altimeter_offset;
                 }
-                self.eskf.observe_height(altitude, self.variances.baro_altemeter).ok();
+                self.eskf
+                    .observe_height(altitude, self.variances.baro_altemeter)
+                    .ok();
             }
 
             self.event_dispatcher

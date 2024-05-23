@@ -1,6 +1,9 @@
 use crate::{
     io_traits::{AsyncReader, AsyncWriter},
-    utils::{flash_io::{FlashReader, FlashWriter}, debug_bytes::DebugBytes},
+    utils::{
+        debug_bytes::DebugBytes,
+        flash_io::{FlashReader, FlashWriter},
+    },
     DummyCrc,
 };
 

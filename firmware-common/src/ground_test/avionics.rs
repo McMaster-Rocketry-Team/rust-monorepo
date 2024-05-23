@@ -1,11 +1,11 @@
-use defmt::{info, unwrap};
-use futures::future::join;
 use crate::{
     claim_devices,
     common::device_manager::prelude::*,
     device_manager_type,
     driver::{gps::GPS, indicator::Indicator},
 };
+use defmt::{info, unwrap};
+use futures::future::join;
 use heapless::String;
 
 #[inline(never)]
@@ -30,7 +30,7 @@ pub async fn ground_test_avionics(device_manager: device_manager_type!()) -> ! {
         }
     };
 
-    let mut delay=device_manager.delay;
+    let mut delay = device_manager.delay;
     let avionics_fut = async {
         loop {
             let mut lora_message = String::<50>::new();
@@ -47,17 +47,11 @@ pub async fn ground_test_avionics(device_manager: device_manager_type!()) -> ! {
 
             info!("{}", lora_message.as_str());
 
-            radio_phy.tx(
-                lora_message.as_bytes(),
-            )
-            .await;
+            radio_phy.tx(lora_message.as_bytes()).await;
 
             match radio_phy.rx_with_timeout(1000).await {
                 Ok(Some(data)) => {
-                    info!(
-                        "Received {} bytes",
-                        data.0.len
-                    );
+                    info!("Received {} bytes", data.0.len);
                     let rx_buffer = data.1.as_slice();
                     if rx_buffer == b"VLF3 fire 1" {
                         info!("Firing pyro 1");
@@ -71,7 +65,7 @@ pub async fn ground_test_avionics(device_manager: device_manager_type!()) -> ! {
                         unwrap!(pyro2_ctrl.set_enable(false).await);
                     }
                 }
-                Ok(None)=>{
+                Ok(None) => {
                     info!("rx Timeout");
                 }
                 Err(lora_error) => {

@@ -1,6 +1,9 @@
 use defmt::{info, unwrap};
 use heapless::Vec;
-use rkyv::{ser::{serializers::BufferSerializer, Serializer}, Archive};
+use rkyv::{
+    ser::{serializers::BufferSerializer, Serializer},
+    Archive,
+};
 use vlfs::{io_traits::AsyncWriter, Crc, Flash, VLFS};
 
 use crate::{
@@ -58,7 +61,7 @@ pub async fn beacon_sender(
 
             if let Some(vlp_phy) = &mut vlp_phy {
                 let mut buffer = Vec::<u8, 222>::new();
-                unsafe{
+                unsafe {
                     for _ in 0..core::mem::size_of::<<BeaconData as Archive>::Archived>() {
                         buffer.push_unchecked(0);
                     }

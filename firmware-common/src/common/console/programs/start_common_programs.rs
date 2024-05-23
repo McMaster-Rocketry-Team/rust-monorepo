@@ -15,7 +15,11 @@ pub async fn start_common_programs<const N: usize>(
     vlfs: &VLFS<impl Flash, impl Crc>,
 ) -> ! {
     let change_mode_fut = start_console_program(device_manager, console, ChangeMode::new(vlfs));
-    let calibrate_fut = start_console_program(device_manager, console, Calibrate::new(vlfs, device_manager.delay));
+    let calibrate_fut = start_console_program(
+        device_manager,
+        console,
+        Calibrate::new(vlfs, device_manager.delay),
+    );
 
     #[allow(unreachable_code)]
     {

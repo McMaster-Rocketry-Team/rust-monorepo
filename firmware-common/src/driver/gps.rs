@@ -2,8 +2,8 @@ use core::ops::DerefMut;
 use embassy_sync::{blocking_mutex::raw::RawMutex, mutex::MutexGuard};
 use heapless::String;
 
-pub use crate::common::gps_parser::GPSParser;
 pub use crate::common::gps_parser::GPSLocation;
+pub use crate::common::gps_parser::GPSParser;
 use embedded_hal_async::delay::DelayNs;
 pub struct NmeaSentence {
     pub sentence: String<84>,

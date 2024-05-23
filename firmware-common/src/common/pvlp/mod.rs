@@ -4,9 +4,11 @@ use embassy_sync::{
 };
 
 use crate::{
-    driver::radio::RadioReceiveInfo, vlp::application_layer::{
-            ApplicationLayerRxPackage, ApplicationLayerTxPackage, RadioApplicationPackage,
-        }, Clock, RadioPhy
+    driver::radio::RadioReceiveInfo,
+    vlp::application_layer::{
+        ApplicationLayerRxPackage, ApplicationLayerTxPackage, RadioApplicationPackage,
+    },
+    Clock, RadioPhy,
 };
 
 pub struct PVLP<T: RadioPhy>(pub T);
@@ -28,17 +30,15 @@ impl<T: RadioPhy> PVLP<T> {
         &mut self,
         timeout_ms: u32,
     ) -> Option<(RadioReceiveInfo, Option<P>)> {
-        let result = self.0
-            .rx_with_timeout(timeout_ms)
-            .await;
+        let result = self.0.rx_with_timeout(timeout_ms).await;
 
         match result {
-            Ok(Some((info, data))) =>Some((info, P::decode(data))),
+            Ok(Some((info, data))) => Some((info, P::decode(data))),
             Ok(None) => None,
             Err(e) => {
                 log_warn!("rx_with_timeout error: {:?}", e);
                 None
-            },
+            }
         }
     }
 
@@ -96,7 +96,7 @@ impl<Y: RadioPhy, C: Clock> PVLPMaster<Y, C> {
     }
 }
 
-pub struct PVLPSlave<'a, 'b, Y: RadioPhy, C:Clock, const N: usize, const M: usize> {
+pub struct PVLPSlave<'a, 'b, Y: RadioPhy, C: Clock, const N: usize, const M: usize> {
     phy: PVLP<Y>,
     clock: C,
     master_start_time: Option<f64>,

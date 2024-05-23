@@ -339,7 +339,9 @@ pub async fn avionics_main(
 
         let imu_fut = async {
             loop {
-                if arming_state.lock(|s| (*s.borrow()).is_armed()) && let Ok(mut imu) = imu.try_lock() {
+                if arming_state.lock(|s| (*s.borrow()).is_armed())
+                    && let Ok(mut imu) = imu.try_lock()
+                {
                     let imu_reading = unwrap!(imu.read().await);
                     sensors_file_channel.publish_immediate(SensorReading::IMU(imu_reading.clone()));
                     imu_channel.publish_immediate(imu_reading);
@@ -572,7 +574,7 @@ pub async fn avionics_main(
 
     let mut delay = device_manager.delay;
     let telemetry_fut = async {
-        let mut telemetry_ticker = Ticker::every(clock,delay, 3000.);
+        let mut telemetry_ticker = Ticker::every(clock, delay, 3000.);
         let mut last_telemetry_timestamp = -60_000.0f64;
         loop {
             let should_throttle = !arming_state.lock(|s| (*s.borrow()).is_armed())

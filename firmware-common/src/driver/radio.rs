@@ -1,7 +1,7 @@
-use embassy_sync::{blocking_mutex::raw::RawMutex, mutex::MutexGuard};
-use serde::Serialize as SerdeSerialize;
-use heapless::Vec;
 use core::ops::DerefMut;
+use embassy_sync::{blocking_mutex::raw::RawMutex, mutex::MutexGuard};
+use heapless::Vec;
+use serde::Serialize as SerdeSerialize;
 
 #[derive(SerdeSerialize, Debug, defmt::Format)]
 pub struct RadioReceiveInfo {
@@ -13,7 +13,6 @@ pub struct RadioReceiveInfo {
 const MAX_PAYLOAD_LENGTH: usize = 222;
 pub trait RadioPhy {
     type Error: defmt::Format;
-    
 
     async fn reset(&mut self) -> Result<(), Self::Error>;
     async fn tx(&mut self, payload: &[u8]);
@@ -51,7 +50,7 @@ where
     async fn rx_with_timeout(
         &mut self,
         timeout_ms: u32,
-    ) -> Result<Option<(RadioReceiveInfo, Vec<u8, MAX_PAYLOAD_LENGTH>)>,  Self::Error> {
+    ) -> Result<Option<(RadioReceiveInfo, Vec<u8, MAX_PAYLOAD_LENGTH>)>, Self::Error> {
         self.deref_mut().rx_with_timeout(timeout_ms).await
     }
 
@@ -84,14 +83,28 @@ impl RadioPhy for DummyRadio {
     async fn tx(&mut self, _payload: &[u8]) {}
 
     async fn rx(&mut self) -> Result<(RadioReceiveInfo, Vec<u8, MAX_PAYLOAD_LENGTH>), Self::Error> {
-        Ok((RadioReceiveInfo { rssi: 0, snr: 0, len: 0 }, Vec::new()))
+        Ok((
+            RadioReceiveInfo {
+                rssi: 0,
+                snr: 0,
+                len: 0,
+            },
+            Vec::new(),
+        ))
     }
 
     async fn rx_with_timeout(
         &mut self,
         _timeout_ms: u32,
     ) -> Result<Option<(RadioReceiveInfo, Vec<u8, MAX_PAYLOAD_LENGTH>)>, Self::Error> {
-        Ok(Some((RadioReceiveInfo { rssi: 0, snr: 0, len: 0 }, Vec::new())))
+        Ok(Some((
+            RadioReceiveInfo {
+                rssi: 0,
+                snr: 0,
+                len: 0,
+            },
+            Vec::new(),
+        )))
     }
 
     fn set_frequency(&mut self, _frequency: u32) {}

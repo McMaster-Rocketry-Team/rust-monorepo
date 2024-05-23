@@ -72,7 +72,7 @@ pub async fn testMain(
             delay.delay_ms(10).await;
             if utc_clock.ready() {
                 info!("UTC: {}", (utc_clock.now_ms() / 1000.0) as i64);
-            }else{
+            } else {
                 // info!("UTC not ready");
             }
         }
