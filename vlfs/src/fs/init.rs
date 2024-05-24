@@ -26,7 +26,7 @@ where
     pub async fn init(&mut self) -> Result<(), VLFSError<F::Error>> {
         if self.read_latest_allocation_table().await? {
             let at = self.allocation_table.read().await;
-            info!(
+            log_info!(
                 "Found valid allocation table, file count: {}",
                 at.header.file_count
             );
@@ -39,12 +39,12 @@ where
             let used_sectors = total_sectors - sectors_mng.sector_map.free_sectors_count as usize;
             let free_space =
                 (sectors_mng.sector_map.free_sectors_count as usize * MAX_SECTOR_DATA_SIZE) / 1024;
-            info!(
+                log_info!(
                 "{} out of {} sectors used, avaliable space: {}KiB",
                 used_sectors, total_sectors, free_space,
             );
         } else {
-            info!("No valid allocation table found, creating a new one");
+            log_info!("No valid allocation table found, creating a new one");
             self.write_empty_allocation_table().await?;
         }
 
@@ -57,7 +57,7 @@ where
             rng.replace(SmallRng::seed_from_u64(sectors_mng.rng.next_u64()));
         });
 
-        info!("VLFS initialized");
+        log_info!("VLFS initialized");
         Ok(())
     }
 

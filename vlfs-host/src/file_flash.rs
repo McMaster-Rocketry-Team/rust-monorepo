@@ -76,6 +76,7 @@ impl Flash for FileFlash {
         write_buffer: &'b mut [u8],
     ) -> Result<(), Self::Error> {
         println!("write_256b: address={:#X}", address);
+        // println!("{:02X?}", &write_buffer[5..]);
         self.rad.write(address as u64, &write_buffer[5..]).await?;
         self.rad.sync_all().await?;
         Ok(())

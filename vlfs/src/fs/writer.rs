@@ -49,7 +49,10 @@ where
                         current_sector_index = next_sector_index;
                     }
                 }
-                trace!("index of the last sector: {}", current_sector_index);
+                log_trace!(
+                    "This file has been written to before, index of the last sector: {}",
+                    current_sector_index
+                );
 
                 let current_sector_address = (current_sector_index as usize * SECTOR_SIZE) as u32;
 
@@ -99,6 +102,11 @@ where
             } else {
                 // this file haven't been written to before,
                 // update allocation table
+                log_trace!("This file has not been written to before, updating allocation table");
+                log_trace!(
+                    "First sector address={:#X}",
+                    (new_sector_index as usize * SECTOR_SIZE) as u32
+                );
                 self.set_file_first_sector_index(file_id, Some(new_sector_index))
                     .await?;
             };
@@ -171,7 +179,16 @@ where
 
     fn page_address(&self) -> u32 {
         let current_sector_address = (self.current_sector_index as usize * SECTOR_SIZE) as u32;
-        current_sector_address + ((self.sector_data_length as u32 - 1) & !255)
+        log_trace!(
+            "current sector address={:#X}, sector data length={}",
+            current_sector_address,
+            self.sector_data_length
+        );
+        if self.sector_data_length == 0 {
+            current_sector_address
+        } else {
+            current_sector_address + ((self.sector_data_length - 1) as u32 / 252u32 * 256u32)
+        }
     }
 
     fn write_length_and_next_sector_index(&mut self, next_sector_index: u16) {
@@ -186,6 +203,7 @@ where
 
     pub async fn flush(&mut self) -> Result<(), VLFSError<F::Error>> {
         if self.sector_data_length == 0 {
+            log_info!("Flusing ignored because sector data length is 0");
             return Ok(());
         }
 
@@ -197,7 +215,9 @@ where
     }
 
     async fn _flush(&mut self, next_sector_index: u16) -> Result<(), VLFSError<F::Error>> {
+        log_info!("Flushing");
         if self.sector_data_length == 0 {
+            log_info!("sector data length is 0");
             self.write_length_and_next_sector_index(next_sector_index);
             let current_sector_address = (self.current_sector_index as usize * SECTOR_SIZE) as u32;
             self.write_page(
@@ -208,6 +228,10 @@ where
             return Ok(());
         }
 
+        log_info!(
+            "sector data length is not 0, buffer offset={}",
+            self.buffer_offset
+        );
         // pad to 4 bytes
         let crc_offset = ((self.buffer_offset - 5) + 3) & !3;
 
@@ -219,8 +243,10 @@ where
                 .await?;
         } else {
             // last data page does not contain data
-            self.write_page(self.page_address(), Some(crc_offset))
-                .await?;
+            if self.buffer_offset > 5 {
+                self.write_page(self.page_address(), Some(crc_offset))
+                    .await?;
+            }
 
             self.write_length_and_next_sector_index(next_sector_index);
 
@@ -237,12 +263,12 @@ where
     }
 
     pub async fn close(mut self) -> Result<(), VLFSError<F::Error>> {
+        log_info!("Closing file with id {:?} for write", self.file_id);
+
         // will cause an empty sector to be saved, when self.sector_data_length == 0,
         // alternative is to read-modify-write the previous sector.
         // shouldn't happen a lot in real world use cases, ignore for now
         self._flush(0xFFFF).await?;
-
-        log_info!("Closing file with id {:?} for write", self.file_id,);
 
         self.vlfs.mark_file_closed(self.file_id).await;
 
@@ -260,18 +286,25 @@ where
 
     async fn extend_from_slice(&mut self, slice: &[u8]) -> Result<(), VLFSError<F::Error>> {
         let mut slice = slice;
+        log_trace!(
+            "File writer extending from slice, total length: {}",
+            slice.len()
+        );
         while slice.len() > 0 {
-            let buffer_reserved_size = if self.is_last_data_page() {
+            log_trace!("Length remaining: {}", slice.len());
+            let will_be_last_data_page =  self.sector_data_length >= (252 * 15);
+            let buffer_reserved_size = if will_be_last_data_page {
                 8 + 8 + 4
             } else {
                 4
             };
             let buffer_len = self.buffer.len();
-            let buffer_free = self.buffer.len() - self.buffer_offset - buffer_reserved_size;
+            let buffer_free = buffer_len - self.buffer_offset - buffer_reserved_size;
 
             if slice.len() < buffer_free {
                 // if the slice fits inside available buffer space
                 // and there are empty buffer space left after copying the slice
+                log_trace!("Slice fits inside buffer with empty space");
 
                 (&mut self.buffer[self.buffer_offset..(self.buffer_offset + slice.len())])
                     .copy_from_slice(slice);
@@ -282,13 +315,14 @@ where
             } else {
                 // 1. if slice fits inside available buffer space but there are no empty buffer space left after copying the slice
                 // 2. if slice does not fit inside available buffer space
+                log_trace!("Slice does not fit inside buffer with empty space or fits but no empty space left");
 
                 (&mut self.buffer[self.buffer_offset..(buffer_len - buffer_reserved_size)])
                     .copy_from_slice(&slice[..buffer_free]);
                 self.buffer_offset += buffer_free;
                 self.sector_data_length += buffer_free as u16;
 
-                if self.is_last_data_page() {
+                if will_be_last_data_page {
                     let next_sector_index = self.vlfs.claim_avaliable_sector_and_erase().await?;
                     self.write_length_and_next_sector_index(next_sector_index);
 
