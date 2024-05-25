@@ -209,6 +209,9 @@ where
         let mut flash = self.flash.lock().await;
         let at = self.allocation_table.read().await;
         let file_count = at.header.file_count;
+        if file_count == 0 {
+            return Ok(None);
+        }
 
         let mut buffer = [0u8; 5 + 13];
         let mut dummy_crc = DummyCrc {};

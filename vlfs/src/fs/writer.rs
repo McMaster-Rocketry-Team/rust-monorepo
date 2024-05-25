@@ -351,7 +351,7 @@ where
 {
     fn drop(&mut self) {
         if !self.closed {
-            defmt::panic!(
+            log_panic!(
                 "FileWriter for file {:X} dropped without being closed",
                 self.file_id.0
             );

@@ -82,3 +82,9 @@ impl Flash for FileFlash {
         Ok(())
     }
 }
+
+impl Drop for FileFlash {
+    fn drop(&mut self) {
+        // block_on(self.rad.close()).unwrap();
+    }
+}
