@@ -52,7 +52,11 @@ export function useHandleWebsocket(forceUpdate: () => void) {
     flashRef.current = new Flash();
   }, []);
   const { sendMessage, lastMessage, readyState } = useWebSocket(
-    "http://localhost:19000"
+    "http://127.0.0.1:19000",
+    {
+      shouldReconnect: () => true,
+      reconnectInterval: 1000,
+    }
   );
   const [pendingRequest, setPendingRequest] = useState<WsRequest | null>(null);
 
@@ -114,7 +118,7 @@ export function useHandleWebsocket(forceUpdate: () => void) {
           pendingRequest.address,
           pendingRequest.length
         );
-        sendMessage("ok" + JSON.stringify(data));
+        sendMessage(JSON.stringify(Array.from(data)));
       } else if (pendingRequest.type === "write256b") {
         flashRef.current!.write256b(
           pendingRequest.address,

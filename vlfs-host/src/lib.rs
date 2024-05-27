@@ -7,5 +7,6 @@ pub use file_flash::FileFlash;
 
 mod file_flash;
 mod memory_flash;
+mod debug_flash;
 #[cfg(test)]
 mod tests;

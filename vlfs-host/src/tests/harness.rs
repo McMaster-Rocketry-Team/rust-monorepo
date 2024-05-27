@@ -8,18 +8,19 @@ use vlfs::{
     DummyCrc, FileID, FileReader, FileType, FileWriter, VLFSError, VLFS,
 };
 
-use crate::memory_flash::MemoryFlash;
+use crate::{debug_flash::DebugFlash, memory_flash::MemoryFlash};
 
 pub struct VLFSTestingHarness {
-    pub vlfs: VLFS<MemoryFlash, DummyCrc>,
+    pub vlfs: VLFS<DebugFlash, DummyCrc>,
     pub files: HashMap<FileID, (FileType, Vec<u8>)>,
-    pub file_writers: HashMap<FileID, FileWriter<'static, MemoryFlash, DummyCrc>>,
-    pub file_readers: HashMap<FileID, (FileReader<'static, MemoryFlash, DummyCrc>, usize)>, // cursor position
+    pub file_writers: HashMap<FileID, FileWriter<'static, DebugFlash, DummyCrc>>,
+    pub file_readers: HashMap<FileID, (FileReader<'static, DebugFlash, DummyCrc>, usize)>, // cursor position
 }
 
 impl VLFSTestingHarness {
     pub async fn new(flash_image_path: PathBuf) -> Self {
-        let flash = MemoryFlash::new(Some(flash_image_path));
+        // let flash = MemoryFlash::new(Some(flash_image_path));
+        let flash = DebugFlash::new().await;
         let mut vlfs = VLFS::new(flash, DummyCrc {});
         vlfs.init().await.unwrap();
         Self {

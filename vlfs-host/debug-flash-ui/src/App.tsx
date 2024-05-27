@@ -2,6 +2,7 @@ import {
   ForwardedRef,
   forwardRef,
   useCallback,
+  useEffect,
   useImperativeHandle,
   useReducer,
   useRef,
@@ -35,6 +36,13 @@ function App() {
     prevFlashRef.current?.scrollTo(offset);
     currentFlashRef.current?.scrollTo(offset);
   };
+
+  useEffect(() => {
+    if (pendingRequest) {
+      const [start] = getRequestRange(pendingRequest);
+      jumpToAddress(Math.floor(start / 16) * 16);
+    }
+  }, [pendingRequest]);
 
   return (
     <div
@@ -79,8 +87,9 @@ function App() {
             onChange={(e) => setAddressText(e.target.value)}
           />
         </form>
-        {pendingRequest && <button onClick={resume}>Resume</button>}
         <p>{connected ? "Connected" : "Disconnected"}</p>
+        <RequestComponent request={pendingRequest} />
+        {pendingRequest && <button onClick={resume}>Resume</button>}
       </div>
       <div
         style={{
@@ -110,6 +119,31 @@ function App() {
           request={pendingRequest}
         />
       </div>
+    </div>
+  );
+}
+
+function RequestComponent({ request }: { request: WsRequest | null }) {
+  if (!request) return null;
+  const [start, end] = getRequestRange(request);
+  return (
+    <div>
+      <p
+        style={{
+          margin: 0,
+        }}
+      >
+        {request.type}
+      </p>
+      <p
+        style={{
+          margin: 0,
+          fontFamily: '"Jetbrains Mono", monospace',
+        }}
+      >
+        {start.toString(16).padStart(8, "0").toUpperCase()}-
+        {end.toString(16).padStart(8, "0").toUpperCase()}
+      </p>
     </div>
   );
 }
@@ -153,7 +187,7 @@ const FlashContent = forwardRef(function FlashContent(
   ) {
     highlightColor = "#cbd5e1";
   } else if (props.request?.type === "read") {
-    highlightColor = "#38bdf8";
+    highlightColor = "#7dd3fc";
   } else if (props.request?.type === "write256b") {
     highlightColor = "#fdba74";
   }
