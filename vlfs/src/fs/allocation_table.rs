@@ -1,9 +1,6 @@
 use crate::{
     io_traits::{AsyncReader, AsyncWriter},
-    utils::{
-        debug_bytes::DebugBytes,
-        flash_io::{FlashReader, FlashWriter},
-    },
+    utils::flash_io::{FlashReader, FlashWriter},
     DummyCrc,
 };
 
@@ -49,6 +46,7 @@ impl FileEntry {
 
     // expect a 13 byte buffer
     pub(crate) fn deserialize(buffer: &[u8]) -> Result<Self, CorruptedFileEntry> {
+        log_trace!("Deserializing file entry: {:?}", buffer);
         let buffer = hamming_decode(buffer.try_into().unwrap()).map_err(|_| CorruptedFileEntry)?;
 
         let file_type = FileType(u16::from_be_bytes((&buffer[0..2]).try_into().unwrap()));
@@ -411,6 +409,7 @@ where
     }
 
     pub async fn create_file(&self, file_type: FileType) -> Result<FileEntry, VLFSError<F::Error>> {
+        log_trace!("Creating file with type: {:?}", file_type);
         let mut at = self.allocation_table.write().await;
         at.header.max_file_id.increment();
         let old_at_address = at.address();
@@ -472,6 +471,8 @@ where
 
         writer.flush().await.map_err(VLFSError::FlashError)?;
 
+
+        log_info!("{:?} created, {:?}", &file_entry, file_entry.serialize());
         Ok(file_entry)
     }
 

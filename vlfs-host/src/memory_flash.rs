@@ -4,13 +4,14 @@ use vlfs::Flash;
 
 const SIZE: u32 = 262144 * 256;
 
+#[derive(Clone)]
 pub struct MemoryFlash {
-    file_name: path::PathBuf,
+    file_name: Option<path::PathBuf>,
     buffer: Vec<u8>,
 }
 
 impl MemoryFlash {
-    pub fn new(file_name: path::PathBuf) -> Self {
+    pub fn new(file_name: Option<path::PathBuf>) -> Self {
         let buffer = vec![0; SIZE as usize];
         Self { file_name, buffer }
     }
@@ -61,8 +62,8 @@ impl Flash for MemoryFlash {
         address: u32,
         write_buffer: &'b mut [u8],
     ) -> Result<(), Self::Error> {
-        // println!("write_256b: address={:#X}", address);
-        // println!("{:02X?}", &write_buffer[5..]);
+        println!("write_256b: address={:#X}", address);
+        println!("{:02X?}", &write_buffer[5..]);
         (&mut self.buffer[(address as usize)..(address as usize + write_buffer.len() - 5)])
             .copy_from_slice(&write_buffer[5..]);
         Ok(())
@@ -71,8 +72,10 @@ impl Flash for MemoryFlash {
 
 impl Drop for MemoryFlash {
     fn drop(&mut self) {
-        std::fs::create_dir_all(self.file_name.parent().unwrap()).unwrap();
-        std::fs::write(&self.file_name, &self.buffer).unwrap();
+        if let Some(file_name) = &self.file_name {
+            std::fs::create_dir_all(file_name.parent().unwrap()).unwrap();
+            std::fs::write(file_name, &self.buffer).unwrap();
+        }
     }
 }
 
@@ -82,7 +85,7 @@ mod test {
 
     #[tokio::test]
     async fn read_write() {
-        let mut flash = MemoryFlash::new(std::path::PathBuf::from("test-images/mmeory_flash_read_write.vlfs"));
+        let mut flash = MemoryFlash::new(None);
         let mut buffer = [0u8; 10 + 5];
         buffer[5..].copy_from_slice(&[0x01; 10]);
         flash.write_256b(256, &mut buffer).await.unwrap();

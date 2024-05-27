@@ -19,7 +19,7 @@ pub struct VLFSTestingHarness {
 
 impl VLFSTestingHarness {
     pub async fn new(flash_image_path: PathBuf) -> Self {
-        let flash = MemoryFlash::new(flash_image_path);
+        let flash = MemoryFlash::new(Some(flash_image_path));
         let mut vlfs = VLFS::new(flash, DummyCrc {});
         vlfs.init().await.unwrap();
         Self {

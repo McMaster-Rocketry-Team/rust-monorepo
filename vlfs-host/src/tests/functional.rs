@@ -1,7 +1,6 @@
 use crate::{get_test_image_path, tests::harness::VLFSTestingHarness};
 use function_name::named;
-use futures::FutureExt;
-use vlfs::{FileID, FileType, VLFSError};
+use vlfs::{FileID, FileType};
 
 fn init_logger() {
     let _ = env_logger::builder()
@@ -84,6 +83,25 @@ async fn free_space_one_file() {
     harness.append_file(file_id, 1).await.unwrap();
     harness.close_write_file(file_id).await;
     assert_eq!(harness.get_free_space().await, 65669632 - 4016);
+}
+
+#[named]
+#[tokio::test]
+async fn free_space_two_files() {
+    init_logger();
+
+    let path = get_test_image_path!();
+
+    let mut harness = VLFSTestingHarness::new(path).await;
+    let file_id = harness.create_file(FileType(0)).await;
+    harness.open_file_for_write(file_id).await;
+    harness.append_file(file_id, 1).await.unwrap();
+    harness.close_write_file(file_id).await;
+    let file_id = harness.create_file(FileType(2)).await;
+    harness.open_file_for_write(file_id).await;
+    harness.append_file(file_id, 2).await.unwrap();
+    harness.close_write_file(file_id).await;
+    assert_eq!(harness.get_free_space().await, 65669632 - 4016 * 2);
 }
 
 #[named]
