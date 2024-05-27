@@ -28,7 +28,7 @@ const wsRequestSchema = z.discriminatedUnion("type", [
   }),
 ]);
 
-type WsRequest = z.infer<typeof wsRequestSchema>;
+export type WsRequest = z.infer<typeof wsRequestSchema>;
 
 export function getRequestRange(request: WsRequest) {
   switch (request.type) {
@@ -51,7 +51,9 @@ export function useHandleWebsocket(forceUpdate: () => void) {
   useEffect(() => {
     flashRef.current = new Flash();
   }, []);
-  const { sendMessage, lastMessage, readyState } = useWebSocket("http://localhost:19000");
+  const { sendMessage, lastMessage, readyState } = useWebSocket(
+    "http://localhost:19000"
+  );
   const [pendingRequest, setPendingRequest] = useState<WsRequest | null>(null);
 
   const handleWsRequest = useCallback(
@@ -130,6 +132,6 @@ export function useHandleWebsocket(forceUpdate: () => void) {
     getCurrentByte,
     pendingRequest,
     resume,
-    connected:readyState===ReadyState.OPEN
+    connected: readyState === ReadyState.OPEN,
   };
 }

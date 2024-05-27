@@ -10,7 +10,11 @@ import {
 import { FixedSizeList } from "react-window";
 import { useMeasure } from "react-use";
 import { FLASH_SIZE } from "./Flash";
-import { useHandleWebsocket } from "./useHandleWebsocket";
+import {
+  WsRequest,
+  getRequestRange,
+  useHandleWebsocket,
+} from "./useHandleWebsocket";
 
 const LIST_ITEM_HEIGHT = 22;
 function App() {
@@ -95,6 +99,7 @@ function App() {
             currentFlashRef.current?.scrollTo(offset);
           }}
           getByte={getPrevByte}
+          request={pendingRequest}
         />
         <FlashContent
           ref={currentFlashRef}
@@ -102,6 +107,7 @@ function App() {
             prevFlashRef.current?.scrollTo(offset);
           }}
           getByte={getCurrentByte}
+          request={pendingRequest}
         />
       </div>
     </div>
@@ -117,6 +123,7 @@ const FlashContent = forwardRef(function FlashContent(
   props: {
     onScroll?: (offset: number) => void;
     getByte: (address: number) => number;
+    request: WsRequest | null;
   },
   ref: ForwardedRef<FlashContentRef>
 ) {
@@ -137,6 +144,19 @@ const FlashContent = forwardRef(function FlashContent(
     },
     []
   );
+  const range = props.request ? getRequestRange(props.request) : [0, 0];
+  let highlightColor = "";
+  if (
+    props.request?.type === "eraseSector4Kib" ||
+    props.request?.type === "eraseBlock32Kib" ||
+    props.request?.type === "eraseBlock64Kib"
+  ) {
+    highlightColor = "#cbd5e1";
+  } else if (props.request?.type === "read") {
+    highlightColor = "#38bdf8";
+  } else if (props.request?.type === "write256b") {
+    highlightColor = "#fdba74";
+  }
 
   return (
     <div
@@ -191,8 +211,16 @@ const FlashContent = forwardRef(function FlashContent(
           const byteComponents = [];
           for (let i = 0; i < 16; i++) {
             const byte = props.getByte(address + i);
+            const isInRange = address + i >= range[0] && address + i < range[1];
             byteComponents.push(
-              <span key={i} style={{ marginLeft: 8 }}>
+              <span
+                key={i}
+                style={{
+                  paddingLeft: 4,
+                  paddingRight: 4,
+                  backgroundColor: isInRange ? highlightColor : undefined,
+                }}
+              >
                 {byte.toString(16).padStart(2, "0").toUpperCase()}
               </span>
             );
