@@ -1,12 +1,14 @@
+use std::time::Duration;
+
 use futures::{SinkExt, StreamExt};
 use log::info;
 use serde::Serialize;
 use serde_json::to_string;
-use tokio::net::{TcpListener, TcpStream};
-use tokio_tungstenite::{
-    tungstenite::Message,
-    WebSocketStream,
+use tokio::{
+    net::{TcpListener, TcpStream},
+    time::timeout,
 };
+use tokio_tungstenite::{tungstenite::Message, WebSocketStream};
 use vlfs::Flash;
 
 const SIZE: u32 = 262144 * 256;
@@ -22,11 +24,19 @@ impl DebugFlash {
         let listener = try_socket.expect("Failed to bind");
         info!("Listening on: {}", addr);
 
-        let (stream, _) = listener.accept().await.unwrap();
-        let stream = tokio_tungstenite::accept_async(stream).await.unwrap();
-        info!("Accepted connection");
-
-        Self { stream }
+        loop {
+            info!("Waiting for connection");
+            let stream = timeout(Duration::from_millis(500), async {
+                let (stream, _) = listener.accept().await.unwrap();
+                let stream = tokio_tungstenite::accept_async(stream).await.unwrap();
+                info!("Accepted connection");
+                stream
+            })
+            .await;
+            if let Ok(stream) = stream {
+                return Self { stream };
+            }
+        }
     }
 }
 
@@ -151,6 +161,7 @@ struct WriteRequest {
     data: Vec<u8>,
 }
 
+#[cfg(feature = "tests_use_debug_flash")]
 #[cfg(test)]
 mod test {
     use super::*;

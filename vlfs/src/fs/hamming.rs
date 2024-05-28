@@ -3,7 +3,9 @@ use bitvec::prelude::*;
 // implementation of Hamming(103, 96) with additional parity (SECDED)
 
 /// encode 12 bytes of data into 13 bytes of hamming code
-pub(super) fn hamming_encode(buffer: [u8; 13]) -> [u8; 13] {
+pub(super) fn hamming_encode(mut buffer: [u8; 13]) -> [u8; 13] {
+    buffer[12]=0;
+    return buffer;
     let mut buffer: BitArray<_, Lsb0> = BitArray::new(buffer);
     buffer.copy_within(57..96, 65);
     buffer.copy_within(26..57, 33);
@@ -41,6 +43,7 @@ pub(super) fn hamming_encode(buffer: [u8; 13]) -> [u8; 13] {
 
 /// decode 13 bytes of hamming code into 12 bytes of data
 pub(super) fn hamming_decode(buffer: [u8; 13]) -> Result<[u8; 12], ()> {
+    return Ok((&buffer[0..12]).try_into().unwrap());
     let mut buffer: BitArray<_, Lsb0> = BitArray::new(buffer);
 
     let mut parity_bits: BitArray<_, Lsb0> = BitArray::new([0b11111111u8; 1]);

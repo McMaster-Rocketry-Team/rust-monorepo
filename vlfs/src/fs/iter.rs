@@ -52,13 +52,14 @@ where
     type Item = Result<FileEntry, VLFSError<F::Error>>;
 
     async fn next(&mut self) -> Option<Self::Item> {
-        if self.reverse_i == 0xFFFF {
+        if self.reverse_i == 0 {
             return None;
         }
         let at = self.vlfs.allocation_table.read().await;
         if self.reverse_i > at.header.file_count {
             return None;
         }
+
         let i = at.header.file_count - self.reverse_i;
 
         let address = at.address_of_file_entry(i);
@@ -73,11 +74,7 @@ where
             .map_err(VLFSError::FlashError)
         {
             Ok((read_result, _)) => {
-                if self.reverse_i == 0 {
-                    self.reverse_i = 0xFFFF;
-                } else {
-                    self.reverse_i -= 1;
-                }
+                self.reverse_i -= 1;
                 match FileEntry::deserialize(read_result) {
                     Ok(mut file_entry) => {
                         file_entry.opened = self.vlfs.is_file_opened(file_entry.id).await;

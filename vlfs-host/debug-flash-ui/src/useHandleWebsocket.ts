@@ -48,17 +48,23 @@ export function getRequestRange(request: WsRequest) {
 export function useHandleWebsocket(forceUpdate: () => void) {
   const flashRef = useRef<Flash>();
 
-  useEffect(() => {
-    flashRef.current = new Flash();
-  }, []);
+  
   const { sendMessage, lastMessage, readyState } = useWebSocket(
-    "http://127.0.0.1:19000",
+    "http://localhost:19000",
     {
       shouldReconnect: () => true,
       reconnectInterval: 1000,
+      reconnectAttempts: 1000000000,
+      retryOnError: true,
     }
   );
+  const connected = readyState === ReadyState.OPEN;
   const [pendingRequest, setPendingRequest] = useState<WsRequest | null>(null);
+
+  useEffect(() => {
+    flashRef.current = new Flash();
+    setPendingRequest(null);
+  }, [connected]);
 
   const handleWsRequest = useCallback(
     (request: WsRequest) => {
@@ -136,6 +142,6 @@ export function useHandleWebsocket(forceUpdate: () => void) {
     getCurrentByte,
     pendingRequest,
     resume,
-    connected: readyState === ReadyState.OPEN,
+    connected,
   };
 }

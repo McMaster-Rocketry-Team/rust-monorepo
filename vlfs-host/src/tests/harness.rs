@@ -8,19 +8,30 @@ use vlfs::{
     DummyCrc, FileID, FileReader, FileType, FileWriter, VLFSError, VLFS,
 };
 
-use crate::{debug_flash::DebugFlash, memory_flash::MemoryFlash};
+#[cfg(feature = "tests_use_debug_flash")]
+use crate::debug_flash::DebugFlash;
+#[cfg(feature = "tests_use_debug_flash")]
+type FlashType = DebugFlash;
+
+#[cfg(not(feature = "tests_use_debug_flash"))]
+use crate::memory_flash::MemoryFlash;
+#[cfg(not(feature = "tests_use_debug_flash"))]
+type FlashType = MemoryFlash;
 
 pub struct VLFSTestingHarness {
-    pub vlfs: VLFS<DebugFlash, DummyCrc>,
+    pub vlfs: VLFS<FlashType, DummyCrc>,
     pub files: HashMap<FileID, (FileType, Vec<u8>)>,
-    pub file_writers: HashMap<FileID, FileWriter<'static, DebugFlash, DummyCrc>>,
-    pub file_readers: HashMap<FileID, (FileReader<'static, DebugFlash, DummyCrc>, usize)>, // cursor position
+    pub file_writers: HashMap<FileID, FileWriter<'static, FlashType, DummyCrc>>,
+    pub file_readers: HashMap<FileID, (FileReader<'static, FlashType, DummyCrc>, usize)>, // cursor position
 }
 
 impl VLFSTestingHarness {
     pub async fn new(flash_image_path: PathBuf) -> Self {
-        // let flash = MemoryFlash::new(Some(flash_image_path));
+        #[cfg(feature = "tests_use_debug_flash")]
         let flash = DebugFlash::new().await;
+        #[cfg(not(feature = "tests_use_debug_flash"))]
+        let flash = MemoryFlash::new(Some(flash_image_path));
+
         let mut vlfs = VLFS::new(flash, DummyCrc {});
         vlfs.init().await.unwrap();
         Self {

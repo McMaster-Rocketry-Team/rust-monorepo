@@ -1,10 +1,13 @@
 use crate::{get_test_image_path, tests::harness::VLFSTestingHarness};
 use function_name::named;
+use log::LevelFilter;
 use vlfs::{FileID, FileType};
 
 fn init_logger() {
     let _ = env_logger::builder()
-        .filter_level(log::LevelFilter::Trace)
+        .filter_level(LevelFilter::Error)
+        .filter(Some("vlfs"), LevelFilter::Trace)
+        .filter(Some("vlfs-host"), LevelFilter::Trace)
         .is_test(true)
         .try_init();
 }
@@ -140,5 +143,9 @@ async fn open_file_doesnt_exist() {
     let path = get_test_image_path!();
 
     let harness = VLFSTestingHarness::new(path).await;
-    let _ = harness.vlfs.open_file_for_write(FileID(1)).await.unwrap_err();
+    let _ = harness
+        .vlfs
+        .open_file_for_write(FileID(1))
+        .await
+        .unwrap_err();
 }

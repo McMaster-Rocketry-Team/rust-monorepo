@@ -3,12 +3,7 @@ body {
   margin: 0;
 }
 
-.flash-list{
-  -ms-overflow-style: none;
-  scrollbar-width: none;
+.flash-list {
   font-family: "Jetbrains Mono", monospace;
-}
-
-.flash-list::-webkit-scrollbar {
-  display: none;
+  overflow: hidden;
 }

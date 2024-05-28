@@ -12,7 +12,7 @@ random-access-disk = { version = "3.0.0", default-features = false, features = [
     "libc",
 ] }
 random-access-storage = "5.0.0"
-tokio = { version = "1.28.2", features = ["full"] }
+tokio = { version = "1.28.2", features = ["full", "time"] }
 vlfs = { path = "../vlfs", features = ["std", "log"] }
 env_logger = "0.11.3"
 log = { version = "0.4" }
@@ -29,3 +29,6 @@ project-root = "0.2.2"
 replace_with = "0.1.7"
 futures = "0.3.28"
 rand = "0.8"
+
+[features]
+tests_use_debug_flash = []

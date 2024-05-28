@@ -62,8 +62,8 @@ impl Flash for MemoryFlash {
         address: u32,
         write_buffer: &'b mut [u8],
     ) -> Result<(), Self::Error> {
-        println!("write_256b: address={:#X}", address);
-        println!("{:02X?}", &write_buffer[5..]);
+        log::trace!("write_256b: address={:#X}", address);
+        // log::trace!("{:02X?}", &write_buffer[5..]);
         (&mut self.buffer[(address as usize)..(address as usize + write_buffer.len() - 5)])
             .copy_from_slice(&write_buffer[5..]);
         Ok(())

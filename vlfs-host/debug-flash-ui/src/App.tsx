@@ -20,6 +20,8 @@ import {
 const LIST_ITEM_HEIGHT = 22;
 function App() {
   const [addressText, setAddressText] = useState("");
+  const [scrollOffset, setScrollOffset] = useState(0);
+  const address = Math.floor(scrollOffset / LIST_ITEM_HEIGHT) * 16;
   const prevFlashRef = useRef<FlashContentRef>(null);
   const currentFlashRef = useRef<FlashContentRef>(null);
 
@@ -33,8 +35,7 @@ function App() {
 
   const jumpToAddress = (address: number) => {
     const offset = (address / 16) * LIST_ITEM_HEIGHT;
-    prevFlashRef.current?.scrollTo(offset);
-    currentFlashRef.current?.scrollTo(offset);
+    setScrollOffset(offset);
   };
 
   useEffect(() => {
@@ -60,6 +61,7 @@ function App() {
           alignItems: "flex-start",
           gap: 8,
           marginLeft: 16,
+          width: 180,
         }}
       >
         <h1>Jump To</h1>
@@ -88,6 +90,7 @@ function App() {
           />
         </form>
         <p>{connected ? "Connected" : "Disconnected"}</p>
+        {!connected && <button onClick={() => window.location.reload()}>Reload</button>}
         <RequestComponent request={pendingRequest} />
         {pendingRequest && <button onClick={resume}>Resume</button>}
       </div>
@@ -99,6 +102,16 @@ function App() {
           gridTemplateRows: "max-content 1fr",
           columnGap: 16,
         }}
+        onWheel={(e) => {
+          let newOffset = scrollOffset + e.deltaY;
+          if (newOffset < 0) {
+            newOffset = 0;
+          } else if (newOffset > (FLASH_SIZE / 16) * LIST_ITEM_HEIGHT) {
+            newOffset = (FLASH_SIZE / 16) * LIST_ITEM_HEIGHT;
+          }
+          setScrollOffset(newOffset);
+          console.log(newOffset);
+        }}
       >
         <h1>Previous Flash</h1>
         <h1>Current Flash</h1>
@@ -109,6 +122,7 @@ function App() {
           }}
           getByte={getPrevByte}
           request={pendingRequest}
+          startAddress={address}
         />
         <FlashContent
           ref={currentFlashRef}
@@ -117,6 +131,7 @@ function App() {
           }}
           getByte={getCurrentByte}
           request={pendingRequest}
+          startAddress={address}
         />
       </div>
     </div>
@@ -158,10 +173,12 @@ const FlashContent = forwardRef(function FlashContent(
     onScroll?: (offset: number) => void;
     getByte: (address: number) => number;
     request: WsRequest | null;
+    startAddress: number;
   },
   ref: ForwardedRef<FlashContentRef>
 ) {
   const [containerRef, { height }] = useMeasure<HTMLDivElement>();
+  const rows = Math.ceil(height / LIST_ITEM_HEIGHT);
   const addressListRef = useRef<FixedSizeList>(null);
   const dataListRef = useRef<FixedSizeList>(null);
   const [, forceUpdate] = useReducer((x) => x + 1, 0);
@@ -199,77 +216,73 @@ const FlashContent = forwardRef(function FlashContent(
         display: "flex",
       }}
     >
-      <FixedSizeList
-        ref={addressListRef}
-        itemSize={LIST_ITEM_HEIGHT}
-        itemCount={FLASH_SIZE / 16}
-        height={height}
-        width={77 + 8}
+      <div
         className="flash-list"
-        onScroll={(e) => {
-          dataListRef.current?.scrollTo(e.scrollOffset);
-          props.onScroll?.(e.scrollOffset);
+        style={{
+          height,
         }}
       >
-        {({ index, style }) => {
-          const address = index * 16;
-          const addressText = address
-            .toString(16)
-            .padStart(8, "0")
-            .toUpperCase();
-          return (
-            <div
-              style={{
-                ...style,
-              }}
-            >
-              <span>{addressText}</span>
-            </div>
-          );
-        }}
-      </FixedSizeList>
-      <FixedSizeList
-        ref={dataListRef}
-        itemSize={LIST_ITEM_HEIGHT}
-        itemCount={FLASH_SIZE / 16}
-        height={height}
-        width={452}
-        className="flash-list"
-        onScroll={(e) => {
-          addressListRef.current?.scrollTo(e.scrollOffset);
-          props.onScroll?.(e.scrollOffset);
-        }}
-      >
-        {({ index, style }) => {
-          const address = index * 16;
-          const byteComponents = [];
-          for (let i = 0; i < 16; i++) {
-            const byte = props.getByte(address + i);
-            const isInRange = address + i >= range[0] && address + i < range[1];
-            byteComponents.push(
-              <span
-                key={i}
+        {Array(rows)
+          .fill(0)
+          .map((_, i) => {
+            const address = i * 16 + props.startAddress;
+            const addressText = address
+              .toString(16)
+              .padStart(8, "0")
+              .toUpperCase();
+            return (
+              <div
+                key={address}
                 style={{
-                  paddingLeft: 4,
-                  paddingRight: 4,
-                  backgroundColor: isInRange ? highlightColor : undefined,
+                  marginBottom: 1,
                 }}
               >
-                {byte.toString(16).padStart(2, "0").toUpperCase()}
-              </span>
+                {addressText}
+              </div>
             );
-          }
-          return (
-            <div
-              style={{
-                ...style,
-              }}
-            >
-              {byteComponents}
-            </div>
-          );
+          })}
+      </div>
+      <div
+        className="flash-list"
+        style={{
+          marginLeft: 8,
+          height,
         }}
-      </FixedSizeList>
+      >
+        {Array(rows)
+          .fill(0)
+          .map((_, i) => {
+            const address = i * 16 + props.startAddress;
+            const byteComponents = [];
+            for (let i = 0; i < 16; i++) {
+              const byte = props.getByte(address + i);
+              const isInRange =
+                address + i >= range[0] && address + i < range[1];
+              byteComponents.push(
+                <span
+                  key={i}
+                  style={{
+                    paddingLeft: 4,
+                    paddingRight: 4,
+                    backgroundColor: isInRange ? highlightColor : undefined,
+                  }}
+                >
+                  {byte.toString(16).padStart(2, "0").toUpperCase()}
+                </span>
+              );
+            }
+            return (
+              <div
+                key={address}
+                style={{
+                  marginBottom: 1,
+                }}
+              >
+                {byteComponents}
+              </div>
+            );
+          })}
+      </div>
     </div>
   );
 });

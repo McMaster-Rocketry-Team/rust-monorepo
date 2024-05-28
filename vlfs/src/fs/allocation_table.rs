@@ -9,6 +9,9 @@ use super::{
     *,
 };
 
+const ALLOC_TABLE_HEADER_SIZE: usize = 26;
+const FILE_ENTRY_SIZE: usize = 13;
+
 // only repersent the state of the file when the struct is created
 // does not update after that
 #[derive(Debug, Clone, defmt::Format)]
@@ -31,8 +34,8 @@ impl FileEntry {
         }
     }
 
-    pub(crate) fn serialize(&self) -> [u8; 13] {
-        let mut buffer = [0u8; 13];
+    pub(crate) fn serialize(&self) -> [u8; FILE_ENTRY_SIZE] {
+        let mut buffer = [0u8; FILE_ENTRY_SIZE];
         (&mut buffer[0..2]).copy_from_slice(&self.typ.0.to_be_bytes());
         if let Some(first_sector_index) = self.first_sector_index {
             (&mut buffer[2..4]).copy_from_slice(&first_sector_index.to_be_bytes());
@@ -44,7 +47,7 @@ impl FileEntry {
         hamming_encode(buffer)
     }
 
-    // expect a 13 byte buffer
+    // expect a FILE_ENTRY_SIZE byte buffer
     pub(crate) fn deserialize(buffer: &[u8]) -> Result<Self, CorruptedFileEntry> {
         log_trace!("Deserializing file entry: {:?}", buffer);
         let buffer = hamming_decode(buffer.try_into().unwrap()).map_err(|_| CorruptedFileEntry)?;
@@ -84,7 +87,7 @@ impl Default for AllocationTableHeader {
 }
 
 impl AllocationTableHeader {
-    pub(crate) fn serialize(&self) -> [u8; 26] {
+    pub(crate) fn serialize(&self) -> [u8; ALLOC_TABLE_HEADER_SIZE] {
         let mut buffer1 = [0u8; 13];
         (&mut buffer1[0..4]).copy_from_slice(&VLFS_VERSION.to_be_bytes());
         (&mut buffer1[4..12]).copy_from_slice(&self.sequence_number.to_be_bytes());
@@ -102,7 +105,7 @@ impl AllocationTableHeader {
         result
     }
 
-    // expect a 26 byte buffer
+    // expect a ALLOC_TABLE_HEADER_SIZE byte buffer
     pub(crate) fn deserialize(buffer: &[u8]) -> Result<Self, CorruptedAllocationTableHeader> {
         let buffer1 = hamming_decode(buffer[0..13].try_into().unwrap())
             .map_err(|_| CorruptedAllocationTableHeader)?;
@@ -159,7 +162,7 @@ impl AllocationTable {
 
     // does not garuntee that the file entry is valid
     pub(super) fn address_of_file_entry(&self, i: u16) -> u32 {
-        self.address() + 26 + (i as u32) * 13
+        self.address() + ALLOC_TABLE_HEADER_SIZE as u32 + (i as u32) * FILE_ENTRY_SIZE as u32
     }
 
     pub(super) fn increment_position(&mut self) {
@@ -211,7 +214,7 @@ where
             return Ok(None);
         }
 
-        let mut buffer = [0u8; 5 + 13];
+        let mut buffer = [0u8; 5 + FILE_ENTRY_SIZE];
         let mut dummy_crc = DummyCrc {};
         let mut reader = FlashReader::new(0, &mut flash, &mut dummy_crc);
         let mut left = 0;
@@ -221,7 +224,7 @@ where
             let mid = (left + right) / 2;
             reader.set_address(at.address_of_file_entry(mid));
             let (read_result, _) = reader
-                .read_slice(&mut buffer, 13)
+                .read_slice(&mut buffer, FILE_ENTRY_SIZE)
                 .await
                 .map_err(VLFSError::FlashError)?;
             let file_entry = FileEntry::deserialize(read_result)?;
@@ -234,7 +237,7 @@ where
 
         reader.set_address(at.address_of_file_entry(left));
         let (read_result, _) = reader
-            .read_slice(&mut buffer, 13)
+            .read_slice(&mut buffer, FILE_ENTRY_SIZE)
             .await
             .map_err(VLFSError::FlashError)?;
         let mut file_entry = FileEntry::deserialize(read_result)?;
@@ -268,7 +271,7 @@ where
             let mut reader_flash = &self.flash;
             let mut writer_flash = &self.flash;
             let mut reader = FlashReader::new(
-                old_at_address.try_into().unwrap(),
+                old_at_address + ALLOC_TABLE_HEADER_SIZE as u32,
                 &mut reader_flash,
                 &mut dummy_crc,
             );
@@ -282,29 +285,29 @@ where
 
             // copy entries before the deleted entry
             // TODO optimize this, we can read multiple file entries at once at the expense of more memory
-            let mut buffer = [0u8; 5 + 13];
+            let mut buffer = [0u8; 5 + FILE_ENTRY_SIZE];
             for _ in 0..file_entry_i {
-                reader
-                    .read_slice(&mut buffer, 13)
+                let (result, _) = reader
+                    .read_slice(&mut buffer, FILE_ENTRY_SIZE)
                     .await
                     .map_err(VLFSError::FlashError)?;
                 writer
-                    .extend_from_slice(&buffer)
+                    .extend_from_slice(result)
                     .await
                     .map_err(VLFSError::FlashError)?;
             }
 
-            reader.set_address(reader.get_address() + 13);
+            reader.set_address(reader.get_address() + FILE_ENTRY_SIZE as u32);
 
             // copy entries after the deleted entry
             // TODO optimize this, we can read multiple file entries at once at the expense of more memory
             for _ in file_entry_i + 1..at.header.file_count {
-                reader
-                    .read_slice(&mut buffer, 13)
+                let (result, _) = reader
+                    .read_slice(&mut buffer, FILE_ENTRY_SIZE)
                     .await
                     .map_err(VLFSError::FlashError)?;
                 writer
-                    .extend_from_slice(&buffer)
+                    .extend_from_slice(result)
                     .await
                     .map_err(VLFSError::FlashError)?;
             }
@@ -347,7 +350,7 @@ where
             let mut reader_flash = &self.flash;
             let mut writer_flash = &self.flash;
             let mut reader = FlashReader::new(
-                old_at_address.try_into().unwrap(),
+                old_at_address + ALLOC_TABLE_HEADER_SIZE as u32,
                 &mut reader_flash,
                 &mut dummy_crc,
             );
@@ -361,14 +364,14 @@ where
 
             // copy entries before the updated entry
             // TODO optimize this, we can read multiple file entries at once at the expense of more memory
-            let mut buffer = [0u8; 5 + 13];
+            let mut buffer = [0u8; 5 + FILE_ENTRY_SIZE];
             for _ in 0..file_entry_i {
-                reader
-                    .read_slice(&mut buffer, 13)
+                let (result, _) = reader
+                    .read_slice(&mut buffer, FILE_ENTRY_SIZE)
                     .await
                     .map_err(VLFSError::FlashError)?;
                 writer
-                    .extend_from_slice(&buffer)
+                    .extend_from_slice(result)
                     .await
                     .map_err(VLFSError::FlashError)?;
             }
@@ -379,17 +382,17 @@ where
                 .extend_from_slice(&file_entry.serialize())
                 .await
                 .map_err(VLFSError::FlashError)?;
-            reader.set_address(reader.get_address() + 13);
+            reader.set_address(reader.get_address() + FILE_ENTRY_SIZE as u32);
 
             // copy entries after the updated entry
             // TODO optimize this, we can read multiple file entries at once at the expense of more memory
             for _ in file_entry_i + 1..at.header.file_count {
-                reader
-                    .read_slice(&mut buffer, 13)
+                let (result, _) = reader
+                    .read_slice(&mut buffer, FILE_ENTRY_SIZE)
                     .await
                     .map_err(VLFSError::FlashError)?;
                 writer
-                    .extend_from_slice(&buffer)
+                    .extend_from_slice(result)
                     .await
                     .map_err(VLFSError::FlashError)?;
             }
@@ -430,7 +433,7 @@ where
         let mut reader_flash = &self.flash;
         let mut writer_flash = &self.flash;
         let mut reader = FlashReader::new(
-            old_at_address.try_into().unwrap(),
+            old_at_address + ALLOC_TABLE_HEADER_SIZE as u32,
             &mut reader_flash,
             &mut dummy_crc,
         );
@@ -444,14 +447,14 @@ where
 
         // copy existing file entries
         // TODO optimize this, we can read multiple file entries at once at the expense of more memory
-        let mut buffer = [0u8; 5 + 13];
+        let mut buffer = [0u8; 5 + FILE_ENTRY_SIZE];
         for _ in 0..at.header.file_count - 1 {
-            reader
-                .read_slice(&mut buffer, 13)
+            let (result, _) = reader
+                .read_slice(&mut buffer, FILE_ENTRY_SIZE)
                 .await
                 .map_err(VLFSError::FlashError)?;
             writer
-                .extend_from_slice(&buffer)
+                .extend_from_slice(result)
                 .await
                 .map_err(VLFSError::FlashError)?;
         }
@@ -471,7 +474,6 @@ where
 
         writer.flush().await.map_err(VLFSError::FlashError)?;
 
-
         log_info!("{:?} created, {:?}", &file_entry, file_entry.serialize());
         Ok(file_entry)
     }
@@ -485,12 +487,12 @@ where
         for i in 0..TABLE_COUNT {
             log_info!("Reading allocation table #{}", i + 1);
 
-            let mut read_buffer = [0u8; 5 + 26];
+            let mut read_buffer = [0u8; 5 + ALLOC_TABLE_HEADER_SIZE];
             let mut reader =
                 FlashReader::new((i * 32 * 1024).try_into().unwrap(), &mut flash, &mut crc);
 
             let read_result = reader
-                .read_slice(&mut read_buffer, 26)
+                .read_slice(&mut read_buffer, ALLOC_TABLE_HEADER_SIZE)
                 .await
                 .map_err(VLFSError::FlashError)?
                 .0;
@@ -504,7 +506,7 @@ where
             // TODO optimize this, we can read multiple file entries at once at the expense of more memory
             for _ in 0..header.file_count {
                 reader
-                    .read_slice(&mut read_buffer, 13)
+                    .read_slice(&mut read_buffer, FILE_ENTRY_SIZE)
                     .await
                     .map_err(VLFSError::FlashError)?;
             }
