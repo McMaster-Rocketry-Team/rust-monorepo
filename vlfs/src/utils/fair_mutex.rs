@@ -3,7 +3,6 @@ use core::ops::{Deref, DerefMut};
 use core::task::{Poll, Waker};
 
 use core::future::poll_fn;
-use defmt::info;
 use embassy_sync::blocking_mutex::raw::{NoopRawMutex, RawMutex};
 use embassy_sync::blocking_mutex::Mutex as BlockingMutex;
 use futures::future::join;
@@ -109,7 +108,7 @@ pub async fn fairMutexTest() {
     let m: FairMutex<NoopRawMutex, u32, 10> = FairMutex::new(0);
     let task1 = async {
         loop {
-            info!("Task 1");
+            log_info!("Task 1");
             let mut guard = m.lock().await;
             *guard += 1;
             if *guard > 100 {
@@ -119,7 +118,7 @@ pub async fn fairMutexTest() {
     };
     let task2 = async {
         loop {
-            info!("Task 2");
+            log_info!("Task 2");
             let mut guard = m.lock().await;
             *guard += 1;
             if *guard > 100 {

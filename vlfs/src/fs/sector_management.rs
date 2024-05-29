@@ -156,7 +156,7 @@ where
             }
         }
 
-        defmt::unreachable!()
+        log_unreachable!()
     }
 
     async fn erase(

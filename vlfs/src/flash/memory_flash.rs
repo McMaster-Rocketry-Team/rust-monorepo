@@ -1,6 +1,6 @@
 use std::path;
 
-use vlfs::Flash;
+use crate::Flash;
 
 const SIZE: u32 = 262144 * 256;
 

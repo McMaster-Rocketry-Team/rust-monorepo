@@ -1,6 +1,6 @@
 use core::fmt;
 
-use crate::io_traits::AsyncWriter;
+use crate::AsyncWriter;
 
 use super::utils::CopyFromU16x4;
 use super::*;

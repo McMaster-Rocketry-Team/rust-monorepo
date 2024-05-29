@@ -1881,6 +1881,8 @@ dependencies = [
  "defmt",
  "embassy-sync",
  "embedded-hal-async",
+ "env_logger",
+ "function_name",
  "futures",
  "futures-executor",
  "futures-test",
@@ -1889,21 +1891,6 @@ dependencies = [
  "heapless 0.8.0",
  "log",
  "paste",
- "rand",
- "static_cell",
-]
-
-[[package]]
-name = "vlfs-host"
-version = "0.1.0"
-dependencies = [
- "async-iterator",
- "critical-section",
- "defmt",
- "env_logger",
- "function_name",
- "futures",
- "log",
  "project-root",
  "rand",
  "random-access-disk",
@@ -1911,7 +1898,7 @@ dependencies = [
  "replace_with",
  "serde",
  "serde_json",
- "tempfile",
+ "static_cell",
  "tokio",
  "tokio-tungstenite",
  "vlfs",

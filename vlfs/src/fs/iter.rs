@@ -1,6 +1,6 @@
 use async_iterator::Iterator;
 
-use crate::{io_traits::AsyncReader, utils::flash_io::FlashReader, DummyCrc};
+use crate::{AsyncReader, utils::flash_io::FlashReader, DummyCrc};
 
 use super::*;
 

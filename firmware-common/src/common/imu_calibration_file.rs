@@ -1,8 +1,7 @@
 use super::files::CALIBRATION_FILE_TYPE;
 use defmt::unwrap;
 use ferraris_calibration::CalibrationInfo;
-use vlfs::io_traits::AsyncReader;
-use vlfs::{Crc, Flash, VLFS};
+use vlfs::{AsyncReader, Crc, Flash, VLFS};
 
 pub async fn read_imu_calibration_file(fs: &VLFS<impl Flash, impl Crc>) -> Option<CalibrationInfo> {
     if let Some(file) = fs.find_file_by_type(CALIBRATION_FILE_TYPE).await {

@@ -1,7 +1,7 @@
 use std::time::Duration;
 
+use crate::Flash;
 use futures::{SinkExt, StreamExt};
-use log::info;
 use serde::Serialize;
 use serde_json::to_string;
 use tokio::{
@@ -9,7 +9,6 @@ use tokio::{
     time::timeout,
 };
 use tokio_tungstenite::{tungstenite::Message, WebSocketStream};
-use vlfs::Flash;
 
 const SIZE: u32 = 262144 * 256;
 
@@ -22,14 +21,14 @@ impl DebugFlash {
         let addr = "0.0.0.0:19000";
         let try_socket = TcpListener::bind(addr).await;
         let listener = try_socket.expect("Failed to bind");
-        info!("Listening on: {}", addr);
+        log_info!("Listening on: {}", addr);
 
         loop {
-            info!("Waiting for connection");
+            log_info!("Waiting for connection");
             let stream = timeout(Duration::from_millis(500), async {
                 let (stream, _) = listener.accept().await.unwrap();
                 let stream = tokio_tungstenite::accept_async(stream).await.unwrap();
-                info!("Accepted connection");
+                log_info!("Accepted connection");
                 stream
             })
             .await;
@@ -56,14 +55,14 @@ impl Flash for DebugFlash {
             typ: "eraseSector4Kib".to_string(),
             address,
         };
-        info!("Sending: {:?}", request);
+        log_info!("Sending: {:?}", request);
         self.stream
             .send(Message::text(to_string(&request).unwrap()))
             .await
             .unwrap();
-        info!("Waiting for response");
+        log_info!("Waiting for response");
         self.stream.next().await.unwrap().unwrap();
-        info!("Response received");
+        log_info!("Response received");
         Ok(())
     }
 

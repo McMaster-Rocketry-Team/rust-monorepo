@@ -1,7 +1,6 @@
 use crate::common::files::AVIONICS_UP_RIGHT_FILE_TYPE;
 use nalgebra::Vector3;
-use vlfs::io_traits::AsyncWriter;
-use vlfs::{io_traits::AsyncReader, Crc, Flash, VLFSError, VLFS};
+use vlfs::{AsyncReader, AsyncWriter, Crc, Flash, VLFSError, VLFS};
 
 pub async fn read_up_right_vector(fs: &VLFS<impl Flash, impl Crc>) -> Option<Vector3<f32>> {
     let file = fs.find_file_by_type(AVIONICS_UP_RIGHT_FILE_TYPE).await;

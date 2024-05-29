@@ -1,9 +1,11 @@
 use crate::{get_test_image_path, tests::harness::VLFSTestingHarness};
+use crate::{FileID, FileType};
 use function_name::named;
+#[cfg(feature = "log")]
 use log::LevelFilter;
-use vlfs::{FileID, FileType};
 
 fn init_logger() {
+    #[cfg(feature = "log")]
     let _ = env_logger::builder()
         .filter_level(LevelFilter::Error)
         .filter(Some("vlfs"), LevelFilter::Trace)
@@ -58,7 +60,10 @@ test_write_read!(write_read_8031, 8031);
 test_write_read!(write_read_8032, 8032);
 test_write_read!(write_read_8033, 8033);
 test_write_read!(write_read_1m, 1024 * 1024);
+// skip the following tests when running coverage because they take too long
+#[cfg(not(feature = "internal_test_coverage"))]
 test_write_read!(write_read_16m, 1024 * 1024 * 16);
+#[cfg(not(feature = "internal_test_coverage"))]
 test_write_read!(write_read_32m, 1024 * 1024 * 32);
 test_write_read!(write_read_full_disk, 65669631);
 

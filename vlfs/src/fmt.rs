@@ -7,7 +7,7 @@ macro_rules! log_trace {
             #[cfg(feature = "log")]
             ::log::trace!($s $(, $x)*);
 
-            #[cfg(not(feature = "log"))]
+            #[cfg(feature = "defmt")]
             ::defmt::trace!($s $(, $x)*);
         }
     };
@@ -19,7 +19,7 @@ macro_rules! log_debug {
             #[cfg(feature = "log")]
             ::log::debug!($s $(, $x)*);
 
-            #[cfg(not(feature = "log"))]
+            #[cfg(feature = "defmt")]
             ::defmt::debug!($s $(, $x)*);
         }
     };
@@ -31,7 +31,7 @@ macro_rules! log_info {
             #[cfg(feature = "log")]
             ::log::info!($s $(, $x)*);
 
-            #[cfg(not(feature = "log"))]
+            #[cfg(feature = "defmt")]
             ::defmt::info!($s $(, $x)*);
         }
     };
@@ -43,7 +43,7 @@ macro_rules! log_warn {
             #[cfg(feature = "log")]
             ::log::warn!($s $(, $x)*);
 
-            #[cfg(not(feature = "log"))]
+            #[cfg(feature = "defmt")]
             ::defmt::warn!($s $(, $x)*);
         }
     };
@@ -55,7 +55,7 @@ macro_rules! log_error {
             #[cfg(feature = "log")]
             ::log::error!($s $(, $x)*);
 
-            #[cfg(not(feature = "log"))]
+            #[cfg(feature = "defmt")]
             ::defmt::error!($s $(, $x)*);
         }
     };
@@ -63,12 +63,38 @@ macro_rules! log_error {
 
 macro_rules! log_panic {
     ($s:literal $(, $x:expr)* $(,)?) => {
+        #[allow(unreachable_code)]
         {
             #[cfg(feature = "log")]
             ::core::panic!($s $(, $x)*);
 
-            #[cfg(not(feature = "log"))]
+            #[cfg(feature = "defmt")]
             ::defmt::panic!($s $(, $x)*);
+        }
+    };
+}
+
+macro_rules! log_unreachable {
+    () => {
+        #[allow(unreachable_code)]
+        {
+            #[cfg(feature = "log")]
+            panic!("unreachable");
+
+            #[cfg(feature = "defmt")]
+            ::defmt::unreachable!();
+        }
+    };
+}
+
+macro_rules! log_assert {
+    ($x:expr) => {
+        {
+            #[cfg(feature = "log")]
+            assert!($x);
+
+            #[cfg(feature = "defmt")]
+            ::defmt::assert!($x);
         }
     };
 }

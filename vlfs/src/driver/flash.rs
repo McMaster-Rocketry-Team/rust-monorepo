@@ -1,9 +1,7 @@
 use core::{
-    cell::RefCell,
     fmt::Debug,
     ops::{Deref, DerefMut},
 };
-use embassy_sync::blocking_mutex::Mutex as BlockingMutex;
 use embassy_sync::{
     blocking_mutex::raw::RawMutex,
     mutex::{Mutex, MutexGuard},

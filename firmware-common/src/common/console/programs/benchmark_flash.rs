@@ -4,7 +4,7 @@ use defmt::*;
 
 use rand::{rngs::SmallRng, RngCore, SeedableRng};
 use vlfs::{
-    io_traits::{AsyncReader, AsyncWriter},
+    AsyncReader, AsyncWriter,
     Crc, Flash, StatFlash, VLFS,
 };
 

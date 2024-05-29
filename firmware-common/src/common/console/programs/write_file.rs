@@ -1,5 +1,5 @@
 use defmt::{info, unwrap};
-use vlfs::{io_traits::AsyncWriter, Crc, Flash, VLFS};
+use vlfs::{AsyncWriter, Crc, Flash, VLFS};
 
 use crate::driver::serial::Serial;
 

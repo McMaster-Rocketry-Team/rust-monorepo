@@ -15,7 +15,7 @@ use rkyv::{
     ser::{serializers::BufferSerializer, Serializer},
     Archive,
 };
-use vlfs::{io_traits::AsyncWriter, Crc, FileWriter, Flash, VLFS};
+use vlfs::{AsyncWriter, Crc, FileWriter, Flash, VLFS};
 
 use self::flight_core::Config as FlightCoreConfig;
 use crate::{

@@ -1,7 +1,6 @@
 use crate::{
-    io_traits::{AsyncReader, AsyncWriter},
     utils::flash_io::{FlashReader, FlashWriter},
-    DummyCrc,
+    AsyncReader, AsyncWriter, DummyCrc,
 };
 
 use super::{

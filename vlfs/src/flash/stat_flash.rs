@@ -1,12 +1,11 @@
 use crate::Flash;
 use core::cell::RefCell;
-use defmt::Format;
 use embassy_sync::blocking_mutex::{raw::NoopRawMutex, Mutex as BlockingMutex};
 use paste::paste;
 
 use crate::Timer;
 
-#[derive(Debug, Format, Clone, Default)]
+#[derive(Debug, defmt::Format, Clone, Default)]
 pub struct Stat {
     pub erase_sector_4kib_total_time_ms: f64,
     pub erase_sector_4kib_count: usize,

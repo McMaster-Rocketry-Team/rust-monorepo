@@ -4,7 +4,7 @@ use embedded_hal_async::delay::DelayNs;
 use ferraris_calibration::interactive_calibrator::{
     Axis, Direction, Event, InteractiveCalibrator, InteractiveCalibratorState::*,
 };
-use vlfs::{io_traits::AsyncWriter, Crc, Flash, VLFS};
+use vlfs::{AsyncWriter, Crc, Flash, VLFS};
 
 use crate::{
     claim_devices,

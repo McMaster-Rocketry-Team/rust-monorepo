@@ -67,7 +67,7 @@ where
             if let Ok(file_entry) = file_entry {
                 let mut current_sector_index = file_entry.first_sector_index;
                 while let Some(sector_index) = current_sector_index {
-                    trace!("at sector {:#X}", sector_index);
+                    log_trace!("at sector {:#X}", sector_index);
                     self.claim_sector(sector_index).await;
 
                     let mut buffer = [0u8; 5 + 8];
@@ -80,7 +80,7 @@ where
                         .await
                         .map_err(VLFSError::FlashError)?;
                     let next_sector_index = find_most_common_u16_out_of_4(&buffer[5..13]).unwrap();
-                    trace!("next_sector_index: {}", next_sector_index);
+                    log_trace!("next_sector_index: {}", next_sector_index);
                     current_sector_index = if next_sector_index == 0xFFFF {
                         None
                     } else {

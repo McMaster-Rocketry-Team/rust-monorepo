@@ -1,8 +1,7 @@
 use super::files::DEVICE_MODE_FILE_TYPE;
 #[cfg(feature = "clap")]
 use clap::ValueEnum;
-use vlfs::io_traits::{AsyncReader, AsyncWriter};
-use vlfs::{Crc, Flash, VLFSError, VLFS};
+use vlfs::{AsyncReader, AsyncWriter,Crc, Flash, VLFSError, VLFS};
 
 #[cfg_attr(feature = "clap", derive(ValueEnum))]
 #[derive(Clone, Copy, Debug, defmt::Format)]

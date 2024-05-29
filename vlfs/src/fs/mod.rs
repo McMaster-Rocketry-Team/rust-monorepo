@@ -3,7 +3,6 @@ use core::cell::RefCell;
 use crate::driver::{crc::Crc, flash::Flash};
 use async_iterator::Iterator;
 use bitvec::prelude::*;
-use defmt::*;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::blocking_mutex::Mutex as BlockingMutex;
 use embassy_sync::mutex::Mutex;
@@ -160,7 +159,7 @@ where
         &self,
         file_id: FileID,
     ) -> Result<(usize, usize), VLFSError<F::Error>> {
-        trace!("get file size start");
+        log_trace!("get file size start");
         if let Some((file_entry, _)) = self.find_file_entry(file_id).await? {
             let mut size: usize = 0;
             let mut sectors: usize = 0;
@@ -179,7 +178,7 @@ where
 
                 let sector_data_size =
                     find_most_common_u16_out_of_4(&read_result[..8]).unwrap() as usize; // TODO handle error
-                info!(
+                log_info!(
                     "sector data size = {} at sector #{:#X}",
                     sector_data_size, sector_index
                 );
@@ -220,15 +219,5 @@ where
 
     pub fn into_flash(self) -> F {
         self.flash.into_inner()
-    }
-}
-
-impl<F, C> defmt::Format for VLFS<F, C>
-where
-    F: Flash,
-    C: Crc,
-{
-    fn format(&self, _fmt: Formatter) {
-        // TODO
     }
 }

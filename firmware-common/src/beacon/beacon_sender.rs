@@ -4,7 +4,7 @@ use rkyv::{
     ser::{serializers::BufferSerializer, Serializer},
     Archive,
 };
-use vlfs::{io_traits::AsyncWriter, Crc, Flash, VLFS};
+use vlfs::{AsyncWriter, Crc, Flash, VLFS};
 
 use crate::{
     beacon::beacon_data::BeaconData,

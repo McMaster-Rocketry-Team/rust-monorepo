@@ -104,7 +104,7 @@ where
             let sector_address = current_sector_index as usize * SECTOR_SIZE;
 
             if let SectorDataLength::NotRead = self.sector_data_length {
-                defmt::assert!(self.current_page_index == 0);
+                log_assert!(self.current_page_index == 0);
                 let sector_data_length_address = (sector_address + SECTOR_SIZE - 8 - 8) as u32;
                 let read_result = flash
                     .read(sector_data_length_address, 8, &mut self.page_buffer)

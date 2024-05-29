@@ -1,24 +1,23 @@
 use std::assert_matches::assert_matches;
 use std::{collections::HashMap, mem::transmute, path::PathBuf};
 
+use crate::{
+    AsyncReader, AsyncWriter, DummyCrc, FileEntry, FileID, FileReader, FileType, FileWriter,
+    VLFSError, VLFS,
+};
 use async_iterator::Iterator;
-use async_iterator::Map;
 use futures::executor::block_on;
 use rand::Rng;
 use replace_with::replace_with_or_abort;
-use vlfs::{
-    io_traits::{AsyncReader, AsyncWriter},
-    DummyCrc, FileEntry, FileID, FileReader, FileType, FileWriter, VLFSError, VLFS,
-};
 
-#[cfg(feature = "tests_use_debug_flash")]
-use crate::debug_flash::DebugFlash;
-#[cfg(feature = "tests_use_debug_flash")]
+#[cfg(feature = "internal_tests_use_debug_flash")]
+use super::debug_flash::DebugFlash;
+#[cfg(feature = "internal_tests_use_debug_flash")]
 type FlashType = DebugFlash;
 
-#[cfg(not(feature = "tests_use_debug_flash"))]
-use crate::memory_flash::MemoryFlash;
-#[cfg(not(feature = "tests_use_debug_flash"))]
+#[cfg(not(feature = "internal_tests_use_debug_flash"))]
+use crate::MemoryFlash;
+#[cfg(not(feature = "internal_tests_use_debug_flash"))]
 type FlashType = MemoryFlash;
 
 pub struct VLFSTestingHarness {
@@ -169,7 +168,10 @@ impl VLFSTestingHarness {
         // all the files are still there & sizes are correct
         for (file_id, (file_type, content)) in &self.files {
             let file_entry = files.iter().find(|file| file.id == *file_id).unwrap();
-            assert_eq!(file_entry.opened, self.file_readers.contains_key(file_id)|| self.file_writers.contains_key(file_id));
+            assert_eq!(
+                file_entry.opened,
+                self.file_readers.contains_key(file_id) || self.file_writers.contains_key(file_id)
+            );
             assert_eq!(file_entry.typ, *file_type);
             assert!(self.vlfs.exists(*file_id).await.unwrap());
             assert_eq!(

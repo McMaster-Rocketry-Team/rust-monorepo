@@ -1,8 +1,8 @@
 use std::path;
 
+use crate::Flash;
 use random_access_disk::RandomAccessDisk;
 use random_access_storage::{RandomAccess, RandomAccessError};
-use vlfs::Flash;
 
 pub struct FileFlash {
     rad: RandomAccessDisk,
@@ -80,11 +80,5 @@ impl Flash for FileFlash {
         self.rad.write(address as u64, &write_buffer[5..]).await?;
         self.rad.sync_all().await?;
         Ok(())
-    }
-}
-
-impl Drop for FileFlash {
-    fn drop(&mut self) {
-        // block_on(self.rad.close()).unwrap();
     }
 }

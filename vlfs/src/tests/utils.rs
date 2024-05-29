@@ -1,4 +1,3 @@
-
 #[macro_export]
 macro_rules! get_test_image_path {
     ($label:expr) => {{
