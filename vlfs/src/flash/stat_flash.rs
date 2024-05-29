@@ -4,7 +4,7 @@ use defmt::Format;
 use embassy_sync::blocking_mutex::{raw::NoopRawMutex, Mutex as BlockingMutex};
 use paste::paste;
 
-use super::timer::Timer;
+use crate::Timer;
 
 #[derive(Debug, Format, Clone, Default)]
 pub struct Stat {

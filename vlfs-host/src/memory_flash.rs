@@ -12,7 +12,12 @@ pub struct MemoryFlash {
 
 impl MemoryFlash {
     pub fn new(file_name: Option<path::PathBuf>) -> Self {
-        let buffer = vec![0; SIZE as usize];
+        let buffer = if let Some(file_name) = &file_name {
+            std::fs::read(file_name).unwrap_or_else(|_| vec![0; SIZE as usize])
+        } else {
+            vec![0; SIZE as usize]
+        };
+        assert_eq!(buffer.len(), SIZE as usize);
         Self { file_name, buffer }
     }
 }
