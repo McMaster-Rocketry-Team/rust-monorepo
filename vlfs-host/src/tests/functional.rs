@@ -204,11 +204,11 @@ async fn iterate_files() {
         harness.close_write_file(file_id).await;
     }
 
-    harness.verify_file_entries().await;
+    harness.verify_invariants().await;
 
     harness.reinit().await;
 
-    harness.verify_file_entries().await;
+    harness.verify_invariants().await;
 }
 
 #[named]
@@ -236,11 +236,93 @@ async fn write_read_file_with_flush() {
     harness.open_file_for_read(file_id).await;
     harness.read_file(file_id, 450000).await;
     harness.close_read_file(file_id).await;
-    harness.verify_file_entries().await;
+    harness.verify_invariants().await;
 
     harness.reinit().await;
     harness.open_file_for_read(file_id).await;
     harness.read_file(file_id, 450000).await;
     harness.close_read_file(file_id).await;
-    harness.verify_file_entries().await;
+    harness.verify_invariants().await;
+}
+
+#[named]
+#[tokio::test]
+async fn remove_file_a() {
+    let path = get_test_image_path!();
+
+    let mut harness = VLFSTestingHarness::new(path).await;
+    let file_id = harness.create_file(FileType(0)).await;
+    harness.open_file_for_write(file_id).await;
+    harness.append_file(file_id, 1).await.unwrap();
+    harness.close_write_file(file_id).await;
+
+    harness.remove_file(file_id).await;
+    harness.verify_invariants().await;
+}
+
+#[named]
+#[tokio::test]
+async fn remove_file_b() {
+    let path = get_test_image_path!();
+
+    let mut harness = VLFSTestingHarness::new(path).await;
+    let file_id = harness.create_file(FileType(0)).await;
+    harness.open_file_for_write(file_id).await;
+    harness.append_file(file_id, 1).await.unwrap();
+    harness.close_write_file(file_id).await;
+
+    let file_id2 = harness.create_file(FileType(0)).await;
+    harness.open_file_for_write(file_id2).await;
+    harness.append_file(file_id2, 10000).await.unwrap();
+    harness.close_write_file(file_id2).await;
+
+    harness.remove_file(file_id).await;
+    harness.verify_invariants().await;
+}
+
+#[named]
+#[tokio::test]
+async fn remove_opened_file() {
+    let path = get_test_image_path!();
+
+    let mut harness = VLFSTestingHarness::new(path).await;
+    let file_id = harness.create_file(FileType(0)).await;
+    harness.open_file_for_write(file_id).await;
+    harness.append_file(file_id, 1).await.unwrap();
+
+    harness.remove_file(file_id).await;
+    harness.verify_invariants().await;
+}
+
+#[named]
+#[tokio::test]
+async fn remove_non_existent_file() {
+    init_logger();
+
+    let path = get_test_image_path!();
+    let mut harness = VLFSTestingHarness::new(path).await;
+    let file_id = FileID(100);
+
+    harness.remove_file(file_id).await;
+    harness.verify_invariants().await;
+}
+
+#[named]
+#[tokio::test]
+async fn remove_files() {
+    init_logger();
+
+    let path = get_test_image_path!();
+
+    let mut harness = VLFSTestingHarness::new(path).await;
+
+    for i in 0..10 {
+        let file_id = harness.create_file(FileType(i)).await;
+        harness.open_file_for_write(file_id).await;
+        harness.append_file(file_id, i as usize).await.unwrap();
+        harness.close_write_file(file_id).await;
+    }
+
+    harness.remove_files(|id| id.0 % 2 == 0).await;
+    harness.verify_invariants().await;
 }

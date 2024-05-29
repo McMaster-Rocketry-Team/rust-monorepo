@@ -321,10 +321,10 @@ where
             writer.flush().await.map_err(VLFSError::FlashError)?;
 
             at.header.file_count -= 1;
+            return Ok(());
         } else {
             return Err(VLFSError::FileDoesNotExist);
         }
-        defmt::todo!()
     }
 
     pub(super) async fn set_file_first_sector_index(

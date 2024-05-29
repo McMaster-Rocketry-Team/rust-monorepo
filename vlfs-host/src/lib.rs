@@ -3,6 +3,7 @@
 #![feature(let_chains)]
 #![feature(try_blocks)]
 #![feature(is_sorted)]
+#![feature(assert_matches)]
 
 pub use file_flash::FileFlash;
 

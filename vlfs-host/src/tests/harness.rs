@@ -1,12 +1,14 @@
+use std::assert_matches::assert_matches;
 use std::{collections::HashMap, mem::transmute, path::PathBuf};
 
 use async_iterator::Iterator;
+use async_iterator::Map;
 use futures::executor::block_on;
 use rand::Rng;
 use replace_with::replace_with_or_abort;
 use vlfs::{
     io_traits::{AsyncReader, AsyncWriter},
-    DummyCrc, FileID, FileReader, FileType, FileWriter, VLFSError, VLFS,
+    DummyCrc, FileEntry, FileID, FileReader, FileType, FileWriter, VLFSError, VLFS,
 };
 
 #[cfg(feature = "tests_use_debug_flash")]
@@ -104,6 +106,12 @@ impl VLFSTestingHarness {
         file_writer.flush().await.unwrap();
     }
 
+    pub async fn flush_all_files(&mut self) {
+        for (_, file_writer) in self.file_writers.iter_mut() {
+            file_writer.flush().await.unwrap();
+        }
+    }
+
     pub async fn close_write_file(&mut self, file_id: FileID) {
         let file_writer = self.file_writers.remove(&file_id).unwrap();
         file_writer.close().await.unwrap();
@@ -148,22 +156,55 @@ impl VLFSTestingHarness {
         self.vlfs.free().await
     }
 
-    pub async fn verify_file_entries(&mut self) {
-        let files = self
-            .vlfs
-            .files_iter()
-            .await
-            .collect::<Vec<_>>()
-            .await
-            .into_iter()
-            .map(|f| f.unwrap())
-            .collect::<Vec<_>>();
+    pub async fn verify_invariants(&mut self) {
+        self.flush_all_files().await;
+        let mut files = Vec::<FileEntry>::new();
+        let mut files_iter = self.vlfs.files_iter().await;
+        while let Some(file) = files_iter.next().await {
+            files.push(file.unwrap());
+        }
+        // files are sorted by id
         assert!(files.iter().map(|file| file.id.0).is_sorted());
 
-        self.files.iter().for_each(|(file_id, (_, content))| {
-            assert!(files.iter().find(|file| file.id == *file_id).is_some());
-            assert_eq!(block_on(self.vlfs.get_file_size(*file_id)).unwrap().0,content.len());
-        });
+        // all the files are still there & sizes are correct
+        for (file_id, (file_type, content)) in &self.files {
+            let file_entry = files.iter().find(|file| file.id == *file_id).unwrap();
+            assert_eq!(file_entry.opened, self.file_readers.contains_key(file_id)|| self.file_writers.contains_key(file_id));
+            assert_eq!(file_entry.typ, *file_type);
+            assert!(self.vlfs.exists(*file_id).await.unwrap());
+            assert_eq!(
+                self.vlfs.get_file_size(*file_id).await.unwrap().0,
+                content.len()
+            );
+        }
+    }
+
+    pub async fn remove_file(&mut self, file_id: FileID) {
+        if self.files.contains_key(&file_id) {
+            if self.file_writers.contains_key(&file_id) || self.file_readers.contains_key(&file_id)
+            {
+                assert_matches!(
+                    self.vlfs.remove_file(file_id).await,
+                    Err(VLFSError::FileInUse),
+                );
+            } else {
+                self.vlfs.remove_file(file_id).await.unwrap();
+                self.files.remove(&file_id);
+            }
+        } else {
+            assert_matches!(
+                self.vlfs.remove_file(file_id).await,
+                Err(VLFSError::FileDoesNotExist),
+            );
+        }
+    }
+
+    pub async fn remove_files(&mut self, predicate: impl Fn(&FileID) -> bool) {
+        self.vlfs
+            .remove_files(|file_entry| predicate(&file_entry.id))
+            .await
+            .unwrap();
+        self.files.retain(|file_id, _| !predicate(file_id));
     }
 }
 
