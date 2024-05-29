@@ -149,3 +149,98 @@ async fn open_file_doesnt_exist() {
         .await
         .unwrap_err();
 }
+
+#[named]
+#[tokio::test]
+async fn write_read_10_files() {
+    init_logger();
+
+    let path = get_test_image_path!();
+
+    let mut harness = VLFSTestingHarness::new(path).await;
+    let mut file_ids = Vec::<FileID>::new();
+
+    for i in 0..10 {
+        let file_id = harness.create_file(FileType(i)).await;
+        harness.open_file_for_write(file_id).await;
+        harness
+            .append_file(file_id, i as usize * 10000)
+            .await
+            .unwrap();
+        harness.close_write_file(file_id).await;
+        file_ids.push(file_id);
+    }
+
+    for i in 0..10 {
+        let file_id = file_ids[i];
+        harness.open_file_for_read(file_id).await;
+        harness.read_file(file_id, i as usize * 10000).await;
+        harness.close_read_file(file_id).await;
+    }
+
+    harness.reinit().await;
+
+    for i in 0..10 {
+        let file_id = file_ids[i];
+        harness.open_file_for_read(file_id).await;
+        harness.read_file(file_id, i as usize * 10000).await;
+        harness.close_read_file(file_id).await;
+    }
+}
+
+#[named]
+#[tokio::test]
+async fn iterate_files() {
+    init_logger();
+
+    let path = get_test_image_path!();
+
+    let mut harness = VLFSTestingHarness::new(path).await;
+
+    for i in 0..10 {
+        let file_id = harness.create_file(FileType(i)).await;
+        harness.open_file_for_write(file_id).await;
+        harness.append_file(file_id, i as usize).await.unwrap();
+        harness.close_write_file(file_id).await;
+    }
+
+    harness.verify_file_entries().await;
+
+    harness.reinit().await;
+
+    harness.verify_file_entries().await;
+}
+
+#[named]
+#[tokio::test]
+async fn write_read_file_with_flush() {
+    init_logger();
+
+    let path = get_test_image_path!();
+
+    let mut harness = VLFSTestingHarness::new(path).await;
+
+    let file_id = harness.create_file(FileType(0)).await;
+    harness.open_file_for_write(file_id).await;
+
+    for i in 0..10 {
+        harness
+            .append_file(file_id, i as usize * 10000)
+            .await
+            .unwrap();
+        harness.flush_file(file_id).await;
+    }
+
+    harness.close_write_file(file_id).await;
+
+    harness.open_file_for_read(file_id).await;
+    harness.read_file(file_id, 450000).await;
+    harness.close_read_file(file_id).await;
+    harness.verify_file_entries().await;
+
+    harness.reinit().await;
+    harness.open_file_for_read(file_id).await;
+    harness.read_file(file_id, 450000).await;
+    harness.close_read_file(file_id).await;
+    harness.verify_file_entries().await;
+}

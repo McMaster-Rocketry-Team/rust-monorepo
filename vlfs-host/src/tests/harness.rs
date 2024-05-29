@@ -1,5 +1,6 @@
 use std::{collections::HashMap, mem::transmute, path::PathBuf};
 
+use async_iterator::Iterator;
 use futures::executor::block_on;
 use rand::Rng;
 use replace_with::replace_with_or_abort;
@@ -59,6 +60,10 @@ impl VLFSTestingHarness {
 
     pub async fn create_file(&mut self, file_type: FileType) -> FileID {
         let file_entry = self.vlfs.create_file(file_type).await.unwrap();
+        let prev_max_file_id = self.files.iter().map(|file| file.0).max();
+        if let Some(prev_max_file_id) = prev_max_file_id {
+            assert!(file_entry.id > *prev_max_file_id)
+        }
         self.files.insert(file_entry.id, (file_type, Vec::new()));
         file_entry.id
     }
@@ -141,6 +146,24 @@ impl VLFSTestingHarness {
 
     pub async fn get_free_space(&mut self) -> u32 {
         self.vlfs.free().await
+    }
+
+    pub async fn verify_file_entries(&mut self) {
+        let files = self
+            .vlfs
+            .files_iter()
+            .await
+            .collect::<Vec<_>>()
+            .await
+            .into_iter()
+            .map(|f| f.unwrap())
+            .collect::<Vec<_>>();
+        assert!(files.iter().map(|file| file.id.0).is_sorted());
+
+        self.files.iter().for_each(|(file_id, (_, content))| {
+            assert!(files.iter().find(|file| file.id == *file_id).is_some());
+            assert_eq!(block_on(self.vlfs.get_file_size(*file_id)).unwrap().0,content.len());
+        });
     }
 }
 

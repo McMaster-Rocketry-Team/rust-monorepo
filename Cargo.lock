@@ -1897,6 +1897,7 @@ dependencies = [
 name = "vlfs-host"
 version = "0.1.0"
 dependencies = [
+ "async-iterator",
  "critical-section",
  "defmt",
  "env_logger",

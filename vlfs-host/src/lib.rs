@@ -2,6 +2,7 @@
 #![feature(impl_trait_projections)]
 #![feature(let_chains)]
 #![feature(try_blocks)]
+#![feature(is_sorted)]
 
 pub use file_flash::FileFlash;
 
