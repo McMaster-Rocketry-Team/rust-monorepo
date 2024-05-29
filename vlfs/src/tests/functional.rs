@@ -69,6 +69,31 @@ test_write_read!(write_read_full_disk, 65669631);
 
 #[named]
 #[tokio::test]
+async fn write_read_three_files() {
+    init_logger();
+
+    let path = get_test_image_path!();
+
+    let mut harness = VLFSTestingHarness::new(path).await;
+    let file_id1 = harness.create_file(FileType(0)).await;
+    harness.open_file_for_write(file_id1).await;
+    harness.append_file(file_id1, 1).await.unwrap();
+    harness.close_write_file(file_id1).await;
+    let file_id2 = harness.create_file(FileType(1)).await;
+    let file_id3 = harness.create_file(FileType(2)).await;
+    harness.open_file_for_write(file_id3).await;
+    harness.append_file(file_id3, 3).await.unwrap();
+    harness.close_write_file(file_id3).await;
+
+    harness.open_file_for_write(file_id2).await;
+    harness.append_file(file_id2, 2).await.unwrap();
+    harness.close_write_file(file_id2).await;
+
+    harness.verify_invariants().await;
+}
+
+#[named]
+#[tokio::test]
 async fn free_space_empty() {
     init_logger();
 
@@ -110,6 +135,7 @@ async fn free_space_two_files() {
     harness.append_file(file_id, 2).await.unwrap();
     harness.close_write_file(file_id).await;
     assert_eq!(harness.get_free_space().await, 65669632 - 4016 * 2);
+    harness.verify_invariants().await;
 }
 
 #[named]
