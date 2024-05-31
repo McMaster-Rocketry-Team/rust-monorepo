@@ -141,10 +141,6 @@ pub async fn init(
             }
         };
 
-        // info!("Starting in mode GROUND TEST");
-        // ground_test_avionics(device_manager).await;
-        // ground_test_gcm(device_manager).await;
-
         info!("Starting in mode {}", device_mode);
         match device_mode {
             DeviceMode::Avionics => avionics_main(&fs, device_manager).await,

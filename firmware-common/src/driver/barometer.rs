@@ -17,6 +17,15 @@ pub struct BaroReading<T: TimestampType> {
 }
 
 impl<T: TimestampType> BaroReading<T> {
+    pub fn new(timestamp: f64, temperature: f32, pressure: f32) -> Self {
+        Self {
+            _phantom: PhantomData,
+            timestamp,
+            temperature,
+            pressure,
+        }
+    }
+
     pub fn altitude(&self) -> f32 {
         // see https://github.com/pimoroni/bmp280-python/blob/master/library/bmp280/__init__.py
         let air_pressure_hpa = self.pressure / 100.0;

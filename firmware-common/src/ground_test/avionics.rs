@@ -11,12 +11,17 @@ use crate::{
     create_serialized_logger, device_manager_type,
     driver::{gps::GPS, indicator::Indicator, timestamp::UnixTimestamp},
 };
+use core::fmt::Write;
 use defmt::{info, unwrap};
 use embassy_sync::channel::Channel;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, blocking_mutex::Mutex as BlockingMutex};
 use embedded_hal_async::delay::DelayNs;
 use futures::join;
 use heapless::String;
+use lora_phy::mod_params::Bandwidth;
+use lora_phy::mod_params::CodingRate;
+use lora_phy::mod_params::SpreadingFactor;
+use lora_phy::RxMode;
 use rkyv::{Archive, Deserialize, Serialize};
 use vlfs::VLFS;
 
@@ -113,13 +118,14 @@ pub async fn ground_test_avionics(
 ) -> ! {
     claim_devices!(
         device_manager,
-        radio_phy,
+        lora,
         pyro1_cont,
         pyro1_ctrl,
         pyro2_cont,
         pyro2_ctrl,
         status_indicator,
-        barometer
+        barometer,
+        arming_switch
     );
 
     let mut delay = device_manager.delay;
@@ -132,30 +138,68 @@ pub async fn ground_test_avionics(
         }
     };
 
-    let mut delay = device_manager.delay;
+    let delay = device_manager.delay;
     let avionics_fut = async {
+        let modulation_params = lora
+            .create_modulation_params(
+                SpreadingFactor::_12,
+                Bandwidth::_250KHz,
+                CodingRate::_4_8,
+                903_900_000,
+            )
+            .unwrap();
+        let mut tx_params = lora
+            .create_tx_packet_params(4, false, false, false, &modulation_params)
+            .unwrap();
+        let rx_pkt_params = lora
+            .create_rx_packet_params(4, false, 50, false, false, &modulation_params)
+            .unwrap();
+        let mut receiving_buffer = [0u8; 50];
         loop {
-            let mut lora_message = String::<50>::new();
+            let mut lora_message = String::<100>::new();
             match pyro1_cont.read_continuity().await {
                 Ok(true) => lora_message.push_str("Pyro 1: Cont | ").unwrap(),
                 Ok(false) => lora_message.push_str("Pyro 1: No Cont | ").unwrap(),
                 Err(_) => lora_message.push_str("Pyro 1: Error | ").unwrap(),
             };
             match pyro2_cont.read_continuity().await {
-                Ok(true) => lora_message.push_str("Pyro 2: Cont").unwrap(),
-                Ok(false) => lora_message.push_str("Pyro 2: No Cont").unwrap(),
-                Err(_) => lora_message.push_str("Pyro 2: Error").unwrap(),
+                Ok(true) => lora_message.push_str("Pyro 2: Cont | ").unwrap(),
+                Ok(false) => lora_message.push_str("Pyro 2: No Cont | ").unwrap(),
+                Err(_) => lora_message.push_str("Pyro 2: Error | ").unwrap(),
             };
+            if unwrap!(arming_switch.read_arming().await) {
+                lora_message.push_str("Armed | ").unwrap();
+            } else {
+                lora_message.push_str("Disarmed | ").unwrap();
+            }
+            if unix_clock.ready() {
+                lora_message.push_str("Clock Ready ").unwrap();
+                let mut timestamp_str = String::<32>::new();
+                core::write!(&mut timestamp_str, "{}", unix_clock.now_ms()).unwrap();
+                lora_message.push_str(timestamp_str.as_str()).unwrap();
+            } else {
+                lora_message.push_str("Clock Not Ready").unwrap();
+            }
 
             info!("{}", lora_message.as_str());
 
-            radio_phy.tx(lora_message.as_bytes()).await;
+            unwrap!(lora.prepare_for_tx(
+                &modulation_params,
+                &mut tx_params,
+                22,
+                lora_message.as_bytes(),
+            )
+            .await);
+            unwrap!(lora.tx().await);
 
-            match radio_phy.rx_with_timeout(1000).await {
-                Ok(Some(data)) => {
-                    info!("Received {} bytes", data.0.len);
-                    let rx_buffer = data.1.as_slice();
-                    if rx_buffer == b"VLF4 fire 1" {
+            lora.prepare_for_rx(RxMode::Single(1000), &modulation_params, &rx_pkt_params)
+                .await
+                .unwrap();
+            match lora.rx(&rx_pkt_params, &mut receiving_buffer).await {
+                Ok((length,_)) => {
+                    let data = &receiving_buffer[0..(length as usize)];
+                    info!("Received {} bytes", length);
+                    if data == b"VLF4 fire 1" {
                         info!("Firing pyro 1");
                         fire_pyro(
                             fs,
@@ -166,7 +210,7 @@ pub async fn ground_test_avionics(
                             buzzer_queue,
                         )
                         .await;
-                    } else if rx_buffer == b"VLF4 fire 2" {
+                    } else if data == b"VLF4 fire 2" {
                         info!("Firing pyro 2");
                         fire_pyro(
                             fs,
@@ -179,15 +223,10 @@ pub async fn ground_test_avionics(
                         .await;
                     }
                 }
-                Ok(None) => {
-                    info!("rx Timeout");
-                }
                 Err(lora_error) => {
                     info!("Radio Error: {:?}", lora_error);
                 }
             }
-
-            delay.delay_ms(2000).await;
         }
     };
 

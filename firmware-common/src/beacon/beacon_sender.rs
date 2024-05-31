@@ -1,5 +1,6 @@
 use defmt::{info, unwrap};
 use heapless::Vec;
+use lora_phy::mod_params::{Bandwidth, CodingRate, SpreadingFactor};
 use rkyv::{
     ser::{serializers::BufferSerializer, Serializer},
     Archive,
@@ -26,15 +27,9 @@ pub async fn beacon_sender(
     device_manager: device_manager_type!(),
     use_lora: bool,
 ) -> ! {
-    claim_devices!(
-        device_manager,
-        gps,
-        radio_phy,
-        error_indicator,
-        status_indicator
-    );
+    claim_devices!(device_manager, gps, lora, error_indicator, status_indicator);
     let clock = device_manager.clock;
-    let mut vlp_phy = if use_lora { Some(radio_phy) } else { None };
+    let mut lora = if use_lora { Some(lora) } else { None };
 
     let file = unwrap!(fs.create_file(BEACON_SENDER_LOG_FILE_TYPE).await);
     let mut log_file = unwrap!(fs.open_file_for_write(file.id).await);
@@ -59,7 +54,7 @@ pub async fn beacon_sender(
             satellites_count.lock(|v| v.replace(nmea.num_of_fix_satellites));
             locked.lock(|v| v.replace(nmea.lat_lon.is_some()));
 
-            if let Some(vlp_phy) = &mut vlp_phy {
+            if let Some(lora) = &mut lora {
                 let mut buffer = Vec::<u8, 222>::new();
                 unsafe {
                     for _ in 0..core::mem::size_of::<<BeaconData as Archive>::Archived>() {
@@ -75,7 +70,20 @@ pub async fn beacon_sender(
                 serializer.serialize_value(&beacon_data).unwrap();
                 let buffer = serializer.into_inner();
 
-                vlp_phy.tx(&buffer).await;
+                let modulation_params = lora
+                    .create_modulation_params(
+                        SpreadingFactor::_12,
+                        Bandwidth::_250KHz,
+                        CodingRate::_4_8,
+                        903_900_000,
+                    )
+                    .unwrap();
+                let mut tx_params = lora
+                    .create_tx_packet_params(4, false, false, false, &modulation_params)
+                    .unwrap();
+                lora.prepare_for_tx(&modulation_params, &mut tx_params, 22, &buffer)
+                    .await;
+                lora.tx().await;
             }
 
             let mut log_str = String::<32>::new();

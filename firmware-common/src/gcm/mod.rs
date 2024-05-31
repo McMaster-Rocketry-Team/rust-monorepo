@@ -36,9 +36,7 @@ pub async fn gcm_main<const N: usize, const M: usize>(
         unsafe { HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE) }
     }
 
-    claim_devices!(device_manager, radio_phy);
-
-    radio_phy.set_output_power(22);
+    claim_devices!(device_manager, lora);
 
     let radio_tx = Channel::<NoopRawMutex, ApplicationLayerRxPackage, 1>::new();
     let radio_rx = Channel::<NoopRawMutex, (RadioReceiveInfo, ApplicationLayerTxPackage), 3>::new();
@@ -83,13 +81,13 @@ pub async fn gcm_main<const N: usize, const M: usize>(
     );
 
     let radio_fut = async {
-        let mut socket = PVLPSlave::new(
-            PVLP(radio_phy),
-            device_manager.clock,
-            radio_rx.sender(),
-            radio_tx.receiver(),
-        );
-        socket.run().await;
+        // let mut socket = PVLPSlave::new(
+        //     PVLP(radio_phy),
+        //     device_manager.clock,
+        //     radio_rx.sender(),
+        //     radio_tx.receiver(),
+        // );
+        // socket.run().await;
     };
 
     #[allow(unreachable_code)]

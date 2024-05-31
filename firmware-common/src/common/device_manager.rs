@@ -1,4 +1,5 @@
 use embedded_hal_async::delay::DelayNs;
+use lora_phy::{mod_traits::RadioKind, LoRa};
 use vlfs::{Crc, Flash};
 
 use crate::driver::{
@@ -14,7 +15,6 @@ use crate::driver::{
     indicator::Indicator,
     meg::Megnetometer,
     pyro::{Continuity, PyroCtrl},
-    radio::RadioPhy,
     rng::RNG,
     serial::Serial,
     sys_reset::SysReset,
@@ -44,7 +44,7 @@ pub struct DeviceManager<
     U: USB,
     B: Buzzer,
     M: Megnetometer,
-    L: RadioPhy,
+    RK: RadioKind,
     R: RNG,
     IS: Indicator,
     IE: Indicator,
@@ -70,7 +70,7 @@ pub struct DeviceManager<
     pub(crate) usb: Mutex<NoopRawMutex, U>,
     pub(crate) buzzer: Mutex<NoopRawMutex, B>,
     pub(crate) meg: Mutex<NoopRawMutex, M>,
-    pub(crate) radio_phy: Mutex<NoopRawMutex, L>,
+    pub(crate) lora: Mutex<NoopRawMutex, LoRa<RK, DL>>,
     pub(crate) rng: Mutex<NoopRawMutex, R>,
     pub(crate) status_indicator: Mutex<NoopRawMutex, IS>,
     pub(crate) error_indicator: Mutex<NoopRawMutex, IE>,
@@ -104,7 +104,7 @@ impl<
         U: USB,
         B: Buzzer,
         M: Megnetometer,
-        L: RadioPhy,
+        RK: RadioKind,
         R: RNG,
         IS: Indicator,
         IE: Indicator,
@@ -134,7 +134,7 @@ impl<
         U,
         B,
         M,
-        L,
+        RK,
         R,
         IS,
         IE,
@@ -161,7 +161,7 @@ impl<
         usb: U,
         buzzer: B,
         meg: M,
-        radio_phy: L,
+        lora: LoRa<RK, DL>,
         rng: R,
         status_indicator: IS,
         error_indicator: IE,
@@ -190,7 +190,7 @@ impl<
             usb: Mutex::new(usb),
             buzzer: Mutex::new(buzzer),
             meg: Mutex::new(meg),
-            radio_phy: Mutex::new(radio_phy),
+            lora: Mutex::new(lora),
             rng: Mutex::new(rng),
             status_indicator: Mutex::new(status_indicator),
             error_indicator: Mutex::new(error_indicator),
@@ -252,7 +252,7 @@ macro_rules! device_manager_type{
     impl USB,
     impl Buzzer,
     impl Megnetometer,
-    impl RadioPhy,
+    impl RadioKind,
     impl RNG,
     impl Indicator,
     impl Indicator,
@@ -283,7 +283,7 @@ macro_rules! device_manager_type{
     impl USB,
     impl Buzzer,
     impl Megnetometer,
-    impl RadioPhy,
+    impl RadioKind,
     impl RNG,
     impl Indicator,
     impl Indicator,
@@ -315,4 +315,5 @@ pub mod prelude {
     pub use crate::driver::sys_reset::SysReset;
     pub use crate::driver::usb::USB;
     pub use vlfs::{Crc, Flash};
+    pub use lora_phy::mod_traits::RadioKind;
 }

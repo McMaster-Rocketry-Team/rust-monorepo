@@ -1,4 +1,8 @@
 use defmt::{info, warn};
+use lora_phy::{
+    mod_params::{Bandwidth, CodingRate, SpreadingFactor},
+    RxMode,
+};
 use vlfs::{Crc, Flash, VLFS};
 
 use crate::{
@@ -20,14 +24,29 @@ pub async fn beacon_receiver(
         unsafe { HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE) }
     }
 
-    claim_devices!(device_manager, radio_phy);
+    claim_devices!(device_manager, lora);
 
+    let modulation_params = lora
+        .create_modulation_params(
+            SpreadingFactor::_12,
+            Bandwidth::_250KHz,
+            CodingRate::_4_8,
+            903_900_000,
+        )
+        .unwrap();
+    let rx_pkt_params = lora
+        .create_rx_packet_params(4, false, 50, false, false, &modulation_params)
+        .unwrap();
+    let mut receiving_buffer = [0u8; 222];
     loop {
-        match radio_phy.rx().await {
-            Ok(data) => {
-                info!("Received {} bytes", data.0.len);
-
-                if let Ok(archived) = check_archived_root::<BeaconData>(&data.1) {
+        lora.prepare_for_rx(RxMode::Single(1000), &modulation_params, &rx_pkt_params)
+            .await
+            .unwrap();
+        match lora.rx(&rx_pkt_params, &mut receiving_buffer).await {
+            Ok((length, _)) => {
+                info!("Received {} bytes", length);
+                let data = &receiving_buffer[0..(length as usize)];
+                if let Ok(archived) = check_archived_root::<BeaconData>(data) {
                     let d: BeaconData = archived.deserialize(&mut rkyv::Infallible).unwrap();
                     info!("BeaconData: {}", d);
                 } else {

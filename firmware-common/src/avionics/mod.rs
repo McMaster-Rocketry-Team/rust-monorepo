@@ -243,11 +243,10 @@ pub async fn avionics_main(
         batt_voltmeter,
         pyro1_cont,
         pyro2_cont,
-        radio_phy,
+        lora,
         camera
     );
     let clock = device_manager.clock;
-    radio_phy.set_output_power(22);
     unwrap!(imu.reset().await);
     unwrap!(barometer.reset().await);
     unwrap!(meg.reset().await);
@@ -274,15 +273,15 @@ pub async fn avionics_main(
     }));
 
     let radio_fut = async {
-        let mut socket = PVLPMaster::new(PVLP(radio_phy), clock);
+        // let mut socket = PVLPMaster::new(PVLP(radio_phy), clock);
 
-        loop {
-            let tx_package = radio_tx.receive().await;
-            let rx = socket.tx_and_rx(tx_package).await;
-            if let Some(rx_package) = rx {
-                radio_rx.send(rx_package).await;
-            }
-        }
+        // loop {
+        //     let tx_package = radio_tx.receive().await;
+        //     let rx = socket.tx_and_rx(tx_package).await;
+        //     if let Some(rx_package) = rx {
+        //         radio_rx.send(rx_package).await;
+        //     }
+        // }
     };
 
     let mut delay = device_manager.delay;

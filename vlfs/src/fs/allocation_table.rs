@@ -529,7 +529,7 @@ where
             }
 
             let mut at = self.allocation_table.write().await;
-            if header.sequence_number > at.header.sequence_number {
+            if header.sequence_number >= at.header.sequence_number {
                 at.header = header;
                 at.allocation_table_position = i;
                 found_valid_table = true;
