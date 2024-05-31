@@ -11,6 +11,7 @@ pub mod sensor_snapshot;
 pub mod telemetry;
 pub mod ticker;
 pub mod utc_clock;
+pub mod serialized_logger;
 
 #[macro_use]
 pub mod vlp;

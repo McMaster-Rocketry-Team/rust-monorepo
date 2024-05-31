@@ -15,3 +15,4 @@ pub mod rng;
 pub mod serial;
 pub mod sys_reset;
 pub mod usb;
+pub mod timestamp;

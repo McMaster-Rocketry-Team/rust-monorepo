@@ -3,6 +3,7 @@
 #![feature(let_chains)]
 #![feature(try_blocks)]
 #![feature(async_closure)]
+#![feature(assert_matches)]
 
 mod fmt;
 
@@ -158,7 +159,7 @@ pub async fn init(
             }
             DeviceMode::BeaconSender => beacon_sender(&fs, device_manager, false).await,
             DeviceMode::BeaconReceiver => beacon_receiver(&fs, device_manager).await,
-            DeviceMode::GroundTestAvionics => ground_test_avionics(device_manager).await,
+            DeviceMode::GroundTestAvionics => ground_test_avionics(&fs, device_manager).await,
             DeviceMode::GroundTestGCM => ground_test_gcm(device_manager).await,
         };
     };

@@ -1,4 +1,4 @@
-use crate::driver::{barometer::BaroReading, meg::MegReading};
+use crate::driver::{barometer::BaroReading, meg::MegReading, timestamp::BootTimestamp};
 use ferraris_calibration::IMUReading;
 use rkyv::{Archive, Deserialize, Serialize};
 
@@ -8,7 +8,7 @@ use super::gps_parser::GPSLocation;
 pub enum SensorReading {
     GPS(GPSLocation),
     IMU(IMUReading),
-    Baro(BaroReading),
+    Baro(BaroReading<BootTimestamp>),
     Meg(MegReading),
     BatteryVoltage(BatteryVoltage),
 }
@@ -35,5 +35,5 @@ impl SensorReading {
 pub struct PartialSensorSnapshot {
     pub timestamp: f64, // ms
     pub imu_reading: IMUReading,
-    pub baro_reading: Option<BaroReading>,
+    pub baro_reading: Option<BaroReading<BootTimestamp>>,
 }

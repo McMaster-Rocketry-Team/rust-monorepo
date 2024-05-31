@@ -1,16 +1,19 @@
-use core::fmt::Debug;
+use core::{fmt::Debug, marker::PhantomData};
 use embedded_hal_async::delay::DelayNs;
 use libm::powf;
 use rkyv::{Archive, Deserialize, Serialize};
 
-#[derive(defmt::Format, Debug, Clone, Default, Archive, Deserialize, Serialize)]
-pub struct BaroReading {
+use super::timestamp::{BootTimestamp, TimestampType};
+
+#[derive(defmt::Format, Debug, Clone, Archive, Deserialize, Serialize)]
+pub struct BaroReading<T: TimestampType> {
+    _phantom: PhantomData<T>,
     pub timestamp: f64,   // ms
     pub temperature: f32, // C
     pub pressure: f32,    // Pa
 }
 
-impl BaroReading {
+impl<T: TimestampType> BaroReading<T> {
     pub fn altitude(&self) -> f32 {
         // see https://github.com/pimoroni/bmp280-python/blob/master/library/bmp280/__init__.py
         let air_pressure_hpa = self.pressure / 100.0;
@@ -24,7 +27,7 @@ pub trait Barometer {
     type Error: defmt::Format + Debug;
 
     async fn reset(&mut self) -> Result<(), Self::Error>;
-    async fn read(&mut self) -> Result<BaroReading, Self::Error>;
+    async fn read(&mut self) -> Result<BaroReading<BootTimestamp>, Self::Error>;
 }
 
 pub struct DummyBarometer<D: DelayNs> {
@@ -44,12 +47,13 @@ impl<D: DelayNs> Barometer for DummyBarometer<D> {
         Ok(())
     }
 
-    async fn read(&mut self) -> Result<BaroReading, ()> {
+    async fn read(&mut self) -> Result<BaroReading<BootTimestamp>, ()> {
         self.delay.delay_ms(1).await;
         Ok(BaroReading {
+            _phantom: PhantomData,
             timestamp: 0.0,
-            temperature: 0.0,
-            pressure: 0.0,
+            temperature: 25.0,
+            pressure: 101325.0,
         })
     }
 }

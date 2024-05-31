@@ -130,7 +130,7 @@ where
     current_sector_index: u16,
     pub file_id: FileID,
 
-    closed: bool,
+    pub closed: bool,
 }
 
 impl<'a, F, C> FileWriter<'a, F, C>

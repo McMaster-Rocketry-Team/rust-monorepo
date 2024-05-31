@@ -1,17 +1,17 @@
 use heapless::Deque;
 
-use crate::driver::barometer::BaroReading;
+use crate::driver::{barometer::BaroReading, timestamp::BootTimestamp};
 
 pub struct BaroFilterOutput {
     pub should_ignore: bool,
-    pub baro_reading: BaroReading,
+    pub baro_reading: BaroReading<BootTimestamp>,
 }
 
 #[derive(Clone)]
 pub struct BaroReadingFilter {
-    history: Deque<BaroReading, 2>,
+    history: Deque<BaroReading<BootTimestamp>, 2>,
     ignore_pressure_end_time: f64,
-    baro_reading_hold: Option<BaroReading>,
+    baro_reading_hold: Option<BaroReading<BootTimestamp>>,
 }
 
 impl BaroReadingFilter {
@@ -23,7 +23,7 @@ impl BaroReadingFilter {
         }
     }
 
-    pub fn feed(&mut self, baro_reading: &BaroReading) -> BaroFilterOutput {
+    pub fn feed(&mut self, baro_reading: &BaroReading<BootTimestamp>) -> BaroFilterOutput {
         if self.history.is_full() {
             self.history.pop_front();
         }
@@ -58,7 +58,7 @@ impl BaroReadingFilter {
         }
     }
 
-    pub fn last_reading(&self) -> Option<BaroReading> {
+    pub fn last_reading(&self) -> Option<BaroReading<BootTimestamp>> {
         self.history.back().map(|r| r.clone())
     }
 }

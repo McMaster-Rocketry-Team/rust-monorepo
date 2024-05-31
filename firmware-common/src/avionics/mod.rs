@@ -19,19 +19,16 @@ use vlfs::{AsyncWriter, Crc, FileWriter, Flash, VLFS};
 
 use self::flight_core::Config as FlightCoreConfig;
 use crate::{
-    allocator::HEAP,
-    avionics::up_right_vector_file::write_up_right_vector,
-    common::{
+    allocator::HEAP, avionics::up_right_vector_file::write_up_right_vector, common::{
         pvlp::{PVLPMaster, PVLP},
         telemetry::telemetry_data::{AvionicsState, TelemetryData},
         vlp::{SocketParams, VLPSocket},
-    },
-    vlp::{
+    }, driver::timestamp::BootTimestamp, vlp::{
         application_layer::{
             ApplicationLayerRxPackage, ApplicationLayerTxPackage, RadioApplicationPackage,
         },
         Priority,
-    },
+    }
 };
 use crate::{
     avionics::{
@@ -93,7 +90,7 @@ async fn save_sensor_reading(
             serializer.serialize_value(&baro).unwrap();
             let buffer = serializer.into_inner();
             let buffer_slice =
-                &buffer[..core::mem::size_of::<<BaroReading as Archive>::Archived>()];
+                &buffer[..core::mem::size_of::<<BaroReading<BootTimestamp> as Archive>::Archived>()];
             sensors_file.extend_from_u8(2).await.unwrap();
             sensors_file.extend_from_slice(buffer_slice).await.unwrap();
 
@@ -301,7 +298,7 @@ pub async fn avionics_main(
         let mut imu_ticker = Ticker::every(clock, delay, 5.0);
         let imu_channel = PubSubChannel::<NoopRawMutex, IMUReading, 1, 1, 1>::new();
         let mut baro_ticker = Ticker::every(clock, delay, 5.0);
-        let baro_channel = PubSubChannel::<NoopRawMutex, BaroReading, 1, 1, 1>::new();
+        let baro_channel = PubSubChannel::<NoopRawMutex, BaroReading<BootTimestamp>, 1, 1, 1>::new();
         let mut meg_ticker = Ticker::every(clock, delay, 50.0);
         let mut batt_volt_ticker = Ticker::every(clock, delay, 5.0);
 

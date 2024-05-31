@@ -556,6 +556,7 @@ dependencies = [
  "nalgebra 0.32.5",
  "nmea",
  "num-traits",
+ "paste",
  "rand",
  "rkyv",
  "serde",
