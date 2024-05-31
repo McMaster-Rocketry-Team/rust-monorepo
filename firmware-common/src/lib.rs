@@ -7,7 +7,7 @@
 
 mod fmt;
 
-use common::utc_clock::UtcClockTask;
+use common::{buzzer_queue::BuzzerQueueRunner, unix_clock::UnixClockTask};
 use driver::gps::{GPSParser, GPSPPS};
 use embedded_hal_async::delay::DelayNs;
 use futures::join;
@@ -53,48 +53,42 @@ impl<T: Clock> VLFSTimer for VLFSTimerWrapper<T> {
     }
 }
 
-pub async fn testMain(
-    clock: impl Clock,
-    mut gps: impl GPS,
-    pps: impl GPSPPS,
-    mut delay: impl DelayNs,
-) {
-    gps.reset().await;
-
-    let parser = GPSParser::new();
-    let gps_parser_fut = parser.run(&mut gps);
-
-    let utc_clock_task = UtcClockTask::new(clock);
-    let utc_clock_task_fut = utc_clock_task.run(pps, &parser, clock);
-    let utc_clock = utc_clock_task.get_clock();
-
-    let display_fut = async {
-        loop {
-            delay.delay_ms(10).await;
-            if utc_clock.ready() {
-                info!("UTC: {}", (utc_clock.now_ms() / 1000.0) as i64);
-            } else {
-                // info!("UTC not ready");
-            }
-        }
-    };
-
-    join!(gps_parser_fut, utc_clock_task_fut, display_fut);
-}
-
 pub async fn init(
     device_manager: device_manager_type!(mut),
     device_mode_overwrite: Option<DeviceMode>,
 ) -> ! {
-    claim_devices!(device_manager, flash, crc, usb, serial);
+    claim_devices!(
+        device_manager,
+        flash,
+        crc,
+        usb,
+        serial,
+        buzzer,
+        gps,
+        gps_pps
+    );
     let clock = device_manager.clock;
     let mut delay = device_manager.delay;
 
+    // Start VLFS
     let stat_flash = StatFlash::new();
     let mut flash = stat_flash.get_flash(flash, VLFSTimerWrapper(clock));
     flash.reset().await.ok();
     let mut fs = VLFS::new(flash, crc);
     unwrap!(fs.init().await);
+
+    // Start GPS (provides unix time)
+    gps.reset().await;
+    let parser = GPSParser::new();
+    let gps_parser_fut = parser.run(&mut gps);
+    let unix_clock_task = UnixClockTask::new(clock);
+    let unix_clock_task_fut = unix_clock_task.run(gps_pps, &parser, clock);
+    let unix_clock = unix_clock_task.get_clock();
+
+    // Buzzer Queue
+    let buzzer_queue_runner = BuzzerQueueRunner::new();
+    let buzzer_queue_runner_fut = buzzer_queue_runner.run(buzzer, delay);
+    let buzzer_queue = buzzer_queue_runner.get_queue();
 
     let usb_connected = {
         let timeout_fut = delay.delay_ms(500);
@@ -159,7 +153,9 @@ pub async fn init(
             }
             DeviceMode::BeaconSender => beacon_sender(&fs, device_manager, false).await,
             DeviceMode::BeaconReceiver => beacon_receiver(&fs, device_manager).await,
-            DeviceMode::GroundTestAvionics => ground_test_avionics(&fs, device_manager).await,
+            DeviceMode::GroundTestAvionics => {
+                ground_test_avionics(&fs, unix_clock, &buzzer_queue, device_manager).await
+            }
             DeviceMode::GroundTestGCM => ground_test_gcm(device_manager).await,
         };
     };
@@ -167,6 +163,9 @@ pub async fn init(
     #[allow(unreachable_code)]
     {
         join!(
+            buzzer_queue_runner_fut,
+            gps_parser_fut,
+            unix_clock_task_fut,
             main_fut,
             serial_console.run_dispatcher(),
             usb_console.run_dispatcher(),

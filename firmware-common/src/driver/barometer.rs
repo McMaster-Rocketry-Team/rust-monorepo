@@ -1,9 +1,12 @@
-use core::{fmt::Debug, marker::PhantomData};
+use core::{fmt::Debug, marker::PhantomData, ops::DerefMut as _};
+use embassy_sync::{blocking_mutex::raw::RawMutex, mutex::MutexGuard};
 use embedded_hal_async::delay::DelayNs;
 use libm::powf;
 use rkyv::{Archive, Deserialize, Serialize};
 
-use super::timestamp::{BootTimestamp, TimestampType};
+use crate::{common::unix_clock::UnixClock, Clock};
+
+use super::timestamp::{BootTimestamp, TimestampType, UnixTimestamp};
 
 #[derive(defmt::Format, Debug, Clone, Archive, Deserialize, Serialize)]
 pub struct BaroReading<T: TimestampType> {
@@ -20,6 +23,20 @@ impl<T: TimestampType> BaroReading<T> {
         return ((powf(1013.25 / air_pressure_hpa, 1.0 / 5.257) - 1.0)
             * (self.temperature + 273.15))
             / 0.0065;
+    }
+}
+
+impl BaroReading<BootTimestamp> {
+    pub fn to_unix_timestamp(
+        self,
+        unix_clock: UnixClock<impl Clock>,
+    ) -> BaroReading<UnixTimestamp> {
+        BaroReading {
+            _phantom: PhantomData,
+            timestamp: unix_clock.convert_to_unix(self.timestamp),
+            temperature: self.temperature,
+            pressure: self.pressure,
+        }
     }
 }
 
@@ -55,5 +72,21 @@ impl<D: DelayNs> Barometer for DummyBarometer<D> {
             temperature: 25.0,
             pressure: 101325.0,
         })
+    }
+}
+
+impl<'a, M, T> Barometer for MutexGuard<'a, M, T>
+where
+    M: RawMutex,
+    T: Barometer,
+{
+    type Error = T::Error;
+
+    async fn reset(&mut self) -> Result<(), Self::Error> {
+        self.deref_mut().reset().await
+    }
+
+    async fn read(&mut self) -> Result<BaroReading<BootTimestamp>, Self::Error> {
+        self.deref_mut().read().await
     }
 }

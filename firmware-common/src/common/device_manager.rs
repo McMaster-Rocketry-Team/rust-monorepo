@@ -9,7 +9,7 @@ use crate::driver::{
     camera::Camera,
     clock::Clock,
     debugger::Debugger,
-    gps::GPS,
+    gps::{GPS, GPSPPS},
     imu::IMU,
     indicator::Indicator,
     meg::Megnetometer,
@@ -50,6 +50,7 @@ pub struct DeviceManager<
     IE: Indicator,
     BA: Barometer,
     G: GPS,
+    GP: GPSPPS,
     CAM: Camera,
 > {
     pub(crate) sys_reset: Mutex<NoopRawMutex, D>,
@@ -75,6 +76,7 @@ pub struct DeviceManager<
     pub(crate) error_indicator: Mutex<NoopRawMutex, IE>,
     pub(crate) barometer: Mutex<NoopRawMutex, BA>,
     pub(crate) gps: Mutex<NoopRawMutex, G>,
+    pub(crate) gps_pps: Mutex<NoopRawMutex, GP>,
     pub(crate) camera: Mutex<NoopRawMutex, CAM>,
     pub(crate) clock: T,
     pub(crate) delay: DL,
@@ -108,6 +110,7 @@ impl<
         IE: Indicator,
         BA: Barometer,
         G: GPS,
+        GP: GPSPPS,
         CAM: Camera,
     >
     DeviceManager<
@@ -137,6 +140,7 @@ impl<
         IE,
         BA,
         G,
+        GP,
         CAM,
     >
 {
@@ -163,6 +167,7 @@ impl<
         error_indicator: IE,
         barometer: BA,
         gps: G,
+        gps_pps: GP,
         camera: CAM,
         debugger: DB,
     ) -> Self {
@@ -191,6 +196,7 @@ impl<
             error_indicator: Mutex::new(error_indicator),
             barometer: Mutex::new(barometer),
             gps: Mutex::new(gps),
+            gps_pps: Mutex::new(gps_pps),
             camera: Mutex::new(camera),
             clock,
             delay,
@@ -252,6 +258,7 @@ macro_rules! device_manager_type{
     impl Indicator,
     impl Barometer,
     impl GPS,
+    impl GPSPPS,
     impl Camera,
 >};
 
@@ -282,6 +289,7 @@ macro_rules! device_manager_type{
     impl Indicator,
     impl Barometer,
     impl GPS,
+    impl GPSPPS,
     impl Camera,
 >}
 }
@@ -296,7 +304,7 @@ pub mod prelude {
     pub use crate::driver::camera::Camera;
     pub use crate::driver::clock::Clock;
     pub use crate::driver::debugger::Debugger;
-    pub use crate::driver::gps::GPS;
+    pub use crate::driver::gps::{GPS, GPSPPS};
     pub use crate::driver::imu::IMU;
     pub use crate::driver::indicator::Indicator;
     pub use crate::driver::meg::Megnetometer;

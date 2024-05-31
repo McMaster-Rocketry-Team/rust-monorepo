@@ -10,8 +10,9 @@ pub mod pvlp;
 pub mod sensor_snapshot;
 pub mod telemetry;
 pub mod ticker;
-pub mod utc_clock;
+pub mod unix_clock;
 pub mod serialized_logger;
+pub mod buzzer_queue;
 
 #[macro_use]
 pub mod vlp;
