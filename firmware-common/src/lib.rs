@@ -9,7 +9,6 @@ mod fmt;
 
 use common::{buzzer_queue::BuzzerQueueRunner, unix_clock::UnixClockTask};
 use driver::gps::{GPSParser, GPSPPS};
-use embedded_hal_async::delay::DelayNs;
 use futures::join;
 
 use crate::{

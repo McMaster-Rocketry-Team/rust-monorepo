@@ -4,7 +4,7 @@ use crate::{
     device_manager_type,
     driver::{gps::GPS, indicator::Indicator},
 };
-use defmt::info;
+use defmt::{info, unwrap};
 use lora_phy::{
     mod_params::{Bandwidth, CodingRate, SpreadingFactor},
     RxMode,
@@ -37,21 +37,28 @@ pub async fn ground_test_gcm(device_manager: device_manager_type!()) -> ! {
             .await
             .unwrap();
         match lora.rx(&rx_pkt_params, &mut receiving_buffer).await {
-            Ok((length, _)) => {
+            Ok((length, status)) => {
                 let data = &receiving_buffer[0..(length as usize)];
-                info!("Received {} bytes", length);
+                info!("Received {} bytes, rssi: {}, snr: {}", length, status.rssi, status.snr);
                 if data.starts_with(b"Pyro 1: ") {
                     info!(
-                        "Received continuity message: {}",
+                        "{}",
                         core::str::from_utf8(data).unwrap()
                     );
 
                     count += 1;
                     info!("{}/3", count);
                     if count == 3 {
-                        lora.prepare_for_tx(&modulation_params, &mut tx_params, 22, b"VLF3 fire 1")
-                            .await;
-                        lora.tx().await;
+                        unwrap!(
+                            lora.prepare_for_tx(
+                                &modulation_params,
+                                &mut tx_params,
+                                9,
+                                b"VLF4 fire 2"
+                            )
+                            .await
+                        );
+                        unwrap!(lora.tx().await);
 
                         info!("Sent fire message");
                         loop {

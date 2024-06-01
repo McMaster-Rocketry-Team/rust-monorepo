@@ -78,26 +78,32 @@ async fn fire_pyro(
     };
 
     let fire_fut = async {
-        buzzer_queue.publish(BuzzerTone(Some(3000), 500));
-        buzzer_queue.publish(BuzzerTone(None, 500));
-        buzzer_queue.publish(BuzzerTone(Some(3000), 500));
-        buzzer_queue.publish(BuzzerTone(None, 500));
-        buzzer_queue.publish(BuzzerTone(Some(3000), 500));
+        info!("3");
+        buzzer_queue.publish(BuzzerTone(Some(3000), 50));
+        buzzer_queue.publish(BuzzerTone(None, 50));
+        buzzer_queue.publish(BuzzerTone(Some(3000), 50));
+        buzzer_queue.publish(BuzzerTone(None, 50));
+        buzzer_queue.publish(BuzzerTone(Some(3000), 50));
         delay.delay_ms(1000).await;
 
-        buzzer_queue.publish(BuzzerTone(Some(3000), 500));
-        buzzer_queue.publish(BuzzerTone(None, 500));
-        buzzer_queue.publish(BuzzerTone(Some(3000), 500));
+        info!("2");
+        buzzer_queue.publish(BuzzerTone(Some(3000), 50));
+        buzzer_queue.publish(BuzzerTone(None, 50));
+        buzzer_queue.publish(BuzzerTone(Some(3000), 50));
         delay.delay_ms(1000).await;
 
-        buzzer_queue.publish(BuzzerTone(Some(3000), 500));
+        info!("1");
+        buzzer_queue.publish(BuzzerTone(Some(3000), 50));
         delay.delay_ms(1000).await;
 
+        info!("fire");
         logs_channel
-            .try_send(GroundTestLog::FireEvent(FireEvent { timestamp: 0.0 }))
+            .try_send(GroundTestLog::FireEvent(FireEvent {
+                timestamp: unix_clock.now_ms(),
+            }))
             .unwrap();
         unwrap!(ctrl.set_enable(true).await);
-        delay.delay_ms(1000).await;
+        delay.delay_ms(2000).await;
         unwrap!(ctrl.set_enable(false).await);
         delay.delay_ms(10000).await;
         finished.lock(|s| *s.borrow_mut() = true);
@@ -128,6 +134,9 @@ pub async fn ground_test_avionics(
         arming_switch
     );
 
+    info!("resetting barometer");
+    unwrap!(barometer.reset().await);
+    
     let mut delay = device_manager.delay;
     let indicator_fut = async {
         loop {
@@ -183,20 +192,22 @@ pub async fn ground_test_avionics(
 
             info!("{}", lora_message.as_str());
 
-            unwrap!(lora.prepare_for_tx(
-                &modulation_params,
-                &mut tx_params,
-                22,
-                lora_message.as_bytes(),
-            )
-            .await);
+            unwrap!(
+                lora.prepare_for_tx(
+                    &modulation_params,
+                    &mut tx_params,
+                    9,
+                    lora_message.as_bytes(),
+                )
+                .await
+            );
             unwrap!(lora.tx().await);
 
             lora.prepare_for_rx(RxMode::Single(1000), &modulation_params, &rx_pkt_params)
                 .await
                 .unwrap();
             match lora.rx(&rx_pkt_params, &mut receiving_buffer).await {
-                Ok((length,_)) => {
+                Ok((length, _)) => {
                     let data = &receiving_buffer[0..(length as usize)];
                     info!("Received {} bytes", length);
                     if data == b"VLF4 fire 1" {

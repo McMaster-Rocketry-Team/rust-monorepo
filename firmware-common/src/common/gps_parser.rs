@@ -113,14 +113,14 @@ impl GPSParser {
                         }
                         Err(nmea::Error::DisabledSentence) => {}
                         Err(error) => {
-                            log_warn!(
-                                "Failed to parse NMEA sentence {} {:?}",
-                                &nmea_sentence
-                                    .sentence
-                                    .as_str()
-                                    .trim_end_matches(|c| c == '\r' || c == '\n'),
-                                NmeaErrorWrapper(error),
-                            );
+                            // log_warn!(
+                            //     "Failed to parse NMEA sentence {} {:?}",
+                            //     &nmea_sentence
+                            //         .sentence
+                            //         .as_str()
+                            //         .trim_end_matches(|c| c == '\r' || c == '\n'),
+                            //     NmeaErrorWrapper(error),
+                            // );
                         }
                     }
                 });

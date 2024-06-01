@@ -57,7 +57,7 @@ impl<'a, K: Clock> UnixClock<'a, K> {
     pub fn convert_to_unix(&self, boot_timstamp: f64) -> f64 {
         let offset = self.task.offset.lock(|offset| {
             let offset = offset.borrow();
-            let offset = offset.expect("UTC clock not ready");
+            let offset = offset.unwrap_or(0.0);
             offset
         });
         boot_timstamp + offset
@@ -69,7 +69,7 @@ impl<'a, K: Clock> Clock for UnixClock<'a, K> {
     fn now_ms(&self) -> f64 {
         self.task.offset.lock(|offset| {
             let offset = offset.borrow();
-            let offset = offset.expect("UTC clock not ready");
+            let offset = offset.unwrap_or(0.0);
             self.task.clock.now_ms() + offset
         })
     }
