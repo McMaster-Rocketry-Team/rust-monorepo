@@ -1,10 +1,10 @@
-use core::{fmt::Debug, marker::PhantomData, ops::DerefMut as _};
+use core::{fmt::Debug, marker::PhantomData, ops::{DerefMut as _, Sub}};
 use embassy_sync::{blocking_mutex::raw::RawMutex, mutex::MutexGuard};
 use embedded_hal_async::delay::DelayNs;
 use libm::powf;
 use rkyv::{Archive, Deserialize, Serialize};
 
-use crate::{common::unix_clock::UnixClock, Clock};
+use crate::{common::{delta_factory::Deltable, unix_clock::UnixClock}, Clock};
 
 use super::timestamp::{BootTimestamp, TimestampType, UnixTimestamp};
 
@@ -14,6 +14,48 @@ pub struct BaroReading<T: TimestampType> {
     pub timestamp: f64,   // ms
     pub temperature: f32, // C
     pub pressure: f32,    // Pa
+}
+
+#[derive(defmt::Format, Debug, Clone, Archive, Deserialize, Serialize)]
+pub struct BaroReadingDelta<T: TimestampType> {
+    _phantom: PhantomData<T>,
+    pub timestamp: u8,
+    pub temperature: u8,
+    pub pressure: u8,
+}
+
+mod factories {
+    use crate::fixed_point_factory;
+
+    fixed_point_factory!(Timestamp, 0.0, 100.0, f64, u8);
+    fixed_point_factory!(Temperature, -1.0, 1.0, f32, u8);
+    fixed_point_factory!(Pressure, -50.0, 50.0, f32, u8);
+}
+
+impl<T: TimestampType> Sub for &BaroReading<T>{
+    type Output = Option<BaroReadingDelta<T>>;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        Some(BaroReadingDelta {
+            _phantom: PhantomData,
+            timestamp: factories::Timestamp::to_fixed_point(self.timestamp - rhs.timestamp)?,
+            temperature: factories::Temperature::to_fixed_point(self.temperature - rhs.temperature)?,
+            pressure: factories::Pressure::to_fixed_point(self.pressure - rhs.pressure)?,
+        })
+    }
+}
+
+impl<T: TimestampType> Deltable for BaroReading<T> {
+    type DeltaType = BaroReadingDelta<T>;
+
+    fn add_delta(&self, delta: &BaroReadingDelta<T>) -> Option<Self> {
+        Some(Self {
+            _phantom: PhantomData,
+            timestamp: self.timestamp + factories::Timestamp::to_float(delta.timestamp),
+            temperature: self.temperature + factories::Temperature::to_float(delta.temperature),
+            pressure: self.pressure + factories::Pressure::to_float(delta.pressure),
+        })
+    }
 }
 
 impl<T: TimestampType> BaroReading<T> {

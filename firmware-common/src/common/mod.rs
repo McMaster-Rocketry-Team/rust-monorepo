@@ -14,6 +14,7 @@ pub mod unix_clock;
 pub mod serialized_logger;
 pub mod buzzer_queue;
 pub mod fixed_point;
+pub mod delta_factory;
 
 #[macro_use]
 pub mod vlp;

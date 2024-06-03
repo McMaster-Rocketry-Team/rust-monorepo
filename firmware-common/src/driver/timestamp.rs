@@ -1,4 +1,4 @@
-pub trait TimestampType {}
+pub trait TimestampType: Clone {}
 
 #[derive(defmt::Format, Debug, Clone)]
 pub struct UnixTimestamp;

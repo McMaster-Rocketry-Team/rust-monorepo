@@ -5,7 +5,6 @@ use core::{
 
 use crate::driver::gps::{NmeaSentence, GPS};
 use chrono::{TimeZone, Utc};
-use either::Either;
 use embassy_sync::{
     blocking_mutex::{raw::NoopRawMutex, Mutex as BlockingMutex},
     signal::Signal,
@@ -13,6 +12,8 @@ use embassy_sync::{
 use futures::join;
 use nmea::Nmea;
 use rkyv::{Archive, Deserialize, Serialize};
+
+use super::delta_factory::Deltable;
 
 #[derive(Archive, Deserialize, Serialize, Debug, Clone, defmt::Format)]
 pub struct GPSLocation {
@@ -67,8 +68,9 @@ impl Sub for &GPSLocation {
     }
 }
 
-impl GPSLocation {
-    pub fn add_delta(&self, delta: &GPSLocationDelta) -> Option<Self> {
+impl Deltable for GPSLocation {
+    type DeltaType = GPSLocationDelta;
+    fn add_delta(&self, delta: &GPSLocationDelta) -> Option<Self> {
         Some(Self {
             timestamp: self.timestamp + factories::Timestamp::to_float(delta.timestamp),
             gps_timestamp: Some(self.gps_timestamp? + delta.gps_timestamp as i64),
@@ -82,57 +84,6 @@ impl GPSLocation {
             vdop: Some(self.vdop? + factories::DoP::to_float(delta.vdop)),
             pdop: Some(self.pdop? + factories::DoP::to_float(delta.pdop)),
         })
-    }
-}
-
-pub struct GPSLocationDeltaFactory {
-    last_location: Option<GPSLocation>,
-}
-
-impl GPSLocationDeltaFactory {
-    pub fn new() -> Self {
-        Self {
-            last_location: None,
-        }
-    }
-
-    pub fn push(&mut self, location: GPSLocation) -> Either<GPSLocation, GPSLocationDelta> {
-        if let Some(last_location) = self.last_location.take() {
-            if let Some(delta) = &location - &last_location {
-                self.last_location = Some(last_location.add_delta(&delta).unwrap());
-                return Either::Right(delta);
-            }
-        }
-
-        self.last_location = Some(location.clone());
-        Either::Left(location)
-    }
-}
-
-pub struct GPSLocationUnDeltaFactory {
-    last_location: Option<GPSLocation>,
-}
-
-impl GPSLocationUnDeltaFactory {
-    pub fn new() -> Self {
-        Self {
-            last_location: None,
-        }
-    }
-
-    pub fn push(&mut self, location: GPSLocation) -> GPSLocation {
-        self.last_location = Some(location.clone());
-        location
-    }
-
-    pub fn push_delta(&mut self, delta: GPSLocationDelta) -> Option<GPSLocation> {
-        if let Some(last_location) = self.last_location.take() {
-            if let Some(new_location) = last_location.add_delta(&delta) {
-                self.last_location = Some(new_location.clone());
-                return Some(new_location);
-            }
-        }
-        None
     }
 }
 
