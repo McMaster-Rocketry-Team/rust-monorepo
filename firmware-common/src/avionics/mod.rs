@@ -369,7 +369,7 @@ pub async fn avionics_main(
                     let nmea = gps_parser.get_nmea();
                     telemetry_data.lock(|d| {
                         let mut d = d.borrow_mut();
-                        d.satellites_in_use = nmea.num_of_fix_satellites;
+                        d.satellites_in_use = nmea.num_of_fix_satellites as u32;
                         d.lat_lon = nmea.lat_lon;
                     });
                     sensors_file_channel.publish_immediate(SensorReading::GPS(nmea));

@@ -51,7 +51,7 @@ pub async fn beacon_sender(
         loop {
             let nmea = gps_parser.get_nmea();
 
-            satellites_count.lock(|v| v.replace(nmea.num_of_fix_satellites));
+            satellites_count.lock(|v| v.replace(nmea.num_of_fix_satellites as u32));
             locked.lock(|v| v.replace(nmea.lat_lon.is_some()));
 
             if let Some(lora) = &mut lora {

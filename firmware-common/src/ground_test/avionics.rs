@@ -136,7 +136,7 @@ pub async fn ground_test_avionics(
 
     info!("resetting barometer");
     unwrap!(barometer.reset().await);
-    
+
     let mut delay = device_manager.delay;
     let indicator_fut = async {
         loop {

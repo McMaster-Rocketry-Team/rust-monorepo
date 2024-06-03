@@ -13,6 +13,7 @@ pub mod ticker;
 pub mod unix_clock;
 pub mod serialized_logger;
 pub mod buzzer_queue;
+pub mod fixed_point;
 
 #[macro_use]
 pub mod vlp;

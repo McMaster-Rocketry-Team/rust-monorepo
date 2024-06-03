@@ -393,9 +393,9 @@ dependencies = [
 
 [[package]]
 name = "either"
-version = "1.11.0"
+version = "1.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a47c1c47d2f5964e29c61246e81db715514cd532db6b5116a25ea3c03d6780a2"
+checksum = "3dca9240753cf90908d7e4aac30f630662b02aebaa1b58a3cadabdb23385b58b"
 
 [[package]]
 name = "embassy-futures"
@@ -531,12 +531,15 @@ name = "firmware-common"
 version = "0.1.0"
 dependencies = [
  "ahrs",
+ "approx",
+ "async-iterator",
  "bitflags 2.5.0",
  "bitvec",
  "chrono",
  "clap",
  "critical-section",
  "defmt",
+ "either",
  "embassy-futures",
  "embassy-sync",
  "embedded-alloc",

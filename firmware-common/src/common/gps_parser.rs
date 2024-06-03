@@ -1,7 +1,11 @@
-use core::{cell::RefCell, ops::Deref};
+use core::{
+    cell::RefCell,
+    ops::{Deref, Sub},
+};
 
 use crate::driver::gps::{NmeaSentence, GPS};
 use chrono::{TimeZone, Utc};
+use either::Either;
 use embassy_sync::{
     blocking_mutex::{raw::NoopRawMutex, Mutex as BlockingMutex},
     signal::Signal,
@@ -16,10 +20,120 @@ pub struct GPSLocation {
     pub gps_timestamp: Option<i64>, // in seconds
     pub lat_lon: Option<(f64, f64)>,
     pub altitude: Option<f32>,
-    pub num_of_fix_satellites: u32,
+    pub num_of_fix_satellites: u8,
     pub hdop: Option<f32>,
     pub vdop: Option<f32>,
     pub pdop: Option<f32>,
+}
+
+#[derive(Archive, Deserialize, Serialize, Debug, Clone, defmt::Format)]
+pub struct GPSLocationDelta {
+    pub timestamp: u8,
+    pub gps_timestamp: u8,
+    pub lat_lon: (u16, u16),
+    pub altitude: u8,
+    pub num_of_fix_satellites: u8,
+    pub hdop: u8,
+    pub vdop: u8,
+    pub pdop: u8,
+}
+
+mod factories {
+    use crate::fixed_point_factory;
+
+    fixed_point_factory!(Timestamp, 0.0, 100.0, f64, u8);
+    fixed_point_factory!(LatLon, -0.001, 0.001, f64, u16);
+    fixed_point_factory!(Altitude, -40.0, 40.0, f32, u8);
+    fixed_point_factory!(DoP, 0.0, 40.0, f32, u8);
+}
+
+impl Sub for &GPSLocation {
+    type Output = Option<GPSLocationDelta>;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        Some(GPSLocationDelta {
+            timestamp: factories::Timestamp::to_fixed_point(self.timestamp - rhs.timestamp)?,
+            gps_timestamp: (self.gps_timestamp? - rhs.gps_timestamp?) as u8,
+            lat_lon: (
+                factories::LatLon::to_fixed_point(self.lat_lon?.0 - rhs.lat_lon?.0)?,
+                factories::LatLon::to_fixed_point(self.lat_lon?.1 - rhs.lat_lon?.1)?,
+            ),
+            altitude: factories::Altitude::to_fixed_point(self.altitude? - rhs.altitude?)?,
+            num_of_fix_satellites: self.num_of_fix_satellites - rhs.num_of_fix_satellites,
+            hdop: factories::DoP::to_fixed_point(self.hdop? - rhs.hdop?)?,
+            vdop: factories::DoP::to_fixed_point(self.vdop? - rhs.vdop?)?,
+            pdop: factories::DoP::to_fixed_point(self.pdop? - rhs.pdop?)?,
+        })
+    }
+}
+
+impl GPSLocation {
+    pub fn add_delta(&self, delta: &GPSLocationDelta) -> Option<Self> {
+        Some(Self {
+            timestamp: self.timestamp + factories::Timestamp::to_float(delta.timestamp),
+            gps_timestamp: Some(self.gps_timestamp? + delta.gps_timestamp as i64),
+            lat_lon: Some((
+                self.lat_lon?.0 + factories::LatLon::to_float(delta.lat_lon.0),
+                self.lat_lon?.1 + factories::LatLon::to_float(delta.lat_lon.1),
+            )),
+            altitude: Some(self.altitude? + factories::Altitude::to_float(delta.altitude)),
+            num_of_fix_satellites: self.num_of_fix_satellites + delta.num_of_fix_satellites,
+            hdop: Some(self.hdop? + factories::DoP::to_float(delta.hdop)),
+            vdop: Some(self.vdop? + factories::DoP::to_float(delta.vdop)),
+            pdop: Some(self.pdop? + factories::DoP::to_float(delta.pdop)),
+        })
+    }
+}
+
+pub struct GPSLocationDeltaFactory {
+    last_location: Option<GPSLocation>,
+}
+
+impl GPSLocationDeltaFactory {
+    pub fn new() -> Self {
+        Self {
+            last_location: None,
+        }
+    }
+
+    pub fn push(&mut self, location: GPSLocation) -> Either<GPSLocation, GPSLocationDelta> {
+        if let Some(last_location) = self.last_location.take() {
+            if let Some(delta) = &location - &last_location {
+                self.last_location = Some(last_location.add_delta(&delta).unwrap());
+                return Either::Right(delta);
+            }
+        }
+
+        self.last_location = Some(location.clone());
+        Either::Left(location)
+    }
+}
+
+pub struct GPSLocationUnDeltaFactory {
+    last_location: Option<GPSLocation>,
+}
+
+impl GPSLocationUnDeltaFactory {
+    pub fn new() -> Self {
+        Self {
+            last_location: None,
+        }
+    }
+
+    pub fn push(&mut self, location: GPSLocation) -> GPSLocation {
+        self.last_location = Some(location.clone());
+        location
+    }
+
+    pub fn push_delta(&mut self, delta: GPSLocationDelta) -> Option<GPSLocation> {
+        if let Some(last_location) = self.last_location.take() {
+            if let Some(new_location) = last_location.add_delta(&delta) {
+                self.last_location = Some(new_location.clone());
+                return Some(new_location);
+            }
+        }
+        None
+    }
 }
 
 impl<T: Deref<Target = Nmea>> From<(f64, T)> for GPSLocation {
@@ -47,7 +161,7 @@ impl<T: Deref<Target = Nmea>> From<(f64, T)> for GPSLocation {
             gps_timestamp,
             lat_lon,
             altitude: value.altitude,
-            num_of_fix_satellites: value.num_of_fix_satellites.unwrap_or(0),
+            num_of_fix_satellites: value.num_of_fix_satellites.unwrap_or(0) as u8,
             hdop: value.hdop,
             vdop: value.vdop,
             pdop: value.pdop,

@@ -1,7 +1,7 @@
 #[macro_export]
 macro_rules! create_serialized_logger {
     ($writer_struct_name:ident, $reader_struct_name:ident, $enum_name:ident, $buffer_size:expr, $(($log_type_i:expr, $log_type:ident)),*) => {
-        #[derive(Debug)]
+        #[derive(defmt::Format, Debug, Clone)]
         enum $enum_name {
             $(
                 $log_type($log_type),
