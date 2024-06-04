@@ -229,6 +229,12 @@ where
         self.current_segment_logs += 1;
         Ok(())
     }
+
+    pub async fn close(mut self) -> Result<(), VLFSError<F::Error>> {
+        let file_writer = self.delta_logger.into_writer();
+        file_writer.close().await?;
+        Ok(())
+    }
 }
 
 pub struct RingDeltaLogReader<'a, T, C: Crc, F: Flash>
