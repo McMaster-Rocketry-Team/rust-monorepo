@@ -1,25 +1,19 @@
-use core::ops::Sub;
-
 use either::Either;
 
 pub trait Deltable: Sized + Clone {
     type DeltaType;
 
     fn add_delta(&self, delta: &Self::DeltaType) -> Option<Self>;
+
+    fn subtract(&self, other: &Self) -> Option<Self::DeltaType>;
 }
 
-pub struct DeltaFactory<T>
-where
-    T: Deltable,
-    for<'a> &'a T: Sub<Output = Option<T::DeltaType>>,
+pub struct DeltaFactory<T: Deltable>
 {
     last_value: Option<T>,
 }
 
-impl<T> DeltaFactory<T>
-where
-    T: Deltable,
-    for<'a> &'a T: Sub<Output = Option<T::DeltaType>>,
+impl<T: Deltable> DeltaFactory<T>
 {
     pub fn new() -> Self {
         Self {
@@ -29,7 +23,7 @@ where
 
     pub fn push(&mut self, value: T) -> Either<T, T::DeltaType> {
         if let Some(last_value) = self.last_value.take() {
-            if let Some(delta) = &value - &last_value {
+            if let Some(delta) = value.subtract(&last_value) {
                 self.last_value = Some(last_value.add_delta(&delta).unwrap());
                 return Either::Right(delta);
             }

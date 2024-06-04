@@ -1,7 +1,7 @@
 use libm::{sqrt, sqrtf};
 use nalgebra::{Matrix3, Vector3};
 
-use crate::{CalibrationInfo, IMUReading};
+use crate::{imu_reading::IMUReading, CalibrationInfo, IMUReadingTrait};
 
 pub struct CalibratorInner {
     pub gravity: f64,
@@ -140,154 +140,154 @@ impl CalibratorInner {
         }
     }
 
-    pub fn process_x_p(&mut self, reading: &IMUReading) {
+    pub fn process_x_p<T: IMUReadingTrait>(&mut self, reading: &T) {
         self.x_p_count += 1;
-        self.acc_x_p_sum += Vector3::from_row_slice(&reading.acc).cast();
-        self.gyro_x_p_sum += Vector3::from_row_slice(&reading.gyro).cast();
+        self.acc_x_p_sum += Vector3::from_row_slice(&reading.acc()).cast();
+        self.gyro_x_p_sum += Vector3::from_row_slice(&reading.gyro()).cast();
     }
 
-    pub fn process_x_p_variance(&mut self, reading: &IMUReading) {
+    pub fn process_x_p_variance<T: IMUReadingTrait>(&mut self, reading: &T) {
         self.x_p_variance_count += 1;
 
         let mut acc_diff =
-            Vector3::from_row_slice(&reading.acc).cast() - self.acc_x_p_sum / self.x_p_count as f64;
+            Vector3::from_row_slice(&reading.acc()).cast() - self.acc_x_p_sum / self.x_p_count as f64;
         acc_diff.iter_mut().for_each(|x| *x = *x * *x);
         self.acc_x_p_variance_sum += acc_diff;
 
-        let mut gyro_diff = Vector3::from_row_slice(&reading.gyro).cast()
+        let mut gyro_diff = Vector3::from_row_slice(&reading.gyro()).cast()
             - self.gyro_x_p_sum / self.x_p_count as f64;
         gyro_diff.iter_mut().for_each(|x| *x = *x * *x);
         self.gyro_x_p_variance_sum += gyro_diff;
     }
 
-    pub fn process_x_n(&mut self, reading: &IMUReading) {
+    pub fn process_x_n<T: IMUReadingTrait>(&mut self, reading: &T) {
         self.x_n_count += 1;
-        self.acc_x_n_sum += Vector3::from_row_slice(&reading.acc).cast();
-        self.gyro_x_n_sum += Vector3::from_row_slice(&reading.gyro).cast();
+        self.acc_x_n_sum += Vector3::from_row_slice(&reading.acc()).cast();
+        self.gyro_x_n_sum += Vector3::from_row_slice(&reading.gyro()).cast();
     }
 
-    pub fn process_x_n_variance(&mut self, reading: &IMUReading) {
+    pub fn process_x_n_variance<T: IMUReadingTrait>(&mut self, reading: &T) {
         self.x_n_variance_count += 1;
 
         let mut acc_diff =
-            Vector3::from_row_slice(&reading.acc).cast() - self.acc_x_n_sum / self.x_n_count as f64;
+            Vector3::from_row_slice(&reading.acc()).cast() - self.acc_x_n_sum / self.x_n_count as f64;
         acc_diff.iter_mut().for_each(|x| *x = *x * *x);
         self.acc_x_n_variance_sum += acc_diff;
 
-        let mut gyro_diff = Vector3::from_row_slice(&reading.gyro).cast()
+        let mut gyro_diff = Vector3::from_row_slice(&reading.gyro()).cast()
             - self.gyro_x_n_sum / self.x_n_count as f64;
         gyro_diff.iter_mut().for_each(|x| *x = *x * *x);
         self.gyro_x_n_variance_sum += gyro_diff;
     }
 
-    pub fn process_y_p(&mut self, reading: &IMUReading) {
+    pub fn process_y_p<T: IMUReadingTrait>(&mut self, reading: &T) {
         self.y_p_count += 1;
-        self.acc_y_p_sum += Vector3::from_row_slice(&reading.acc).cast();
-        self.gyro_y_p_sum += Vector3::from_row_slice(&reading.gyro).cast();
+        self.acc_y_p_sum += Vector3::from_row_slice(&reading.acc()).cast();
+        self.gyro_y_p_sum += Vector3::from_row_slice(&reading.gyro()).cast();
     }
 
-    pub fn process_y_p_variance(&mut self, reading: &IMUReading) {
+    pub fn process_y_p_variance<T: IMUReadingTrait>(&mut self, reading: &T) {
         self.y_p_variance_count += 1;
 
         let mut acc_diff =
-            Vector3::from_row_slice(&reading.acc).cast() - self.acc_y_p_sum / self.y_p_count as f64;
+            Vector3::from_row_slice(&reading.acc()).cast() - self.acc_y_p_sum / self.y_p_count as f64;
         acc_diff.iter_mut().for_each(|x| *x = *x * *x);
         self.acc_y_p_variance_sum += acc_diff;
 
-        let mut gyro_diff = Vector3::from_row_slice(&reading.gyro).cast()
+        let mut gyro_diff = Vector3::from_row_slice(&reading.gyro()).cast()
             - self.gyro_y_p_sum / self.y_p_count as f64;
         gyro_diff.iter_mut().for_each(|x| *x = *x * *x);
         self.gyro_y_p_variance_sum += gyro_diff;
     }
 
-    pub fn process_y_n(&mut self, reading: &IMUReading) {
+    pub fn process_y_n<T: IMUReadingTrait>(&mut self, reading: &T) {
         self.y_n_count += 1;
-        self.acc_y_n_sum += Vector3::from_row_slice(&reading.acc).cast();
-        self.gyro_y_n_sum += Vector3::from_row_slice(&reading.gyro).cast();
+        self.acc_y_n_sum += Vector3::from_row_slice(&reading.acc()).cast();
+        self.gyro_y_n_sum += Vector3::from_row_slice(&reading.gyro()).cast();
     }
 
-    pub fn process_y_n_variance(&mut self, reading: &IMUReading) {
+    pub fn process_y_n_variance<T: IMUReadingTrait>(&mut self, reading: &T) {
         self.y_n_variance_count += 1;
 
         let mut acc_diff =
-            Vector3::from_row_slice(&reading.acc).cast() - self.acc_y_n_sum / self.y_n_count as f64;
+            Vector3::from_row_slice(&reading.acc()).cast() - self.acc_y_n_sum / self.y_n_count as f64;
         acc_diff.iter_mut().for_each(|x| *x = *x * *x);
         self.acc_y_n_variance_sum += acc_diff;
 
-        let mut gyro_diff = Vector3::from_row_slice(&reading.gyro).cast()
+        let mut gyro_diff = Vector3::from_row_slice(&reading.gyro()).cast()
             - self.gyro_y_n_sum / self.y_n_count as f64;
         gyro_diff.iter_mut().for_each(|x| *x = *x * *x);
         self.gyro_y_n_variance_sum += gyro_diff;
     }
 
-    pub fn process_z_p(&mut self, reading: &IMUReading) {
+    pub fn process_z_p<T: IMUReadingTrait>(&mut self, reading: &T) {
         self.z_p_count += 1;
-        self.acc_z_p_sum += Vector3::from_row_slice(&reading.acc).cast();
-        self.gyro_z_p_sum += Vector3::from_row_slice(&reading.gyro).cast();
+        self.acc_z_p_sum += Vector3::from_row_slice(&reading.acc()).cast();
+        self.gyro_z_p_sum += Vector3::from_row_slice(&reading.gyro()).cast();
     }
 
-    pub fn process_z_p_variance(&mut self, reading: &IMUReading) {
+    pub fn process_z_p_variance<T: IMUReadingTrait>(&mut self, reading: &T) {
         self.z_p_variance_count += 1;
 
         let mut acc_diff =
-            Vector3::from_row_slice(&reading.acc).cast() - self.acc_z_p_sum / self.z_p_count as f64;
+            Vector3::from_row_slice(&reading.acc()).cast() - self.acc_z_p_sum / self.z_p_count as f64;
         acc_diff.iter_mut().for_each(|x| *x = *x * *x);
         self.acc_z_p_variance_sum += acc_diff;
 
-        let mut gyro_diff = Vector3::from_row_slice(&reading.gyro).cast()
+        let mut gyro_diff = Vector3::from_row_slice(&reading.gyro()).cast()
             - self.gyro_z_p_sum / self.z_p_count as f64;
         gyro_diff.iter_mut().for_each(|x| *x = *x * *x);
         self.gyro_z_p_variance_sum += gyro_diff;
     }
 
-    pub fn process_z_n(&mut self, reading: &IMUReading) {
+    pub fn process_z_n<T: IMUReadingTrait>(&mut self, reading: &T) {
         self.z_n_count += 1;
-        self.acc_z_n_sum += Vector3::from_row_slice(&reading.acc).cast();
-        self.gyro_z_n_sum += Vector3::from_row_slice(&reading.gyro).cast();
+        self.acc_z_n_sum += Vector3::from_row_slice(&reading.acc()).cast();
+        self.gyro_z_n_sum += Vector3::from_row_slice(&reading.gyro()).cast();
     }
 
-    pub fn process_z_n_variance(&mut self, reading: &IMUReading) {
+    pub fn process_z_n_variance<T: IMUReadingTrait>(&mut self, reading: &T) {
         self.z_n_variance_count += 1;
 
         let mut acc_diff =
-            Vector3::from_row_slice(&reading.acc).cast() - self.acc_z_n_sum / self.z_n_count as f64;
+            Vector3::from_row_slice(&reading.acc()).cast() - self.acc_z_n_sum / self.z_n_count as f64;
         acc_diff.iter_mut().for_each(|x| *x = *x * *x);
         self.acc_z_n_variance_sum += acc_diff;
 
-        let mut gyro_diff = Vector3::from_row_slice(&reading.gyro).cast()
+        let mut gyro_diff = Vector3::from_row_slice(&reading.gyro()).cast()
             - self.gyro_z_n_sum / self.z_n_count as f64;
         gyro_diff.iter_mut().for_each(|x| *x = *x * *x);
         self.gyro_z_n_variance_sum += gyro_diff;
     }
 
-    pub fn process_x_rotation(&mut self, reading: &IMUReading) {
+    pub fn process_x_rotation<T: IMUReadingTrait>(&mut self, reading: &T) {
         if self.x_rotation_count == 0 {
-            self.x_rotation_start_time_ms = reading.timestamp;
+            self.x_rotation_start_time_ms = reading.timestamp();
         }
-        self.x_rotation_end_time_ms = reading.timestamp;
+        self.x_rotation_end_time_ms = reading.timestamp();
         self.x_rotation_count += 1;
-        self.acc_x_rotation_sum += Vector3::from_row_slice(&reading.acc).cast();
-        self.gyro_x_rotation_sum += Vector3::from_row_slice(&reading.gyro).cast();
+        self.acc_x_rotation_sum += Vector3::from_row_slice(&reading.acc()).cast();
+        self.gyro_x_rotation_sum += Vector3::from_row_slice(&reading.gyro()).cast();
     }
 
-    pub fn process_y_rotation(&mut self, reading: &IMUReading) {
+    pub fn process_y_rotation<T: IMUReadingTrait>(&mut self, reading: &T) {
         if self.y_rotation_count == 0 {
-            self.y_rotation_start_time_ms = reading.timestamp;
+            self.y_rotation_start_time_ms = reading.timestamp();
         }
-        self.y_rotation_end_time_ms = reading.timestamp;
+        self.y_rotation_end_time_ms = reading.timestamp();
         self.y_rotation_count += 1;
-        self.acc_y_rotation_sum += Vector3::from_row_slice(&reading.acc).cast();
-        self.gyro_y_rotation_sum += Vector3::from_row_slice(&reading.gyro).cast();
+        self.acc_y_rotation_sum += Vector3::from_row_slice(&reading.acc()).cast();
+        self.gyro_y_rotation_sum += Vector3::from_row_slice(&reading.gyro()).cast();
     }
 
-    pub fn process_z_rotation(&mut self, reading: &IMUReading) {
+    pub fn process_z_rotation<T: IMUReadingTrait>(&mut self, reading: &T) {
         if self.z_rotation_count == 0 {
-            self.z_rotation_start_time_ms = reading.timestamp;
+            self.z_rotation_start_time_ms = reading.timestamp();
         }
-        self.z_rotation_end_time_ms = reading.timestamp;
+        self.z_rotation_end_time_ms = reading.timestamp();
         self.z_rotation_count += 1;
-        self.acc_z_rotation_sum += Vector3::from_row_slice(&reading.acc).cast();
-        self.gyro_z_rotation_sum += Vector3::from_row_slice(&reading.gyro).cast();
+        self.acc_z_rotation_sum += Vector3::from_row_slice(&reading.acc()).cast();
+        self.gyro_z_rotation_sum += Vector3::from_row_slice(&reading.gyro()).cast();
     }
 
     #[allow(non_snake_case)]
@@ -461,10 +461,10 @@ impl CalibratorInner {
                 .cast()
                 .into(),
         };
-        let variance_avg_reading = cal_info.apply_calibration(&variance_avg_reading);
+        let variance_avg_reading = cal_info.apply_calibration(variance_avg_reading);
 
-        let acc_variance: Vector3<f32> = variance_avg_reading.acc.map(|x| sqrtf(x)).into();
-        let gyro_variance: Vector3<f32> = variance_avg_reading.gyro.map(|x| sqrtf(x)).into();
+        let acc_variance: Vector3<f32> = variance_avg_reading.acc.map(|x| sqrtf(x.abs())).into();
+        let gyro_variance: Vector3<f32> = variance_avg_reading.gyro.map(|x| sqrtf(x.abs())).into();
 
         CalibrationInfo::from_raw(
             K_a.cast(),

@@ -56,6 +56,15 @@ impl<T: TimestampType> Deltable for BaroReading<T> {
             pressure: self.pressure + factories::Pressure::to_float(delta.pressure),
         })
     }
+
+    fn subtract(&self, other: &Self) -> Option<Self::DeltaType> {
+        Some(BaroReadingDelta {
+            _phantom: PhantomData,
+            timestamp: factories::Timestamp::to_fixed_point(self.timestamp - other.timestamp)?,
+            temperature: factories::Temperature::to_fixed_point(self.temperature - other.temperature)?,
+            pressure: factories::Pressure::to_fixed_point(self.pressure - other.pressure)?,
+        })
+    }
 }
 
 impl<T: TimestampType> BaroReading<T> {

@@ -3,7 +3,7 @@
 
 pub use calibration_info::CalibrationInfo;
 pub use calibrator::{new_calibrator, Calibrator};
-pub use imu_reading::IMUReading;
+pub use imu_reading::IMUReadingTrait;
 
 mod calibration_info;
 mod calibrator;

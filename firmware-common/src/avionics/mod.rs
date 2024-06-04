@@ -8,7 +8,6 @@ use embassy_sync::{
     mutex::Mutex,
     pubsub::{PubSubBehavior, PubSubChannel},
 };
-use ferraris_calibration::IMUReading;
 use futures::join;
 use nalgebra::Vector3;
 use rkyv::{
@@ -19,16 +18,11 @@ use vlfs::{AsyncWriter, Crc, FileWriter, Flash, VLFS};
 
 use self::flight_core::Config as FlightCoreConfig;
 use crate::{
-    allocator::HEAP, avionics::up_right_vector_file::write_up_right_vector, common::{
-        pvlp::{PVLPMaster, PVLP},
-        telemetry::telemetry_data::{AvionicsState, TelemetryData},
-        vlp::{SocketParams, VLPSocket},
-    }, driver::timestamp::BootTimestamp, vlp::{
-        application_layer::{
-            ApplicationLayerRxPackage, ApplicationLayerTxPackage, RadioApplicationPackage,
-        },
-        Priority,
-    }
+    allocator::HEAP,
+    avionics::up_right_vector_file::write_up_right_vector,
+    common::telemetry::telemetry_data::{AvionicsState, TelemetryData},
+    driver::{imu::IMUReading, timestamp::BootTimestamp},
+    vlp::application_layer::{ApplicationLayerRxPackage, ApplicationLayerTxPackage},
 };
 use crate::{
     avionics::{
@@ -80,7 +74,8 @@ async fn save_sensor_reading(
         SensorReading::IMU(imu) => {
             serializer.serialize_value(&imu).unwrap();
             let buffer = serializer.into_inner();
-            let buffer_slice = &buffer[..core::mem::size_of::<<IMUReading as Archive>::Archived>()];
+            let buffer_slice =
+                &buffer[..core::mem::size_of::<<IMUReading<BootTimestamp> as Archive>::Archived>()];
             sensors_file.extend_from_u8(1).await.unwrap();
             sensors_file.extend_from_slice(buffer_slice).await.unwrap();
 
@@ -89,8 +84,8 @@ async fn save_sensor_reading(
         SensorReading::Baro(baro) => {
             serializer.serialize_value(&baro).unwrap();
             let buffer = serializer.into_inner();
-            let buffer_slice =
-                &buffer[..core::mem::size_of::<<BaroReading<BootTimestamp> as Archive>::Archived>()];
+            let buffer_slice = &buffer
+                [..core::mem::size_of::<<BaroReading<BootTimestamp> as Archive>::Archived>()];
             sensors_file.extend_from_u8(2).await.unwrap();
             sensors_file.extend_from_slice(buffer_slice).await.unwrap();
 
@@ -295,9 +290,10 @@ pub async fn avionics_main(
         > = Mutex::new(None);
 
         let mut imu_ticker = Ticker::every(clock, delay, 5.0);
-        let imu_channel = PubSubChannel::<NoopRawMutex, IMUReading, 1, 1, 1>::new();
+        let imu_channel = PubSubChannel::<NoopRawMutex, IMUReading<BootTimestamp>, 1, 1, 1>::new();
         let mut baro_ticker = Ticker::every(clock, delay, 5.0);
-        let baro_channel = PubSubChannel::<NoopRawMutex, BaroReading<BootTimestamp>, 1, 1, 1>::new();
+        let baro_channel =
+            PubSubChannel::<NoopRawMutex, BaroReading<BootTimestamp>, 1, 1, 1>::new();
         let mut meg_ticker = Ticker::every(clock, delay, 50.0);
         let mut batt_volt_ticker = Ticker::every(clock, delay, 5.0);
 
@@ -477,7 +473,7 @@ pub async fn avionics_main(
                             for _ in 0..100 {
                                 let mut reading = unwrap!(imu.read().await);
                                 if let Some(cal_info) = &cal_info {
-                                    reading = cal_info.apply_calibration(&reading);
+                                    reading = cal_info.apply_calibration(reading);
                                 }
                                 acc_sum += Vector3::from(reading.acc);
                                 ticker.next().await;
@@ -639,12 +635,12 @@ pub async fn avionics_main(
                 }
                 FlightCoreEvent::DeployMain => {
                     pyro1_ctrl.set_enable(true).await.ok();
-                    delay.delay_ms(3000);
+                    delay.delay_ms(3000).await;
                     pyro1_ctrl.set_enable(false).await.ok();
                 }
                 FlightCoreEvent::DeployDrogue => {
                     pyro2_ctrl.set_enable(true).await.ok();
-                    delay.delay_ms(3000);
+                    delay.delay_ms(3000).await;
                     pyro2_ctrl.set_enable(false).await.ok();
                 }
                 FlightCoreEvent::Landed => {

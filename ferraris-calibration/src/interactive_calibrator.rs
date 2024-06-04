@@ -1,7 +1,8 @@
 use core::mem::replace;
 
 use crate::{
-    calibrator_inner::CalibratorInner, moving_average::SingleSumSMA, CalibrationInfo, IMUReading,
+    calibrator_inner::CalibratorInner, moving_average::SingleSumSMA, CalibrationInfo,
+    IMUReadingTrait,
 };
 
 use defmt::info;
@@ -43,10 +44,10 @@ pub enum InteractiveCalibratorState {
     Failure,
 }
 
-pub struct InteractiveCalibrator {
+pub struct InteractiveCalibrator<T: IMUReadingTrait> {
     state: InteractiveCalibratorState,
     inner: Either<CalibratorInner, Option<CalibrationInfo>>,
-    last_reading: IMUReading,
+    last_reading: Option<T>,
     still_gyro_threshold_squared: f64,
     angular_acceleration_moving_avg: SingleSumSMA<Vector3<f64>, 50>, // each sample is 0.1s apart, gives a 5s window
     state_start_timestamp: Option<f64>,
@@ -54,7 +55,7 @@ pub struct InteractiveCalibrator {
 
 const MINIMUM_SAMPLE_TIME: f64 = 3000.0;
 
-impl Default for InteractiveCalibrator {
+impl<T: IMUReadingTrait> Default for InteractiveCalibrator<T> {
     fn default() -> Self {
         Self::new(None, None, None)
     }
@@ -64,12 +65,12 @@ macro_rules! arm_process {
     ($self: ident, $method: ident, $reading: expr, $inner: ident, $new_state: ident, $next: expr) => {{
         paste! {
             if $self.state_start_timestamp.is_none() {
-                $self.state_start_timestamp = Some($reading.timestamp);
+                $self.state_start_timestamp = Some($reading.timestamp());
             }
 
             $inner.[<process_ $method>]($reading);
             if $inner.[<$method _count>] > 300
-                && $reading.timestamp - $self.state_start_timestamp.unwrap() > MINIMUM_SAMPLE_TIME
+                && $reading.timestamp() - $self.state_start_timestamp.unwrap() > MINIMUM_SAMPLE_TIME
             {
                 $self.state_start_timestamp = None;
                 $new_state = Some($next);
@@ -78,7 +79,7 @@ macro_rules! arm_process {
     }};
 }
 
-impl InteractiveCalibrator {
+impl<T: IMUReadingTrait> InteractiveCalibrator<T> {
     pub fn new(
         still_gyro_threshold: Option<f64>,
         gravity: Option<f64>,
@@ -88,7 +89,7 @@ impl InteractiveCalibrator {
         Self {
             state: Idle,
             inner: Either::Left(CalibratorInner::new(gravity, expected_angle)),
-            last_reading: IMUReading::default(),
+            last_reading: None,
             still_gyro_threshold_squared: still_gyro_threshold * still_gyro_threshold,
             angular_acceleration_moving_avg: SingleSumSMA::new(Vector3::zeros()),
             state_start_timestamp: None,
@@ -99,44 +100,48 @@ impl InteractiveCalibrator {
         self.state
     }
 
-    fn wait_still(&mut self, reading: &IMUReading) -> bool {
-        let delta_time = reading.timestamp - self.last_reading.timestamp;
-        if delta_time > 100.0 {
-            let gyro = Vector3::from_row_slice(&reading.gyro).cast();
-            let delta = gyro - Vector3::from_row_slice(&self.last_reading.gyro).cast();
-            let angular_acceleration = delta / (delta_time / 1000.0);
-            info!("angular_acceleration: {}", angular_acceleration.as_slice());
-            self.last_reading = reading.clone();
+    fn wait_still(&mut self, reading: &T) -> bool {
+        if let Some(last_reading) = &self.last_reading {
+            let delta_time = reading.timestamp() - last_reading.timestamp();
+            if delta_time > 100.0 {
+                let gyro = Vector3::from_row_slice(&reading.gyro()).cast();
+                let delta = gyro - Vector3::from_row_slice(&last_reading.gyro()).cast();
+                let angular_acceleration = delta / (delta_time / 1000.0);
+                info!("angular_acceleration: {}", angular_acceleration.as_slice());
+                self.last_reading = Some(reading.clone());
 
-            self.angular_acceleration_moving_avg
-                .add_sample(angular_acceleration);
+                self.angular_acceleration_moving_avg
+                    .add_sample(angular_acceleration);
 
-            if self.angular_acceleration_moving_avg.is_full()
-                && self
-                    .angular_acceleration_moving_avg
-                    .get_average()
-                    .norm_squared()
-                    < self.still_gyro_threshold_squared
-            {
-                self.angular_acceleration_moving_avg.clear();
-                return true;
+                if self.angular_acceleration_moving_avg.is_full()
+                    && self
+                        .angular_acceleration_moving_avg
+                        .get_average()
+                        .norm_squared()
+                        < self.still_gyro_threshold_squared
+                {
+                    self.angular_acceleration_moving_avg.clear();
+                    return true;
+                }
             }
+        } else {
+            self.last_reading = Some(reading.clone());
         }
 
         return false;
     }
 
     // Will return Some when the state changes
-    pub fn process(&mut self, reading: &IMUReading) -> Option<InteractiveCalibratorState> {
+    pub fn process(&mut self, reading: &T) -> Option<InteractiveCalibratorState> {
         let mut new_state = None;
         let inner = self.inner.as_mut().unwrap_left();
         match self.state {
             Idle => {
-                self.last_reading = reading.clone();
+                self.last_reading = Some(reading.clone());
                 new_state = Some(WaitingStill);
             }
             WaitingStill => {
-                if self.wait_still(&reading) {
+                if self.wait_still(reading) {
                     new_state = Some(State(X, Plus, Start));
                 }
             }
@@ -157,7 +162,7 @@ impl InteractiveCalibrator {
                 State(X, Plus, End)
             ),
             State(X, Plus, End) => {
-                if self.wait_still(&reading) {
+                if self.wait_still(reading) {
                     new_state = Some(State(X, Minus, Start));
                 }
             }
@@ -178,7 +183,7 @@ impl InteractiveCalibrator {
                 State(X, Minus, End)
             ),
             State(X, Minus, End) => {
-                if self.wait_still(&reading) {
+                if self.wait_still(reading) {
                     new_state = Some(State(Y, Plus, Start));
                 }
             }
@@ -199,7 +204,7 @@ impl InteractiveCalibrator {
                 State(Y, Plus, End)
             ),
             State(Y, Plus, End) => {
-                if self.wait_still(&reading) {
+                if self.wait_still(reading) {
                     new_state = Some(State(Y, Minus, Start));
                 }
             }
@@ -220,7 +225,7 @@ impl InteractiveCalibrator {
                 State(Y, Minus, End)
             ),
             State(Y, Minus, End) => {
-                if self.wait_still(&reading) {
+                if self.wait_still(reading) {
                     new_state = Some(State(Z, Plus, Start));
                 }
             }
@@ -241,7 +246,7 @@ impl InteractiveCalibrator {
                 State(Z, Plus, End)
             ),
             State(Z, Plus, End) => {
-                if self.wait_still(&reading) {
+                if self.wait_still(reading) {
                     new_state = Some(State(Z, Minus, Start));
                 }
             }
@@ -262,35 +267,35 @@ impl InteractiveCalibrator {
                 State(Z, Minus, End)
             ),
             State(Z, Minus, End) => {
-                if self.wait_still(&reading) {
+                if self.wait_still(reading) {
                     new_state = Some(State(X, Rotation, Start));
                 }
             }
             State(X, Rotation, Start) => {
                 inner.process_x_rotation(reading);
-                if self.wait_still(&reading) {
+                if self.wait_still(reading) {
                     new_state = Some(State(X, Rotation, End));
                 }
             }
             State(X, Rotation, End) => {
-                if self.wait_still(&reading) {
+                if self.wait_still(reading) {
                     new_state = Some(State(Y, Rotation, Start));
                 }
             }
             State(Y, Rotation, Start) => {
                 inner.process_y_rotation(reading);
-                if self.wait_still(&reading) {
+                if self.wait_still(reading) {
                     new_state = Some(State(Y, Rotation, End));
                 }
             }
             State(Y, Rotation, End) => {
-                if self.wait_still(&reading) {
+                if self.wait_still(reading) {
                     new_state = Some(State(Z, Rotation, Start));
                 }
             }
             State(Z, Rotation, Start) => {
                 inner.process_z_rotation(reading);
-                if self.wait_still(&reading) {
+                if self.wait_still(reading) {
                     let old_inner = replace(&mut self.inner, Either::Right(None));
                     let cal_info = old_inner.unwrap_left().calculate();
                     new_state = if cal_info.is_some() {

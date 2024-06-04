@@ -255,6 +255,8 @@ mod tests {
             ),
             epsilon = 0.05
         );
+        // The following two assert fails, not sure why,
+        // have to check with the original library
         assert_abs_diff_eq!(
             cal_info.acc_variance,
             Vector3::new(0.00069620233, 0.00049620867, 0.0009553565),

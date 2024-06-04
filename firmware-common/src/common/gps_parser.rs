@@ -48,28 +48,9 @@ mod factories {
     fixed_point_factory!(DoP, 0.0, 40.0, f32, u8);
 }
 
-impl Sub for &GPSLocation {
-    type Output = Option<GPSLocationDelta>;
-
-    fn sub(self, rhs: Self) -> Self::Output {
-        Some(GPSLocationDelta {
-            timestamp: factories::Timestamp::to_fixed_point(self.timestamp - rhs.timestamp)?,
-            gps_timestamp: (self.gps_timestamp? - rhs.gps_timestamp?) as u8,
-            lat_lon: (
-                factories::LatLon::to_fixed_point(self.lat_lon?.0 - rhs.lat_lon?.0)?,
-                factories::LatLon::to_fixed_point(self.lat_lon?.1 - rhs.lat_lon?.1)?,
-            ),
-            altitude: factories::Altitude::to_fixed_point(self.altitude? - rhs.altitude?)?,
-            num_of_fix_satellites: self.num_of_fix_satellites - rhs.num_of_fix_satellites,
-            hdop: factories::DoP::to_fixed_point(self.hdop? - rhs.hdop?)?,
-            vdop: factories::DoP::to_fixed_point(self.vdop? - rhs.vdop?)?,
-            pdop: factories::DoP::to_fixed_point(self.pdop? - rhs.pdop?)?,
-        })
-    }
-}
-
 impl Deltable for GPSLocation {
     type DeltaType = GPSLocationDelta;
+
     fn add_delta(&self, delta: &GPSLocationDelta) -> Option<Self> {
         Some(Self {
             timestamp: self.timestamp + factories::Timestamp::to_float(delta.timestamp),
@@ -83,6 +64,22 @@ impl Deltable for GPSLocation {
             hdop: Some(self.hdop? + factories::DoP::to_float(delta.hdop)),
             vdop: Some(self.vdop? + factories::DoP::to_float(delta.vdop)),
             pdop: Some(self.pdop? + factories::DoP::to_float(delta.pdop)),
+        })
+    }
+
+    fn subtract(&self, other: &Self) -> Option<Self::DeltaType> {
+        Some(GPSLocationDelta {
+            timestamp: factories::Timestamp::to_fixed_point(self.timestamp - other.timestamp)?,
+            gps_timestamp: (self.gps_timestamp? - other.gps_timestamp?) as u8,
+            lat_lon: (
+                factories::LatLon::to_fixed_point(self.lat_lon?.0 - other.lat_lon?.0)?,
+                factories::LatLon::to_fixed_point(self.lat_lon?.1 - other.lat_lon?.1)?,
+            ),
+            altitude: factories::Altitude::to_fixed_point(self.altitude? - other.altitude?)?,
+            num_of_fix_satellites: self.num_of_fix_satellites - other.num_of_fix_satellites,
+            hdop: factories::DoP::to_fixed_point(self.hdop? - other.hdop?)?,
+            vdop: factories::DoP::to_fixed_point(self.vdop? - other.vdop?)?,
+            pdop: factories::DoP::to_fixed_point(self.pdop? - other.pdop?)?,
         })
     }
 }

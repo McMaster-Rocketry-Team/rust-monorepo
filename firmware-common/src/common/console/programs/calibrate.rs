@@ -13,7 +13,7 @@ use crate::{
         files::CALIBRATION_FILE_TYPE, ticker::Ticker,
     },
     device_manager_type,
-    driver::{buzzer::Buzzer, debugger::DebuggerTargetEvent, imu::IMU, serial::Serial},
+    driver::{buzzer::Buzzer, debugger::DebuggerTargetEvent, imu::{IMUReading, IMU}, serial::Serial, timestamp::BootTimestamp},
 };
 
 pub struct Calibrate<'a, F: Flash, C: Crc, D: DelayNs + Copy> {
@@ -118,11 +118,11 @@ impl<'a, F: Flash, C: Crc, D: DelayNs + Copy> ConsoleProgram for Calibrate<'a, F
         unwrap!(imu.reset().await);
 
         let mut ticker = Ticker::every(device_manager.clock, delay, 5.0);
-        let mut calibrator = InteractiveCalibrator::new(Some(0.05), None, None);
+        let mut calibrator = InteractiveCalibrator::<IMUReading<BootTimestamp>>::new(Some(0.05), None, None);
         loop {
             ticker.next().await;
             let reading = imu.read().await.map_err(|_| ()).unwrap();
-            let next_state = calibrator.process(&reading);
+            let next_state = calibrator.process(&reading.into());
             if let Some(state) = next_state {
                 match state {
                     WaitingStill => self.waiting_still_sound(&mut buzzer).await,

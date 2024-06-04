@@ -1,6 +1,6 @@
 use nalgebra::{Matrix3, Vector3};
 
-use crate::imu_reading::IMUReading;
+use crate::IMUReadingTrait;
 
 #[allow(non_snake_case)]
 #[derive(Debug, Clone, PartialEq)]
@@ -187,15 +187,13 @@ impl CalibrationInfo {
         self.gyro_mat * self.calibrate_gyr_offsets(gyr, calibrated_acc)
     }
 
-    pub fn apply_calibration(&self, imu_reading: &IMUReading) -> IMUReading {
-        let calibrated_acc = self.calibrate_acc(Vector3::from_row_slice(&imu_reading.acc));
+    pub fn apply_calibration<T: IMUReadingTrait>(&self, mut imu_reading: T) -> T {
+        let calibrated_acc = self.calibrate_acc(Vector3::from_row_slice(&imu_reading.acc()));
         let calibrated_gyr =
-            self.calibrate_gyr(Vector3::from_row_slice(&imu_reading.gyro), calibrated_acc);
-        IMUReading {
-            timestamp: imu_reading.timestamp,
-            acc: calibrated_acc.into(),
-            gyro: calibrated_gyr.into(),
-        }
+            self.calibrate_gyr(Vector3::from_row_slice(&imu_reading.gyro()), calibrated_acc);
+        imu_reading.set_acc(calibrated_acc.into());
+        imu_reading.set_gyro(calibrated_gyr.into());
+        imu_reading
     }
 
     // workaround until getting rkyv working
@@ -274,6 +272,8 @@ impl CalibrationInfo {
 #[cfg(test)]
 mod tests {
     use approx::assert_abs_diff_eq;
+
+    use crate::imu_reading::IMUReading;
 
     use super::*;
 
@@ -359,7 +359,7 @@ mod tests {
             acc: [-0.0009765625, 0.12249755859375, 0.016357421875],
             gyro: [-0.549618320610687, -5.099236641221374, -1.083969465648855],
         };
-        let calibrated = cal_info.apply_calibration(&imu_reading);
+        let calibrated = cal_info.apply_calibration(imu_reading);
 
         assert_eq!(calibrated.timestamp, 0.0);
         assert_abs_diff_eq!(
