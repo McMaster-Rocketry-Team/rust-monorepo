@@ -67,15 +67,15 @@ macro_rules! create_serialized_logger {
                     $(
                         Some($log_type_i) => {
                             let (slice,_) = self.reader.read_slice(&mut self.buffer, core::mem::size_of::<<$log_type as Archive>::Archived>()).await?;
+                            if slice.len() != core::mem::size_of::<<$log_type as Archive>::Archived>() {
+                                return Ok(None)
+                            }
                             let archived = unsafe { archived_root::<$log_type>(slice) };
                             let deserialized = <paste!{ [<Archived $log_type>] } as rkyv::Deserialize<$log_type, rkyv::Infallible>>::deserialize(archived, &mut rkyv::Infallible).unwrap();
                             Ok(Some($enum_name::$log_type(deserialized)))
                         }
                     )*
-                    Some(_) => {
-                        Ok(None)
-                    }
-                    None=>{
+                    _ => {
                         Ok(None)
                     }
                 }

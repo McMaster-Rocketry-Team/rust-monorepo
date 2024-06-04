@@ -1,42 +1,40 @@
 use core::mem::{replace, size_of};
 
-use super::delta_factory::{DeltaFactory, Deltable};
+use super::delta_factory::{DeltaFactory, Deltable, UnDeltaFactory};
 use async_iterator::Iterator;
 use defmt::info;
 use either::Either;
 use rkyv::ser::serializers::BufferSerializer;
 use rkyv::ser::Serializer;
-use rkyv::{Archive, Serialize};
-use vlfs::{Crc, FileEntry, FileType, Flash, VLFSError, VLFS};
+use rkyv::{archived_root, Archive, Deserialize, Serialize};
+use vlfs::{Crc, FileEntry, FileID, FileType, Flash, VLFSError, VLFS};
 
 pub struct DeltaLogger<T, W>
 where
     W: vlfs::AsyncWriter,
     T: Deltable,
-    T: Archive + Serialize<BufferSerializer<[u8; size_of::<<T as Archive>::Archived>()]>>,
-    T::DeltaType:
-        Archive + Serialize<BufferSerializer<[u8; size_of::<<T as Archive>::Archived>()]>>,
-    [(); size_of::<<T as Archive>::Archived>()]:,
+    T: Archive + Serialize<BufferSerializer<[u8; size_of::<T::Archived>()]>>,
+    T::DeltaType: Archive + Serialize<BufferSerializer<[u8; size_of::<T::Archived>()]>>,
+    [(); size_of::<T::Archived>()]:,
 {
     factory: DeltaFactory<T>,
     writer: W,
-    buffer: [u8; size_of::<<T as Archive>::Archived>()],
+    buffer: [u8; size_of::<T::Archived>()],
 }
 
 impl<T, W> DeltaLogger<T, W>
 where
     W: vlfs::AsyncWriter,
     T: Deltable,
-    T: Archive + Serialize<BufferSerializer<[u8; size_of::<<T as Archive>::Archived>()]>>,
-    T::DeltaType:
-        Archive + Serialize<BufferSerializer<[u8; size_of::<<T as Archive>::Archived>()]>>,
-    [(); size_of::<<T as Archive>::Archived>()]:,
+    T: Archive + Serialize<BufferSerializer<[u8; size_of::<T::Archived>()]>>,
+    T::DeltaType: Archive + Serialize<BufferSerializer<[u8; size_of::<T::Archived>()]>>,
+    [(); size_of::<T::Archived>()]:,
 {
     pub fn new(writer: W) -> Self {
         Self {
             factory: DeltaFactory::new(),
             writer,
-            buffer: [0; size_of::<<T as Archive>::Archived>()],
+            buffer: [0; size_of::<T::Archived>()],
         }
     }
 
@@ -66,14 +64,77 @@ where
     }
 }
 
+pub struct DeltaLogReader<T, R>
+where
+    R: vlfs::AsyncReader,
+    T: Deltable,
+    T: Archive,
+    T::Archived: Deserialize<T, rkyv::Infallible>,
+    T::DeltaType: Archive,
+    <<T as Deltable>::DeltaType as Archive>::Archived: Deserialize<T::DeltaType, rkyv::Infallible>,
+    [(); size_of::<T::Archived>()]:,
+{
+    factory: UnDeltaFactory<T>,
+    reader: R,
+    buffer: [u8; size_of::<T::Archived>()],
+}
+
+impl<T, R> DeltaLogReader<T, R>
+where
+    R: vlfs::AsyncReader,
+    T: Deltable,
+    T: Archive,
+    T::Archived: Deserialize<T, rkyv::Infallible>,
+    T::DeltaType: Archive,
+    <<T as Deltable>::DeltaType as Archive>::Archived: Deserialize<T::DeltaType, rkyv::Infallible>,
+    [(); size_of::<T::Archived>()]:,
+{
+    pub fn new(reader: R) -> Self {
+        Self {
+            factory: UnDeltaFactory::new(),
+            reader,
+            buffer: [0; size_of::<T::Archived>()],
+        }
+    }
+
+    pub async fn next(&mut self) -> Result<Option<T>, R::Error> {
+        let (typ, _) = self.reader.read_u8(&mut self.buffer).await?;
+        Ok(match typ {
+            Some(0x69) => {
+                let (slice, _) = self
+                    .reader
+                    .read_slice(&mut self.buffer, size_of::<T::Archived>())
+                    .await?;
+                if slice.len() != size_of::<T::Archived>() {
+                    return Ok(None);
+                }
+                let archived = unsafe { archived_root::<T>(&slice) };
+                let deserialized: T = archived.deserialize(&mut rkyv::Infallible).unwrap();
+                Some(self.factory.push(deserialized))
+            }
+            Some(0x42) => {
+                let length = size_of::<<<T as Deltable>::DeltaType as Archive>::Archived>();
+                let (slice, _) = self.reader.read_slice(&mut self.buffer, length).await?;
+                if slice.len() != length {
+                    return Ok(None);
+                }
+                let archived = unsafe { archived_root::<T::DeltaType>(&slice) };
+                let deserialized: T::DeltaType =
+                    archived.deserialize(&mut rkyv::Infallible).unwrap();
+                self.factory.push_delta(deserialized)
+            }
+            _ => None,
+        })
+    }
+}
+
 pub struct RingDeltaLogger<'a, T, C: Crc, F: Flash>
 where
     F::Error: defmt::Format,
     T: Deltable,
-    T: Archive + Serialize<BufferSerializer<[u8; size_of::<<T as Archive>::Archived>()]>>,
-    T::DeltaType:
-        Archive + Serialize<BufferSerializer<[u8; size_of::<<T as Archive>::Archived>()]>>,
-    [(); size_of::<<T as Archive>::Archived>()]:,
+    T: Archive + Serialize<BufferSerializer<[u8; size_of::<T::Archived>()]>>,
+    T::DeltaType: Archive + Serialize<BufferSerializer<[u8; size_of::<T::Archived>()]>>,
+    [(); size_of::<T::Archived>()]:,
 {
     fs: &'a VLFS<F, C>,
     file_type: FileType,
@@ -88,10 +149,9 @@ impl<'a, T, C: Crc, F: Flash> RingDeltaLogger<'a, T, C, F>
 where
     F::Error: defmt::Format,
     T: Deltable,
-    T: Archive + Serialize<BufferSerializer<[u8; size_of::<<T as Archive>::Archived>()]>>,
-    T::DeltaType:
-        Archive + Serialize<BufferSerializer<[u8; size_of::<<T as Archive>::Archived>()]>>,
-    [(); size_of::<<T as Archive>::Archived>()]:,
+    T: Archive + Serialize<BufferSerializer<[u8; size_of::<T::Archived>()]>>,
+    T::DeltaType: Archive + Serialize<BufferSerializer<[u8; size_of::<T::Archived>()]>>,
+    [(); size_of::<T::Archived>()]:,
 {
     pub async fn new(
         fs: &'a VLFS<F, C>,
@@ -168,5 +228,57 @@ where
         self.delta_logger.log(value).await?;
         self.current_segment_logs += 1;
         Ok(())
+    }
+}
+
+pub struct RingDeltaLogReader<'a, T, C: Crc, F: Flash>
+where
+    F::Error: defmt::Format,
+    T: Deltable,
+    T: Archive,
+    T::Archived: Deserialize<T, rkyv::Infallible>,
+    T::DeltaType: Archive,
+    <<T as Deltable>::DeltaType as Archive>::Archived: Deserialize<T::DeltaType, rkyv::Infallible>,
+    [(); size_of::<T::Archived>()]:,
+{
+    fs: &'a VLFS<F, C>,
+    file_type: FileType,
+    delta_log_reader: DeltaLogReader<T, vlfs::FileReader<'a, F, C>>,
+    current_file_id: Option<FileID>,
+}
+
+impl<'a, T, C: Crc, F: Flash> RingDeltaLogReader<'a, T, C, F>
+where
+    F::Error: defmt::Format,
+    T: Deltable,
+    T: Archive,
+    T::Archived: Deserialize<T, rkyv::Infallible>,
+    T::DeltaType: Archive,
+    <<T as Deltable>::DeltaType as Archive>::Archived: Deserialize<T::DeltaType, rkyv::Infallible>,
+    [(); size_of::<T::Archived>()]:,
+{
+    pub async fn new(fs: &'a VLFS<F, C>, file_type: FileType) -> Result<Self, VLFSError<F::Error>> {
+        let mut files_iter = fs.files_iter().await;
+        let mut current_file_id = None;
+        while let Some(file) = files_iter.next().await {
+            if let Ok(FileEntry { typ, id, .. }) = file {
+                if typ == file_type {
+                    current_file_id = Some(id);
+                    break;
+                }
+            }
+        }
+        // let current_file_id = current_file_id.ok_or(VLFSError::FileNotFound)?;
+
+        // let file_reader = fs.open_file_for_read(current_file_id).await?;
+        // let delta_log_reader = DeltaLogReader::new(file_reader);
+        // Ok(Self {
+        //     fs,
+        //     file_type,
+        //     delta_log_reader,
+        //     current_file_id,
+        // })
+
+        todo!()
     }
 }
