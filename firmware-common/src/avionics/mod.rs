@@ -94,7 +94,7 @@ async fn save_sensor_reading(
         SensorReading::Meg(meg) => {
             serializer.serialize_value(&meg).unwrap();
             let buffer = serializer.into_inner();
-            let buffer_slice = &buffer[..core::mem::size_of::<<MegReading as Archive>::Archived>()];
+            let buffer_slice = &buffer[..core::mem::size_of::<<MegReading<BootTimestamp> as Archive>::Archived>()];
             sensors_file.extend_from_u8(3).await.unwrap();
             sensors_file.extend_from_slice(buffer_slice).await.unwrap();
 

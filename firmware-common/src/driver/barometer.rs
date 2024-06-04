@@ -1,4 +1,4 @@
-use core::{fmt::Debug, marker::PhantomData, ops::{DerefMut as _, Sub}};
+use core::{fmt::Debug, marker::PhantomData, ops::DerefMut as _,};
 use embassy_sync::{blocking_mutex::raw::RawMutex, mutex::MutexGuard};
 use embedded_hal_async::delay::DelayNs;
 use libm::powf;
@@ -27,22 +27,9 @@ pub struct BaroReadingDelta<T: TimestampType> {
 mod factories {
     use crate::fixed_point_factory;
 
-    fixed_point_factory!(Timestamp, 0.0, 100.0, f64, u8);
+    fixed_point_factory!(Timestamp, 0.0, 10.0, f64, u8);
     fixed_point_factory!(Temperature, -1.0, 1.0, f32, u8);
     fixed_point_factory!(Pressure, -50.0, 50.0, f32, u8);
-}
-
-impl<T: TimestampType> Sub for &BaroReading<T>{
-    type Output = Option<BaroReadingDelta<T>>;
-
-    fn sub(self, rhs: Self) -> Self::Output {
-        Some(BaroReadingDelta {
-            _phantom: PhantomData,
-            timestamp: factories::Timestamp::to_fixed_point(self.timestamp - rhs.timestamp)?,
-            temperature: factories::Temperature::to_fixed_point(self.temperature - rhs.temperature)?,
-            pressure: factories::Pressure::to_fixed_point(self.pressure - rhs.pressure)?,
-        })
-    }
 }
 
 impl<T: TimestampType> Deltable for BaroReading<T> {

@@ -8,7 +8,7 @@ pub enum SensorReading {
     GPS(GPSLocation),
     IMU(IMUReading<BootTimestamp>),
     Baro(BaroReading<BootTimestamp>),
-    Meg(MegReading),
+    Meg(MegReading<BootTimestamp>),
     BatteryVoltage(BatteryVoltage),
 }
 
