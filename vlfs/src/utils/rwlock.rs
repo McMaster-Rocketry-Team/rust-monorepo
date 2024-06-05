@@ -109,6 +109,10 @@ where
         })
         .await
     }
+
+    pub fn into_inner(self) -> T {
+        self.inner.into_inner()
+    }
 }
 
 pub struct RwLockReadGuard<'a, M, T, const N: usize>

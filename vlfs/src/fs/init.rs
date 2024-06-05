@@ -16,7 +16,7 @@ where
         Self {
             allocation_table: RwLock::new(AllocationTable::default()),
             sectors_mng: RwLock::new(SectorsMng::new()),
-            flash: Mutex::new(flash),
+            flash: RwLock::new(FlashWrapper::new(flash)),
             crc: Mutex::new(crc),
             rng: BlockingMutex::new(RefCell::new(SmallRng::seed_from_u64(0))),
         }
@@ -72,7 +72,7 @@ where
                     let next_sector_index_address =
                         (sector_index as usize * SECTOR_SIZE + SECTOR_SIZE - 8) as u32;
                     self.flash
-                        .lock()
+                        .read()
                         .await
                         .read(next_sector_index_address, 8, &mut buffer)
                         .await

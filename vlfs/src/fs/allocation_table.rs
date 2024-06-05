@@ -203,7 +203,7 @@ where
         &self,
         file_id: FileID,
     ) -> Result<Option<(FileEntry, u16)>, VLFSError<F::Error>> {
-        let mut flash = self.flash.lock().await;
+        let flash = self.flash.read().await;
         let at = self.allocation_table.read().await;
         let file_count = at.header.file_count;
         if file_count == 0 {
@@ -212,7 +212,7 @@ where
 
         let mut buffer = [0u8; 5 + FILE_ENTRY_SIZE];
         let mut dummy_crc = DummyCrc {};
-        let mut reader = FlashReader::new(0, &mut flash, &mut dummy_crc);
+        let mut reader = FlashReader::new(0, &flash, &mut dummy_crc);
         let mut left = 0;
         let mut right = file_count - 1;
 
@@ -254,7 +254,7 @@ where
             at.increment_position();
             let at_address = at.address();
 
-            let mut flash = self.flash.lock().await;
+            let mut flash = self.flash.write().await;
             flash
                 .erase_block_32kib(at_address)
                 .await

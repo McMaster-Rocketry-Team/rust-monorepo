@@ -63,10 +63,10 @@ where
     }
 }
 
-async fn read_file_entry<'a, F: Flash>(
+async fn read_file_entry<'a, F: Flash, const M: usize, const N: usize>(
     i: u16,
-    at: &RwLockReadGuard<'a, NoopRawMutex, AllocationTable, 10>,
-    flash: &mut MutexGuard<'a, NoopRawMutex, F>,
+    at: &RwLockReadGuard<'a, NoopRawMutex, AllocationTable, M>,
+    flash: &RwLockReadGuard<'a, NoopRawMutex, FlashWrapper<F>, N>,
 ) -> Result<FileEntry, VLFSError<F::Error>> {
     let address = at.address_of_file_entry(i);
     let mut buffer = [0u8; 5 + FILE_ENTRY_SIZE];
@@ -88,7 +88,7 @@ where
 {
     i: u16,
     at: RwLockReadGuard<'a, NoopRawMutex, AllocationTable, 10>,
-    flash: MutexGuard<'a, NoopRawMutex, F>,
+    flash: RwLockReadGuard<'a, NoopRawMutex, FlashWrapper<F>, 10>,
     predicate: Option<P>,
 }
 
@@ -99,7 +99,7 @@ where
 {
     async fn new(vlfs: &'a VLFS<F, impl Crc>, predicate: Option<P>) -> Self {
         let at = vlfs.allocation_table.read().await;
-        let flash = vlfs.flash.lock().await;
+        let flash = vlfs.flash.read().await;
         Self {
             i: 0,
             at,
@@ -159,7 +159,7 @@ where
     async fn immediate_next(
         &mut self,
         at: &RwLockReadGuard<'a, NoopRawMutex, AllocationTable, 10>,
-        flash: &mut MutexGuard<'a, NoopRawMutex, F>,
+        flash: &RwLockReadGuard<'a, NoopRawMutex, FlashWrapper<F>, 10>,
     ) -> Result<Option<FileEntry>, VLFSError<F::Error>> {
         if let Some((last_file_id, last_file_entry_i)) = self.last_file {
             // Try to read the next file entry first
@@ -192,7 +192,7 @@ where
 
                 if curr_file_entry.id.0 <= last_file_id.0 {
                     if let Some(curr_plus_one_file_entry) = curr_plus_one_file_entry.take() {
-                        self.last_file = Some((curr_plus_one_file_entry.id, curr_file_entry_i+1));
+                        self.last_file = Some((curr_plus_one_file_entry.id, curr_file_entry_i + 1));
                         return Ok(Some(curr_plus_one_file_entry));
                     } else {
                         // There are no files in the fs with id larger than last file id
@@ -222,9 +222,9 @@ where
 
     pub async fn next(&mut self) -> Result<Option<FileEntry>, VLFSError<F::Error>> {
         let at = self.vlfs.allocation_table.read().await;
-        let mut flash = self.vlfs.flash.lock().await;
+        let flash = self.vlfs.flash.read().await;
 
-        let immediate_next = self.immediate_next(&at, &mut flash).await?;
+        let immediate_next = self.immediate_next(&at, &flash).await?;
         if let Some(mut file_entry) = immediate_next {
             if let Some(predicate) = &mut self.predicate {
                 // last_file is guaranteed to be Some is immediate_next is Some
@@ -233,12 +233,12 @@ where
                     if predicate(&file_entry) {
                         return Ok(Some(file_entry));
                     }
-                    
+
                     if *last_file_entry_i >= at.header.file_count - 1 {
                         return Ok(None);
                     }
 
-                    file_entry = read_file_entry(*last_file_entry_i + 1, &at, &mut flash).await?;
+                    file_entry = read_file_entry(*last_file_entry_i + 1, &at, &flash).await?;
                     *last_file_entry_i += 1;
                     *last_file_id = file_entry.id;
                 }

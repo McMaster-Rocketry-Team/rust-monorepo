@@ -165,7 +165,7 @@ where
         use_async: bool,
         sectors_mng: &mut SectorsMng,
     ) -> Result<(), VLFSError<F::Error>> {
-        let mut flash = self.flash.lock().await;
+        let mut flash = self.flash.write().await;
 
         match region.length {
             EraseLength::E64K => {

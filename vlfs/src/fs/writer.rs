@@ -31,7 +31,7 @@ where
                 // update "index of next sector" in the last sector
 
                 // find index of the last sector
-                let mut flash = self.flash.lock().await;
+                let mut flash = self.flash.write().await;
                 let mut buffer = [0u8; 5 + PAGE_SIZE];
                 let mut current_sector_index = first_sector_index;
                 loop {
@@ -162,7 +162,7 @@ where
                 .copy_from_slice(&crc.to_be_bytes());
         }
 
-        let mut flash = self.vlfs.flash.lock().await;
+        let mut flash = self.vlfs.flash.write().await;
         flash
             .write_256b(address, &mut self.buffer)
             .await

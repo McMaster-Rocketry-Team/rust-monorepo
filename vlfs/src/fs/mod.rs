@@ -1,6 +1,7 @@
 use core::cell::RefCell;
 
 use crate::driver::{crc::Crc, flash::Flash};
+use crate::flash::flash_wrapper::FlashWrapper;
 use bitvec::prelude::*;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::blocking_mutex::Mutex as BlockingMutex;
@@ -79,7 +80,7 @@ where
 {
     allocation_table: RwLock<NoopRawMutex, AllocationTable, 10>,
     sectors_mng: RwLock<NoopRawMutex, SectorsMng, 10>,
-    flash: Mutex<NoopRawMutex, F>,
+    flash: RwLock<NoopRawMutex, FlashWrapper<F>, 10>,
     crc: Mutex<NoopRawMutex, C>,
     rng: BlockingMutex<NoopRawMutex, RefCell<SmallRng>>,
 }
@@ -107,7 +108,7 @@ where
 
         // update sectors list
         let mut buffer = [0u8; 5 + 8];
-        let mut flash = self.flash.lock().await;
+        let flash = self.flash.read().await;
 
         while let Some(sector_index) = current_sector_index {
             let address = sector_index as u32 * SECTOR_SIZE as u32;
@@ -166,7 +167,7 @@ where
             let mut sectors: usize = 0;
             let mut current_sector_index = file_entry.first_sector_index;
             let mut buffer = [0u8; 5 + 16];
-            let mut flash = self.flash.lock().await;
+            let flash = self.flash.read().await;
 
             while let Some(sector_index) = current_sector_index {
                 let address = sector_index as u32 * SECTOR_SIZE as u32;
@@ -181,7 +182,8 @@ where
                     find_most_common_u16_out_of_4(&read_result[..8]).unwrap() as usize; // TODO handle error
                 log_info!(
                     "sector data size = {} at sector #{:#X}",
-                    sector_data_size, sector_index
+                    sector_data_size,
+                    sector_index
                 );
                 if sector_data_size > MAX_SECTOR_DATA_SIZE {
                     log_warn!("sector_data_size > MAX_SECTOR_DATA_SIZE");
@@ -219,6 +221,6 @@ where
     }
 
     pub fn into_flash(self) -> F {
-        self.flash.into_inner()
+        self.flash.into_inner().into_inner()
     }
 }

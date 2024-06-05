@@ -100,7 +100,7 @@ where
     async fn read_next_page(&mut self) -> Result<VLFSReadStatus, VLFSError<F::Error>> {
         if let Some(current_sector_index) = self.current_sector_index {
             let is_last_page = self.current_page_index == 15;
-            let mut flash = self.vlfs.flash.lock().await;
+            let flash = self.vlfs.flash.read().await;
             let sector_address = current_sector_index as usize * SECTOR_SIZE;
 
             if let SectorDataLength::NotRead = self.sector_data_length {

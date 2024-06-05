@@ -1,26 +1,36 @@
-use crate::driver::{crc::Crc, flash::Flash};
+use embassy_sync::blocking_mutex::raw::NoopRawMutex;
+
+use crate::{
+    driver::{crc::Crc, flash::Flash},
+    flash::flash_wrapper::FlashWrapper,
+};
 
 use super::{
     io_traits::{AsyncReader, AsyncWriter},
+    rwlock::{RwLock, RwLockReadGuard},
     u8_crc::U8Crc,
 };
 
-pub struct FlashReader<'a, F, C>
+pub struct FlashReader<'a, 'b, F, C, const N: usize>
 where
     F: Flash,
     C: Crc,
 {
     address: u32,
-    pub(crate) flash: &'a mut F,
+    pub(crate) flash: &'b RwLock<NoopRawMutex, FlashWrapper<F>, N>,
     crc: U8Crc<'a, C>,
 }
 
-impl<'a, 'b, F, C> FlashReader<'a, F, C>
+impl<'a, 'b, F, C, const N: usize> FlashReader<'a, 'b, F, C, N>
 where
     F: Flash,
     C: Crc,
 {
-    pub fn new(start_address: u32, flash: &'a mut F, crc: &'a mut C) -> Self {
+    pub fn new(
+        start_address: u32,
+        flash: &'b RwLock<NoopRawMutex, FlashWrapper<F>, N>,
+        crc: &'a mut C,
+    ) -> Self {
         crc.reset();
         Self {
             address: start_address,
@@ -42,7 +52,7 @@ where
     }
 }
 
-impl<'a, F, C> AsyncReader for FlashReader<'a, F, C>
+impl<'a, 'b, F, C, const N: usize> AsyncReader for FlashReader<'a, 'b, F, C, N>
 where
     F: Flash,
     C: Crc,
@@ -51,12 +61,16 @@ where
     type ReadStatus = ();
 
     // maximum read length is the length of buffer - 5 bytes
-    async fn read_slice<'b>(
+    async fn read_slice<'c>(
         &mut self,
-        buffer: &'b mut [u8],
+        buffer: &'c mut [u8],
         length: usize,
-    ) -> Result<(&'b [u8], ()), F::Error> {
-        self.flash.read(self.address, length, buffer).await?;
+    ) -> Result<(&'c [u8], ()), F::Error> {
+        self.flash
+            .read()
+            .await
+            .read(self.address, length, buffer)
+            .await?;
         self.address += length as u32;
 
         let read_result = &buffer[5..(length + 5)];
