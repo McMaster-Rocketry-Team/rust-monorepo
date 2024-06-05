@@ -9,13 +9,12 @@ use super::{
 };
 
 const ALLOC_TABLE_HEADER_SIZE: usize = 26;
-const FILE_ENTRY_SIZE: usize = 13;
+pub const FILE_ENTRY_SIZE: usize = 13;
 
 // only repersent the state of the file when the struct is created
 // does not update after that
 #[derive(Debug, Clone, defmt::Format)]
 pub struct FileEntry {
-    pub opened: bool,
     pub id: FileID,
     pub typ: FileType,
     pub(super) first_sector_index: Option<u16>, // None means the file is empty
@@ -26,7 +25,6 @@ pub(crate) struct CorruptedFileEntry;
 impl FileEntry {
     pub(crate) fn new(file_id: FileID, file_type: FileType) -> Self {
         Self {
-            opened: false,
             id: file_id,
             typ: file_type,
             first_sector_index: None,
@@ -55,7 +53,6 @@ impl FileEntry {
         let first_sector_index = u16::from_be_bytes((&buffer[2..4]).try_into().unwrap());
         let file_id = FileID(u64::from_be_bytes((&buffer[4..12]).try_into().unwrap()));
         Ok(Self {
-            opened: false,
             id: file_id,
             typ: file_type,
             first_sector_index: if first_sector_index == 0xFFFF {
@@ -187,7 +184,7 @@ where
         Ok(())
     }
 
-    pub(super) async fn is_file_opened(&self, file_id: FileID) -> bool {
+    pub async fn is_file_opened(&self, file_id: FileID) -> bool {
         let at = self.allocation_table.read().await;
         at.opened_files.iter().any(|&id| id == file_id)
     }
@@ -239,9 +236,8 @@ where
             .read_slice(&mut buffer, FILE_ENTRY_SIZE)
             .await
             .map_err(VLFSError::FlashError)?;
-        let mut file_entry = FileEntry::deserialize(read_result)?;
+        let file_entry = FileEntry::deserialize(read_result)?;
         if file_entry.id == file_id {
-            file_entry.opened = self.is_file_opened(file_id).await;
             return Ok(Some((file_entry, left)));
         } else {
             return Ok(None);

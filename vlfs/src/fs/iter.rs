@@ -1,6 +1,12 @@
-use async_iterator::Iterator;
+use core::cmp::min;
 
-use crate::{AsyncReader, utils::flash_io::FlashReader, DummyCrc};
+use allocation_table::FILE_ENTRY_SIZE;
+use embassy_sync::mutex::MutexGuard;
+
+use crate::{
+    utils::{flash_io::FlashReader, rwlock::RwLockReadGuard},
+    AsyncReader, DummyCrc,
+};
 
 use super::*;
 
@@ -9,81 +15,229 @@ where
     F: Flash,
     C: Crc,
 {
-    /// Deleting files while iterating over the files is supported.
-    /// Creating files while iterating over the files is not supported. (will skip a file)
-    pub async fn files_iter(&self) -> FilesIterator<F, C> {
-        let at = self.allocation_table.read().await;
-        FilesIterator {
-            reverse_i: at.header.file_count,
-            vlfs: self,
+    /// Creating or deleting files while iterating over the files is NOT supported.
+    /// The files returned by this iterator are guaranteed to be in increasing order of file id.
+    /// If you need to create or delete files while iterating, use `concurrent_files_iter`.
+    pub async fn files_iter(&self) -> FilesIterator<F, fn(&FileEntry) -> bool> {
+        FilesIterator::new(&self, None).await
+    }
+
+    pub async fn files_iter_filter<P: Fn(&FileEntry) -> bool>(
+        &self,
+        predicate: P,
+    ) -> FilesIterator<F, P> {
+        FilesIterator::new(&self, Some(predicate)).await
+    }
+
+    /// Creating or deleting files while iterating over the files is supported.
+    /// The files returned by this iterator are guaranteed to be in increasing order of file id.
+    /// This is less efficient than `files_iter`.
+    pub async fn concurrent_files_iter(
+        &self,
+    ) -> ConcurrentFilesIterator<F, C, fn(&FileEntry) -> bool> {
+        ConcurrentFilesIterator::new(&self, None).await
+    }
+
+    pub async fn concurrent_files_iter_filter<P: Fn(&FileEntry) -> bool>(
+        &self,
+        predicate: P,
+    ) -> ConcurrentFilesIterator<F, C, P> {
+        ConcurrentFilesIterator::new(&self, Some(predicate)).await
+    }
+
+    pub async fn find_file(
+        &self,
+        predicate: impl Fn(&FileEntry) -> bool,
+    ) -> Result<Option<FileEntry>, VLFSError<F::Error>> {
+        let mut iter = self.files_iter_filter(predicate).await;
+        iter.next().await
+    }
+}
+
+async fn read_file_entry<'a, F: Flash>(
+    i: u16,
+    at: &RwLockReadGuard<'a, NoopRawMutex, AllocationTable, 10>,
+    flash: &mut MutexGuard<'a, NoopRawMutex, F>,
+) -> Result<FileEntry, VLFSError<F::Error>> {
+    let address = at.address_of_file_entry(i);
+    let mut buffer = [0u8; 5 + FILE_ENTRY_SIZE];
+    let mut dummy_crc = DummyCrc {};
+    let mut reader = FlashReader::new(address, flash, &mut dummy_crc);
+
+    let (read_result, _) = reader
+        .read_slice(&mut buffer, FILE_ENTRY_SIZE)
+        .await
+        .map_err(VLFSError::FlashError)?;
+
+    Ok(FileEntry::deserialize(read_result)?)
+}
+
+pub struct FilesIterator<'a, F, P>
+where
+    F: Flash,
+    P: Fn(&FileEntry) -> bool,
+{
+    i: u16,
+    at: RwLockReadGuard<'a, NoopRawMutex, AllocationTable, 10>,
+    flash: MutexGuard<'a, NoopRawMutex, F>,
+    predicate: Option<P>,
+}
+
+impl<'a, F, P> FilesIterator<'a, F, P>
+where
+    F: Flash,
+    P: Fn(&FileEntry) -> bool,
+{
+    async fn new(vlfs: &'a VLFS<F, impl Crc>, predicate: Option<P>) -> Self {
+        let at = vlfs.allocation_table.read().await;
+        let flash = vlfs.flash.lock().await;
+        Self {
+            i: 0,
+            at,
+            flash,
+            predicate,
         }
     }
 
-    pub async fn find_file_by_type(&self, file_type: FileType) -> Option<FileEntry> {
-        let mut iter = self.files_iter().await;
-        while let Some(file_entry) = iter.next().await {
-            if let Ok(file_entry) = file_entry {
-                if file_entry.typ == file_type {
-                    return Some(file_entry);
+    pub async fn next(&mut self) -> Result<Option<FileEntry>, VLFSError<F::Error>> {
+        loop {
+            if self.i >= self.at.header.file_count {
+                return Ok(None);
+            }
+
+            let file_entry = read_file_entry(self.i, &self.at, &mut self.flash).await;
+            self.i += 1;
+            let file_entry = file_entry?;
+
+            if let Some(predicate) = &self.predicate {
+                if predicate(&file_entry) {
+                    return Ok(Some(file_entry));
                 }
             } else {
-                log_warn!("skipping corropted file entry");
+                return Ok(Some(file_entry));
             }
         }
-        None
     }
 }
 
-pub struct FilesIterator<'a, F, C>
+pub struct ConcurrentFilesIterator<'a, F, C, P>
 where
     F: Flash,
     C: Crc,
+    P: Fn(&FileEntry) -> bool,
 {
-    // using reverse_i so that we can remove files while iterating
-    reverse_i: u16,
+    // file id and index of the last file entry
+    last_file: Option<(FileID, u16)>,
     vlfs: &'a VLFS<F, C>,
+    predicate: Option<P>,
 }
 
-impl<'a, F, C> async_iterator::Iterator for FilesIterator<'a, F, C>
+impl<'a, F, C, P> ConcurrentFilesIterator<'a, F, C, P>
 where
     F: Flash,
     C: Crc,
+    P: Fn(&FileEntry) -> bool,
 {
-    type Item = Result<FileEntry, VLFSError<F::Error>>;
-
-    async fn next(&mut self) -> Option<Self::Item> {
-        if self.reverse_i == 0 {
-            return None;
+    async fn new(vlfs: &'a VLFS<F, C>, predicate: Option<P>) -> Self {
+        Self {
+            last_file: None,
+            vlfs,
+            predicate,
         }
-        let at = self.vlfs.allocation_table.read().await;
-        if self.reverse_i > at.header.file_count {
-            return None;
-        }
+    }
 
-        let i = at.header.file_count - self.reverse_i;
-
-        let address = at.address_of_file_entry(i);
-        let mut flash = self.vlfs.flash.lock().await;
-        let mut buffer = [0u8; 5 + 13];
-        let mut dummy_crc = DummyCrc {};
-        let mut reader = FlashReader::new(address, &mut flash, &mut dummy_crc);
-
-        match reader
-            .read_slice(&mut buffer, 13)
-            .await
-            .map_err(VLFSError::FlashError)
-        {
-            Ok((read_result, _)) => {
-                self.reverse_i -= 1;
-                match FileEntry::deserialize(read_result) {
-                    Ok(mut file_entry) => {
-                        file_entry.opened = self.vlfs.is_file_opened(file_entry.id).await;
-                        return Some(Ok(file_entry));
-                    }
-                    Err(e) => return Some(Err(e.into())),
+    // immediate next file entry, ignoring the predicate
+    async fn immediate_next(
+        &mut self,
+        at: &RwLockReadGuard<'a, NoopRawMutex, AllocationTable, 10>,
+        flash: &mut MutexGuard<'a, NoopRawMutex, F>,
+    ) -> Result<Option<FileEntry>, VLFSError<F::Error>> {
+        if let Some((last_file_id, last_file_entry_i)) = self.last_file {
+            // Try to read the next file entry first
+            if last_file_entry_i + 1 < at.header.file_count {
+                let file_entry = read_file_entry(last_file_entry_i + 1, at, flash).await?;
+                if file_entry.id.0 == last_file_id.0 + 1 {
+                    // file_entry is the immediate next file entry of the last file
+                    self.last_file = Some((file_entry.id, last_file_entry_i + 1));
+                    return Ok(Some(file_entry));
                 }
             }
-            Err(e) => return Some(Err(e)),
-        };
+            // There are two other cases:
+            // 1. file_entry.id.0 > last_file_id.0 + 1
+            //     There could potentially be another file entry between the last file and the current file entry
+            // 2. file_entry.id.0 < last_file_id.0 + 1
+            //     This should never happen because when you create the file, the new file id is greater than all
+            //     the past file ids
+
+            // The following code handles case 1.
+            if at.header.file_count == 0 {
+                self.last_file = None;
+                return Ok(None);
+            }
+            let mut curr_file_entry_i = min(last_file_entry_i, at.header.file_count - 1);
+            let mut curr_plus_one_file_entry: Option<FileEntry> = None;
+            // Find the first file with file id <= last file id, from curr_file_entry_i to 0
+            // The file following the found file is the next file returned by the iterator
+            loop {
+                let curr_file_entry = read_file_entry(curr_file_entry_i, at, flash).await?;
+
+                if curr_file_entry.id.0 <= last_file_id.0 {
+                    if let Some(curr_plus_one_file_entry) = curr_plus_one_file_entry.take() {
+                        self.last_file = Some((curr_plus_one_file_entry.id, curr_file_entry_i+1));
+                        return Ok(Some(curr_plus_one_file_entry));
+                    } else {
+                        // There are no files in the fs with id larger than last file id
+                        return Ok(None);
+                    }
+                }
+
+                if curr_file_entry_i == 0 {
+                    // Reached the file with the smallest file id, but it is still larger than the last file id
+                    self.last_file = Some((curr_file_entry.id, curr_file_entry_i));
+                    return Ok(Some(curr_file_entry));
+                }
+
+                curr_plus_one_file_entry = Some(curr_file_entry);
+                curr_file_entry_i -= 1;
+            }
+        } else {
+            if at.header.file_count > 0 {
+                let file_entry = read_file_entry(0, at, flash).await?;
+                self.last_file = Some((file_entry.id, 0));
+                return Ok(Some(file_entry));
+            } else {
+                return Ok(None);
+            }
+        }
+    }
+
+    pub async fn next(&mut self) -> Result<Option<FileEntry>, VLFSError<F::Error>> {
+        let at = self.vlfs.allocation_table.read().await;
+        let mut flash = self.vlfs.flash.lock().await;
+
+        let immediate_next = self.immediate_next(&at, &mut flash).await?;
+        if let Some(mut file_entry) = immediate_next {
+            if let Some(predicate) = &self.predicate {
+                // last_file is guaranteed to be Some is immediate_next is Some
+                let (last_file_id, last_file_entry_i) = self.last_file.as_mut().unwrap();
+                loop {
+                    if predicate(&file_entry) {
+                        return Ok(Some(file_entry));
+                    }
+                    
+                    if *last_file_entry_i >= at.header.file_count - 1 {
+                        return Ok(None);
+                    }
+
+                    file_entry = read_file_entry(*last_file_entry_i + 1, &at, &mut flash).await?;
+                    *last_file_entry_i += 1;
+                    *last_file_id = file_entry.id;
+                }
+            } else {
+                return Ok(Some(file_entry));
+            }
+        } else {
+            return Ok(None);
+        }
     }
 }

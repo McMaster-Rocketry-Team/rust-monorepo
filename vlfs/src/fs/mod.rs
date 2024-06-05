@@ -97,7 +97,7 @@ where
     pub async fn remove_file(&self, file_id: FileID) -> Result<(), VLFSError<F::Error>> {
         let mut current_sector_index =
             if let Some((file_entry, _)) = self.find_file_entry(file_id).await? {
-                if file_entry.opened {
+                if self.is_file_opened(file_entry.id).await {
                     return Err(VLFSError::FileInUse);
                 }
                 self.delete_file_entry(file_id).await?;
@@ -134,15 +134,10 @@ where
         &self,
         predicate: impl Fn(&FileEntry) -> bool,
     ) -> Result<(), VLFSError<F::Error>> {
-        let mut iter = self.files_iter().await;
-        while let Some(file_entry) = iter.next().await {
-            if let Ok(file_entry) = file_entry {
-                if predicate(&file_entry) {
-                    self.remove_file(file_entry.id).await?;
-                }
-            } else {
-                log_warn!("skipping corropted file entry");
-            }
+        // FIXME you can't remove file while using files_iter
+        let mut iter = self.files_iter_filter(predicate).await;
+        while let Some(file_entry) = iter.next().await? {
+            self.remove_file(file_entry.id).await?;
         }
         Ok(())
     }

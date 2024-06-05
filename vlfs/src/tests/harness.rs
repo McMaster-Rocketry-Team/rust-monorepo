@@ -159,8 +159,8 @@ impl VLFSTestingHarness {
         self.flush_all_files().await;
         let mut files = Vec::<FileEntry>::new();
         let mut files_iter = self.vlfs.files_iter().await;
-        while let Some(file) = files_iter.next().await {
-            files.push(file.unwrap());
+        while let Some(file) = files_iter.next().await.unwrap() {
+            files.push(file);
         }
         // files are sorted by id
         assert!(files.iter().map(|file| file.id.0).is_sorted());
@@ -169,7 +169,7 @@ impl VLFSTestingHarness {
         for (file_id, (file_type, content)) in &self.files {
             let file_entry = files.iter().find(|file| file.id == *file_id).unwrap();
             assert_eq!(
-                file_entry.opened,
+                self.vlfs.is_file_opened(file_entry.id).await,
                 self.file_readers.contains_key(file_id) || self.file_writers.contains_key(file_id)
             );
             assert_eq!(file_entry.typ, *file_type);

@@ -63,9 +63,8 @@ where
 
     async fn read_free_sectors(&mut self) -> Result<(), VLFSError<F::Error>> {
         let mut iter = self.files_iter().await;
-        while let Some(file_entry) = iter.next().await {
-            if let Ok(file_entry) = file_entry {
-                let mut current_sector_index = file_entry.first_sector_index;
+        while let Some(file_entry) = iter.next().await? {
+            let mut current_sector_index = file_entry.first_sector_index;
                 while let Some(sector_index) = current_sector_index {
                     log_trace!("at sector {:#X}", sector_index);
                     self.claim_sector(sector_index).await;
@@ -87,9 +86,6 @@ where
                         Some(next_sector_index)
                     };
                 }
-            } else {
-                log_warn!("skipping corropted file entry");
-            }
         }
 
         Ok(())

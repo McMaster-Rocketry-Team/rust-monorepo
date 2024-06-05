@@ -20,7 +20,7 @@ where
                 file_id,
                 file_entry.typ
             );
-            if file_entry.opened {
+            if self.is_file_opened(file_entry.id).await {
                 return Err(VLFSError::FileInUse);
             }
             self.mark_file_opened(file_id).await?;
