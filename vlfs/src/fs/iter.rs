@@ -22,7 +22,7 @@ where
         FilesIterator::new(&self, None).await
     }
 
-    pub async fn files_iter_filter<P: Fn(&FileEntry) -> bool>(
+    pub async fn files_iter_filter<P: FnMut(&FileEntry) -> bool>(
         &self,
         predicate: P,
     ) -> FilesIterator<F, P> {
@@ -38,19 +38,28 @@ where
         ConcurrentFilesIterator::new(&self, None).await
     }
 
-    pub async fn concurrent_files_iter_filter<P: Fn(&FileEntry) -> bool>(
+    pub async fn concurrent_files_iter_filter<P: FnMut(&FileEntry) -> bool>(
         &self,
         predicate: P,
     ) -> ConcurrentFilesIterator<F, C, P> {
         ConcurrentFilesIterator::new(&self, Some(predicate)).await
     }
 
-    pub async fn find_file(
+    /// Find the first file (the file that has the smallest file id) that satisfies the predicate.
+    pub async fn find_first_file(
         &self,
         predicate: impl Fn(&FileEntry) -> bool,
     ) -> Result<Option<FileEntry>, VLFSError<F::Error>> {
         let mut iter = self.files_iter_filter(predicate).await;
         iter.next().await
+    }
+
+    pub async fn find_first_file_by_type(
+        &self,
+        file_type: FileType,
+    ) -> Result<Option<FileEntry>, VLFSError<F::Error>> {
+        self.find_first_file(|file_entry| file_entry.typ == file_type)
+            .await
     }
 }
 
@@ -75,7 +84,7 @@ async fn read_file_entry<'a, F: Flash>(
 pub struct FilesIterator<'a, F, P>
 where
     F: Flash,
-    P: Fn(&FileEntry) -> bool,
+    P: FnMut(&FileEntry) -> bool,
 {
     i: u16,
     at: RwLockReadGuard<'a, NoopRawMutex, AllocationTable, 10>,
@@ -86,7 +95,7 @@ where
 impl<'a, F, P> FilesIterator<'a, F, P>
 where
     F: Flash,
-    P: Fn(&FileEntry) -> bool,
+    P: FnMut(&FileEntry) -> bool,
 {
     async fn new(vlfs: &'a VLFS<F, impl Crc>, predicate: Option<P>) -> Self {
         let at = vlfs.allocation_table.read().await;
@@ -109,7 +118,7 @@ where
             self.i += 1;
             let file_entry = file_entry?;
 
-            if let Some(predicate) = &self.predicate {
+            if let Some(predicate) = &mut self.predicate {
                 if predicate(&file_entry) {
                     return Ok(Some(file_entry));
                 }
@@ -124,7 +133,7 @@ pub struct ConcurrentFilesIterator<'a, F, C, P>
 where
     F: Flash,
     C: Crc,
-    P: Fn(&FileEntry) -> bool,
+    P: FnMut(&FileEntry) -> bool,
 {
     // file id and index of the last file entry
     last_file: Option<(FileID, u16)>,
@@ -136,7 +145,7 @@ impl<'a, F, C, P> ConcurrentFilesIterator<'a, F, C, P>
 where
     F: Flash,
     C: Crc,
-    P: Fn(&FileEntry) -> bool,
+    P: FnMut(&FileEntry) -> bool,
 {
     async fn new(vlfs: &'a VLFS<F, C>, predicate: Option<P>) -> Self {
         Self {
@@ -217,7 +226,7 @@ where
 
         let immediate_next = self.immediate_next(&at, &mut flash).await?;
         if let Some(mut file_entry) = immediate_next {
-            if let Some(predicate) = &self.predicate {
+            if let Some(predicate) = &mut self.predicate {
                 // last_file is guaranteed to be Some is immediate_next is Some
                 let (last_file_id, last_file_entry_i) = self.last_file.as_mut().unwrap();
                 loop {

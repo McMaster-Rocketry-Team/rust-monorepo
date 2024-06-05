@@ -3,8 +3,8 @@ use nalgebra::Vector3;
 use vlfs::{AsyncReader, AsyncWriter, Crc, Flash, VLFSError, VLFS};
 
 pub async fn read_up_right_vector(fs: &VLFS<impl Flash, impl Crc>) -> Option<Vector3<f32>> {
-    let file = fs.find_file_by_type(AVIONICS_UP_RIGHT_FILE_TYPE).await;
-    if let Some(file) = file {
+    let file = fs.find_first_file_by_type(AVIONICS_UP_RIGHT_FILE_TYPE).await;
+    if let Ok(Some(file)) = file {
         if let Ok(mut reader) = fs.open_file_for_read(file.id).await {
             let mut buffer = [0u8; 12];
             let result = match reader.read_slice(&mut buffer, 12).await {

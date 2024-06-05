@@ -24,7 +24,6 @@ futures = { version = "0.3.17", default-features = false, features = [
 rand = { version = "0.8.5", features = ["small_rng"], default-features = false }
 paste = "1.0.12"
 log = { version = "0.4", optional = true }
-async-iterator = { version = "2.2.0", default-features = false }
 embedded-hal-async = "1.0.0"
 random-access-disk = { version = "3.0.0", default-features = false, features = [
     "tokio",

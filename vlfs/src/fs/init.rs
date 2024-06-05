@@ -3,7 +3,6 @@ use crate::{
     driver::{crc::Crc, flash::Flash},
     utils::rwlock::RwLock,
 };
-use async_iterator::Iterator;
 use embassy_sync::mutex::Mutex;
 
 use embassy_sync::blocking_mutex::Mutex as BlockingMutex;

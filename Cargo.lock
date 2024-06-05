@@ -118,12 +118,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "96d30a06541fbafbc7f82ed10c06164cfbd2c401138f6addd8404629c4b16711"
 
 [[package]]
-name = "async-iterator"
-version = "2.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f457e72b88b87c911a455c0f7b562c8e85d32d3ef4d41df156c4b8abf1777ae4"
-
-[[package]]
 name = "async-trait"
 version = "0.1.80"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -532,7 +526,6 @@ version = "0.1.0"
 dependencies = [
  "ahrs",
  "approx",
- "async-iterator",
  "bitflags 2.5.0",
  "bitvec",
  "chrono",
@@ -1879,7 +1872,6 @@ dependencies = [
 name = "vlfs"
 version = "0.9.0"
 dependencies = [
- "async-iterator",
  "bitvec",
  "critical-section",
  "defmt",

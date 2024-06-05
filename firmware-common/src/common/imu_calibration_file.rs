@@ -3,8 +3,9 @@ use defmt::unwrap;
 use ferraris_calibration::CalibrationInfo;
 use vlfs::{AsyncReader, Crc, Flash, VLFS};
 
+// TODO return VLFSError
 pub async fn read_imu_calibration_file(fs: &VLFS<impl Flash, impl Crc>) -> Option<CalibrationInfo> {
-    if let Some(file) = fs.find_file_by_type(CALIBRATION_FILE_TYPE).await {
+    if let Ok(Some(file)) = fs.find_first_file_by_type(CALIBRATION_FILE_TYPE).await {
         let mut file = unwrap!(fs.open_file_for_read(file.id).await);
         let mut buffer = [0u8; 156];
         let result = match file.read_slice(&mut buffer, 156).await {

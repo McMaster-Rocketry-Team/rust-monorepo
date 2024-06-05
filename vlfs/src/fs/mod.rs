@@ -1,7 +1,6 @@
 use core::cell::RefCell;
 
 use crate::driver::{crc::Crc, flash::Flash};
-use async_iterator::Iterator;
 use bitvec::prelude::*;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::blocking_mutex::Mutex as BlockingMutex;
@@ -130,22 +129,29 @@ where
         Ok(())
     }
 
+    // TODO optimization
+    // Right now VLFS writes the entire allocation table for every file deleted,
+    // This is not necessary, we can remove all the files in one pass.
     pub async fn remove_files(
         &self,
-        predicate: impl Fn(&FileEntry) -> bool,
-    ) -> Result<(), VLFSError<F::Error>> {
-        // FIXME you can't remove file while using files_iter
-        let mut iter = self.files_iter_filter(predicate).await;
+        predicate: impl FnMut(&FileEntry) -> bool,
+    ) -> Result<u16, VLFSError<F::Error>> {
+        let mut iter = self.concurrent_files_iter_filter(predicate).await;
+        let mut unremoved_open_files = 0u16;
         while let Some(file_entry) = iter.next().await? {
-            self.remove_file(file_entry.id).await?;
+            if self.is_file_opened(file_entry.id).await {
+                unremoved_open_files += 1;
+            } else {
+                self.remove_file(file_entry.id).await?;
+            }
         }
-        Ok(())
+        Ok(unremoved_open_files)
     }
 
     pub async fn remove_files_with_type(
         &self,
         file_type: FileType,
-    ) -> Result<(), VLFSError<F::Error>> {
+    ) -> Result<u16, VLFSError<F::Error>> {
         self.remove_files(|file_entry| file_entry.typ == file_type)
             .await
     }

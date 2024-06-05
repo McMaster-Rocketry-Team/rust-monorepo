@@ -5,7 +5,6 @@ use crate::{
     AsyncReader, AsyncWriter, DummyCrc, FileEntry, FileID, FileReader, FileType, FileWriter,
     VLFSError, VLFS,
 };
-use async_iterator::Iterator;
 use futures::executor::block_on;
 use rand::Rng;
 use replace_with::replace_with_or_abort;

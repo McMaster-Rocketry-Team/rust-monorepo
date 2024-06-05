@@ -1,7 +1,6 @@
 use core::mem::{replace, size_of};
 
 use super::delta_factory::{DeltaFactory, Deltable, UnDeltaFactory};
-use async_iterator::Iterator;
 use defmt::info;
 use either::Either;
 use rkyv::ser::serializers::BufferSerializer;
@@ -159,25 +158,24 @@ where
         logs_per_segment: u32,
         segments_per_ring: u32,
     ) -> Result<Self, VLFSError<F::Error>> {
-        let mut files_iter = fs.files_iter().await;
+        let mut files_iter = fs
+            .files_iter_filter(|file_entry| file_entry.typ == file_type)
+            .await;
         let mut files_count = 0;
-        while let Some(file) = files_iter.next().await {
-            if matches!(file, Ok(FileEntry {typ, ..}) if typ == file_type) {
-                files_count += 1;
-            }
+        while let Some(_) = files_iter.next().await? {
+            files_count += 1;
         }
         let current_segment_i = if files_count > segments_per_ring {
             let mut files_to_remove = files_count - segments_per_ring;
             info!("Removing {} extra files", files_to_remove);
-            let mut files_iter = fs.files_iter().await;
+            let mut files_iter = fs
+                .concurrent_files_iter_filter(|file_entry| file_entry.typ == file_type)
+                .await;
             while files_to_remove > 0
-                && let Some(file) = files_iter.next().await
+                && let Some(file) = files_iter.next().await?
             {
-                if matches!(file, Ok(FileEntry {typ, ..}) if typ == file_type) {
-                    let file = file.unwrap();
-                    fs.remove_file(file.id).await?;
-                    files_to_remove -= 1;
-                }
+                fs.remove_file(file.id).await?;
+                files_to_remove -= 1;
             }
             segments_per_ring
         } else {
@@ -214,14 +212,21 @@ where
 
             if self.current_segment_i > self.segments_per_ring {
                 info!("Removing old ring segment");
-                let mut files_iter = self.fs.files_iter().await;
-                while let Some(file) = files_iter.next().await {
-                    if matches!(file, Ok(FileEntry {typ, ..}) if typ == self.file_type) {
-                        let file = file.unwrap();
-                        self.fs.remove_file(file.id).await?;
-                        break;
-                    }
-                }
+                let mut removed = false;
+                self.fs
+                    .remove_files(|file_entry| {
+                        if removed {
+                            return false;
+                        } else {
+                            if file_entry.typ == self.file_type {
+                                removed = true;
+                                return true;
+                            } else {
+                                return false;
+                            }
+                        }
+                    })
+                    .await?;
             }
         }
 
@@ -230,7 +235,7 @@ where
         Ok(())
     }
 
-    pub async fn close(mut self) -> Result<(), VLFSError<F::Error>> {
+    pub async fn close(self) -> Result<(), VLFSError<F::Error>> {
         let file_writer = self.delta_logger.into_writer();
         file_writer.close().await?;
         Ok(())
@@ -264,17 +269,7 @@ where
     [(); size_of::<T::Archived>()]:,
 {
     pub async fn new(fs: &'a VLFS<F, C>, file_type: FileType) -> Result<Self, VLFSError<F::Error>> {
-        let mut files_iter = fs.files_iter().await;
-        let mut current_file_id = None;
-        while let Some(file) = files_iter.next().await {
-            if let Ok(FileEntry { typ, id, .. }) = file {
-                if typ == file_type {
-                    current_file_id = Some(id);
-                    break;
-                }
-            }
-        }
-        // let current_file_id = current_file_id.ok_or(VLFSError::FileNotFound)?;
+        let first_file = fs.find_first_file_by_type(file_type).await?;
 
         // let file_reader = fs.open_file_for_read(current_file_id).await?;
         // let delta_log_reader = DeltaLogReader::new(file_reader);
