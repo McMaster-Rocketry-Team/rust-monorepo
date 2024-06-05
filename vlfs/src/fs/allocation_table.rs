@@ -13,7 +13,7 @@ pub const FILE_ENTRY_SIZE: usize = 13;
 
 // only repersent the state of the file when the struct is created
 // does not update after that
-#[derive(Debug, Clone, defmt::Format)]
+#[derive(Debug, Clone, defmt::Format, PartialEq, Eq)]
 pub struct FileEntry {
     pub id: FileID,
     pub typ: FileType,
