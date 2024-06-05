@@ -163,6 +163,17 @@ impl VLFSTestingHarness {
         }
         // files are sorted by id
         assert!(files.iter().map(|file| file.id.0).is_sorted());
+        assert_eq!(files.len(), self.files.len());
+
+        let mut files_concurrent = Vec::<FileEntry>::new();
+        let mut files_iter = self.vlfs.concurrent_files_iter().await;
+        while let Some(file) = files_iter.next().await.unwrap() {
+            files_concurrent.push(file);
+        }
+        // files are sorted by id
+        assert!(files_concurrent.iter().map(|file| file.id.0).is_sorted());
+
+        assert_eq!(files, files_concurrent);
 
         // all the files are still there & sizes are correct
         for (file_id, (file_type, content)) in &self.files {

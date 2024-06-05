@@ -24,7 +24,7 @@ pub use flash::file_flash::FileFlash;
 
 pub use fs::allocation_table::FileEntry;
 pub use fs::error::VLFSError;
-pub use fs::iter::FilesIterator;
+pub use fs::iter::{FilesIterator, ConcurrentFilesIterator};
 pub use fs::reader::{FileReader, VLFSReadStatus};
 pub use fs::writer::FileWriter;
 pub use fs::{FileID, FileType, VLFS};

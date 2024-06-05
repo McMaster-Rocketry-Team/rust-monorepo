@@ -6,7 +6,7 @@ use either::Either;
 use rkyv::ser::serializers::BufferSerializer;
 use rkyv::ser::Serializer;
 use rkyv::{archived_root, Archive, Deserialize, Serialize};
-use vlfs::{Crc, FileEntry, FileID, FileType, Flash, VLFSError, VLFS};
+use vlfs::{ConcurrentFilesIterator, Crc, FileEntry, FileType, Flash, VLFSError, VLFS};
 
 pub struct DeltaLogger<T, W>
 where
@@ -125,6 +125,10 @@ where
             _ => None,
         })
     }
+
+    pub fn into_reader(self) -> R {
+        self.reader
+    }
 }
 
 pub struct RingDeltaLogger<'a, T, C: Crc, F: Flash>
@@ -242,7 +246,7 @@ where
     }
 }
 
-pub struct RingDeltaLogReader<'a, T, C: Crc, F: Flash>
+pub struct RingDeltaLogReader<'a, T, C: Crc, F: Flash, P>
 where
     F::Error: defmt::Format,
     T: Deltable,
@@ -250,15 +254,15 @@ where
     T::Archived: Deserialize<T, rkyv::Infallible>,
     T::DeltaType: Archive,
     <<T as Deltable>::DeltaType as Archive>::Archived: Deserialize<T::DeltaType, rkyv::Infallible>,
+    P: FnMut(&FileEntry) -> bool,
     [(); size_of::<T::Archived>()]:,
 {
     fs: &'a VLFS<F, C>,
-    file_type: FileType,
-    delta_log_reader: DeltaLogReader<T, vlfs::FileReader<'a, F, C>>,
-    current_file_id: Option<FileID>,
+    file_iter: ConcurrentFilesIterator<'a, F, C, P>,
+    delta_log_reader: Option<DeltaLogReader<T, vlfs::FileReader<'a, F, C>>>,
 }
 
-impl<'a, T, C: Crc, F: Flash> RingDeltaLogReader<'a, T, C, F>
+impl<'a, T, C: Crc, F: Flash> RingDeltaLogReader<'a, T, C, F, fn(&FileEntry) -> bool>
 where
     F::Error: defmt::Format,
     T: Deltable,
@@ -268,18 +272,85 @@ where
     <<T as Deltable>::DeltaType as Archive>::Archived: Deserialize<T::DeltaType, rkyv::Infallible>,
     [(); size_of::<T::Archived>()]:,
 {
-    pub async fn new(fs: &'a VLFS<F, C>, file_type: FileType) -> Result<Self, VLFSError<F::Error>> {
-        let first_file = fs.find_first_file_by_type(file_type).await?;
+    pub async fn new(
+        fs: &'a VLFS<F, C>,
+        file_type: FileType,
+    ) -> Result<RingDeltaLogReader<'a, T, C, F, impl FnMut(&FileEntry) -> bool>, VLFSError<F::Error>>
+    {
+        let mut file_iter = fs
+            .concurrent_files_iter_filter(move |file_entry| file_entry.typ == file_type)
+            .await;
+        if let Some(first_file) = file_iter.next().await? {
+            let file_reader = fs.open_file_for_read(first_file.id).await?;
+            let delta_log_reader = DeltaLogReader::new(file_reader);
+            return Ok(RingDeltaLogReader {
+                fs,
+                file_iter,
+                delta_log_reader: Some(delta_log_reader),
+            });
+        } else {
+            return Ok(RingDeltaLogReader {
+                fs,
+                file_iter,
+                delta_log_reader: None,
+            });
+        }
+    }
+}
 
-        // let file_reader = fs.open_file_for_read(current_file_id).await?;
-        // let delta_log_reader = DeltaLogReader::new(file_reader);
-        // Ok(Self {
-        //     fs,
-        //     file_type,
-        //     delta_log_reader,
-        //     current_file_id,
-        // })
+impl<'a, T, C: Crc, F: Flash, P> RingDeltaLogReader<'a, T, C, F, P>
+where
+    F::Error: defmt::Format,
+    T: Deltable,
+    T: Archive,
+    T::Archived: Deserialize<T, rkyv::Infallible>,
+    T::DeltaType: Archive,
+    <<T as Deltable>::DeltaType as Archive>::Archived: Deserialize<T::DeltaType, rkyv::Infallible>,
+    P: FnMut(&FileEntry) -> bool,
+    [(); size_of::<T::Archived>()]:,
+{
+    pub async fn next(&mut self) -> Result<Option<T>, VLFSError<F::Error>> {
+        if self.delta_log_reader.is_none() {
+            if let Some(file) = self.file_iter.next().await? {
+                let file_reader = self.fs.open_file_for_read(file.id).await?;
+                self.delta_log_reader = Some(DeltaLogReader::new(file_reader));
+            }
+        }
 
-        todo!()
+        if let Some(delta_log_reader) = &mut self.delta_log_reader {
+            if let Some(value) = delta_log_reader.next().await? {
+                return Ok(Some(value));
+            } else {
+                self.delta_log_reader
+                    .take()
+                    .unwrap()
+                    .into_reader()
+                    .close()
+                    .await;
+            }
+        }
+
+        todo!();
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use vlfs::{DummyCrc, DummyFlash};
+
+    use crate::driver::{imu::IMUReading, timestamp::UnixTimestamp};
+
+    use super::*;
+
+    async fn test() {
+        let flash = DummyFlash {};
+        let crc = DummyCrc {};
+        let mut vlfs = VLFS::new(flash, crc);
+        vlfs.init().await.unwrap();
+
+        let reader =
+            RingDeltaLogReader::<IMUReading<UnixTimestamp>, _, _, _>::new(&vlfs, FileType(0))
+                .await
+                .unwrap();
     }
 }
