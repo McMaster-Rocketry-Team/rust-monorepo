@@ -333,7 +333,7 @@ where
             at.increment_position();
             let at_address = at.address();
 
-            let mut flash = self.flash.lock().await;
+            let mut flash = self.flash.write().await;
             flash
                 .erase_block_32kib(at_address)
                 .await
@@ -416,7 +416,7 @@ where
         let at_address = at.address();
         let file_id = at.header.max_file_id;
 
-        let mut flash = self.flash.lock().await;
+        let mut flash = self.flash.write().await;
         flash
             .erase_block_32kib(at_address)
             .await
@@ -476,7 +476,7 @@ where
     // return true: found a valid allocation table
     pub(super) async fn read_latest_allocation_table(&self) -> Result<bool, VLFSError<F::Error>> {
         let mut found_valid_table = false;
-        let mut flash = self.flash.lock().await;
+        let mut flash = self.flash.write().await;
         let mut crc = self.crc.lock().await;
 
         for i in 0..TABLE_COUNT {
@@ -539,7 +539,7 @@ where
         let at = self.allocation_table.read().await;
         let at_address = at.address();
 
-        let mut flash = self.flash.lock().await;
+        let mut flash = self.flash.write().await;
         flash
             .erase_block_32kib(at_address)
             .await

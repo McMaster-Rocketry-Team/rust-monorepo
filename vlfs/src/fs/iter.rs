@@ -1,4 +1,4 @@
-use core::cmp::min;
+use core::{cmp::min, ops::Deref};
 
 use allocation_table::FILE_ENTRY_SIZE;
 use embassy_sync::mutex::MutexGuard;
