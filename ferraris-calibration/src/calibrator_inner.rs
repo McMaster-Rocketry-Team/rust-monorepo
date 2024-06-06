@@ -1,4 +1,4 @@
-use libm::{sqrt, sqrtf};
+use libm::{sqrt, sqrtf, fabsf};
 use nalgebra::{Matrix3, Vector3};
 
 use crate::{imu_reading::IMUReading, CalibrationInfo, IMUReadingTrait};
@@ -463,8 +463,8 @@ impl CalibratorInner {
         };
         let variance_avg_reading = cal_info.apply_calibration(variance_avg_reading);
 
-        let acc_variance: Vector3<f32> = variance_avg_reading.acc.map(|x| sqrtf(x.abs())).into();
-        let gyro_variance: Vector3<f32> = variance_avg_reading.gyro.map(|x| sqrtf(x.abs())).into();
+        let acc_variance: Vector3<f32> = variance_avg_reading.acc.map(|x| sqrtf(fabsf(x))).into();
+        let gyro_variance: Vector3<f32> = variance_avg_reading.gyro.map(|x| sqrtf(fabsf(x))).into();
 
         CalibrationInfo::from_raw(
             K_a.cast(),

@@ -16,6 +16,18 @@ pub struct IMUReading<T: TimestampType> {
     pub gyro: [f32; 3],
 }
 
+impl<T: TimestampType> IMUReading<T> {
+    pub fn new(timestamp: f64, acc: [f32; 3], gyro: [f32; 3]) -> Self {
+        Self {
+            _phantom: PhantomData,
+            timestamp,
+            acc,
+            gyro,
+        }
+    }
+
+}
+
 impl<T: TimestampType> IMUReadingTrait for IMUReading<T> {
     fn timestamp(&self) -> f64 {
         self.timestamp

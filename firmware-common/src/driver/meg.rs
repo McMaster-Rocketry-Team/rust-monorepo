@@ -15,6 +15,16 @@ pub struct MegReading<T: TimestampType> {
     pub meg: [f32; 3],  // gauss
 }
 
+impl<T: TimestampType> MegReading<T> {
+    pub fn new(timestamp: f64, meg: [f32; 3]) -> Self {
+        Self {
+            _phantom: PhantomData,
+            timestamp,
+            meg,
+        }
+    }
+}
+
 impl<T: TimestampType> defmt::Format for MegReading<T> {
     fn format(&self, f: defmt::Formatter) {
         let mut message = String::<128>::new();
