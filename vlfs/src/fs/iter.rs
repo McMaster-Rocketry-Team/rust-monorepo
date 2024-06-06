@@ -229,7 +229,7 @@ where
         let immediate_next = self.immediate_next(&at, &flash).await?;
         if let Some(mut file_entry) = immediate_next {
             if let Some(predicate) = &mut self.predicate {
-                // last_file is guaranteed to be Some is immediate_next is Some
+                // last_file is guaranteed to be Some if immediate_next is Some
                 let (last_file_id, last_file_entry_i) = self.last_file.as_mut().unwrap();
                 loop {
                     if predicate(&file_entry) {

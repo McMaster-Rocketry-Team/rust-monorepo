@@ -44,7 +44,7 @@ impl StatFlash {
         })
     }
 
-    pub fn get_flash<'a, F: Flash, T: Timer>(&self, flash: F, timer: T) -> StatFlashFlash<F, T> {
+    pub fn get_flash<F: Flash, T: Timer>(&self, flash: F, timer: T) -> StatFlashFlash<F, T> {
         StatFlashFlash::new(flash, timer, self)
     }
 }

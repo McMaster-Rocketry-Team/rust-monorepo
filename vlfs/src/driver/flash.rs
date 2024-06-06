@@ -1,4 +1,7 @@
-use core::fmt::Debug;
+use core::{
+    fmt::Debug,
+    ops::{Deref, DerefMut},
+};
 
 /// A Flash driver is represented here
 pub trait Flash {
@@ -140,5 +143,48 @@ pub trait Flash {
         }
         // Return Ok if no error occured during all the write operations
         Ok(())
+    }
+}
+
+impl<F: Flash, T: DerefMut<Target = F> + Deref<Target = F>> Flash for T {
+    type Error = F::Error;
+
+    async fn size(&self) -> u32 {
+        self.deref().size().await
+    }
+
+    async fn reset(&mut self) -> Result<(), Self::Error> {
+        self.deref_mut().reset().await
+    }
+
+    async fn erase_sector_4kib(&mut self, address: u32) -> Result<(), Self::Error> {
+        self.deref_mut().erase_sector_4kib(address).await
+    }
+
+    async fn erase_block_32kib(&mut self, address: u32) -> Result<(), Self::Error> {
+        self.deref_mut().erase_block_32kib(address).await
+    }
+
+    async fn erase_block_64kib(&mut self, address: u32) -> Result<(), Self::Error> {
+        self.deref_mut().erase_block_64kib(address).await
+    }
+
+    async fn read_4kib<'b>(
+        &mut self,
+        address: u32,
+        read_length: usize,
+        read_buffer: &'b mut [u8],
+    ) -> Result<&'b [u8], Self::Error> {
+        self.deref_mut()
+            .read_4kib(address, read_length, read_buffer)
+            .await
+    }
+
+    async fn write_256b<'b>(
+        &mut self,
+        address: u32,
+        write_buffer: &'b mut [u8],
+    ) -> Result<(), Self::Error> {
+        self.deref_mut().write_256b(address, write_buffer).await
     }
 }
