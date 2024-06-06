@@ -1,18 +1,10 @@
+use crate::tests::init_logger;
 use crate::{get_test_image_path, tests::harness::VLFSTestingHarness};
-use crate::{FileID, FileType};
+use crate::{FileEntry, FileID, FileType};
 use function_name::named;
-#[cfg(feature = "log")]
-use log::LevelFilter;
 
-fn init_logger() {
-    #[cfg(feature = "log")]
-    let _ = env_logger::builder()
-        .filter_level(LevelFilter::Error)
-        .filter(Some("vlfs"), LevelFilter::Trace)
-        .filter(Some("vlfs-host"), LevelFilter::Trace)
-        .is_test(true)
-        .try_init();
-}
+
+
 
 macro_rules! test_write_read {
     ($name:ident, $length:expr) => {
@@ -355,5 +347,72 @@ async fn remove_files() {
     }
 
     harness.remove_files(|id| id.0 % 2 == 0).await;
+    harness.verify_invariants().await;
+}
+
+#[named]
+#[tokio::test]
+async fn files_iter() {
+    init_logger();
+
+    let path = get_test_image_path!();
+
+    let mut harness = VLFSTestingHarness::new(path).await;
+
+    for i in 0..10 {
+        let file_id = harness.create_file(FileType(i)).await;
+        harness.open_file_for_write(file_id).await;
+        harness.append_file(file_id, i as usize).await.unwrap();
+        harness.close_write_file(file_id).await;
+    }
+
+    harness.verify_invariants().await;
+}
+
+#[named]
+#[tokio::test]
+async fn files_iter_filter() {
+    init_logger();
+
+    let path = get_test_image_path!();
+
+    let mut harness = VLFSTestingHarness::new(path).await;
+
+    for i in 0..10 {
+        let file_id = harness.create_file(FileType(i)).await;
+        harness.open_file_for_write(file_id).await;
+        harness.append_file(file_id, i as usize).await.unwrap();
+        harness.close_write_file(file_id).await;
+    }
+
+    harness.verify_invariants().await;
+
+    let mut files = Vec::<FileEntry>::new();
+    let mut iter = harness
+        .vlfs
+        .files_iter_filter(|entry| entry.id.0 % 2 == 0)
+        .await;
+    while let Some(file) = iter.next().await.unwrap() {
+        files.push(file);
+    }
+    
+    assert_eq!(
+        files
+            .iter()
+            .map(|file_entry| file_entry.id)
+            .collect::<Vec<_>>(),
+        vec![FileID(2), FileID(4), FileID(6), FileID(8), FileID(10)]
+    );
+}
+
+#[named]
+#[tokio::test]
+async fn files_iter_no_file() {
+    init_logger();
+
+    let path = get_test_image_path!();
+
+    let mut harness = VLFSTestingHarness::new(path).await;
+
     harness.verify_invariants().await;
 }

@@ -1,7 +1,6 @@
-use core::{cmp::min, ops::Deref};
+use core::cmp::min;
 
 use allocation_table::FILE_ENTRY_SIZE;
-use embassy_sync::mutex::MutexGuard;
 
 use crate::{
     utils::{flash_io::FlashReader, rwlock::RwLockReadGuard},
@@ -162,6 +161,8 @@ where
         flash: &RwLockReadGuard<'a, NoopRawMutex, FlashWrapper<F>, 10>,
     ) -> Result<Option<FileEntry>, VLFSError<F::Error>> {
         if let Some((last_file_id, last_file_entry_i)) = self.last_file {
+            let mut curr_plus_one_file_entry: Option<FileEntry> = None;
+
             // Try to read the next file entry first
             if last_file_entry_i + 1 < at.header.file_count {
                 let file_entry = read_file_entry(last_file_entry_i + 1, at, flash).await?;
@@ -169,6 +170,8 @@ where
                     // file_entry is the immediate next file entry of the last file
                     self.last_file = Some((file_entry.id, last_file_entry_i + 1));
                     return Ok(Some(file_entry));
+                } else {
+                    curr_plus_one_file_entry = Some(file_entry);
                 }
             }
             // There are two other cases:
@@ -184,7 +187,6 @@ where
                 return Ok(None);
             }
             let mut curr_file_entry_i = min(last_file_entry_i, at.header.file_count - 1);
-            let mut curr_plus_one_file_entry: Option<FileEntry> = None;
             // Find the first file with file id <= last file id, from curr_file_entry_i to 0
             // The file following the found file is the next file returned by the iterator
             loop {

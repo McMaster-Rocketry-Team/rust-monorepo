@@ -8,6 +8,7 @@ use crate::{
 use futures::executor::block_on;
 use rand::Rng;
 use replace_with::replace_with_or_abort;
+use tokio::sync::Mutex;
 
 #[cfg(feature = "internal_tests_use_debug_flash")]
 use super::debug_flash::DebugFlash;
@@ -21,7 +22,7 @@ type FlashType = MemoryFlash;
 
 pub struct VLFSTestingHarness {
     pub vlfs: VLFS<FlashType, DummyCrc>,
-    pub files: HashMap<FileID, (FileType, Vec<u8>)>,
+    pub files: Mutex<HashMap<FileID, (FileType, Vec<u8>)>>,
     pub file_writers: HashMap<FileID, FileWriter<'static, FlashType, DummyCrc>>,
     pub file_readers: HashMap<FileID, (FileReader<'static, FlashType, DummyCrc>, usize)>, // cursor position
 }
@@ -37,7 +38,7 @@ impl VLFSTestingHarness {
         vlfs.init().await.unwrap();
         Self {
             vlfs,
-            files: HashMap::new(),
+            files: Mutex::new(HashMap::new()),
             file_writers: HashMap::new(),
             file_readers: HashMap::new(),
         }
@@ -58,13 +59,14 @@ impl VLFSTestingHarness {
         self.vlfs.init().await.unwrap();
     }
 
-    pub async fn create_file(&mut self, file_type: FileType) -> FileID {
+    pub async fn create_file(&self, file_type: FileType) -> FileID {
         let file_entry = self.vlfs.create_file(file_type).await.unwrap();
-        let prev_max_file_id = self.files.iter().map(|file| file.0).max();
+        let mut files = self.files.lock().await;
+        let prev_max_file_id = files.iter().map(|file| file.0).max();
         if let Some(prev_max_file_id) = prev_max_file_id {
             assert!(file_entry.id > *prev_max_file_id)
         }
-        self.files.insert(file_entry.id, (file_type, Vec::new()));
+        files.insert(file_entry.id, (file_type, Vec::new()));
         file_entry.id
     }
 
@@ -92,6 +94,8 @@ impl VLFSTestingHarness {
         }
 
         self.files
+            .lock()
+            .await
             .get_mut(&file_id)
             .unwrap()
             .1
@@ -134,7 +138,8 @@ impl VLFSTestingHarness {
             .await
             .unwrap();
 
-        let expected_buffer = self.files.get(&file_id).unwrap().1.as_slice();
+        let files = self.files.lock().await;
+        let expected_buffer = files.get(&file_id).unwrap().1.as_slice();
         assert_eq!(buffer, &expected_buffer[*cursor..*cursor + buffer.len()]);
         *cursor += buffer.len();
 
@@ -163,7 +168,7 @@ impl VLFSTestingHarness {
         }
         // files are sorted by id
         assert!(files.iter().map(|file| file.id.0).is_sorted());
-        assert_eq!(files.len(), self.files.len());
+        assert_eq!(files.len(), self.files.lock().await.len());
 
         let mut files_concurrent = Vec::<FileEntry>::new();
         let mut files_iter = self.vlfs.concurrent_files_iter().await;
@@ -176,7 +181,8 @@ impl VLFSTestingHarness {
         assert_eq!(files, files_concurrent);
 
         // all the files are still there & sizes are correct
-        for (file_id, (file_type, content)) in &self.files {
+        let self_files = self.files.lock().await;
+        for (file_id, (file_type, content)) in self_files.iter() {
             let file_entry = files.iter().find(|file| file.id == *file_id).unwrap();
             assert_eq!(
                 self.vlfs.is_file_opened(file_entry.id).await,
@@ -191,8 +197,9 @@ impl VLFSTestingHarness {
         }
     }
 
-    pub async fn remove_file(&mut self, file_id: FileID) {
-        if self.files.contains_key(&file_id) {
+    pub async fn remove_file(&self, file_id: FileID) {
+        let mut files = self.files.lock().await;
+        if files.contains_key(&file_id) {
             if self.file_writers.contains_key(&file_id) || self.file_readers.contains_key(&file_id)
             {
                 assert_matches!(
@@ -201,7 +208,7 @@ impl VLFSTestingHarness {
                 );
             } else {
                 self.vlfs.remove_file(file_id).await.unwrap();
-                self.files.remove(&file_id);
+                files.remove(&file_id);
             }
         } else {
             assert_matches!(
@@ -216,7 +223,8 @@ impl VLFSTestingHarness {
             .remove_files(|file_entry| predicate(&file_entry.id))
             .await
             .unwrap();
-        self.files.retain(|file_id, _| !predicate(file_id));
+        let mut files = self.files.lock().await;
+        files.retain(|file_id, _| !predicate(file_id));
     }
 }
 
