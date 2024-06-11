@@ -37,7 +37,6 @@ create_serialized_enum!(
     GroundTestLogger, // this is the name of the struct
     GroundTestLoggerReader,
     GroundTestLog,
-    16,
     (0, BaroReadingUnix),
     (1, FireEvent)
 );

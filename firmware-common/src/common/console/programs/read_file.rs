@@ -1,7 +1,31 @@
-use defmt::{unwrap, warn};
-use vlfs::{AsyncReader, Crc, Flash, VLFSReadStatus, VLFS};
+use core::cell::RefCell;
 
-use crate::driver::serial::Serial;
+use defmt::warn;
+use vlfs::{AsyncReader, Crc, FileID, FileReader, Flash, VLFSError, VLFSReadStatus, VLFS};
+
+use crate::{create_rpc, driver::serial::Serial};
+
+create_rpc! {
+    enums {
+        enum OpenFileStatus {
+            Sucess,
+            DoesNotExist,
+            Error,
+        }
+    }
+    rpc 0 OpenFile {
+        request(file_id: u64)
+        response(status: OpenFileStatus)
+    }
+    rpc 1 ReadFile {
+        request()
+        response(data: [u8; 128], length: u8, corrupted: bool)
+    }
+    rpc 2 CloseFile {
+        request()
+        response()
+    }
+}
 
 // TODO implement `ConsoleProgram` and add to `start_common_programs`
 pub struct ReadFile {}
@@ -20,23 +44,65 @@ impl ReadFile {
         serial: &mut T,
         vlfs: &VLFS<F, C>,
     ) -> Result<(), ()> {
-        let mut buffer = [0u8; 64];
-        unwrap!(serial.read_all(&mut buffer[..8]).await);
-        let file_id = u64::from_be_bytes((&buffer[0..8]).try_into().unwrap()).into();
+        let reader: RefCell<Option<FileReader<F, C>>> = RefCell::new(None);
+        let result = run_rpc_server(
+            serial,
+            async |file_id| {
+                let status = match vlfs.open_file_for_read(FileID(file_id)).await {
+                    Ok(r) => {
+                        reader.replace(Some(r));
+                        OpenFileStatus::Sucess
+                    }
+                    Err(VLFSError::FileDoesNotExist) => OpenFileStatus::DoesNotExist,
+                    Err(e) => {
+                        warn!("Error opening file: {:?}", e);
+                        OpenFileStatus::Error
+                    }
+                };
+                (OpenFileResponse { status }, false)
+            },
+            async || {
+                let mut borrowed = reader.borrow_mut();
+                let response = if let Some(reader) = borrowed.as_mut() {
+                    let mut buffer = [0u8; 128];
+                    match reader.read_all(&mut buffer).await {
+                        Ok((read_buffer, read_status)) => ReadFileResponse {
+                            length: read_buffer.len() as u8,
+                            data: buffer,
+                            corrupted: matches!(read_status, VLFSReadStatus::CorruptedPage { .. }),
+                        },
+                        Err(e) => {
+                            warn!("Error reading file: {:?}", e);
+                            ReadFileResponse {
+                                length: 0,
+                                data: buffer,
+                                corrupted: true,
+                            }
+                        }
+                    }
+                } else {
+                    ReadFileResponse {
+                        length: 0,
+                        data: [0u8; 128],
+                        corrupted: false,
+                    }
+                };
+                (response, false)
+            },
+            async || {
+                let mut borrowed = reader.borrow_mut();
 
-        let mut reader = unwrap!(vlfs.open_file_for_read(file_id).await);
-        loop {
-            let read_result = reader.read_all(&mut buffer).await;
-            if let Ok((buffer, VLFSReadStatus::EndOfFile)) = read_result {
-                unwrap!(serial.write(buffer).await);
-                reader.close().await;
-                return Ok(());
-            } else if let Ok((buffer, VLFSReadStatus::CorruptedPage { address })) = read_result {
-                warn!("Corrupted page at address {}", address);
-                unwrap!(serial.write(buffer).await);
-            } else if let Ok((buffer, _)) = read_result {
-                unwrap!(serial.write(buffer).await);
-            }
+                if let Some(reader) = borrowed.take() {
+                    reader.close().await;
+                }
+
+                (CloseFileResponse {}, true)
+            },
+        )
+        .await;
+        if let Err(e) = result {
+            warn!("rpc ended due to {:?}", e);
         }
+        Ok(())
     }
 }

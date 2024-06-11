@@ -1,7 +1,7 @@
 #[macro_export]
 macro_rules! create_serialized_enum {
-    ($writer_struct_name:ident, $reader_struct_name:ident, $enum_name:ident, $buffer_size:expr, $(($log_type_i:expr, $log_type:ident)),*) => {
-        #[derive(defmt::Format, Debug, Clone)]
+    ($writer_struct_name:ident, $reader_struct_name:ident, $enum_name:ident, $(($log_type_i:expr, $log_type:ident)),*) => {
+        #[derive(rkyv::Archive, Debug, Clone, defmt::Format)]
         enum $enum_name {
             $(
                 $log_type($log_type),
@@ -10,14 +10,14 @@ macro_rules! create_serialized_enum {
 
         struct $writer_struct_name<W: vlfs::AsyncWriter> {
             writer: W,
-            buffer: [u8; $buffer_size],
+            buffer: [u8; core::mem::size_of::<<$enum_name as rkyv::Archive>::Archived>()],
         }
 
         impl<W: vlfs::AsyncWriter> $writer_struct_name<W> {
             pub fn new(writer: W) -> Self {
                 Self {
                     writer,
-                    buffer: [0; $buffer_size],
+                    buffer: [0; core::mem::size_of::<<$enum_name as rkyv::Archive>::Archived>()],
                 }
             }
 
@@ -164,7 +164,6 @@ mod file_logger_test {
         FileLogger, // this is the name of the struct
         FileLoggerReader,
         Log,
-        100, // this is the buffer size
         (0, LogType1),
         (1, LogType2)
     );

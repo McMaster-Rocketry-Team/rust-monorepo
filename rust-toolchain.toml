@@ -1,4 +1,4 @@
 [toolchain]
-channel = "nightly-2024-04-22"
+channel = "nightly-2024-06-10"
 components = [ "llvm-tools" ]
 targets = [ "thumbv7em-none-eabihf", "thumbv6m-none-eabi" ]
