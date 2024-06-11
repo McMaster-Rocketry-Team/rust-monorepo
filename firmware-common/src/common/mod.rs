@@ -11,7 +11,7 @@ pub mod sensor_snapshot;
 pub mod telemetry;
 pub mod ticker;
 pub mod unix_clock;
-pub mod serialized_logger;
+pub mod serialized_enum;
 pub mod buzzer_queue;
 pub mod fixed_point;
 pub mod delta_factory;

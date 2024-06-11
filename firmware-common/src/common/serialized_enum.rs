@@ -1,5 +1,5 @@
 #[macro_export]
-macro_rules! create_serialized_logger {
+macro_rules! create_serialized_enum {
     ($writer_struct_name:ident, $reader_struct_name:ident, $enum_name:ident, $buffer_size:expr, $(($log_type_i:expr, $log_type:ident)),*) => {
         #[derive(defmt::Format, Debug, Clone)]
         enum $enum_name {
@@ -160,7 +160,7 @@ mod file_logger_test {
         pub fieldb: f32,
     }
 
-    create_serialized_logger!(
+    create_serialized_enum!(
         FileLogger, // this is the name of the struct
         FileLoggerReader,
         Log,

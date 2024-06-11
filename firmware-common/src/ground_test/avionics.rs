@@ -8,7 +8,7 @@ use crate::driver::barometer::BaroReading;
 use crate::{
     claim_devices,
     common::{device_manager::prelude::*, files::GROUND_TEST_LOG_FILE_TYPE, ticker::Ticker},
-    create_serialized_logger, device_manager_type,
+    create_serialized_enum, device_manager_type,
     driver::{gps::GPS, indicator::Indicator, timestamp::UnixTimestamp},
 };
 use core::fmt::Write;
@@ -33,7 +33,7 @@ struct FireEvent {
 type BaroReadingUnix = BaroReading<UnixTimestamp>;
 type ArchivedBaroReadingUnix = ArchivedBaroReading<UnixTimestamp>;
 
-create_serialized_logger!(
+create_serialized_enum!(
     GroundTestLogger, // this is the name of the struct
     GroundTestLoggerReader,
     GroundTestLog,
