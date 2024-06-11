@@ -3,7 +3,9 @@ use core::cell::RefCell;
 use defmt::warn;
 use vlfs::{AsyncReader, Crc, FileID, FileReader, Flash, VLFSError, VLFSReadStatus, VLFS};
 
-use crate::{create_rpc, driver::serial::Serial};
+use crate::{common::console::console_program::ConsoleProgram, create_rpc, driver::serial::Serial};
+use crate::device_manager_type;
+use crate::common::device_manager::prelude::*;
 
 create_rpc! {
     enums {
@@ -21,34 +23,29 @@ create_rpc! {
         request()
         response(data: [u8; 128], length: u8, corrupted: bool)
     }
-    rpc 2 CloseFile {
-        request()
-        response()
+}
+
+pub struct ReadFile<'a, F: Flash, C: Crc> {
+    vlfs: &'a VLFS<F, C>,
+}
+
+impl<'a, F: Flash, C: Crc> ReadFile<'a, F, C>  {
+    pub fn new(vlfs: &'a VLFS<F, C>) -> Self {
+        Self {vlfs}
     }
 }
 
-// TODO implement `ConsoleProgram` and add to `start_common_programs`
-pub struct ReadFile {}
-
-impl ReadFile {
-    pub fn new() -> Self {
-        Self {}
-    }
-
-    pub fn id(&self) -> u64 {
+impl<'a, F: Flash, C: Crc> ConsoleProgram for ReadFile<'a, F,C>{
+    fn id(&self) -> u64 {
         0x4
     }
 
-    pub async fn start<T: Serial, F: Flash, C: Crc>(
-        &self,
-        serial: &mut T,
-        vlfs: &VLFS<F, C>,
-    ) -> Result<(), ()> {
+    async fn run(&mut self, serial: &mut impl Serial, _device_manager: device_manager_type!()) {
         let reader: RefCell<Option<FileReader<F, C>>> = RefCell::new(None);
         let result = run_rpc_server(
             serial,
             async |file_id| {
-                let status = match vlfs.open_file_for_read(FileID(file_id)).await {
+                let status = match self.vlfs.open_file_for_read(FileID(file_id)).await {
                     Ok(r) => {
                         reader.replace(Some(r));
                         OpenFileStatus::Sucess
@@ -59,7 +56,7 @@ impl ReadFile {
                         OpenFileStatus::Error
                     }
                 };
-                (OpenFileResponse { status }, false)
+                OpenFileResponse { status }
             },
             async || {
                 let mut borrowed = reader.borrow_mut();
@@ -87,7 +84,7 @@ impl ReadFile {
                         corrupted: false,
                     }
                 };
-                (response, false)
+                response
             },
             async || {
                 let mut borrowed = reader.borrow_mut();
@@ -95,14 +92,11 @@ impl ReadFile {
                 if let Some(reader) = borrowed.take() {
                     reader.close().await;
                 }
-
-                (CloseFileResponse {}, true)
             },
         )
         .await;
         if let Err(e) = result {
             warn!("rpc ended due to {:?}", e);
         }
-        Ok(())
     }
 }

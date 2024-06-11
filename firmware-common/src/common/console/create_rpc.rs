@@ -42,11 +42,12 @@ macro_rules! create_rpc {
         )*
 
         paste::paste! {
-            pub async fn run_rpc_server<S: crate::driver::serial::Serial, $([< F $rpc_i >]: futures::Future<Output = ([< $name Response >], bool)>,)*>(
+            pub async fn run_rpc_server<S: crate::driver::serial::Serial, $([< F $rpc_i >]: futures::Future<Output = [< $name Response >]>,)* FC: futures::Future<Output = ()>>(
                 serial: &mut S,
                 $(
                     mut [< $name:snake _handler >]: impl FnMut($($req_var_type ,)*) -> [< F $rpc_i >],
                 )*
+                mut close_handler: impl FnMut()-> FC
             ) -> Result<(), S::Error> {
                 use core::mem::size_of;
                 use rkyv::ser::Serializer;
@@ -85,18 +86,19 @@ macro_rules! create_rpc {
                                 #[allow(unused)]
                                 let deserialized = <[<Archived $name Request>] as rkyv::Deserialize<[< $name Request >], rkyv::Infallible>>::deserialize(archived, &mut rkyv::Infallible).unwrap();
 
-                                let (response, should_end) = [< $name:snake _handler >]($(deserialized.$req_var_name, )*).await;
+                                let response = [< $name:snake _handler >]($(deserialized.$req_var_name, )*).await;
 
                                 let mut response_serializer = BufferSerializer::new(&mut response_buffer);
                                 response_serializer.serialize_value(&response).unwrap();
                                 drop(response_serializer);
                                 serial.write(&response_buffer[..size_of::<<[< $name Response >] as rkyv::Archive>::Archived>()]).await?;
-                            
-                                if should_end {
-                                    break;
-                                }
                             }
                         )*
+                        255 => {
+                            close_handler().await;
+                            serial.write(&[255]).await?;
+                            break;
+                        }
                         id => {
                             defmt::warn!("Unknown rpc id: {}", id);
                         }
@@ -141,53 +143,15 @@ macro_rules! create_rpc {
                         Ok(deserialized)
                     }
                 )*
+
+                pub async fn close(&mut self) -> Result<(), S::Error> {
+                    self.serial.write(&[255]).await?;
+                    let mut buffer = [0u8; 1];
+                    self.serial.read_all(&mut buffer).await?;
+                    assert_eq!(buffer[0], 255);
+                    Ok(())
+                }
             }
         }
     };
 }
-
-create_rpc! {
-    enums {
-        enum OpenFileStatus {
-            Sucess,
-            DoesNotExist,
-            Error,
-        }
-    }
-    rpc 0 OpenFile {
-        request(file_id: u64, file_type: u32)
-        response(status: OpenFileStatus)
-    }
-    rpc 1 CloseFile {
-        request()
-        response()
-    }
-}
-
-async fn test(mut serial: impl crate::driver::serial::Serial) {
-    run_rpc_server(
-        &mut serial,
-        async |file_id, file_type| {
-            (
-                OpenFileResponse {
-                    status: OpenFileStatus::Error,
-                },
-                false,
-            )
-        },
-        async || (CloseFileResponse {}, true),
-    )
-    .await;
-}
-
-fn execute_async_closure<Fut>(closure: impl Fn() -> Fut)
-where
-    Fut: futures::Future<Output = ()>,
-{
-    // Example of calling the closure multiple times
-    async {
-        closure().await;
-        closure().await;
-    };
-}
-
