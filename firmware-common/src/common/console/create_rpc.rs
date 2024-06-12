@@ -1,6 +1,5 @@
 #![allow(warnings, unused)]
 
-use crate::driver::serial::DummySerial;
 use crc::{Crc, CRC_8_SMBUS};
 
 fn test() {
@@ -68,8 +67,8 @@ macro_rules! create_rpc {
         }
 
         paste::paste! {
-            pub async fn run_rpc_server<S: crate::driver::serial::Serial, $([< F $rpc_i >]: futures::Future<Output = [< $name Response >]>,)* FC: futures::Future<Output = ()>>(
-                serial: &mut S,
+            pub async fn run_rpc_server<ST: embedded_io_async::Write, SR: embedded_io_async::Read, $([< F $rpc_i >]: futures::Future<Output = [< $name Response >]>,)* FC: futures::Future<Output = ()>>(
+                serial: &mut (ST, SR),
                 $(
                     mut [< $name:snake _handler >]: impl FnMut($($req_var_type ,)*) -> [< F $rpc_i >],
                 )*

@@ -1,67 +1,163 @@
-use core::ops::DerefMut;
+use core::cell::RefCell;
+use core::marker::PhantomData;
 
-use embassy_sync::{blocking_mutex::raw::RawMutex, mutex::MutexGuard};
+use embassy_sync::blocking_mutex::raw::RawMutex;
+use embassy_sync::blocking_mutex::Mutex as BlockingMutex;
 
-use embedded_hal_async::delay::DelayNs;
+pub trait SplitableSerial {
+    type Error: defmt::Format + embedded_io_async::Error;
 
-pub trait Serial {
-    type Error: defmt::Format;
-
-    async fn write(&mut self, data: &[u8]) -> Result<(), Self::Error>;
-    async fn read(&mut self, buffer: &mut [u8]) -> Result<usize, Self::Error>;
-
-    async fn writeln(&mut self, data: &[u8]) -> Result<(), Self::Error> {
-        self.write(data).await?;
-        self.write(b"\r\n").await?;
-        Ok(())
-    }
-
-    async fn read_all(&mut self, buffer: &mut [u8]) -> Result<(), Self::Error> {
-        let mut read_length = 0;
-        while read_length < buffer.len() {
-            read_length += self.read(&mut buffer[read_length..]).await?;
-        }
-
-        Ok(())
-    }
+    fn split(
+        &mut self,
+    ) -> (
+        impl embedded_io_async::Write<Error = Self::Error>,
+        impl embedded_io_async::Read<Error = Self::Error>,
+    );
 }
 
-impl<'a, M, T> Serial for MutexGuard<'a, M, T>
-where
+pub struct SplitableSerialWrapper<
     M: RawMutex,
-    T: Serial,
+    E: defmt::Format + embedded_io_async::Error,
+    T: embedded_io_async::Write<Error = E>,
+    R: embedded_io_async::Read<Error = E>,
+> {
+    _phantom_data: PhantomData<E>,
+    tx: BlockingMutex<M, RefCell<Option<T>>>,
+    rx: BlockingMutex<M, RefCell<Option<R>>>,
+}
+
+impl<
+        M: RawMutex,
+        E: defmt::Format + embedded_io_async::Error,
+        T: embedded_io_async::Write<Error = E>,
+        R: embedded_io_async::Read<Error = E>,
+    > SplitableSerialWrapper<M, E, T, R>
 {
-    type Error = T::Error;
-
-    async fn write(&mut self, data: &[u8]) -> Result<(), Self::Error> {
-        self.deref_mut().write(data).await
-    }
-
-    async fn read(&mut self, buffer: &mut [u8]) -> Result<usize, Self::Error> {
-        self.deref_mut().read(buffer).await
-    }
-}
-
-pub struct DummySerial<D: DelayNs> {
-    delay: D,
-}
-
-impl<D: DelayNs> DummySerial<D> {
-    pub fn new(delay: D) -> Self {
-        Self { delay }
-    }
-}
-
-impl<D: DelayNs> Serial for DummySerial<D> {
-    type Error = ();
-
-    async fn write(&mut self, _data: &[u8]) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    async fn read(&mut self, _buffer: &mut [u8]) -> Result<usize, Self::Error> {
-        loop {
-            self.delay.delay_ms(1000).await;
+    pub fn new(tx: T, rx: R) -> Self {
+        Self {
+            _phantom_data: PhantomData,
+            tx: BlockingMutex::new(RefCell::new(Some(tx))),
+            rx: BlockingMutex::new(RefCell::new(Some(rx))),
         }
+    }
+}
+
+impl<
+        M: RawMutex,
+        E: defmt::Format + embedded_io_async::Error,
+        T: embedded_io_async::Write<Error = E>,
+        R: embedded_io_async::Read<Error = E>,
+    > SplitableSerial for SplitableSerialWrapper<M, E, T, R>
+{
+    type Error = E;
+
+    fn split(&mut self) -> (TXGuard<'_, M, E, T, R>, RXGuard<'_, M, E, T, R>) {
+        (
+            TXGuard {
+                wrapper: self,
+                tx: self.tx.lock(|tx| tx.borrow_mut().take()),
+            },
+            RXGuard {
+                wrapper: self,
+                rx: self.rx.lock(|rx| rx.borrow_mut().take()),
+            },
+        )
+    }
+}
+
+pub struct TXGuard<
+    'a,
+    M: RawMutex,
+    E: defmt::Format + embedded_io_async::Error,
+    T: embedded_io_async::Write<Error = E>,
+    R: embedded_io_async::Read<Error = E>,
+> {
+    wrapper: &'a SplitableSerialWrapper<M, E, T, R>,
+    tx: Option<T>,
+}
+
+impl<
+        'a,
+        M: RawMutex,
+        E: defmt::Format + embedded_io_async::Error,
+        T: embedded_io_async::Write<Error = E>,
+        R: embedded_io_async::Read<Error = E>,
+    > embedded_io_async::ErrorType for TXGuard<'a, M, E, T, R>
+{
+    type Error = E;
+}
+
+impl<
+        'a,
+        M: RawMutex,
+        E: defmt::Format + embedded_io_async::Error,
+        T: embedded_io_async::Write<Error = E>,
+        R: embedded_io_async::Read<Error = E>,
+    > embedded_io_async::Write for TXGuard<'a, M, E, T, R>
+{
+    async fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
+        self.tx.as_mut().unwrap().write(buf).await
+    }
+}
+
+impl<
+        'a,
+        M: RawMutex,
+        E: defmt::Format + embedded_io_async::Error,
+        T: embedded_io_async::Write<Error = E>,
+        R: embedded_io_async::Read<Error = E>,
+    > Drop for TXGuard<'a, M, E, T, R>
+{
+    fn drop(&mut self) {
+        self.wrapper.tx.lock(|tx| {
+            *tx.borrow_mut() = self.tx.take();
+        });
+    }
+}
+
+pub struct RXGuard<
+    'a,
+    M: RawMutex,
+    E: defmt::Format + embedded_io_async::Error,
+    T: embedded_io_async::Write<Error = E>,
+    R: embedded_io_async::Read<Error = E>,
+> {
+    wrapper: &'a SplitableSerialWrapper<M, E, T, R>,
+    rx: Option<R>,
+}
+impl<
+        'a,
+        M: RawMutex,
+        E: defmt::Format + embedded_io_async::Error,
+        T: embedded_io_async::Write<Error = E>,
+        R: embedded_io_async::Read<Error = E>,
+    > embedded_io_async::ErrorType for RXGuard<'a, M, E, T, R>
+{
+    type Error = E;
+}
+impl<
+        'a,
+        M: RawMutex,
+        E: defmt::Format + embedded_io_async::Error,
+        T: embedded_io_async::Write<Error = E>,
+        R: embedded_io_async::Read<Error = E>,
+    > embedded_io_async::Read for RXGuard<'a, M, E, T, R>
+{
+    async fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
+        self.rx.as_mut().unwrap().read(buf).await
+    }
+}
+impl<
+        'a,
+        M: RawMutex,
+        E: defmt::Format + embedded_io_async::Error,
+        T: embedded_io_async::Write<Error = E>,
+        R: embedded_io_async::Read<Error = E>,
+    > Drop for RXGuard<'a, M, E, T, R>
+{
+    fn drop(&mut self) {
+        self.wrapper.rx.lock(|rx| {
+            *rx.borrow_mut() = self.rx.take();
+        });
     }
 }

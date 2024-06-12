@@ -16,9 +16,9 @@ use crate::driver::{
     meg::Megnetometer,
     pyro::{Continuity, PyroCtrl},
     rng::RNG,
-    serial::Serial,
     sys_reset::SysReset,
-    usb::USB,
+    usb::SplitableUSB,
+    serial::SplitableSerial,
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
 
@@ -40,8 +40,8 @@ pub struct DeviceManager<
     P3C: Continuity,
     P3T: PyroCtrl,
     ARM: HardwareArming,
-    S: Serial,
-    U: USB,
+    S: SplitableSerial,
+    U: SplitableUSB,
     B: Buzzer,
     M: Megnetometer,
     RK: RadioKind,
@@ -100,8 +100,8 @@ impl<
         P3C: Continuity,
         P3T: PyroCtrl,
         ARM: HardwareArming,
-        S: Serial,
-        U: USB,
+        S: SplitableSerial,
+        U: SplitableUSB,
         B: Buzzer,
         M: Megnetometer,
         RK: RadioKind,
@@ -248,8 +248,8 @@ macro_rules! device_manager_type{
     impl Continuity,
     impl PyroCtrl,
     impl HardwareArming,
-    impl Serial,
-    impl USB,
+    impl SplitableSerial,
+    impl SplitableUSB,
     impl Buzzer,
     impl Megnetometer,
     impl RadioKind,
@@ -279,8 +279,8 @@ macro_rules! device_manager_type{
     impl Continuity,
     impl PyroCtrl,
     impl HardwareArming,
-    impl Serial,
-    impl USB,
+    impl SplitableSerial,
+    impl SplitableUSB,
     impl Buzzer,
     impl Megnetometer,
     impl RadioKind,
@@ -311,9 +311,9 @@ pub mod prelude {
     pub use crate::driver::pyro::{Continuity, PyroCtrl};
     pub use crate::driver::radio::RadioPhy;
     pub use crate::driver::rng::RNG;
-    pub use crate::driver::serial::Serial;
     pub use crate::driver::sys_reset::SysReset;
-    pub use crate::driver::usb::USB;
+    pub use crate::driver::usb::SplitableUSB;
+    pub use crate::driver::serial::SplitableSerial;
     pub use vlfs::{Crc, Flash};
     pub use lora_phy::mod_traits::RadioKind;
 }
