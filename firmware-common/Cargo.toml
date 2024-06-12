@@ -60,6 +60,7 @@ lora-phy = {  git = "https://github.com/lora-rs/lora-rs", default-features = fal
 paste = "1.0.15"
 approx = { version = "0.5.1", default-features = false }
 either = { version = "1.12.0", default-features = false }
+crc = "3.2.1"
 
 [dev-dependencies]
 futures-executor = { version = "0.3.17", features = ["thread-pool"] }
