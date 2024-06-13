@@ -1,6 +1,9 @@
 use core::cell::RefCell;
 
-use vlfs::{AsyncReader, Crc, FileID, FileReader, Flash, VLFSError, VLFSReadStatus, VLFS};
+use vlfs::{
+    AsyncReader, ConcurrentFilesIterator, Crc, FileEntry, FileID, FileReader, FileType, Flash,
+    VLFSError, VLFSReadStatus, VLFS,
+};
 
 use crate::{create_rpc, SplitableSerial};
 
@@ -34,10 +37,23 @@ create_rpc! {
         request()
         response()
     }
+    rpc 4 StartListFiles {
+        request(file_type: u16)
+        response()
+    }
+    rpc 5 GetListedFile {
+        request()
+        response(file_id: Option<u64>)
+    }
 }
 
 pub async fn run_console<F: Flash, C: Crc>(serial: &mut impl SplitableSerial, fs: &VLFS<F, C>) {
     let reader: RefCell<Option<FileReader<F, C>>> = RefCell::new(None);
+
+    let selected_file_type: RefCell<Option<FileType>> = RefCell::new(None);
+    let file_iter: RefCell<Option<ConcurrentFilesIterator<F, C, fn(&FileEntry) -> bool>>> =
+        RefCell::new(None);
+
     let result = run_rpc_server(
         serial,
         async || {
@@ -54,7 +70,7 @@ pub async fn run_console<F: Flash, C: Crc>(serial: &mut impl SplitableSerial, fs
             let status = match fs.open_file_for_read(FileID(file_id)).await {
                 Ok(r) => {
                     let old_reader = reader.replace(Some(r));
-                    if let Some(old_reader) = old_reader{
+                    if let Some(old_reader) = old_reader {
                         old_reader.close().await;
                     }
                     OpenFileStatus::Sucess
@@ -103,6 +119,39 @@ pub async fn run_console<F: Flash, C: Crc>(serial: &mut impl SplitableSerial, fs
             }
 
             CloseFileResponse {}
+        },
+        async |file_type| {
+            selected_file_type.replace(Some(FileType(file_type)));
+            file_iter.replace(Some(fs.concurrent_files_iter().await));
+            StartListFilesResponse {}
+        },
+        async || {
+            if selected_file_type.borrow().is_none() {
+                return GetListedFileResponse { file_id: None };
+            }
+            let file_type = selected_file_type.borrow().unwrap();
+
+            let mut file_iter = file_iter.borrow_mut();
+            let file_iter = file_iter.as_mut().unwrap();
+            loop {
+                match file_iter.next().await {
+                    Ok(Some(file)) => {
+                        if file.typ == file_type {
+                            return GetListedFileResponse {
+                                file_id: Some(file.id.0),
+                            };
+                        } else {
+                            continue;
+                        }
+                    }
+                    Ok(None) => {
+                        return GetListedFileResponse { file_id: None };
+                    }
+                    Err(_) => {
+                        return GetListedFileResponse { file_id: None };
+                    }
+                }
+            }
         },
     )
     .await;
