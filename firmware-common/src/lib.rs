@@ -7,24 +7,21 @@
 
 mod fmt;
 
-use common::{buzzer_queue::BuzzerQueueRunner, unix_clock::UnixClockTask};
+use common::{
+    buzzer_queue::BuzzerQueueRunner, console::console::run_console, unix_clock::UnixClockTask,
+};
 use driver::gps::{GPSParser, GPSPPS};
 use futures::join;
 
 use crate::{
-    avionics::avionics_main,
-    common::{
-        console::{console::Console, programs::start_common_programs::start_common_programs},
-        device_manager::prelude::*,
-    },
-    ground_test::gcm::ground_test_gcm,
+    avionics::avionics_main, common::device_manager::prelude::*, ground_test::gcm::ground_test_gcm,
 };
 use defmt::*;
 use vlfs::{StatFlash, Timer as VLFSTimer, VLFS};
 
 use futures::{future::select, pin_mut};
 
-use crate::gcm::gcm_main;
+// use crate::gcm::gcm_main;
 use crate::ground_test::avionics::ground_test_avionics;
 use crate::{
     beacon::{beacon_receiver::beacon_receiver, beacon_sender::beacon_sender},
@@ -39,7 +36,7 @@ mod avionics;
 mod beacon;
 mod common;
 pub mod driver;
-mod gcm;
+// mod gcm;
 mod ground_test;
 pub mod utils;
 
@@ -66,6 +63,8 @@ pub async fn init(
         gps,
         gps_pps
     );
+    let mut serial = serial.take().unwrap();
+    let mut usb = usb.take().unwrap();
     let clock = device_manager.clock;
     let mut delay = device_manager.delay;
 
@@ -106,11 +105,8 @@ pub async fn init(
         }
     };
 
-    let serial_console = Console::<_, 20>::new(serial);
-    let serial_console_common_programs_fut =
-        start_common_programs(device_manager, &serial_console, &fs);
-    let usb_console = Console::<_, 20>::new(usb);
-    let usb_console_common_programs_fut = start_common_programs(device_manager, &usb_console, &fs);
+    let serial_console_fut = run_console(&mut serial, &fs);
+    let usb_console_fut = run_console(&mut usb, &fs);
 
     let main_fut = async {
         if usb_connected {
@@ -144,7 +140,8 @@ pub async fn init(
         match device_mode {
             DeviceMode::Avionics => avionics_main(&fs, device_manager).await,
             DeviceMode::GCM => {
-                gcm_main::<20, 20>(&fs, device_manager, &serial_console, &usb_console).await
+                defmt::todo!();
+                // gcm_main::<20, 20>(&fs, device_manager, &serial_console, &usb_console).await
             }
             DeviceMode::BeaconSender => beacon_sender(&fs, device_manager, false).await,
             DeviceMode::BeaconReceiver => beacon_receiver(&fs, device_manager).await,
@@ -162,10 +159,8 @@ pub async fn init(
             gps_parser_fut,
             unix_clock_task_fut,
             main_fut,
-            serial_console.run_dispatcher(),
-            usb_console.run_dispatcher(),
-            serial_console_common_programs_fut,
-            usb_console_common_programs_fut
+            serial_console_fut,
+            usb_console_fut,
         );
     }
 

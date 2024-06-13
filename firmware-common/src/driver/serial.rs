@@ -1,8 +1,9 @@
 use core::cell::RefCell;
 use core::marker::PhantomData;
-
-use embassy_sync::blocking_mutex::raw::RawMutex;
+use embassy_sync::blocking_mutex::raw::{NoopRawMutex, RawMutex};
 use embassy_sync::blocking_mutex::Mutex as BlockingMutex;
+use embedded_hal_async::delay::DelayNs;
+use embedded_io_async::ReadExactError;
 
 pub trait SplitableSerial {
     type Error: defmt::Format + embedded_io_async::Error;
@@ -159,5 +160,63 @@ impl<
         self.wrapper.rx.lock(|rx| {
             *rx.borrow_mut() = self.rx.take();
         });
+    }
+}
+
+pub fn get_dummy_serial(delay: impl DelayNs) -> impl SplitableSerial {
+    SplitableSerialWrapper::<NoopRawMutex, _, _, _>::new(DummyTX, DummyRX { delay })
+}
+
+pub enum RpcClientError<S: crate::driver::serial::SplitableSerial> {
+    Timeout,
+    UnexpectedEof,
+    Serial(S::Error),
+}
+
+impl<S: crate::driver::serial::SplitableSerial> From<ReadExactError<S::Error>>
+    for RpcClientError<S>
+{
+    fn from(value: ReadExactError<S::Error>) -> Self {
+        match value {
+            ReadExactError::Other(e) => RpcClientError::Serial(e),
+            ReadExactError::UnexpectedEof => RpcClientError::UnexpectedEof,
+        }
+    }
+}
+
+#[derive(Debug, defmt::Format)]
+struct DummySerialError;
+
+impl embedded_io_async::Error for DummySerialError {
+    fn kind(&self) -> embedded_io_async::ErrorKind {
+        embedded_io_async::ErrorKind::Unsupported
+    }
+}
+
+struct DummyTX;
+
+impl embedded_io_async::ErrorType for DummyTX {
+    type Error = DummySerialError;
+}
+
+impl embedded_io_async::Write for DummyTX {
+    async fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
+        Ok(buf.len())
+    }
+}
+
+struct DummyRX<D: DelayNs> {
+    delay: D,
+}
+
+impl<D: DelayNs> embedded_io_async::ErrorType for DummyRX<D> {
+    type Error = DummySerialError;
+}
+
+impl<D: DelayNs> embedded_io_async::Read for DummyRX<D> {
+    async fn read(&mut self, _buf: &mut [u8]) -> Result<usize, Self::Error> {
+        loop {
+            self.delay.delay_ms(1000).await;
+        }
     }
 }

@@ -18,7 +18,7 @@ macro_rules! try_or_warn {
 }
 
 pub async fn run_with_timeout<F: Future>(
-    mut delay: impl DelayNs,
+    delay:&mut impl DelayNs,
     ms: f64,
     future: F,
 ) -> Result<F::Output, f64> {
@@ -58,8 +58,9 @@ impl<M: RawMutex, V: Send, C: Clock, D: DelayNs + Copy> Debouncer<M, V, C, D> {
             return value.0;
         }
         loop {
+            let mut delay = self.delay;
             match run_with_timeout(
-                self.delay,
+                &mut delay,
                 self.duration_ms - (self.clock.now_ms() - value.1),
                 self.signal.wait(),
             )
