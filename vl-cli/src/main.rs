@@ -4,6 +4,8 @@ use anyhow::anyhow;
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use clap_num::maybe_hex;
+use crc::Crc;
+use crc::CRC_8_SMBUS;
 use embedded_hal_async::delay::DelayNs;
 use firmware_common::{driver::serial::SplitableSerialWrapper, RpcClient};
 use tokio::io::{split, AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
@@ -64,6 +66,9 @@ struct PullArgs {
 async fn main() -> Result<()> {
     let _ = env_logger::builder().filter_level(LevelFilter::Trace).try_init();
 
+    let crc = Crc::<u8>::new(&CRC_8_SMBUS);
+    println!("{:?}", crc.checksum(&[]));
+
     let args = Cli::parse();
 
     if matches!(args.command, Commands::Detect) {
@@ -86,7 +91,16 @@ async fn main() -> Result<()> {
 
     match args.command {
         Commands::LS(args) => {
-            println!("{:?}", args.file_type);
+            client.start_list_files(args.file_type).await.unwrap();
+            println!("Files:");
+            loop {
+                let response = client.get_listed_file().await.unwrap();
+                if let Some(file_id) = response.file_id {
+                    println!("File: {:?}", file_id);
+                } else {
+                    break;
+                }
+            }
         }
         Commands::Pull(args) => {
             println!("{:?} {:?}", args.file_id, args.host_path);

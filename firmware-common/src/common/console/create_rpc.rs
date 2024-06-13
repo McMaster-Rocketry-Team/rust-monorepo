@@ -88,6 +88,7 @@ macro_rules! create_rpc {
                     use rkyv::ser::Serializer;
                     use rkyv::{ser::serializers::BufferSerializer};
                     use rkyv::archived_root;
+                    use rkyv::util::AlignedBytes;
                     use crc::{Crc, CRC_8_SMBUS};
                     use embedded_io_async::Read;
                     use embedded_io_async::ReadExactError;
@@ -96,12 +97,12 @@ macro_rules! create_rpc {
                     $( $state_body )*
 
                     let crc = Crc::<u8>::new(&CRC_8_SMBUS);
-                    let mut request_buffer = [0u8; size_of::<<RequestEnum as rkyv::Archive>::Archived>() + 1];
+                    let mut request_buffer: AlignedBytes<{size_of::<<RequestEnum as rkyv::Archive>::Archived>() + 17}> = Default::default();
                     let mut response_buffer = [0u8; size_of::<<ResponseEnum as rkyv::Archive>::Archived>()];
                     let (mut tx, mut rx) = serial.split();
 
                     loop {
-                        match rx.read_exact(&mut request_buffer[..1]).await{
+                        match rx.read_exact(&mut request_buffer[15..16]).await{
                             Ok(_) => {},
                             Err(ReadExactError::UnexpectedEof)=>{
                                 log_info!("Unexpected EOF, skipping.");
@@ -111,12 +112,12 @@ macro_rules! create_rpc {
                                 Err(e)?;
                             }
                         }
-                        log_info!("Received command: {:x}", request_buffer[0]);
-                        match request_buffer[0] {
+                        log_info!("Received command: {:x}", request_buffer[15]);
+                        match request_buffer[15] {
                             $(
                                 $rpc_i => {
                                     let request_size = size_of::<<[< $name Request >] as rkyv::Archive>::Archived>();
-                                    match rx.read_exact(&mut request_buffer[1..(request_size+2)]).await {
+                                    match rx.read_exact(&mut request_buffer[16..(request_size+17)]).await {
                                         Ok(_) => {},
                                         Err(ReadExactError::UnexpectedEof)=>{
                                             continue;
@@ -126,15 +127,15 @@ macro_rules! create_rpc {
                                         }
                                     }
 
-                                    let calculated_crc = crc.checksum(&request_buffer[..(request_size+1)]);
-                                    let received_crc = request_buffer[request_size+1];
+                                    let calculated_crc = crc.checksum(&request_buffer[15..(request_size+16)]);
+                                    let received_crc = request_buffer[request_size+16];
                                     if calculated_crc != received_crc {
                                         log_info!("Command CRC mismatch, skipping.");
                                         continue;
                                     }
                                     log_info!("Command CRC matched.");
 
-                                    let archived = unsafe { archived_root::<[< $name Request >]>(&request_buffer[1..(request_size+1)]) };
+                                    let archived = unsafe { archived_root::<[< $name Request >]>(&request_buffer[16..(request_size+16)]) };
                                     #[allow(unused)]
                                     let request = <[<Archived $name Request>] as rkyv::Deserialize<[< $name Request >], rkyv::Infallible>>::deserialize(archived, &mut rkyv::Infallible).unwrap();
 
@@ -143,12 +144,12 @@ macro_rules! create_rpc {
                                     )*
                                     let response = $handler;
 
-                                    
+                                    let response_size = size_of::<<[< $name Response >] as rkyv::Archive>::Archived>();
 
                                     let mut response_serializer = BufferSerializer::new(&mut response_buffer);
                                     response_serializer.serialize_value(&response).unwrap();
                                     drop(response_serializer);
-                                    let response_size = size_of::<<[< $name Response >] as rkyv::Archive>::Archived>();
+
                                     response_buffer[response_size] = crc.checksum(&response_buffer[..response_size]);
                                     tx.write_all(&response_buffer[..(response_size+1)]).await?;
                                     log_info!("Response sent.");
@@ -224,6 +225,7 @@ macro_rules! create_rpc {
                         use rkyv::ser::Serializer;
                         use rkyv::{ser::serializers::BufferSerializer};
                         use rkyv::archived_root;
+                        use rkyv::util::AlignedBytes;
                         use embedded_io_async::Write;
                         use embedded_io_async::Read;
                         use crate::common::console::create_rpc::RpcClientError;
@@ -254,12 +256,12 @@ macro_rules! create_rpc {
                         };
 
                         let response_size = size_of::<<[< $name Response >] as rkyv::Archive>::Archived>();
-                        let mut response_buffer = [0u8; size_of::<<[< $name Response >] as rkyv::Archive>::Archived>() + 1];
+                        let mut response_buffer: AlignedBytes<{size_of::<<[< $name Response >] as rkyv::Archive>::Archived>() + 1}> = Default::default();
 
                         let rx_fut = async {
                             let result: Result<[< $name Response >], RpcClientError> = try {
-                                log_info!("trying to read response {}", response_buffer.len());
-                                match run_with_timeout(&mut self.delay, 1000.0, rx.read_exact(&mut response_buffer)).await{
+                                log_debug!("trying to read response {}", response_buffer.len());
+                                match run_with_timeout(&mut self.delay, 1000.0, rx.read_exact(response_buffer.as_mut_slice())).await{
                                     Ok(Ok(_))=>{}
                                     Ok(Err(_))=>{
                                         return Err(RpcClientError::Serial);
