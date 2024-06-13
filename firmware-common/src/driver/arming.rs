@@ -1,7 +1,7 @@
 use embedded_hal_async::delay::DelayNs;
 
 pub trait HardwareArming {
-    type Error: defmt::Format;
+    type Error: defmt::Format + core::fmt::Debug;
     async fn wait_arming_change(&mut self) -> Result<bool, Self::Error>;
     async fn read_arming(&mut self) -> Result<bool, Self::Error>;
 }

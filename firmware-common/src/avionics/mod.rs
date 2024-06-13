@@ -1,6 +1,5 @@
 use core::cell::RefCell;
 
-use defmt::unwrap;
 use embassy_sync::{
     blocking_mutex::raw::NoopRawMutex,
     blocking_mutex::Mutex as BlockingMutex,
@@ -129,10 +128,10 @@ pub async fn avionics_main(
 
     claim_devices!(device_manager, buzzer);
 
-    let sensors_file = unwrap!(fs.create_file(AVIONICS_SENSORS_FILE_TYPE).await.ok());
-    let mut sensors_file = unwrap!(fs.open_file_for_write(sensors_file.id).await.ok());
-    let log_file = unwrap!(fs.create_file(AVIONICS_LOG_FILE_TYPE).await.ok());
-    let mut logs_file = unwrap!(fs.open_file_for_write(log_file.id).await.ok());
+    let sensors_file = fs.create_file(AVIONICS_SENSORS_FILE_TYPE).await.unwrap();
+    let mut sensors_file = fs.open_file_for_write(sensors_file.id).await.unwrap();
+    let log_file = fs.create_file(AVIONICS_LOG_FILE_TYPE).await.unwrap();
+    let mut logs_file = fs.open_file_for_write(log_file.id).await.unwrap();
 
     let landed = BlockingMutex::<NoopRawMutex, _>::new(RefCell::new(false));
     let sensors_file_should_write_all = BlockingMutex::<NoopRawMutex, _>::new(RefCell::new(false));
@@ -243,9 +242,9 @@ pub async fn avionics_main(
         camera
     );
     let clock = device_manager.clock;
-    unwrap!(imu.reset().await);
-    unwrap!(barometer.reset().await);
-    unwrap!(meg.reset().await);
+    imu.reset().await.unwrap();
+    barometer.reset().await.unwrap();
+    meg.reset().await.unwrap();
 
     let imu = Mutex::<NoopRawMutex, _>::new(imu);
 
@@ -299,64 +298,64 @@ pub async fn avionics_main(
         let mut batt_volt_ticker = Ticker::every(clock, delay, 5.0);
 
         let pyro1_cont_fut = async {
-            let cont = unwrap!(pyro1_cont.read_continuity().await);
+            let cont = pyro1_cont.read_continuity().await.unwrap();
+            telemetry_data.lock(|d| {
+            let mut d = d.borrow_mut();
+            d.pyro1_cont = cont
+            });
+
+            loop {
+            let cont = pyro1_cont.wait_continuity_change().await.unwrap();
             telemetry_data.lock(|d| {
                 let mut d = d.borrow_mut();
                 d.pyro1_cont = cont
             });
-
-            loop {
-                let cont = unwrap!(pyro1_cont.wait_continuity_change().await);
-                telemetry_data.lock(|d| {
-                    let mut d = d.borrow_mut();
-                    d.pyro1_cont = cont
-                });
             }
         };
 
         let pyro2_cont_fut = async {
-            let cont = unwrap!(pyro2_cont.read_continuity().await);
+            let cont = pyro2_cont.read_continuity().await.unwrap();
+            telemetry_data.lock(|d| {
+            let mut d = d.borrow_mut();
+            d.pyro2_cont = cont
+            });
+
+            loop {
+            let cont = pyro2_cont.wait_continuity_change().await.unwrap();
             telemetry_data.lock(|d| {
                 let mut d = d.borrow_mut();
                 d.pyro2_cont = cont
             });
-
-            loop {
-                let cont = unwrap!(pyro2_cont.wait_continuity_change().await);
-                telemetry_data.lock(|d| {
-                    let mut d = d.borrow_mut();
-                    d.pyro2_cont = cont
-                });
             }
         };
 
         let imu_fut = async {
             loop {
-                if arming_state.lock(|s| (*s.borrow()).is_armed())
-                    && let Ok(mut imu) = imu.try_lock()
-                {
-                    let imu_reading = unwrap!(imu.read().await);
-                    sensors_file_channel.publish_immediate(SensorReading::IMU(imu_reading.clone()));
-                    imu_channel.publish_immediate(imu_reading);
-                }
-                imu_ticker.next().await;
+            if arming_state.lock(|s| (*s.borrow()).is_armed())
+                && let Ok(mut imu) = imu.try_lock()
+            {
+                let imu_reading = imu.read().await.unwrap();
+                sensors_file_channel.publish_immediate(SensorReading::IMU(imu_reading.clone()));
+                imu_channel.publish_immediate(imu_reading);
+            }
+            imu_ticker.next().await;
             }
         };
 
         let baro_fut = async {
             loop {
-                if arming_state.lock(|s| (*s.borrow()).is_armed()) {
-                    let baro_reading = unwrap!(barometer.read().await);
-                    telemetry_data.lock(|d| {
-                        let mut d = d.borrow_mut();
-                        d.pressure = baro_reading.pressure;
-                        d.temperature = baro_reading.temperature;
-                    });
-                    sensors_file_channel
-                        .publish_immediate(SensorReading::Baro(baro_reading.clone()));
-                    baro_channel.publish_immediate(baro_reading);
-                }
-                baro_ticker.next().await;
+            if arming_state.lock(|s| (*s.borrow()).is_armed()) {
+                let baro_reading = barometer.read().await.unwrap();
+                telemetry_data.lock(|d| {
+                let mut d = d.borrow_mut();
+                d.pressure = baro_reading.pressure;
+                d.temperature = baro_reading.temperature;
+                });
+                sensors_file_channel
+                .publish_immediate(SensorReading::Baro(baro_reading.clone()));
+                baro_channel.publish_immediate(baro_reading);
+            }
+            baro_ticker.next().await;
             }
         };
 
@@ -392,7 +391,7 @@ pub async fn avionics_main(
         let bat_fut = async {
             loop {
                 if arming_state.lock(|s| (*s.borrow()).is_armed()) {
-                    let batt_volt_reading = unwrap!(batt_voltmeter.read().await);
+                    let batt_volt_reading = batt_voltmeter.read().await.unwrap();
                     telemetry_data.lock(|d| {
                         let mut d = d.borrow_mut();
                         d.battery_voltage = batt_volt_reading;
@@ -411,7 +410,7 @@ pub async fn avionics_main(
         let arming_fut = async {
             let mut last_arming_state = arming_state.lock(|s| (*s.borrow()).is_armed());
             loop {
-                let new_arming_state = unwrap!(arming_switch.wait_arming_change().await);
+                let new_arming_state = arming_switch.wait_arming_change().await.unwrap();
                 telemetry_data.lock(|s| {
                     s.borrow_mut().hardware_armed = new_arming_state;
                 });
@@ -472,7 +471,7 @@ pub async fn avionics_main(
                             let mut acc_sum = Vector3::<f32>::zeros();
                             let mut imu = imu.lock().await;
                             for _ in 0..100 {
-                                let mut reading = unwrap!(imu.read().await);
+                                let mut reading = imu.read().await.unwrap();
                                 if let Some(cal_info) = &cal_info {
                                     reading = cal_info.apply_calibration(reading);
                                 }
@@ -695,7 +694,7 @@ pub async fn avionics_main(
         sensors_file_fut,
         camera_ctrl_future,
     );
-    defmt::unreachable!();
+    log_unreachable!();
 }
 
 const MARAUDER_2_FLIGHT_CONFIG: FlightCoreConfig = FlightCoreConfig {

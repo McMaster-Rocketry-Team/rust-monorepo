@@ -7,6 +7,6 @@ pub struct PanicSysReset {}
 
 impl SysReset for PanicSysReset {
     fn reset(self) -> ! {
-        defmt::panic!("Reset requested")
+        log_panic!("Reset requested")
     }
 }

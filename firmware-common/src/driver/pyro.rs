@@ -4,13 +4,13 @@ use embassy_sync::{blocking_mutex::raw::RawMutex, mutex::MutexGuard};
 use embedded_hal_async::delay::DelayNs;
 
 pub trait Continuity {
-    type Error: defmt::Format;
+    type Error: defmt::Format + core::fmt::Debug;
     async fn wait_continuity_change(&mut self) -> Result<bool, Self::Error>;
     async fn read_continuity(&mut self) -> Result<bool, Self::Error>;
 }
 
 pub trait PyroCtrl {
-    type Error: defmt::Format;
+    type Error: defmt::Format + core::fmt::Debug;
     async fn set_enable(&mut self, enable: bool) -> Result<(), Self::Error>;
 }
 

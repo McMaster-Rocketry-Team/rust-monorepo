@@ -1,4 +1,3 @@
-use defmt::{info, warn};
 use lora_phy::{
     mod_params::{Bandwidth, CodingRate, SpreadingFactor},
     RxMode,
@@ -44,17 +43,17 @@ pub async fn beacon_receiver(
             .unwrap();
         match lora.rx(&rx_pkt_params, &mut receiving_buffer).await {
             Ok((length, _)) => {
-                info!("Received {} bytes", length);
+                log_info!("Received {} bytes", length);
                 let data = &receiving_buffer[0..(length as usize)];
                 if let Ok(archived) = check_archived_root::<BeaconData>(data) {
                     let d: BeaconData = archived.deserialize(&mut rkyv::Infallible).unwrap();
-                    info!("BeaconData: {}", d);
+                    log_info!("BeaconData: {:?}", d);
                 } else {
-                    warn!("Invalid BeaconData");
+                    log_warn!("Invalid BeaconData");
                 }
             }
             Err(err) => {
-                info!("Error: {:?}", err);
+                log_info!("Error: {:?}", err);
             }
         }
     }

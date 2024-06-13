@@ -16,7 +16,6 @@ use futures::join;
 use crate::{
     avionics::avionics_main, common::device_manager::prelude::*, ground_test::gcm::ground_test_gcm,
 };
-use defmt::*;
 use vlfs::{StatFlash, Timer as VLFSTimer, VLFS};
 
 use futures::{future::select, pin_mut};
@@ -74,7 +73,7 @@ pub async fn init(
     let mut flash = stat_flash.get_flash(flash, VLFSTimerWrapper(clock));
     flash.reset().await.ok();
     let mut fs = VLFS::new(flash, crc);
-    unwrap!(fs.init().await);
+    fs.init().await.unwrap();
 
     // Start GPS (provides unix time)
     gps.reset().await;
@@ -96,11 +95,11 @@ pub async fn init(
         pin_mut!(usb_wait_connection_fut);
         match select(timeout_fut, usb_wait_connection_fut).await {
             futures::future::Either::Left(_) => {
-                info!("USB not connected");
+                log_info!("USB not connected");
                 false
             }
             futures::future::Either::Right(_) => {
-                info!("USB connected");
+                log_info!("USB connected");
                 true
             }
         }
@@ -111,7 +110,7 @@ pub async fn init(
 
     let main_fut = async {
         if usb_connected {
-            info!("USB connected on boot, stopping main");
+            log_info!("USB connected on boot, stopping main");
             claim_devices!(device_manager, status_indicator, error_indicator);
             loop {
                 status_indicator.set_enable(true).await;
@@ -137,11 +136,11 @@ pub async fn init(
             }
         };
 
-        info!("Starting in mode {}", device_mode);
+        log_info!("Starting in mode {:?}", device_mode);
         match device_mode {
             DeviceMode::Avionics => avionics_main(&fs, device_manager).await,
             DeviceMode::GCM => {
-                defmt::todo!();
+                log_panic!("not implemented");
                 // gcm_main::<20, 20>(&fs, device_manager, &serial_console, &usb_console).await
             }
             DeviceMode::BeaconSender => beacon_sender(&fs, device_manager, false).await,
@@ -165,5 +164,5 @@ pub async fn init(
         );
     }
 
-    defmt::unreachable!()
+    log_unreachable!()
 }

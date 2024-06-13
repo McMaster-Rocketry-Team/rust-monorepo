@@ -635,7 +635,6 @@ dependencies = [
  "bitflags 2.5.0",
  "bitvec",
  "chrono",
- "clap",
  "crc",
  "critical-section",
  "defmt",

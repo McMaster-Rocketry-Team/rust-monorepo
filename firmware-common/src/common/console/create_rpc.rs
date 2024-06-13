@@ -128,7 +128,7 @@ macro_rules! create_rpc {
                                 let calculated_crc = crc.checksum(&request_buffer[..(request_size+1)]);
                                 let received_crc = request_buffer[request_size+1];
                                 if calculated_crc != received_crc {
-                                    defmt::info!("Command CRC mismatch, skipping.");
+                                    log_info!("Command CRC mismatch, skipping.");
                                     continue;
                                 }
 
@@ -150,7 +150,7 @@ macro_rules! create_rpc {
                             tx.write_all(&[255, 0x69]).await?;
                         }
                         id => {
-                            defmt::warn!("Unknown rpc id: {}", id);
+                            log_warn!("Unknown rpc id: {}", id);
                         }
                     }
                 };

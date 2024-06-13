@@ -1,5 +1,5 @@
 pub trait Camera {
-    type Error: defmt::Format;
+    type Error: defmt::Format + core::fmt::Debug;
 
     async fn set_recording(&mut self, is_recording: bool) -> Result<(), Self::Error>;
 }

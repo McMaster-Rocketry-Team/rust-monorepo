@@ -12,7 +12,6 @@ use crate::{
     driver::{gps::GPS, indicator::Indicator, timestamp::UnixTimestamp},
 };
 use core::fmt::Write;
-use defmt::{info, unwrap};
 use embassy_sync::channel::Channel;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, blocking_mutex::Mutex as BlockingMutex};
 use embedded_hal_async::delay::DelayNs;
@@ -77,7 +76,7 @@ async fn fire_pyro(
     };
 
     let fire_fut = async {
-        info!("3");
+        log_info!("3");
         buzzer_queue.publish(BuzzerTone(Some(3000), 50));
         buzzer_queue.publish(BuzzerTone(None, 50));
         buzzer_queue.publish(BuzzerTone(Some(3000), 50));
@@ -85,25 +84,25 @@ async fn fire_pyro(
         buzzer_queue.publish(BuzzerTone(Some(3000), 50));
         delay.delay_ms(1000).await;
 
-        info!("2");
+        log_info!("2");
         buzzer_queue.publish(BuzzerTone(Some(3000), 50));
         buzzer_queue.publish(BuzzerTone(None, 50));
         buzzer_queue.publish(BuzzerTone(Some(3000), 50));
         delay.delay_ms(1000).await;
 
-        info!("1");
+        log_info!("1");
         buzzer_queue.publish(BuzzerTone(Some(3000), 50));
         delay.delay_ms(1000).await;
 
-        info!("fire");
+        log_info!("fire");
         logs_channel
             .try_send(GroundTestLog::FireEvent(FireEvent {
                 timestamp: unix_clock.now_ms(),
             }))
             .unwrap();
-        unwrap!(ctrl.set_enable(true).await);
+        ctrl.set_enable(true).await.unwrap();
         delay.delay_ms(2000).await;
-        unwrap!(ctrl.set_enable(false).await);
+        ctrl.set_enable(false).await.unwrap();
         delay.delay_ms(10000).await;
         finished.lock(|s| *s.borrow_mut() = true);
     };
@@ -133,8 +132,8 @@ pub async fn ground_test_avionics(
         arming_switch
     );
 
-    info!("resetting barometer");
-    unwrap!(barometer.reset().await);
+    log_info!("resetting barometer");
+    barometer.reset().await.unwrap();
 
     let mut delay = device_manager.delay;
     let indicator_fut = async {
@@ -175,7 +174,7 @@ pub async fn ground_test_avionics(
                 Ok(false) => lora_message.push_str("Pyro 2: No Cont | ").unwrap(),
                 Err(_) => lora_message.push_str("Pyro 2: Error | ").unwrap(),
             };
-            if unwrap!(arming_switch.read_arming().await) {
+            if arming_switch.read_arming().await.unwrap() {
                 lora_message.push_str("Armed | ").unwrap();
             } else {
                 lora_message.push_str("Disarmed | ").unwrap();
@@ -189,18 +188,17 @@ pub async fn ground_test_avionics(
                 lora_message.push_str("Clock Not Ready").unwrap();
             }
 
-            info!("{}", lora_message.as_str());
+            log_info!("{}", lora_message.as_str());
 
-            unwrap!(
-                lora.prepare_for_tx(
-                    &modulation_params,
-                    &mut tx_params,
-                    9,
-                    lora_message.as_bytes(),
-                )
-                .await
-            );
-            unwrap!(lora.tx().await);
+            lora.prepare_for_tx(
+                &modulation_params,
+                &mut tx_params,
+                9,
+                lora_message.as_bytes(),
+            )
+            .await
+            .unwrap();
+            lora.tx().await.unwrap();
 
             lora.prepare_for_rx(RxMode::Single(1000), &modulation_params, &rx_pkt_params)
                 .await
@@ -208,9 +206,9 @@ pub async fn ground_test_avionics(
             match lora.rx(&rx_pkt_params, &mut receiving_buffer).await {
                 Ok((length, _)) => {
                     let data = &receiving_buffer[0..(length as usize)];
-                    info!("Received {} bytes", length);
+                    log_info!("Received {} bytes", length);
                     if data == b"VLF4 fire 1" {
-                        info!("Firing pyro 1");
+                        log_info!("Firing pyro 1");
                         fire_pyro(
                             fs,
                             unix_clock,
@@ -221,7 +219,7 @@ pub async fn ground_test_avionics(
                         )
                         .await;
                     } else if data == b"VLF4 fire 2" {
-                        info!("Firing pyro 2");
+                        log_info!("Firing pyro 2");
                         fire_pyro(
                             fs,
                             unix_clock,
@@ -234,12 +232,12 @@ pub async fn ground_test_avionics(
                     }
                 }
                 Err(lora_error) => {
-                    info!("Radio Error: {:?}", lora_error);
+                    log_info!("Radio Error: {:?}", lora_error);
                 }
             }
         }
     };
 
     join!(indicator_fut, avionics_fut);
-    defmt::unreachable!()
+    log_unreachable!()
 }

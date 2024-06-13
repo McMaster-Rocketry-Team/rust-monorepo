@@ -1,7 +1,6 @@
 use core::mem::{replace, size_of};
 
 use super::delta_factory::{DeltaFactory, Deltable, UnDeltaFactory};
-use defmt::info;
 use either::Either;
 use rkyv::ser::serializers::BufferSerializer;
 use rkyv::ser::Serializer;
@@ -171,7 +170,7 @@ where
         }
         let current_segment_i = if files_count > segments_per_ring {
             let mut files_to_remove = files_count - segments_per_ring;
-            info!("Removing {} extra files", files_to_remove);
+            log_info!("Removing {} extra files", files_to_remove);
             let mut files_iter = fs
                 .concurrent_files_iter_filter(|file_entry| file_entry.typ == file_type)
                 .await;
@@ -202,7 +201,7 @@ where
 
     pub async fn log(&mut self, value: T) -> Result<(), VLFSError<F::Error>> {
         if self.current_segment_logs >= self.logs_per_segment {
-            info!("Creating new ring segment");
+            log_info!("Creating new ring segment");
             let new_file = self.fs.create_file(self.file_type).await?;
             let new_file_writer = self.fs.open_file_for_write(new_file.id).await?;
             let new_delta_logger = DeltaLogger::new(new_file_writer);
@@ -215,7 +214,7 @@ where
             self.current_segment_i += 1;
 
             if self.current_segment_i > self.segments_per_ring {
-                info!("Removing old ring segment");
+                log_info!("Removing old ring segment");
                 let mut removed = false;
                 self.fs
                     .remove_files(|file_entry| {

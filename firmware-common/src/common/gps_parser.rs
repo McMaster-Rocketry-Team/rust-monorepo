@@ -1,6 +1,6 @@
 use core::{
     cell::RefCell,
-    ops::{Deref, Sub},
+    ops::Deref,
 };
 
 use crate::driver::gps::{NmeaSentence, GPS};
@@ -189,7 +189,7 @@ impl GPSParser {
             }
         };
         join!(read_fut, parse_fut);
-        defmt::unreachable!();
+        log_unreachable!();
     }
 }
 

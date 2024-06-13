@@ -13,6 +13,6 @@ embedded-io-async = { version = "0.6.1", features = ["defmt-03"] }
 rustyline = { version = "14.0.0", features = ["derive"] }
 tokio = { version = "1.38.0", features = ["full"] }
 tokio-serial = "5.4.4"
-firmware-common = {path = "../firmware-common"}
+firmware-common = {path = "../firmware-common", default-features = false, features = ["log"]}
 embassy-sync = "0.6.0"
 embedded-hal-async = "1.0.0"

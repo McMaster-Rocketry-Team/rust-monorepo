@@ -12,7 +12,7 @@ pub struct RadioReceiveInfo {
 
 const MAX_PAYLOAD_LENGTH: usize = 222;
 pub trait RadioPhy {
-    type Error: defmt::Format;
+    type Error: defmt::Format + core::fmt::Debug;
 
     async fn reset(&mut self) -> Result<(), Self::Error>;
     async fn tx(&mut self, payload: &[u8]);

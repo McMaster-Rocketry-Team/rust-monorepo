@@ -1,7 +1,7 @@
 use embedded_hal_async::delay::DelayNs;
 
 pub trait ADC {
-    type Error: defmt::Format;
+    type Error: defmt::Format + core::fmt::Debug;
 
     async fn read(&mut self) -> Result<f32, Self::Error>;
 }

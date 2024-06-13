@@ -12,7 +12,7 @@ use crate::driver::clock::Clock;
 macro_rules! try_or_warn {
     ($e: expr) => {{
         if let Err(e) = $e {
-            defmt::warn!("`{}` failed: {:?}", stringify!($e), e);
+            log_warn!("`{}` failed: {:?}", stringify!($e), e);
         }
     }};
 }

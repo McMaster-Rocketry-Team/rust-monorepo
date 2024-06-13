@@ -1,4 +1,3 @@
-use defmt::{info, unwrap};
 use heapless::Vec;
 use lora_phy::mod_params::{Bandwidth, CodingRate, SpreadingFactor};
 use rkyv::{
@@ -31,8 +30,8 @@ pub async fn beacon_sender(
     let clock = device_manager.clock;
     let mut lora = if use_lora { Some(lora) } else { None };
 
-    let file = unwrap!(fs.create_file(BEACON_SENDER_LOG_FILE_TYPE).await);
-    let mut log_file = unwrap!(fs.open_file_for_write(file.id).await);
+    let file = fs.create_file(BEACON_SENDER_LOG_FILE_TYPE).await.unwrap();
+    let mut log_file = fs.open_file_for_write(file.id).await.unwrap();
     log_file
         .extend_from_slice(b"\n\nBeacon Started =================\n")
         .await
@@ -89,7 +88,7 @@ pub async fn beacon_sender(
             let mut log_str = String::<32>::new();
             core::write!(&mut log_str, "{} | Beacon send!\n", clock.now_ms()).unwrap();
             log_file.extend_from_slice(log_str.as_bytes()).await.ok();
-            info!(
+            log_info!(
                 "{}",
                 log_str
                     .as_str()
@@ -120,5 +119,5 @@ pub async fn beacon_sender(
     };
 
     join3(beacon_fut, indicator_fut, gps_fut).await;
-    defmt::unreachable!()
+    log_unreachable!()
 }

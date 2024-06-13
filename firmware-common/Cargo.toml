@@ -5,10 +5,10 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-default = ["global-allocator"]
+default = ["global-allocator", "defmt"]
 global-allocator = []
 log = ["dep:log", "vlfs/log"]
-clap = ["dep:clap"]
+defmt = []
 
 [dependencies]
 embassy-sync = { version = "0.5.0", default-features = false }
@@ -55,7 +55,6 @@ libm = "0.2.7"
 embassy-futures = "0.1.0"
 serde = { version = "1.0.164", default-features = false, features = ["derive"] }
 serde-json-core = "0.5.0"
-clap = { version = "4.3.11", features = ["derive"], optional = true }
 lora-phy = {  git = "https://github.com/lora-rs/lora-rs", default-features = false }
 paste = "1.0.15"
 approx = { version = "0.5.1", default-features = false }

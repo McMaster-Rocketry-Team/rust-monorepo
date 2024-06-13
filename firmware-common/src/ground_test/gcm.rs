@@ -4,7 +4,6 @@ use crate::{
     device_manager_type,
     driver::{gps::GPS, indicator::Indicator},
 };
-use defmt::{info, unwrap};
 use lora_phy::{
     mod_params::{Bandwidth, CodingRate, SpreadingFactor},
     RxMode,
@@ -39,28 +38,24 @@ pub async fn ground_test_gcm(device_manager: device_manager_type!()) -> ! {
         match lora.rx(&rx_pkt_params, &mut receiving_buffer).await {
             Ok((length, status)) => {
                 let data = &receiving_buffer[0..(length as usize)];
-                info!("Received {} bytes, rssi: {}, snr: {}", length, status.rssi, status.snr);
+                log_info!(
+                    "Received {} bytes, rssi: {}, snr: {}",
+                    length,
+                    status.rssi,
+                    status.snr
+                );
                 if data.starts_with(b"Pyro 1: ") {
-                    info!(
-                        "{}",
-                        core::str::from_utf8(data).unwrap()
-                    );
+                    log_info!("{}", core::str::from_utf8(data).unwrap());
 
                     count += 1;
-                    info!("{}/3", count);
+                    log_info!("{}/3", count);
                     if count == 3 {
-                        unwrap!(
-                            lora.prepare_for_tx(
-                                &modulation_params,
-                                &mut tx_params,
-                                9,
-                                b"VLF4 fire 2"
-                            )
+                        lora.prepare_for_tx(&modulation_params, &mut tx_params, 9, b"VLF4 fire 2")
                             .await
-                        );
-                        unwrap!(lora.tx().await);
+                            .unwrap();
+                        lora.tx().await.unwrap();
 
-                        info!("Sent fire message");
+                        log_info!("Sent fire message");
                         loop {
                             delay.delay_ms(1000).await;
                         }
@@ -68,7 +63,7 @@ pub async fn ground_test_gcm(device_manager: device_manager_type!()) -> ! {
                 }
             }
             Err(err) => {
-                info!("Error: {:?}", err);
+                log_info!("Error: {:?}", err);
             }
         }
     }

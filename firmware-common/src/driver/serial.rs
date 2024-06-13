@@ -1,12 +1,10 @@
 use core::cell::RefCell;
 use core::marker::PhantomData;
-use embassy_sync::blocking_mutex::raw::{NoopRawMutex, RawMutex};
-use embassy_sync::blocking_mutex::Mutex as BlockingMutex;
 use embedded_hal_async::delay::DelayNs;
 use embedded_io_async::ReadExactError;
 
 pub trait SplitableSerial {
-    type Error: defmt::Format + embedded_io_async::Error;
+    type Error: defmt::Format + embedded_io_async::Error + core::fmt::Debug;
 
     fn split(
         &mut self,
