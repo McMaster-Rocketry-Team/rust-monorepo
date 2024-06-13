@@ -107,7 +107,12 @@ pub async fn init(
     };
 
     let serial_console_fut = run_rpc_server(&mut serial, &fs);
-    let usb_console_fut = run_rpc_server(&mut usb, &fs);
+    let usb_console_fut = async {
+        loop {
+            usb.wait_connection().await;
+            run_rpc_server(&mut usb, &fs).await;
+        }
+    };
 
     let main_fut = async {
         if usb_connected {

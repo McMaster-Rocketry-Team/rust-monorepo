@@ -9,6 +9,7 @@ use firmware_common::{driver::serial::SplitableSerialWrapper, RpcClient};
 use tokio::io::{split, AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::time::sleep;
 use tokio_serial::{SerialPortBuilderExt, SerialStream};
+use log::LevelFilter;
 
 struct Delay;
 
@@ -61,6 +62,8 @@ struct PullArgs {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let _ = env_logger::builder().filter_level(LevelFilter::Trace).try_init();
+
     let args = Cli::parse();
 
     if matches!(args.command, Commands::Detect) {
@@ -76,9 +79,9 @@ async fn main() -> Result<()> {
     let (rx, tx) = split(serial);
     let mut serial = SplitableSerialWrapper::new(SerialTXWrapper(tx), SerialRXWrapper(rx));
     let mut client = RpcClient::new(&mut serial, Delay);
-    client.reset().await.map_err(|_| anyhow!("Error"))?;
+    client.reset().await.map_err(|_| anyhow!("reset Error"))?;
 
-    let who_am_i = client.who_am_i().await.map_err(|_| anyhow!("Error"))?;
+    let who_am_i = client.who_am_i().await.unwrap();
     println!("Connected to {:?}", who_am_i.serial_number);
 
     match args.command {
