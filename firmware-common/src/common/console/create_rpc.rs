@@ -164,7 +164,7 @@ macro_rules! create_rpc {
             }
 
             impl<'a, S: crate::driver::serial::SplitableSerial, D: embedded_hal_async::delay::DelayNs> RpcClient<'a, S, D> {
-                pub fn new(serial: &'a mut S, delay:D) -> Self {
+                pub fn new(serial: &'a mut S, delay: D) -> Self {
                     Self { serial , delay}
                 }
 

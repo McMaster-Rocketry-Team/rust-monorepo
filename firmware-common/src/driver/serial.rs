@@ -17,154 +17,107 @@ pub trait SplitableSerial {
 }
 
 pub struct SplitableSerialWrapper<
-    M: RawMutex,
     E: defmt::Format + embedded_io_async::Error,
     T: embedded_io_async::Write<Error = E>,
     R: embedded_io_async::Read<Error = E>,
 > {
     _phantom_data: PhantomData<E>,
-    tx: BlockingMutex<M, RefCell<Option<T>>>,
-    rx: BlockingMutex<M, RefCell<Option<R>>>,
+    tx: RefCell<T>,
+    rx: RefCell<R>,
 }
 
 impl<
-        M: RawMutex,
         E: defmt::Format + embedded_io_async::Error,
         T: embedded_io_async::Write<Error = E>,
         R: embedded_io_async::Read<Error = E>,
-    > SplitableSerialWrapper<M, E, T, R>
+    > SplitableSerialWrapper<E, T, R>
 {
     pub fn new(tx: T, rx: R) -> Self {
         Self {
             _phantom_data: PhantomData,
-            tx: BlockingMutex::new(RefCell::new(Some(tx))),
-            rx: BlockingMutex::new(RefCell::new(Some(rx))),
+            tx: RefCell::new(tx),
+            rx: RefCell::new(rx),
         }
     }
 }
 
 impl<
-        M: RawMutex,
         E: defmt::Format + embedded_io_async::Error,
         T: embedded_io_async::Write<Error = E>,
         R: embedded_io_async::Read<Error = E>,
-    > SplitableSerial for SplitableSerialWrapper<M, E, T, R>
+    > SplitableSerial for SplitableSerialWrapper<E, T, R>
 {
     type Error = E;
 
-    fn split(&mut self) -> (TXGuard<'_, M, E, T, R>, RXGuard<'_, M, E, T, R>) {
-        (
-            TXGuard {
-                wrapper: self,
-                tx: self.tx.lock(|tx| tx.borrow_mut().take()),
-            },
-            RXGuard {
-                wrapper: self,
-                rx: self.rx.lock(|rx| rx.borrow_mut().take()),
-            },
-        )
+    fn split(&mut self) -> (TXGuard<'_, E, T, R>, RXGuard<'_, E, T, R>) {
+        (TXGuard { wrapper: self }, RXGuard { wrapper: self })
     }
 }
 
 pub struct TXGuard<
     'a,
-    M: RawMutex,
     E: defmt::Format + embedded_io_async::Error,
     T: embedded_io_async::Write<Error = E>,
     R: embedded_io_async::Read<Error = E>,
 > {
-    wrapper: &'a SplitableSerialWrapper<M, E, T, R>,
-    tx: Option<T>,
+    wrapper: &'a SplitableSerialWrapper<E, T, R>,
 }
 
 impl<
         'a,
-        M: RawMutex,
         E: defmt::Format + embedded_io_async::Error,
         T: embedded_io_async::Write<Error = E>,
         R: embedded_io_async::Read<Error = E>,
-    > embedded_io_async::ErrorType for TXGuard<'a, M, E, T, R>
+    > embedded_io_async::ErrorType for TXGuard<'a, E, T, R>
 {
     type Error = E;
 }
 
 impl<
         'a,
-        M: RawMutex,
         E: defmt::Format + embedded_io_async::Error,
         T: embedded_io_async::Write<Error = E>,
         R: embedded_io_async::Read<Error = E>,
-    > embedded_io_async::Write for TXGuard<'a, M, E, T, R>
+    > embedded_io_async::Write for TXGuard<'a, E, T, R>
 {
     async fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
-        self.tx.as_mut().unwrap().write(buf).await
-    }
-}
-
-impl<
-        'a,
-        M: RawMutex,
-        E: defmt::Format + embedded_io_async::Error,
-        T: embedded_io_async::Write<Error = E>,
-        R: embedded_io_async::Read<Error = E>,
-    > Drop for TXGuard<'a, M, E, T, R>
-{
-    fn drop(&mut self) {
-        self.wrapper.tx.lock(|tx| {
-            *tx.borrow_mut() = self.tx.take();
-        });
+        let mut tx = self.wrapper.tx.borrow_mut();
+        tx.write(buf).await
     }
 }
 
 pub struct RXGuard<
     'a,
-    M: RawMutex,
     E: defmt::Format + embedded_io_async::Error,
     T: embedded_io_async::Write<Error = E>,
     R: embedded_io_async::Read<Error = E>,
 > {
-    wrapper: &'a SplitableSerialWrapper<M, E, T, R>,
-    rx: Option<R>,
+    wrapper: &'a SplitableSerialWrapper<E, T, R>,
 }
 impl<
         'a,
-        M: RawMutex,
         E: defmt::Format + embedded_io_async::Error,
         T: embedded_io_async::Write<Error = E>,
         R: embedded_io_async::Read<Error = E>,
-    > embedded_io_async::ErrorType for RXGuard<'a, M, E, T, R>
+    > embedded_io_async::ErrorType for RXGuard<'a, E, T, R>
 {
     type Error = E;
 }
 impl<
         'a,
-        M: RawMutex,
         E: defmt::Format + embedded_io_async::Error,
         T: embedded_io_async::Write<Error = E>,
         R: embedded_io_async::Read<Error = E>,
-    > embedded_io_async::Read for RXGuard<'a, M, E, T, R>
+    > embedded_io_async::Read for RXGuard<'a, E, T, R>
 {
     async fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
-        self.rx.as_mut().unwrap().read(buf).await
-    }
-}
-impl<
-        'a,
-        M: RawMutex,
-        E: defmt::Format + embedded_io_async::Error,
-        T: embedded_io_async::Write<Error = E>,
-        R: embedded_io_async::Read<Error = E>,
-    > Drop for RXGuard<'a, M, E, T, R>
-{
-    fn drop(&mut self) {
-        self.wrapper.rx.lock(|rx| {
-            *rx.borrow_mut() = self.rx.take();
-        });
+        let mut rx = self.wrapper.rx.borrow_mut();
+        rx.read(buf).await
     }
 }
 
 pub fn get_dummy_serial(delay: impl DelayNs) -> impl SplitableSerial {
-    SplitableSerialWrapper::<NoopRawMutex, _, _, _>::new(DummyTX, DummyRX { delay })
+    SplitableSerialWrapper::new(DummyTX, DummyRX { delay })
 }
 
 pub enum RpcClientError<S: crate::driver::serial::SplitableSerial> {

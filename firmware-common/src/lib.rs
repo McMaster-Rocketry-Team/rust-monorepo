@@ -31,6 +31,7 @@ pub use common::device_manager::DeviceManager;
 pub use common::device_mode::DeviceMode;
 
 pub use common::vlp;
+pub use common::console::console::RpcClient;
 mod allocator;
 mod avionics;
 mod beacon;

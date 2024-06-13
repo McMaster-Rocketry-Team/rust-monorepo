@@ -390,9 +390,9 @@ checksum = "e8566979429cf69b49a5c740c60791108e86440e8be149bbea4fe54d2c32d6e2"
 
 [[package]]
 name = "defmt"
-version = "0.3.6"
+version = "0.3.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3939552907426de152b3c2c6f51ed53f98f448babd26f28694c95f5906194595"
+checksum = "a99dd22262668b887121d4672af5a64b238f026099f1a2a1b322066c9ecfe9e0"
 dependencies = [
  "bitflags 1.3.2",
  "defmt-macros",
@@ -468,6 +468,19 @@ name = "embassy-sync"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dd938f25c0798db4280fcd8026bf4c2f48789aebf8f77b6e5cf8a7693ba114ec"
+dependencies = [
+ "cfg-if",
+ "critical-section",
+ "embedded-io-async",
+ "futures-util",
+ "heapless 0.8.0",
+]
+
+[[package]]
+name = "embassy-sync"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b3e0c49ff02ebe324faf3a8653ba91582e2d0a7fdef5bc88f449d5aa1bfcc05c"
 dependencies = [
  "cfg-if",
  "critical-section",
@@ -628,7 +641,7 @@ dependencies = [
  "defmt",
  "either",
  "embassy-futures",
- "embassy-sync",
+ "embassy-sync 0.5.0",
  "embedded-alloc",
  "embedded-hal-async",
  "embedded-io-async",
@@ -1271,7 +1284,7 @@ dependencies = [
 name = "nyoom"
 version = "0.1.0"
 dependencies = [
- "embassy-sync",
+ "embassy-sync 0.5.0",
  "futures-test",
  "prost",
  "prost-build",
@@ -2165,7 +2178,12 @@ dependencies = [
  "anyhow",
  "clap",
  "clap-num",
+ "defmt",
  "directories",
+ "embassy-sync 0.6.0",
+ "embedded-hal-async",
+ "embedded-io-async",
+ "firmware-common",
  "rustyline",
  "tokio",
  "tokio-serial",
@@ -2176,7 +2194,7 @@ name = "vl8-ctrl-protocol"
 version = "0.1.0"
 dependencies = [
  "defmt",
- "embassy-sync",
+ "embassy-sync 0.5.0",
  "embedded-hal-async",
  "firmware-common",
  "futures",
@@ -2191,7 +2209,7 @@ dependencies = [
  "bitvec",
  "critical-section",
  "defmt",
- "embassy-sync",
+ "embassy-sync 0.5.0",
  "embedded-hal-async",
  "env_logger",
  "function_name",
