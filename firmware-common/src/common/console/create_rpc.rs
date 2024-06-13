@@ -27,10 +27,10 @@ macro_rules! create_rpc {
                 }
             )*
         })?
-        $(rpc $rpc_i:literal $name:ident {
-            request($($req_var_name:ident: $req_var_type:ty),*)
-            response($($res_var_name:ident: $res_var_type:ty),*)
-        })*
+        state<$($generics_name:ident: $generics_type:ty),*>($($para_name:ident: $para_type:ty),*) {
+            $( $state_body:tt )*
+        }
+        $(rpc $rpc_i:literal $name:ident |$($req_var_name:ident: $req_var_type:ty),*| -> ($($res_var_name:ident: $res_var_type:ty),*) $handler:expr)*
     } => {
         $(
             $(
@@ -81,79 +81,94 @@ macro_rules! create_rpc {
         }
 
         paste::paste! {
-            pub async fn run_rpc_server<S: crate::driver::serial::SplitableSerial, $([< F $rpc_i >]: futures::Future<Output = [< $name Response >]>,)*>(
+            pub async fn run_rpc_server<
+                S: crate::driver::serial::SplitableSerial, 
+                $(
+                    $generics_name: $generics_type,
+                )*
+            >(
                 serial: &mut S,
                 $(
-                    mut [< $name:snake _handler >]: impl FnMut($($req_var_type ,)*) -> [< F $rpc_i >],
+                    $para_name: $para_type,
                 )*
-            ) -> Result<(), S::Error> {
-                use core::mem::size_of;
-                use rkyv::ser::Serializer;
-                use rkyv::{ser::serializers::BufferSerializer};
-                use rkyv::archived_root;
-                use crc::{Crc, CRC_8_SMBUS};
-                use embedded_io_async::Read;
-                use embedded_io_async::ReadExactError;
-                use embedded_io_async::Write;
+            ) {
+                let result: Result<(), S::Error> = try {
+                    use core::mem::size_of;
+                    use rkyv::ser::Serializer;
+                    use rkyv::{ser::serializers::BufferSerializer};
+                    use rkyv::archived_root;
+                    use crc::{Crc, CRC_8_SMBUS};
+                    use embedded_io_async::Read;
+                    use embedded_io_async::ReadExactError;
+                    use embedded_io_async::Write;
 
-                let crc = Crc::<u8>::new(&CRC_8_SMBUS);
-                let mut request_buffer = [0u8; size_of::<<RequestEnum as rkyv::Archive>::Archived>() + 1];
-                let mut response_buffer = [0u8; size_of::<<ResponseEnum as rkyv::Archive>::Archived>()];
-                let (mut tx, mut rx) = serial.split();
+                    $( $state_body )*
 
-                loop {
-                    match rx.read_exact(&mut request_buffer[..1]).await{
-                        Ok(_) => {},
-                        Err(ReadExactError::UnexpectedEof)=>{
-                            continue;
-                        },
-                        Err(ReadExactError::Other(e))=>{
-                            return Err(e);
-                        }
-                    }
-                    match request_buffer[0] {
-                        $(
-                            $rpc_i => {
-                                let request_size = size_of::<<[< $name Request >] as rkyv::Archive>::Archived>();
-                                match rx.read_exact(&mut request_buffer[1..(request_size+2)]).await {
-                                    Ok(_) => {},
-                                    Err(ReadExactError::UnexpectedEof)=>{
-                                        continue;
-                                    },
-                                    Err(ReadExactError::Other(e))=>{
-                                        return Err(e);
-                                    }
-                                }
+                    let crc = Crc::<u8>::new(&CRC_8_SMBUS);
+                    let mut request_buffer = [0u8; size_of::<<RequestEnum as rkyv::Archive>::Archived>() + 1];
+                    let mut response_buffer = [0u8; size_of::<<ResponseEnum as rkyv::Archive>::Archived>()];
+                    let (mut tx, mut rx) = serial.split();
 
-                                let calculated_crc = crc.checksum(&request_buffer[..(request_size+1)]);
-                                let received_crc = request_buffer[request_size+1];
-                                if calculated_crc != received_crc {
-                                    log_info!("Command CRC mismatch, skipping.");
-                                    continue;
-                                }
-
-                                let archived = unsafe { archived_root::<[< $name Request >]>(&request_buffer[1..(request_size+1)]) };
-                                #[allow(unused)]
-                                let deserialized = <[<Archived $name Request>] as rkyv::Deserialize<[< $name Request >], rkyv::Infallible>>::deserialize(archived, &mut rkyv::Infallible).unwrap();
-
-                                let response = [< $name:snake _handler >]($(deserialized.$req_var_name, )*).await;
-
-                                let mut response_serializer = BufferSerializer::new(&mut response_buffer);
-                                response_serializer.serialize_value(&response).unwrap();
-                                drop(response_serializer);
-                                let response_size = size_of::<<[< $name Response >] as rkyv::Archive>::Archived>();
-                                response_buffer[response_size] = crc.checksum(&response_buffer[..response_size]);
-                                tx.write_all(&response_buffer[..(response_size+1)]).await?;
+                    loop {
+                        match rx.read_exact(&mut request_buffer[..1]).await{
+                            Ok(_) => {},
+                            Err(ReadExactError::UnexpectedEof)=>{
+                                continue;
+                            },
+                            Err(ReadExactError::Other(e))=>{
+                                Err(e)?;
                             }
-                        )*
-                        255 => {
-                            tx.write_all(&[255, 0x69]).await?;
                         }
-                        id => {
-                            log_warn!("Unknown rpc id: {}", id);
+                        match request_buffer[0] {
+                            $(
+                                $rpc_i => {
+                                    let request_size = size_of::<<[< $name Request >] as rkyv::Archive>::Archived>();
+                                    match rx.read_exact(&mut request_buffer[1..(request_size+2)]).await {
+                                        Ok(_) => {},
+                                        Err(ReadExactError::UnexpectedEof)=>{
+                                            continue;
+                                        },
+                                        Err(ReadExactError::Other(e))=>{
+                                            Err(e)?;
+                                        }
+                                    }
+
+                                    let calculated_crc = crc.checksum(&request_buffer[..(request_size+1)]);
+                                    let received_crc = request_buffer[request_size+1];
+                                    if calculated_crc != received_crc {
+                                        log_info!("Command CRC mismatch, skipping.");
+                                        continue;
+                                    }
+
+                                    let archived = unsafe { archived_root::<[< $name Request >]>(&request_buffer[1..(request_size+1)]) };
+                                    #[allow(unused)]
+                                    let request = <[<Archived $name Request>] as rkyv::Deserialize<[< $name Request >], rkyv::Infallible>>::deserialize(archived, &mut rkyv::Infallible).unwrap();
+
+                                    $(
+                                        let $req_var_name = request.$req_var_name;
+                                    )*
+                                    let response = $handler;
+
+                                    let mut response_serializer = BufferSerializer::new(&mut response_buffer);
+                                    response_serializer.serialize_value(&response).unwrap();
+                                    drop(response_serializer);
+                                    let response_size = size_of::<<[< $name Response >] as rkyv::Archive>::Archived>();
+                                    response_buffer[response_size] = crc.checksum(&response_buffer[..response_size]);
+                                    tx.write_all(&response_buffer[..(response_size+1)]).await?;
+                                }
+                            )*
+                            255 => {
+                                tx.write_all(&[255, 0x69]).await?;
+                            }
+                            id => {
+                                log_warn!("Unknown rpc id: {}", id);
+                            }
                         }
-                    }
+                    };
                 };
+                if let Err(e) = result {
+                    log_error!("Error running console: {:?}", e);
+                }
             }
         }
 

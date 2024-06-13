@@ -222,6 +222,10 @@ where
         }
     }
 
+    pub fn reset(&mut self) {
+        self.last_file = None;
+    }
+
     pub async fn next(&mut self) -> Result<Option<FileEntry>, VLFSError<F::Error>> {
         let at = self.vlfs.allocation_table.read().await;
         let flash = self.vlfs.flash.read().await;

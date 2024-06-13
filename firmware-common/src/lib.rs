@@ -7,8 +7,9 @@
 
 mod fmt;
 
+use common::console::rpc::run_rpc_server;
 use common::{
-    buzzer_queue::BuzzerQueueRunner, console::console::run_console, unix_clock::UnixClockTask,
+    buzzer_queue::BuzzerQueueRunner, unix_clock::UnixClockTask,
 };
 use driver::gps::{GPSParser, GPSPPS};
 use futures::join;
@@ -30,7 +31,7 @@ pub use common::device_manager::DeviceManager;
 pub use common::device_mode::DeviceMode;
 
 pub use common::vlp;
-pub use common::console::console::RpcClient;
+pub use common::console::rpc::RpcClient;
 mod allocator;
 mod avionics;
 mod beacon;
@@ -105,8 +106,8 @@ pub async fn init(
         }
     };
 
-    let serial_console_fut = run_console(&mut serial, &fs);
-    let usb_console_fut = run_console(&mut usb, &fs);
+    let serial_console_fut = run_rpc_server(&mut serial, &fs);
+    let usb_console_fut = run_rpc_server(&mut usb, &fs);
 
     let main_fut = async {
         if usb_connected {
