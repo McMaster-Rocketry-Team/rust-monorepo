@@ -11,7 +11,7 @@ mod fmt;
 use common::config_structs::{DeviceConfig, DeviceModeConfig};
 use common::console::rpc::run_rpc_server;
 use common::device_manager::SystemServices;
-use common::vlp2::packet::{VLPDownlinkPacket, VLPUplinkPacket};
+use common::rpc_channel::RpcChannel;
 use common::{buzzer_queue::BuzzerQueueRunner, unix_clock::UnixClockTask};
 use driver::clock::VLFSTimerWrapper;
 use driver::gps::{GPSParser, GPSPPS};
@@ -45,6 +45,7 @@ pub mod utils;
 
 pub async fn init(
     device_manager: device_manager_type!(mut),
+    device_serial_number: [u8; 12],
     device_config: Option<DeviceConfig>,
 ) -> ! {
     claim_devices!(
@@ -109,15 +110,42 @@ pub async fn init(
         }
     };
 
-    let gcm_uplink_package_channel = Channel::<NoopRawMutex, VLPUplinkPacket, 1>::new();
-    let gcm_downlink_package_channel =
-        Channel::<NoopRawMutex, (VLPDownlinkPacket, PacketStatus), 1>::new();
+    let device_config = if let Some(device_config) = device_config {
+        log_info!("Using device config overwrite");
+        Some(device_config)
+    } else {
+        if let Some(device_config) = services.config.device.read().await {
+            log_info!("Read device mode from disk");
+            Some(device_config)
+        } else {
+            log_info!("No device mode file found");
+            None
+        }
+    };
 
-    let serial_console_fut = run_rpc_server(&mut serial, &services);
+    let gcm_downlink_package_channel = Channel::new();
+    let gcm_send_uplink_packet_rpc = RpcChannel::new();
+
+    let serial_console_fut = run_rpc_server(
+        &mut serial,
+        &services,
+        &device_config,
+        &device_serial_number,
+        gcm_downlink_package_channel.receiver(),
+        gcm_send_uplink_packet_rpc.client(),
+    );
     let usb_console_fut = async {
         loop {
             usb.wait_connection().await;
-            run_rpc_server(&mut usb, &services).await;
+            run_rpc_server(
+                &mut usb,
+                &services,
+                &device_config,
+                &device_serial_number,
+                gcm_downlink_package_channel.receiver(),
+                gcm_send_uplink_packet_rpc.client(),
+            )
+            .await;
         }
     };
 
@@ -128,21 +156,14 @@ pub async fn init(
             indicators.run([1000, 1000], [0, 1000, 1000, 0], []).await;
         }
 
-        let device_config = if let Some(device_config) = device_config {
-            log_info!("Using device config overwrite");
-            device_config
-        } else {
-            if let Some(device_config) = services.config.device.read().await {
-                log_info!("Read device mode from disk");
-                device_config
-            } else {
-                log_info!("No device mode file found, halting");
-                claim_devices!(device_manager, indicators);
-                indicators
-                    .run([333, 666], [0, 333, 333, 333], [0, 666, 333, 0])
-                    .await
-            }
-        };
+        if device_config.as_ref().is_none() {
+            log_info!("No device mode file found, halting");
+            claim_devices!(device_manager, indicators);
+            indicators
+                .run([333, 666], [0, 333, 333, 333], [0, 666, 333, 0])
+                .await;
+        }
+        let device_config = device_config.as_ref().unwrap();
 
         log_info!("Starting in mode {:?}", device_config);
         match device_config.mode {
@@ -151,9 +172,9 @@ pub async fn init(
                 gcm_main(
                     device_manager,
                     &services,
-                    device_config,
-                    gcm_uplink_package_channel.receiver(),
+                    &device_config,
                     gcm_downlink_package_channel.sender(),
+                    gcm_send_uplink_packet_rpc.server(),
                 )
                 .await
             }

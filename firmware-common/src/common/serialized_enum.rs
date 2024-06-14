@@ -1,7 +1,7 @@
 #[macro_export]
 macro_rules! create_serialized_enum {
     ($writer_struct_name:ident, $reader_struct_name:ident, $enum_name:ident, $(($log_type_i:expr, $log_type:ident)),*) => {
-        #[derive(rkyv::Archive, Debug, Clone, defmt::Format)]
+        #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Debug, Clone, defmt::Format)]
         pub enum $enum_name {
             $(
                 $log_type($log_type),

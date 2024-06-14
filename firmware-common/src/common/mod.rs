@@ -20,6 +20,7 @@ pub mod rkyv_structs;
 pub mod config_file;
 pub mod config_structs;
 pub mod vlp2;
+pub mod rpc_channel;
 
 #[macro_use]
 pub mod vlp;

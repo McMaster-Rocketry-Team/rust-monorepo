@@ -25,6 +25,7 @@ where
     packet_builder: VLPPacketBuilder<'b, 'c, CL>,
     tx_signal: Signal<NoopRawMutex, VLPUplinkPacket>,
     rx_signal: Signal<NoopRawMutex, (VLPDownlinkPacket, PacketStatus)>,
+    send_success_signal: Signal<NoopRawMutex, Option<PacketStatus>>,
     delay: DL,
 }
 
@@ -43,12 +44,16 @@ where
             lora_config,
             tx_signal: Signal::new(),
             rx_signal: Signal::new(),
+            send_success_signal: Signal::new(),
             delay,
         }
     }
 
-    pub fn send(&self, packet: VLPUplinkPacket) {
+    /// Calling send multiple times concurrently is not supported
+    /// Returns the packet status of the ack message
+    pub async fn send(&self, packet: VLPUplinkPacket) -> Option<PacketStatus> {
         self.tx_signal.signal(packet);
+        self.send_success_signal.wait().await
     }
 
     pub async fn wait_receive(&self) -> (VLPDownlinkPacket, PacketStatus) {
@@ -81,7 +86,7 @@ where
                     let tx_packet = self.tx_signal.wait().await;
                     log_info!("Sending message: {:?}", tx_packet);
 
-                    let mut success = false;
+                    let mut ack_packet_status: Option<PacketStatus> = None;
                     for i in 0..5 {
                         let tx_packet_serialized = self
                             .packet_builder
@@ -100,7 +105,7 @@ where
                                         packet_status.rssi,
                                         packet_status.snr
                                     );
-                                    success = true;
+                                    ack_packet_status = Some(packet_status);
                                     break;
                                 } else {
                                     log_warn!("Expected AckPacket, but received {:?}", packet);
@@ -114,11 +119,12 @@ where
 
                         log_warn!("Ack not received, retrying {}", i + 1);
                     }
-                    if success {
+                    if ack_packet_status.is_some() {
                         log_info!("Message sent successfully");
                     } else {
                         log_warn!("Failed to send message");
                     }
+                    self.send_success_signal.signal(ack_packet_status);
                 }
             };
             if let Err(e) = result {

@@ -1,25 +1,53 @@
 use core::cell::RefCell;
 
+use crate::common::device_manager::prelude::*;
+use crate::common::rkyv_structs::RkyvString;
+use crate::common::rpc_channel::RpcChannelClient;
+use crate::common::vlp2::packet::VLPDownlinkPacket;
+use crate::common::vlp2::packet::VLPUplinkPacket;
+use crate::create_rpc;
+use crate::DeviceConfig;
+use embassy_sync::{blocking_mutex::raw::NoopRawMutex, channel::Receiver};
+use lora_phy::mod_params::PacketStatus;
+use rkyv::{Archive, Deserialize, Serialize};
 use vlfs::{AsyncReader, Crc, FileID, FileReader, FileType, Flash, VLFSError, VLFSReadStatus};
 
-use crate::common::device_manager::prelude::*;
-use crate::create_rpc;
+#[derive(defmt::Format, Debug, Clone, Archive, Deserialize, Serialize)]
+pub struct RpcPacketStatus {
+    pub rssi: i16,
+    pub snr: i16,
+}
+
+impl From<PacketStatus> for RpcPacketStatus {
+    fn from(status: PacketStatus) -> Self {
+        RpcPacketStatus {
+            rssi: status.rssi,
+            snr: status.snr,
+        }
+    }
+}
 
 create_rpc! {
     enums {
-        enum DeviceModel {
-            VLF1,
-            VLF2,
-            VLF3,
-            VLF4,
-        }
         enum OpenFileStatus {
             Sucess,
             DoesNotExist,
             Error,
         }
     }
-    state<F: Flash, C: Crc>(services: &SystemServices<'_, '_, '_, '_, impl DelayNs + Copy, impl Clock, F, C>) {
+    state<F: Flash, C: Crc>(
+        services: &SystemServices<'_, '_, '_, '_, impl DelayNs + Copy, impl Clock, F, C>,
+        config: &Option<DeviceConfig>,
+        device_serial_number: &[u8; 12],
+        downlink_package_receiver: Receiver<'_, NoopRawMutex, (VLPDownlinkPacket, PacketStatus), 1>,
+        send_uplink_packet_rpc_client: RpcChannelClient<
+            '_,
+            NoopRawMutex,
+            VLPUplinkPacket,
+            Option<PacketStatus>,
+        >
+    ) {
+        let mut send_uplink_packet_rpc_client = send_uplink_packet_rpc_client;
         let fs = &services.fs;
         let mut reader: Option<FileReader<F, C>> = None;
 
@@ -34,14 +62,10 @@ create_rpc! {
         })
         .await;
     }
-    rpc 0 WhoAmI | | -> (name: [u8; 64], model: DeviceModel, serial_number: [u8; 12]) {
-        // TODO
-        let mut name = [0u8; 64];
-        name[..5].copy_from_slice(b"VLF4\0");
+    rpc 0 WhoAmI | | -> (name: Option<RkyvString<64>>, serial_number: [u8; 12]) {
         WhoAmIResponse {
-            name: name,
-            model: DeviceModel::VLF4,
-            serial_number: [69u8; 12],
+            name: config.as_ref().map(|config| config.name.clone()),
+            serial_number: device_serial_number.clone(),
         }
     }
     rpc 1 OpenFile |file_id: u64| -> (status: OpenFileStatus) {
@@ -111,6 +135,17 @@ create_rpc! {
             Err(_) => {
                 GetListedFileResponse { file_id: None }
             }
+        }
+    }
+    rpc 6 GCMSendUplinkPacket |packet: VLPUplinkPacket| -> (status: Option<RpcPacketStatus>) {
+        let status = send_uplink_packet_rpc_client.call(packet).await;
+        GCMSendUplinkPacketResponse {
+            status: status.map(|status|status.into())
+        }
+    }
+    rpc 7 GCMPollDownlinkPacket | | -> (packet: Option<(VLPDownlinkPacket, RpcPacketStatus)>) {
+        GCMPollDownlinkPacketResponse {
+            packet: downlink_package_receiver.try_receive().ok().map(|(packet, status)|(packet, status.into()))
         }
     }
 }
