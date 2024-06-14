@@ -4,6 +4,7 @@ use crate::AsyncWriter;
 
 use super::utils::CopyFromU16x4;
 use super::*;
+use embedded_io_async::{ErrorType, Write};
 
 impl<F, C> VLFS<F, C>
 where
@@ -341,6 +342,24 @@ where
         }
 
         Ok(())
+    }
+}
+
+impl<'a, F, C> ErrorType for FileWriter<'a, F, C>
+where
+    F: Flash,
+    C: Crc,
+{
+    type Error = VLFSError<F::Error>;
+}
+
+impl<'a, F, C> Write for FileWriter<'a, F, C>
+where
+    F: Flash,
+    C: Crc,
+{
+    async fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
+        self.extend_from_slice(buf).await.map(|_| buf.len())
     }
 }
 

@@ -1,7 +1,7 @@
 use core::fmt;
 
 use crate::utils::io_traits::AsyncReader;
-use embedded_io_async::{Read, ErrorType};
+use embedded_io_async::{ErrorType, Read};
 
 use super::*;
 
@@ -98,6 +98,7 @@ where
         self.sector_read_data_length = 0;
     }
 
+    /// read_next_page does not garantee that page_buffer is filled with file content, multiple calls may be needed
     async fn read_next_page(&mut self) -> Result<VLFSReadStatus, VLFSError<F::Error>> {
         if let Some(current_sector_index) = self.current_sector_index {
             let is_last_page = self.current_page_index == 15;
@@ -286,13 +287,25 @@ where
     }
 }
 
-
 impl<'a, F, C> ErrorType for FileReader<'a, F, C>
 where
     F: Flash,
     C: Crc,
 {
     type Error = VLFSError<F::Error>;
+}
+
+impl<'a, F, C> Read for FileReader<'a, F, C>
+where
+    F: Flash,
+    C: Crc,
+{
+    async fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
+        // TODO refactor VLFS to use embedded-io-async internally
+        self.read_slice(buf, buf.len())
+            .await
+            .map(|(buffer, _)| buffer.len())
+    }
 }
 
 impl<'a, F, C> Drop for FileReader<'a, F, C>
