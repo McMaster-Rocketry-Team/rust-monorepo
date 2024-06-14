@@ -26,7 +26,7 @@ pub async fn beacon_sender(
     device_manager: device_manager_type!(),
     use_lora: bool,
 ) -> ! {
-    claim_devices!(device_manager, gps, lora, red_indicator, green_indicator);
+    claim_devices!(device_manager, gps, lora);
     let clock = device_manager.clock;
     let mut lora = if use_lora { Some(lora) } else { None };
 
@@ -101,21 +101,21 @@ pub async fn beacon_sender(
 
     let mut delay = device_manager.delay;
     let indicator_fut = async {
-        loop {
-            let satellites_count: u32 = satellites_count.lock(|v| *v.borrow());
-            let locked: bool = locked.lock(|v| *v.borrow());
+        // loop {
+        //     let satellites_count: u32 = satellites_count.lock(|v| *v.borrow());
+        //     let locked: bool = locked.lock(|v| *v.borrow());
 
-            red_indicator.set_enable(locked).await;
+        //     red_indicator.set_enable(locked).await;
 
-            for _ in 0..(satellites_count + 1) {
-                green_indicator.set_enable(true).await;
-                delay.delay_ms(20).await;
-                green_indicator.set_enable(false).await;
-                delay.delay_ms(50).await;
-            }
+        //     for _ in 0..(satellites_count + 1) {
+        //         green_indicator.set_enable(true).await;
+        //         delay.delay_ms(20).await;
+        //         green_indicator.set_enable(false).await;
+        //         delay.delay_ms(50).await;
+        //     }
 
-            delay.delay_ms(1000).await;
-        }
+        //     delay.delay_ms(1000).await;
+        // }
     };
 
     join3(beacon_fut, indicator_fut, gps_fut).await;

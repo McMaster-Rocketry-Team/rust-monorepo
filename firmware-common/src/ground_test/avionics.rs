@@ -58,7 +58,7 @@ async fn fire_pyro(
     let logger_fut = async {
         while !finished.lock(|s| *s.borrow()) {
             let log = logs_channel.receive().await;
-            logger.write(log).await.unwrap();
+            logger.write(&log).await.unwrap();
         }
     };
 
@@ -127,7 +127,7 @@ pub async fn ground_test_avionics(
         pyro1_ctrl,
         pyro2_cont,
         pyro2_ctrl,
-        green_indicator,
+        // green_indicator,
         barometer,
         arming_switch
     );
@@ -137,12 +137,12 @@ pub async fn ground_test_avionics(
 
     let mut delay = device_manager.delay;
     let indicator_fut = async {
-        loop {
-            green_indicator.set_enable(true).await;
-            delay.delay_ms(50).await;
-            green_indicator.set_enable(false).await;
-            delay.delay_ms(2000).await;
-        }
+        // loop {
+        //     green_indicator.set_enable(true).await;
+        //     delay.delay_ms(50).await;
+        //     green_indicator.set_enable(false).await;
+        //     delay.delay_ms(2000).await;
+        // }
     };
 
     let delay = device_manager.delay;
@@ -203,6 +203,7 @@ pub async fn ground_test_avionics(
             lora.prepare_for_rx(RxMode::Single(1000), &modulation_params, &rx_pkt_params)
                 .await
                 .unwrap();
+            
             match lora.rx(&rx_pkt_params, &mut receiving_buffer).await {
                 Ok((length, _)) => {
                     let data = &receiving_buffer[0..(length as usize)];

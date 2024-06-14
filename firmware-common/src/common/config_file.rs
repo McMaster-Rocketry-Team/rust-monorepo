@@ -44,6 +44,7 @@ where
             match self.fs.open_file_for_read(file.id).await {
                 Ok(mut reader) => {
                     let mut buffer: AlignedBytes<{ size_of::<T::Archived>() }> = Default::default();
+                    // buffer.as_mut().copy_from_slice(src)
                     let result = reader.read_exact(buffer.as_mut()).await;
                     reader.close().await;
                     if let Err(e) = result {

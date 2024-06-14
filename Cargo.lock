@@ -661,6 +661,7 @@ dependencies = [
  "heapless 0.8.0",
  "libm",
  "log",
+ "lora-modulation 0.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "lora-phy",
  "micromath",
  "nalgebra 0.32.5",
@@ -1055,6 +1056,12 @@ checksum = "90ed8c1e510134f979dbc4f070f87d4313098b704861a105fe34231c70a3901c"
 [[package]]
 name = "lora-modulation"
 version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fe94d1a6dac71b9d54e7a76eb093fdb8e622601c3515f15e8cdca197d663b41c"
+
+[[package]]
+name = "lora-modulation"
+version = "0.1.4"
 source = "git+https://github.com/lora-rs/lora-rs#93824bb2cc7dd1816004385547f2a8c6e86fc389"
 
 [[package]]
@@ -1065,7 +1072,7 @@ dependencies = [
  "defmt",
  "embedded-hal",
  "embedded-hal-async",
- "lora-modulation",
+ "lora-modulation 0.1.4 (git+https://github.com/lora-rs/lora-rs)",
  "num-traits",
 ]
 

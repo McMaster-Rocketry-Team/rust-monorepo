@@ -2,10 +2,54 @@
 macro_rules! create_serialized_enum {
     ($writer_struct_name:ident, $reader_struct_name:ident, $enum_name:ident, $(($log_type_i:expr, $log_type:ident)),*) => {
         #[derive(rkyv::Archive, Debug, Clone, defmt::Format)]
-        enum $enum_name {
+        pub enum $enum_name {
             $(
                 $log_type($log_type),
             )*
+        }
+
+        impl $enum_name {
+            pub fn write_to_buffer(&self, buffer: &mut [u8]) -> usize {
+                use rkyv::ser::Serializer;
+                use rkyv::{ser::serializers::BufferSerializer};
+                use core::mem::size_of;
+
+                match self {
+                    $(
+                        $enum_name::$log_type(log) => {
+                            buffer[0] = $log_type_i;
+                            let mut serializer = BufferSerializer::new(&mut buffer[1..]);
+                            serializer.serialize_value(log).unwrap();
+                            return size_of::<<$log_type as Archive>::Archived>() + 1;
+                        }
+                    )*
+                };
+            }
+
+            pub fn from_buffer(buffer: &[u8]) -> Option<Self> {
+                use rkyv::{archived_root, AlignedBytes};
+                use core::mem::size_of;
+                use paste::paste;
+                
+                match buffer[0] {
+                    $(
+                        $log_type_i => {
+                            let size = size_of::<<$log_type as Archive>::Archived>();
+                            if buffer.len() < size+1 {
+                                return None;
+                            }
+                            let mut aligned_buffer: AlignedBytes<{ size_of::<<$log_type as Archive>::Archived>() }> = Default::default();
+                            aligned_buffer.as_mut().copy_from_slice(&buffer[1..size+1]);
+                            let archived = unsafe { archived_root::<$log_type>(aligned_buffer.as_ref()) };
+                            let deserialized = <paste!{ [<Archived $log_type>] } as rkyv::Deserialize<$log_type, rkyv::Infallible>>::deserialize(archived, &mut rkyv::Infallible).unwrap();
+                            Some($enum_name::$log_type(deserialized))
+                        }
+                    )*
+                    _ => {
+                        None
+                    }
+                }
+            }
         }
 
         struct $writer_struct_name<W: embedded_io_async::Write> {
@@ -21,22 +65,9 @@ macro_rules! create_serialized_enum {
                 }
             }
 
-            pub async fn write(&mut self, log: $enum_name) -> Result<(), W::Error> {
-                use rkyv::ser::Serializer;
-                use rkyv::{ser::serializers::BufferSerializer};
-
-                let mut serializer = BufferSerializer::new(self.buffer);
-                match log {
-                    $(
-                        $enum_name::$log_type(log) => {
-                            serializer.serialize_value(&log).unwrap();
-                            let buffer = serializer.into_inner();
-                            let buffer = &buffer[..core::mem::size_of::<<$log_type as Archive>::Archived>()];
-                            self.writer.write_all(&[$log_type_i]).await?;
-                            self.writer.write_all(buffer).await?;
-                        }
-                    )*
-                };
+            pub async fn write(&mut self, log: &$enum_name) -> Result<(), W::Error> {
+                let len = log.write_to_buffer(&mut self.buffer);
+                self.writer.write_all(&self.buffer[..len]).await?;
                 Ok(())
             }
 
