@@ -2,7 +2,7 @@ use embedded_hal_async::delay::DelayNs;
 use lora_phy::{mod_traits::RadioKind, LoRa};
 use vlfs::{Crc, Flash, VLFS};
 
-use crate::driver::{
+use crate::{driver::{
     adc::ADC,
     arming::HardwareArming,
     barometer::Barometer,
@@ -19,7 +19,7 @@ use crate::driver::{
     serial::SplitableSerial,
     sys_reset::SysReset,
     usb::SplitableUSB,
-};
+}, ConfigFiles};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
 
 use super::{
@@ -330,14 +330,16 @@ pub mod prelude {
     pub use crate::driver::serial::SplitableSerial;
     pub use crate::driver::sys_reset::SysReset;
     pub use crate::driver::usb::SplitableUSB;
+    pub use crate::common::config_file::ConfigFiles;
     pub use crate::system_services_type;
     pub use embedded_hal_async::delay::DelayNs;
     pub use lora_phy::mod_traits::RadioKind;
     pub use vlfs::{Crc, Flash};
 }
 
-pub struct SystemServices<'a, 'b, 'c, DL: DelayNs + Copy, T: Clock, F: Flash, C: Crc> {
-    pub(crate) fs: VLFS<F, C>,
+pub struct SystemServices<'f, 'a, 'b, 'c, DL: DelayNs + Copy, T: Clock, F: Flash, C: Crc> {
+    pub(crate) fs: &'f VLFS<F, C>,
+    pub(crate) config: ConfigFiles<'f, F, C>,
     pub(crate) gps: &'a GPSParser,
     pub(crate) delay: DL,
     pub(crate) clock: T,
@@ -348,6 +350,7 @@ pub struct SystemServices<'a, 'b, 'c, DL: DelayNs + Copy, T: Clock, F: Flash, C:
 #[macro_export]
 macro_rules! system_services_type {
     () => { &SystemServices<
+        '_,
         '_,
         '_,
         '_,

@@ -58,7 +58,7 @@ async fn fire_pyro(
     let logger_fut = async {
         while !finished.lock(|s| *s.borrow()) {
             let log = logs_channel.receive().await;
-            logger.log(log).await.unwrap();
+            logger.write(log).await.unwrap();
         }
     };
 

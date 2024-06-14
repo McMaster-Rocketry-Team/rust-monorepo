@@ -19,7 +19,7 @@ create_rpc! {
             Error,
         }
     }
-    state<F: Flash, C: Crc>(services: &SystemServices<'_,'_,'_, impl DelayNs + Copy, impl Clock, F, C>) {
+    state<F: Flash, C: Crc>(services: &SystemServices<'_, '_, '_, '_, impl DelayNs + Copy, impl Clock, F, C>) {
         let fs = &services.fs;
         let mut reader: Option<FileReader<F, C>> = None;
 

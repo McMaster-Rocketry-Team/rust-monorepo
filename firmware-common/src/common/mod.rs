@@ -1,6 +1,5 @@
 pub mod console;
 pub mod device_manager;
-pub mod device_mode;
 pub mod files;
 pub mod gps_parser;
 pub mod imu_calibration_file;
@@ -17,6 +16,9 @@ pub mod fixed_point;
 pub mod delta_factory;
 pub mod delta_logger;
 pub mod indicator_controller;
+pub mod rkyv_structs;
+pub mod config_file;
+pub mod config_structs;
 
 #[macro_use]
 pub mod vlp;

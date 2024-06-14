@@ -361,6 +361,10 @@ where
     async fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
         self.extend_from_slice(buf).await.map(|_| buf.len())
     }
+
+    async fn flush(&mut self) -> Result<(), Self::Error> {
+        self.flush().await
+    }
 }
 
 impl<'a, F, C> Drop for FileWriter<'a, F, C>
