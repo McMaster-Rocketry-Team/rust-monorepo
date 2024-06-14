@@ -6,22 +6,22 @@ use crate::{common::unix_clock::UnixClock, Clock};
 
 use super::packet::{VLPDownlinkPacket, VLPUplinkPacket, MAX_VLP_UPLINK_PACKET_SIZE};
 
-pub struct VLPPacketBuilder<'a, CL: Clock> {
+pub struct VLPPacketBuilder<'a, 'b, CL: Clock> {
     lora_config: BaseBandModulationParams,
     crc: Crc<u8>,
-    uplink_key: [u8; 32],
+    uplink_key: &'b [u8; 32],
     downlink_key: [u8; 32],
     unix_clock: UnixClock<'a, CL>,
 }
 
-impl<'a, CL: Clock> VLPPacketBuilder<'a, CL> {
+impl<'a,'b, CL: Clock> VLPPacketBuilder<'a,'b, CL> {
     pub fn new(
         unix_clock: UnixClock<'a, CL>,
         lora_config: BaseBandModulationParams,
-        key: [u8; 32],
+        key:&'b [u8; 32],
     ) -> Self {
         let mut downlink_key = [0u8; 32];
-        let mut chacha = ChaCha20::new(&key, &[0; 8]);
+        let mut chacha = ChaCha20::new(key, &[0; 8]);
         chacha.process_mut(&mut downlink_key);
         VLPPacketBuilder {
             lora_config,
@@ -39,7 +39,7 @@ impl<'a, CL: Clock> VLPPacketBuilder<'a, CL> {
         now.to_le_bytes()
     }
 
-    pub fn serialize_uplink<'b>(&self, buffer: &'b mut [u8], packet: &VLPUplinkPacket) -> &'b [u8] {
+    pub fn serialize_uplink<'c>(&self, buffer: &'c mut [u8], packet: &VLPUplinkPacket) -> &'c [u8] {
         // serialize
         let len = packet.write_to_buffer(buffer);
 
@@ -47,17 +47,17 @@ impl<'a, CL: Clock> VLPPacketBuilder<'a, CL> {
         buffer[len] = self.crc.checksum(&buffer[..len]);
 
         // encrypt
-        let mut cipher = ChaCha20::new(&self.uplink_key, &self.get_nonce(self.unix_clock.now_ms()));
+        let mut cipher = ChaCha20::new(self.uplink_key, &self.get_nonce(self.unix_clock.now_ms()));
         cipher.process_mut(&mut buffer[..(len + 1)]);
 
         &buffer[..(len + 1)]
     }
 
-    pub fn serialize_downlink<'b>(
+    pub fn serialize_downlink<'c>(
         &self,
-        buffer: &'b mut [u8],
+        buffer: &'c mut [u8],
         packet: &VLPDownlinkPacket,
-    ) -> &'b [u8] {
+    ) -> &'c [u8] {
         // serialize
         let len = packet.write_to_buffer(buffer);
 
@@ -107,7 +107,7 @@ impl<'a, CL: Clock> VLPPacketBuilder<'a, CL> {
         let mut deserialize_buffer = &mut deserialize_buffer[..buffer.len()];
 
         let mut check_nonce = |nonce: &[u8]| {
-            let mut cipher = ChaCha20::new(&self.uplink_key, nonce);
+            let mut cipher = ChaCha20::new(self.uplink_key, nonce);
             cipher.process(buffer, &mut deserialize_buffer);
 
             let calculated_crc = self

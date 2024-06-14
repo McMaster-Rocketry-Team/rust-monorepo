@@ -114,8 +114,8 @@ impl Into<lora_modulation::BaseBandModulationParams> for &LoraConfig {
 
 #[derive(Clone, Debug, defmt::Format, Archive, Serialize, Deserialize)]
 pub enum DeviceModeConfig {
-    Avionics,
-    GCM,
+    Avionics { lora_key: [u8; 32] },
+    GCM { lora_key: [u8; 32] },
     BeaconSender,
     BeaconReceiver,
     GroundTestAvionics,

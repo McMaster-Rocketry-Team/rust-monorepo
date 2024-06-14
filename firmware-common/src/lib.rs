@@ -11,10 +11,14 @@ mod fmt;
 use common::config_structs::{DeviceConfig, DeviceModeConfig};
 use common::console::rpc::run_rpc_server;
 use common::device_manager::SystemServices;
+use common::vlp2::packet::{VLPDownlinkPacket, VLPUplinkPacket};
 use common::{buzzer_queue::BuzzerQueueRunner, unix_clock::UnixClockTask};
 use driver::clock::VLFSTimerWrapper;
 use driver::gps::{GPSParser, GPSPPS};
+use embassy_sync::blocking_mutex::raw::NoopRawMutex;
+use embassy_sync::channel::Channel;
 use futures::join;
+use lora_phy::mod_params::PacketStatus;
 
 use crate::{
     avionics::avionics_main, common::device_manager::prelude::*, ground_test::gcm::ground_test_gcm,
@@ -23,9 +27,9 @@ use vlfs::{StatFlash, VLFS};
 
 use futures::{future::select, pin_mut};
 
+use crate::beacon::{beacon_receiver::beacon_receiver, beacon_sender::beacon_sender};
 use crate::gcm::gcm_main;
 use crate::ground_test::avionics::ground_test_avionics;
-use crate::beacon::{beacon_receiver::beacon_receiver, beacon_sender::beacon_sender};
 pub use common::device_manager::DeviceManager;
 
 pub use common::console::rpc::RpcClient;
@@ -105,6 +109,10 @@ pub async fn init(
         }
     };
 
+    let gcm_uplink_package_channel = Channel::<NoopRawMutex, VLPUplinkPacket, 1>::new();
+    let gcm_downlink_package_channel =
+        Channel::<NoopRawMutex, (VLPDownlinkPacket, PacketStatus), 1>::new();
+
     let serial_console_fut = run_rpc_server(&mut serial, &services);
     let usb_console_fut = async {
         loop {
@@ -138,9 +146,20 @@ pub async fn init(
 
         log_info!("Starting in mode {:?}", device_config);
         match device_config.mode {
-            DeviceModeConfig::Avionics => avionics_main(&services.fs, device_manager).await,
-            DeviceModeConfig::GCM => gcm_main(device_manager, &services).await,
-            DeviceModeConfig::BeaconSender => beacon_sender(&services.fs, device_manager, false).await,
+            DeviceModeConfig::Avionics { .. } => avionics_main(&services.fs, device_manager).await,
+            DeviceModeConfig::GCM { .. } => {
+                gcm_main(
+                    device_manager,
+                    &services,
+                    device_config,
+                    gcm_uplink_package_channel.receiver(),
+                    gcm_downlink_package_channel.sender(),
+                )
+                .await
+            }
+            DeviceModeConfig::BeaconSender => {
+                beacon_sender(&services.fs, device_manager, false).await
+            }
             DeviceModeConfig::BeaconReceiver => beacon_receiver(&services.fs, device_manager).await,
             DeviceModeConfig::GroundTestAvionics => {
                 ground_test_avionics(

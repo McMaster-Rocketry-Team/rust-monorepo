@@ -20,19 +20,19 @@ use super::{
 };
 
 // VLP client running on the rocket
-pub struct VLPUplinkClient<'a, 'b, CL: Clock, DL: DelayNs + Copy>
+pub struct VLPUplinkClient<'a, 'b, 'c, CL: Clock, DL: DelayNs + Copy>
 where
     'a: 'b,
 {
     lora_config: &'a LoraConfig,
-    packet_builder: VLPPacketBuilder<'b, CL>,
+    packet_builder: VLPPacketBuilder<'b, 'c, CL>,
     unix_clock: UnixClock<'a, CL>,
     tx_signal: Signal<NoopRawMutex, VLPDownlinkPacket>,
     rx_signal: Signal<NoopRawMutex, (VLPUplinkPacket, PacketStatus)>,
     delay: DL,
 }
 
-impl<'a, 'b, CL: Clock, DL: DelayNs + Copy> VLPUplinkClient<'a, 'b, CL, DL>
+impl<'a, 'b, 'c, CL: Clock, DL: DelayNs + Copy> VLPUplinkClient<'a, 'b, 'c, CL, DL>
 where
     'a: 'b,
 {
@@ -40,7 +40,7 @@ where
         lora_config: &'a LoraConfig,
         unix_clock: UnixClock<'a, CL>,
         delay: DL,
-        key: [u8; 32],
+        key: &'c [u8; 32],
     ) -> Self {
         VLPUplinkClient {
             packet_builder: VLPPacketBuilder::new(unix_clock, lora_config.into(), key),

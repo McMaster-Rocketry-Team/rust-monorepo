@@ -17,18 +17,18 @@ use super::{
 };
 
 // VLP client running on the GCM
-pub struct VLPDownlinkClient<'a, 'b, CL: Clock, DL: DelayNs + Copy>
+pub struct VLPDownlinkClient<'a, 'b, 'c, CL: Clock, DL: DelayNs + Copy>
 where
     'a: 'b,
 {
     lora_config: &'a LoraConfig,
-    packet_builder: VLPPacketBuilder<'b, CL>,
+    packet_builder: VLPPacketBuilder<'b, 'c, CL>,
     tx_signal: Signal<NoopRawMutex, VLPUplinkPacket>,
     rx_signal: Signal<NoopRawMutex, (VLPDownlinkPacket, PacketStatus)>,
     delay: DL,
 }
 
-impl<'a, 'b, CL: Clock, DL: DelayNs + Copy> VLPDownlinkClient<'a, 'b, CL, DL>
+impl<'a, 'b, 'c, CL: Clock, DL: DelayNs + Copy> VLPDownlinkClient<'a, 'b, 'c, CL, DL>
 where
     'a: 'b,
 {
@@ -36,7 +36,7 @@ where
         lora_config: &'a LoraConfig,
         unix_clock: UnixClock<'a, CL>,
         delay: DL,
-        key: [u8; 32],
+        key: &'c [u8; 32],
     ) -> Self {
         VLPDownlinkClient {
             packet_builder: VLPPacketBuilder::new(unix_clock, lora_config.into(), key),
