@@ -127,7 +127,7 @@ pub async fn ground_test_avionics(
         pyro1_ctrl,
         pyro2_cont,
         pyro2_ctrl,
-        status_indicator,
+        green_indicator,
         barometer,
         arming_switch
     );
@@ -138,9 +138,9 @@ pub async fn ground_test_avionics(
     let mut delay = device_manager.delay;
     let indicator_fut = async {
         loop {
-            status_indicator.set_enable(true).await;
+            green_indicator.set_enable(true).await;
             delay.delay_ms(50).await;
-            status_indicator.set_enable(false).await;
+            green_indicator.set_enable(false).await;
             delay.delay_ms(2000).await;
         }
     };

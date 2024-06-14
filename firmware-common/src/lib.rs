@@ -4,13 +4,16 @@
 #![feature(try_blocks)]
 #![feature(async_closure)]
 #![feature(assert_matches)]
+#![feature(never_type)]
 
 mod fmt;
 
 use common::console::rpc::run_rpc_server;
+use common::device_manager::SystemServices;
 use common::{
     buzzer_queue::BuzzerQueueRunner, unix_clock::UnixClockTask,
 };
+use driver::clock::VLFSTimerWrapper;
 use driver::gps::{GPSParser, GPSPPS};
 use futures::join;
 
@@ -21,7 +24,7 @@ use vlfs::{StatFlash, Timer as VLFSTimer, VLFS};
 
 use futures::{future::select, pin_mut};
 
-// use crate::gcm::gcm_main;
+use crate::gcm::gcm_main;
 use crate::ground_test::avionics::ground_test_avionics;
 use crate::{
     beacon::{beacon_receiver::beacon_receiver, beacon_sender::beacon_sender},
@@ -37,18 +40,9 @@ mod avionics;
 mod beacon;
 mod common;
 pub mod driver;
-// mod gcm;
+mod gcm;
 mod ground_test;
 pub mod utils;
-
-#[derive(Clone)]
-struct VLFSTimerWrapper<T: Clock>(T);
-
-impl<T: Clock> VLFSTimer for VLFSTimerWrapper<T> {
-    fn now_ms(&self) -> f64 {
-        self.0.now_ms()
-    }
-}
 
 pub async fn init(
     device_manager: device_manager_type!(mut),
@@ -89,6 +83,15 @@ pub async fn init(
     let buzzer_queue_runner_fut = buzzer_queue_runner.run(buzzer, delay);
     let buzzer_queue = buzzer_queue_runner.get_queue();
 
+    let services = SystemServices{
+        fs,
+        gps:&parser,
+        delay,
+        clock,
+        unix_clock,
+        buzzer_queue,
+    };
+
     let usb_connected = {
         let timeout_fut = delay.delay_ms(500);
         let usb_wait_connection_fut = usb.wait_connection();
@@ -106,53 +109,43 @@ pub async fn init(
         }
     };
 
-    let serial_console_fut = run_rpc_server(&mut serial, &fs);
+    let serial_console_fut = run_rpc_server(&mut serial, &services);
     let usb_console_fut = async {
         loop {
             usb.wait_connection().await;
-            run_rpc_server(&mut usb, &fs).await;
+            run_rpc_server(&mut usb, &services).await;
         }
     };
 
     let main_fut = async {
         if usb_connected {
             log_info!("USB connected on boot, stopping main");
-            claim_devices!(device_manager, status_indicator, error_indicator);
-            loop {
-                status_indicator.set_enable(true).await;
-                error_indicator.set_enable(false).await;
-                delay.delay_ms(1000).await;
-                status_indicator.set_enable(false).await;
-                error_indicator.set_enable(true).await;
-                delay.delay_ms(1000).await;
-            }
+            claim_devices!(device_manager, indicators);
+            indicators.run([1000, 1000], [0,1000,1000,0], []).await;
         }
 
         let device_mode = if let Some(device_mode_overwrite) = device_mode_overwrite {
             log_info!("Using device mode overwrite: {:?}", device_mode_overwrite);
             device_mode_overwrite
         } else {
-            if let Some(device_mode_) = read_device_mode(&fs).await {
+            if let Some(device_mode_) = read_device_mode(&services.fs).await {
                 log_info!("Read device mode from disk: {:?}", device_mode_);
                 device_mode_
             } else {
                 log_info!("No device mode file found, creating one");
-                try_or_warn!(write_device_mode(&fs, DeviceMode::Avionics).await);
+                try_or_warn!(write_device_mode(&services.fs, DeviceMode::Avionics).await);
                 DeviceMode::Avionics
             }
         };
 
         log_info!("Starting in mode {:?}", device_mode);
         match device_mode {
-            DeviceMode::Avionics => avionics_main(&fs, device_manager).await,
-            DeviceMode::GCM => {
-                log_panic!("not implemented");
-                // gcm_main::<20, 20>(&fs, device_manager, &serial_console, &usb_console).await
-            }
-            DeviceMode::BeaconSender => beacon_sender(&fs, device_manager, false).await,
-            DeviceMode::BeaconReceiver => beacon_receiver(&fs, device_manager).await,
+            DeviceMode::Avionics => avionics_main(&services.fs, device_manager).await,
+            DeviceMode::GCM => gcm_main(device_manager, &services).await,
+            DeviceMode::BeaconSender => beacon_sender(&services.fs, device_manager, false).await,
+            DeviceMode::BeaconReceiver => beacon_receiver(&services.fs, device_manager).await,
             DeviceMode::GroundTestAvionics => {
-                ground_test_avionics(&fs, unix_clock, &buzzer_queue, device_manager).await
+                ground_test_avionics(&services.fs, unix_clock, &services.buzzer_queue, device_manager).await
             }
             DeviceMode::GroundTestGCM => ground_test_gcm(device_manager).await,
         };

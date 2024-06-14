@@ -1,6 +1,6 @@
 use embedded_hal_async::delay::DelayNs;
 use lora_phy::{mod_traits::RadioKind, LoRa};
-use vlfs::{Crc, Flash};
+use vlfs::{Crc, Flash, VLFS};
 
 use crate::driver::{
     adc::ADC,
@@ -16,11 +16,16 @@ use crate::driver::{
     meg::Megnetometer,
     pyro::{Continuity, PyroCtrl},
     rng::RNG,
+    serial::SplitableSerial,
     sys_reset::SysReset,
     usb::SplitableUSB,
-    serial::SplitableSerial,
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
+
+use super::{
+    buzzer_queue::BuzzerQueue, gps_parser::GPSParser, indicator_controller::IndicatorController,
+    unix_clock::UnixClock,
+};
 
 #[allow(dead_code)]
 pub struct DeviceManager<
@@ -46,8 +51,9 @@ pub struct DeviceManager<
     M: Megnetometer,
     RK: RadioKind,
     R: RNG,
-    IS: Indicator,
-    IE: Indicator,
+    IR: Indicator,
+    IG: Indicator,
+    IB: Indicator,
     BA: Barometer,
     G: GPS,
     GP: GPSPPS,
@@ -72,8 +78,7 @@ pub struct DeviceManager<
     pub(crate) meg: Mutex<NoopRawMutex, M>,
     pub(crate) lora: Mutex<NoopRawMutex, LoRa<RK, DL>>,
     pub(crate) rng: Mutex<NoopRawMutex, R>,
-    pub(crate) status_indicator: Mutex<NoopRawMutex, IS>,
-    pub(crate) error_indicator: Mutex<NoopRawMutex, IE>,
+    pub(crate) indicators: Mutex<NoopRawMutex, IndicatorController<IR, IG, IB, T, DL>>,
     pub(crate) barometer: Mutex<NoopRawMutex, BA>,
     pub(crate) gps: Mutex<NoopRawMutex, G>,
     pub(crate) gps_pps: Mutex<NoopRawMutex, GP>,
@@ -106,8 +111,9 @@ impl<
         M: Megnetometer,
         RK: RadioKind,
         R: RNG,
-        IS: Indicator,
-        IE: Indicator,
+        IR: Indicator,
+        IG: Indicator,
+        IB: Indicator,
         BA: Barometer,
         G: GPS,
         GP: GPSPPS,
@@ -136,8 +142,9 @@ impl<
         M,
         RK,
         R,
-        IS,
-        IE,
+        IR,
+        IG,
+        IB,
         BA,
         G,
         GP,
@@ -163,8 +170,9 @@ impl<
         meg: M,
         lora: LoRa<RK, DL>,
         rng: R,
-        status_indicator: IS,
-        error_indicator: IE,
+        red_indicator: IR,
+        green_indicator: IG,
+        blue_indicator: IB,
         barometer: BA,
         gps: G,
         gps_pps: GP,
@@ -192,8 +200,13 @@ impl<
             meg: Mutex::new(meg),
             lora: Mutex::new(lora),
             rng: Mutex::new(rng),
-            status_indicator: Mutex::new(status_indicator),
-            error_indicator: Mutex::new(error_indicator),
+            indicators: Mutex::new(IndicatorController::new(
+                red_indicator,
+                green_indicator,
+                blue_indicator,
+                clock,
+                delay,
+            )),
             barometer: Mutex::new(barometer),
             gps: Mutex::new(gps),
             gps_pps: Mutex::new(gps_pps),
@@ -230,7 +243,7 @@ macro_rules! try_claim_devices {
 
 // import all the device types using `crate::common::device_manager::prelude::*;`
 #[macro_export]
-macro_rules! device_manager_type{
+macro_rules! device_manager_type {
     () => { &DeviceManager<
     impl Debugger,
     impl SysReset,
@@ -254,6 +267,7 @@ macro_rules! device_manager_type{
     impl Megnetometer,
     impl RadioKind,
     impl RNG,
+    impl Indicator,
     impl Indicator,
     impl Indicator,
     impl Barometer,
@@ -287,6 +301,7 @@ macro_rules! device_manager_type{
     impl RNG,
     impl Indicator,
     impl Indicator,
+    impl Indicator,
     impl Barometer,
     impl GPS,
     impl GPSPPS,
@@ -296,6 +311,7 @@ macro_rules! device_manager_type{
 
 pub mod prelude {
     pub use super::DeviceManager;
+    pub use super::SystemServices;
     pub use crate::device_manager_type;
     pub use crate::driver::adc::ADC;
     pub use crate::driver::arming::HardwareArming;
@@ -311,9 +327,33 @@ pub mod prelude {
     pub use crate::driver::pyro::{Continuity, PyroCtrl};
     pub use crate::driver::radio::RadioPhy;
     pub use crate::driver::rng::RNG;
+    pub use crate::driver::serial::SplitableSerial;
     pub use crate::driver::sys_reset::SysReset;
     pub use crate::driver::usb::SplitableUSB;
-    pub use crate::driver::serial::SplitableSerial;
-    pub use vlfs::{Crc, Flash};
+    pub use crate::system_services_type;
+    pub use embedded_hal_async::delay::DelayNs;
     pub use lora_phy::mod_traits::RadioKind;
+    pub use vlfs::{Crc, Flash};
+}
+
+pub struct SystemServices<'a, 'b, 'c, DL: DelayNs + Copy, T: Clock, F: Flash, C: Crc> {
+    pub(crate) fs: VLFS<F, C>,
+    pub(crate) gps: &'a GPSParser,
+    pub(crate) delay: DL,
+    pub(crate) clock: T,
+    pub(crate) unix_clock: UnixClock<'b, T>,
+    pub(crate) buzzer_queue: BuzzerQueue<'c>,
+}
+
+#[macro_export]
+macro_rules! system_services_type {
+    () => { &SystemServices<
+        '_,
+        '_,
+        '_,
+        impl DelayNs + Copy,
+        impl Clock,
+        impl Flash,
+        impl Crc,
+    >};
 }

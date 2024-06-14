@@ -3,8 +3,7 @@ use core::future::Future;
 use embassy_sync::blocking_mutex::raw::RawMutex;
 use embassy_sync::signal::Signal;
 use embedded_hal_async::delay::DelayNs;
-use futures::future::{select, Either};
-use futures::pin_mut;
+use embassy_futures::select::{select, Either};
 
 use crate::driver::clock::Clock;
 
@@ -23,11 +22,11 @@ pub async fn run_with_timeout<F: Future>(
     future: F,
 ) -> Result<F::Output, f64> {
     let timeout_fut = delay.delay_us((ms * 1_000.0) as u32);
-    pin_mut!(timeout_fut);
-    pin_mut!(future);
+    // pin_mut!(timeout_fut);
+    // pin_mut!(future);
     match select(timeout_fut, future).await {
-        Either::Left(_) => Err(ms),
-        Either::Right((result, _)) => Ok(result),
+        Either::First(_) => Err(ms),
+        Either::Second(result) => Ok(result),
     }
 }
 

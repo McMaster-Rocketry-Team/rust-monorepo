@@ -16,6 +16,7 @@ pub mod buzzer_queue;
 pub mod fixed_point;
 pub mod delta_factory;
 pub mod delta_logger;
+pub mod indicator_controller;
 
 #[macro_use]
 pub mod vlp;

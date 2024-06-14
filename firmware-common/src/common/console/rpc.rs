@@ -1,9 +1,8 @@
 use core::cell::RefCell;
 
-use vlfs::{
-    AsyncReader, Crc, FileID, FileReader, FileType, Flash, VLFSError, VLFSReadStatus, VLFS,
-};
+use vlfs::{AsyncReader, Crc, FileID, FileReader, FileType, Flash, VLFSError, VLFSReadStatus};
 
+use crate::common::device_manager::prelude::*;
 use crate::create_rpc;
 
 create_rpc! {
@@ -20,7 +19,8 @@ create_rpc! {
             Error,
         }
     }
-    state<F: Flash, C: Crc>(fs: &VLFS<F, C>) {
+    state<F: Flash, C: Crc>(services: &SystemServices<'_,'_,'_, impl DelayNs + Copy, impl Clock, F, C>) {
+        let fs = &services.fs;
         let mut reader: Option<FileReader<F, C>> = None;
 
         let selected_file_type: RefCell<Option<FileType>> = RefCell::new(None);
