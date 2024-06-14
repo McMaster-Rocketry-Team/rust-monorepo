@@ -3,7 +3,7 @@ use core::fmt::Debug;
 pub trait AsyncEraseFlash {
     // Error type that will be returned by the flash driver.
     // This type must implement the defmt::Format trait.
-    type Error: defmt::Format + Debug;
+    type Error: defmt::Format + Debug + embedded_io_async::Error;
 
     // This function returns the size of the flash memory in bytes.
     async fn size(&self) -> u32;

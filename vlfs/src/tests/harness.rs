@@ -9,6 +9,7 @@ use futures::executor::block_on;
 use rand::Rng;
 use replace_with::replace_with_or_abort;
 use tokio::sync::Mutex;
+use std::fmt::Debug;
 
 #[cfg(feature = "internal_tests_use_debug_flash")]
 use super::debug_flash::DebugFlash;
@@ -84,7 +85,7 @@ impl VLFSTestingHarness {
         &mut self,
         file_id: FileID,
         length: usize,
-    ) -> Result<(), VLFSError<()>> {
+    ) -> Result<(), VLFSError<impl defmt::Format + Debug + embedded_io_async::Error>> {
         let file_writer = self.file_writers.get_mut(&file_id).unwrap();
 
         let mut rng = rand::thread_rng();

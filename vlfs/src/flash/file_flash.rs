@@ -27,6 +27,12 @@ impl From<RandomAccessError> for RandomAccessErrorWrapper {
     }
 }
 
+impl embedded_io_async::Error for RandomAccessErrorWrapper {
+    fn kind(&self) -> embedded_io_async::ErrorKind {
+        embedded_io_async::ErrorKind::Other
+    }
+}
+
 // This implementation should be compatible with the dump from a real hardware, not tested yet.
 impl Flash for FileFlash {
     type Error = RandomAccessErrorWrapper;

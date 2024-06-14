@@ -7,7 +7,7 @@ authors = ["pegasis"]
 [features]
 default = ["ecc", "defmt"]
 log = ["dep:log"]
-defmt = []
+defmt = ["embedded-io-async/defmt-03"]
 std = ["dep:random-access-disk", "dep:random-access-storage"]
 ecc = []
 internal_tests_use_debug_flash = []
@@ -30,6 +30,7 @@ random-access-disk = { version = "3.0.0", default-features = false, features = [
     "libc",
 ], optional = true }
 random-access-storage = { version = "5.0.0", optional = true }
+embedded-io-async = { version = "0.6.1" }
 
 [dev-dependencies]
 vlfs = { version = "*", path = ".", default-features = false, features = [

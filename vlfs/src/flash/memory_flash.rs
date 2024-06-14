@@ -22,8 +22,17 @@ impl MemoryFlash {
     }
 }
 
+#[derive(defmt::Format, Debug)]
+pub struct MemoryFlashError;
+
+impl embedded_io_async::Error for MemoryFlashError {
+    fn kind(&self) -> embedded_io_async::ErrorKind {
+        embedded_io_async::ErrorKind::Other
+    }
+}
+
 impl Flash for MemoryFlash {
-    type Error = ();
+    type Error = MemoryFlashError;
 
     async fn size(&self) -> u32 {
         SIZE

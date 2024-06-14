@@ -1,10 +1,19 @@
 use crate::Flash;
 
 #[derive(defmt::Format)]
-pub struct DummyFlash {}
+pub struct DummyFlash;
+
+#[derive(defmt::Format, Debug)]
+pub struct DummyFlashError;
+
+impl embedded_io_async::Error for DummyFlashError {
+    fn kind(&self) -> embedded_io_async::ErrorKind {
+        embedded_io_async::ErrorKind::Other
+    }
+}
 
 impl Flash for DummyFlash {
-    type Error = ();
+    type Error = DummyFlashError;
 
     async fn size(&self) -> u32 {
         262144 * 256

@@ -1,6 +1,7 @@
 use core::fmt;
 
 use crate::utils::io_traits::AsyncReader;
+use embedded_io_async::{Read, ErrorType};
 
 use super::*;
 
@@ -283,6 +284,15 @@ where
 
         Ok((&read_buffer[..read_length], VLFSReadStatus::Ok))
     }
+}
+
+
+impl<'a, F, C> ErrorType for FileReader<'a, F, C>
+where
+    F: Flash,
+    C: Crc,
+{
+    type Error = VLFSError<F::Error>;
 }
 
 impl<'a, F, C> Drop for FileReader<'a, F, C>

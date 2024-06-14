@@ -2213,6 +2213,7 @@ dependencies = [
  "defmt",
  "embassy-sync 0.5.0",
  "embedded-hal-async",
+ "embedded-io-async",
  "env_logger",
  "function_name",
  "futures",
