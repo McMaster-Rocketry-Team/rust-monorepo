@@ -19,6 +19,7 @@ pub mod indicator_controller;
 pub mod rkyv_structs;
 pub mod config_file;
 pub mod config_structs;
+pub mod vlp2;
 
 #[macro_use]
 pub mod vlp;
