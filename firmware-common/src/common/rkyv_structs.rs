@@ -1,3 +1,5 @@
+use core::ops::{Index, IndexMut};
+
 use rkyv::{Archive, Deserialize, Serialize};
 
 #[derive(Clone, Debug, defmt::Format, Archive, Serialize, Deserialize)]
@@ -33,6 +35,20 @@ impl<const N: usize, T: Copy + Default> Default for RkyvVec<N, T> {
             data: [Default::default(); N],
             len: Default::default(),
         }
+    }
+}
+
+impl<const N: usize, T: Copy + Default> Index<usize> for RkyvVec<N, T> {
+    type Output = T;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.data[index]
+    }
+}
+
+impl<const N: usize, T: Copy + Default> IndexMut<usize> for RkyvVec<N, T> {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.data[index]
     }
 }
 

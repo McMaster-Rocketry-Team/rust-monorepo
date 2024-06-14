@@ -8,6 +8,14 @@ macro_rules! create_serialized_enum {
             )*
         }
 
+        $(
+            impl From<$log_type> for $enum_name {
+                fn from(log: $log_type) -> Self {
+                    $enum_name::$log_type(log)
+                }
+            }
+        )*
+
         impl $enum_name {
             pub fn write_to_buffer(&self, buffer: &mut [u8]) -> usize {
                 use rkyv::ser::Serializer;

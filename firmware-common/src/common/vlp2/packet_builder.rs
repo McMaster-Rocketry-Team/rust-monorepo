@@ -1,13 +1,12 @@
 use crc::{Crc, CRC_8_SMBUS};
 use cryptoxide::chacha20::ChaCha20;
 use lora_modulation::BaseBandModulationParams;
-use rkyv::Archive;
 
 use crate::{common::unix_clock::UnixClock, Clock};
 
-use super::packet::{VLPDownlinkPacket, VLPUplinkPacket};
+use super::packet::{VLPDownlinkPacket, VLPUplinkPacket, MAX_VLP_UPLINK_PACKET_SIZE};
 
-pub struct LoraPacketBuilder<'a, CL: Clock> {
+pub struct VLPPacketBuilder<'a, CL: Clock> {
     lora_config: BaseBandModulationParams,
     crc: Crc<u8>,
     uplink_key: [u8; 32],
@@ -15,7 +14,7 @@ pub struct LoraPacketBuilder<'a, CL: Clock> {
     unix_clock: UnixClock<'a, CL>,
 }
 
-impl<'a, CL: Clock> LoraPacketBuilder<'a, CL> {
+impl<'a, CL: Clock> VLPPacketBuilder<'a, CL> {
     pub fn new(
         unix_clock: UnixClock<'a, CL>,
         lora_config: BaseBandModulationParams,
@@ -24,7 +23,7 @@ impl<'a, CL: Clock> LoraPacketBuilder<'a, CL> {
         let mut downlink_key = [0u8; 32];
         let mut chacha = ChaCha20::new(&key, &[0; 8]);
         chacha.process_mut(&mut downlink_key);
-        LoraPacketBuilder {
+        VLPPacketBuilder {
             lora_config,
             crc: Crc::<u8>::new(&CRC_8_SMBUS),
             uplink_key: key,
@@ -100,7 +99,7 @@ impl<'a, CL: Clock> LoraPacketBuilder<'a, CL> {
         }
 
         // decrypt
-        let mut deserialize_buffer = [0u8; size_of::<<VLPUplinkPacket as Archive>::Archived>() + 1];
+        let mut deserialize_buffer = [0u8; MAX_VLP_UPLINK_PACKET_SIZE];
         if buffer.len() > deserialize_buffer.len() {
             log_info!("Received Lora message too long");
             return None;
