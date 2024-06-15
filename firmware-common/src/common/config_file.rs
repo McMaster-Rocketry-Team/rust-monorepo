@@ -1,4 +1,5 @@
 use core::marker::PhantomData;
+use core::mem::size_of;
 
 use embedded_io_async::Read;
 use rkyv::{

@@ -1,5 +1,4 @@
 use embassy_sync::{blocking_mutex::raw::RawMutex, channel::Channel};
-use futures::Future;
 
 pub struct RpcChannel<M: RawMutex, Q, P> {
     request_channal: Channel<M, Q, 1>,
@@ -39,11 +38,11 @@ pub struct RpcChannelServer<'a, M: RawMutex, Q, P> {
 }
 
 impl<'a, M: RawMutex, Q, P> RpcChannelServer<'a, M, Q, P> {
-    pub async fn serve<F: Future<Output = P>>(&mut self, mut handler: impl FnMut(Q) -> F) -> ! {
-        loop {
-            let request = self.channel.request_channal.receive().await;
-            let response = handler(request).await;
-            self.channel.response_channal.send(response).await;
-        }
+    pub async fn get_request(&mut self) -> Q {
+        self.channel.request_channal.receive().await
+    }
+
+    pub async fn send_response(&mut self, response: P) {
+        self.channel.response_channal.send(response).await;
     }
 }

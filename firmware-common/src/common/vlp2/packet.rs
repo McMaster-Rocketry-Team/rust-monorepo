@@ -1,4 +1,5 @@
 use rkyv::{Archive, Deserialize, Serialize};
+use core::mem::size_of;
 
 use crate::create_serialized_enum;
 

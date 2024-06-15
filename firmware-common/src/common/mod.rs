@@ -21,6 +21,7 @@ pub mod config_file;
 pub mod config_structs;
 pub mod vlp2;
 pub mod rpc_channel;
+pub mod can_bus;
 
 #[macro_use]
 pub mod vlp;

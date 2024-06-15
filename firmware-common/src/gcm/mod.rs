@@ -48,8 +48,13 @@ pub async fn gcm_main(
         VLPDownlinkClient::new(&config.lora, services.unix_clock, services.delay, lora_key);
     let vlp_client_fut = vlp_client.run(&mut lora);
 
-    let vlp_send_fut =
-        send_uplink_packet_rpc_server.serve(async |packet| vlp_client.send(packet).await);
+    let vlp_send_fut = async {
+        loop {
+            let packet = send_uplink_packet_rpc_server.get_request().await;
+            let response = vlp_client.send(packet).await;
+            send_uplink_packet_rpc_server.send_response(response).await;
+        }
+    };
 
     let vlp_receive_fut = async {
         loop {
@@ -62,6 +67,6 @@ pub async fn gcm_main(
 
     #[allow(unreachable_code)]
     {
-        join!(vlp_client_fut, vlp_send_fut, vlp_receive_fut,);
+        join!(vlp_client_fut, vlp_send_fut, vlp_receive_fut);
     }
 }

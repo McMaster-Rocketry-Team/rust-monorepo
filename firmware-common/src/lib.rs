@@ -45,7 +45,7 @@ pub mod utils;
 
 pub async fn init(
     device_manager: device_manager_type!(mut),
-    device_serial_number: [u8; 12],
+    device_serial_number: &[u8; 12],
     device_config: Option<DeviceConfig>,
 ) -> ! {
     claim_devices!(
@@ -130,7 +130,7 @@ pub async fn init(
         &mut serial,
         &services,
         &device_config,
-        &device_serial_number,
+        device_serial_number,
         gcm_downlink_package_channel.receiver(),
         gcm_send_uplink_packet_rpc.client(),
     );
@@ -141,7 +141,7 @@ pub async fn init(
                 &mut usb,
                 &services,
                 &device_config,
-                &device_serial_number,
+                device_serial_number,
                 gcm_downlink_package_channel.receiver(),
                 gcm_send_uplink_packet_rpc.client(),
             )

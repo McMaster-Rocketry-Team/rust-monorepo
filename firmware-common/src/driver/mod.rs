@@ -16,3 +16,4 @@ pub mod serial;
 pub mod sys_reset;
 pub mod usb;
 pub mod timestamp;
+pub mod can_bus;

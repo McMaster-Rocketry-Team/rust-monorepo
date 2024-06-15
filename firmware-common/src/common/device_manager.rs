@@ -3,22 +3,7 @@ use lora_phy::{mod_traits::RadioKind, LoRa};
 use vlfs::{Crc, Flash, VLFS};
 
 use crate::{driver::{
-    adc::ADC,
-    arming::HardwareArming,
-    barometer::Barometer,
-    buzzer::Buzzer,
-    camera::Camera,
-    clock::Clock,
-    debugger::Debugger,
-    gps::{GPS, GPSPPS},
-    imu::IMU,
-    indicator::Indicator,
-    meg::Megnetometer,
-    pyro::{Continuity, PyroCtrl},
-    rng::RNG,
-    serial::SplitableSerial,
-    sys_reset::SysReset,
-    usb::SplitableUSB,
+    adc::ADC, arming::HardwareArming, barometer::Barometer, buzzer::Buzzer, camera::Camera, can_bus::CanBusTX, clock::Clock, debugger::Debugger, gps::{GPS, GPSPPS}, imu::IMU, indicator::Indicator, meg::Megnetometer, pyro::{Continuity, PyroCtrl}, rng::RNG, serial::SplitableSerial, sys_reset::SysReset, usb::SplitableUSB
 }, ConfigFiles};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
 
@@ -58,6 +43,7 @@ pub struct DeviceManager<
     G: GPS,
     GP: GPSPPS,
     CAM: Camera,
+    CT: CanBusTX,
 > {
     pub(crate) sys_reset: Mutex<NoopRawMutex, D>,
     pub(crate) flash: Mutex<NoopRawMutex, F>,
@@ -83,6 +69,7 @@ pub struct DeviceManager<
     pub(crate) gps: Mutex<NoopRawMutex, G>,
     pub(crate) gps_pps: Mutex<NoopRawMutex, GP>,
     pub(crate) camera: Mutex<NoopRawMutex, CAM>,
+    pub(crate) can_tx: Mutex<NoopRawMutex, CT>,
     pub(crate) clock: T,
     pub(crate) delay: DL,
     pub(crate) debugger: DB,
@@ -118,6 +105,7 @@ impl<
         G: GPS,
         GP: GPSPPS,
         CAM: Camera,
+        CT: CanBusTX,
     >
     DeviceManager<
         DB,
@@ -149,6 +137,7 @@ impl<
         G,
         GP,
         CAM,
+        CT,
     >
 {
     pub fn new(
@@ -177,6 +166,7 @@ impl<
         gps: G,
         gps_pps: GP,
         camera: CAM,
+        can_bus_tx: CT,
         debugger: DB,
     ) -> Self {
         Self {
@@ -211,6 +201,7 @@ impl<
             gps: Mutex::new(gps),
             gps_pps: Mutex::new(gps_pps),
             camera: Mutex::new(camera),
+            can_tx: Mutex::new(can_bus_tx),
             clock,
             delay,
         }
@@ -274,6 +265,7 @@ macro_rules! device_manager_type {
     impl GPS,
     impl GPSPPS,
     impl Camera,
+    impl CanBusTX,
 >};
 
 (mut) => { &mut DeviceManager<
@@ -306,6 +298,7 @@ macro_rules! device_manager_type {
     impl GPS,
     impl GPSPPS,
     impl Camera,
+    impl CanBusTX,
 >}
 }
 
@@ -330,6 +323,7 @@ pub mod prelude {
     pub use crate::driver::serial::SplitableSerial;
     pub use crate::driver::sys_reset::SysReset;
     pub use crate::driver::usb::SplitableUSB;
+    pub use crate::driver::can_bus::CanBusTX;
     pub use crate::common::config_file::ConfigFiles;
     pub use crate::system_services_type;
     pub use embedded_hal_async::delay::DelayNs;
