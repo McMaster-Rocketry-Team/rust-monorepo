@@ -102,7 +102,7 @@ macro_rules! create_rpc {
                     let (mut tx, mut rx) = serial.split();
 
                     loop {
-                        match rx.read_exact(&mut request_buffer[15..16]).await{
+                        match rx.read_exact(&mut request_buffer[15..16]).await {
                             Ok(_) => {},
                             Err(ReadExactError::UnexpectedEof)=>{
                                 log_info!("Unexpected EOF, skipping.");
