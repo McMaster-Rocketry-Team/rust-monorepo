@@ -4,7 +4,8 @@ use embassy_sync::{
     blocking_mutex::{raw::NoopRawMutex, Mutex as BlockingMutex},
     channel::{Channel, Sender},
     mutex::Mutex,
-    pubsub::{PubSubBehavior, PubSubChannel}, signal::Signal,
+    pubsub::{PubSubBehavior, PubSubChannel},
+    signal::Signal,
 };
 use flight_profile::FlightProfile;
 use futures::join;
@@ -20,9 +21,18 @@ use crate::{
     allocator::HEAP,
     avionics::up_right_vector_file::write_up_right_vector,
     common::{
-        buzzer_queue::BuzzerTone, config_file::ConfigFile, config_structs::{DeviceConfig, DeviceModeConfig}, delta_logger::{
+        buzzer_queue::BuzzerTone,
+        config_file::ConfigFile,
+        config_structs::{DeviceConfig, DeviceModeConfig},
+        delta_logger::{
             BufferedTieredRingDeltaLogger, TieredRingDeltaLogger, TieredRingDeltaLoggerConfig,
-        }, file_types::*, telemetry::telemetry_data::{AvionicsState, TelemetryData}, vlp2::{packet::VLPUplinkPacket, uplink_client::VLPUplinkClient}
+        },
+        file_types::*,
+        telemetry::telemetry_data::{AvionicsState, TelemetryData},
+        vlp2::{
+            packet::VLPUplinkPacket, telemetry_packet::TelemetryPacketBuilder,
+            uplink_client::VLPUplinkClient,
+        },
     },
     driver::{
         imu::IMUReading,
@@ -61,66 +71,6 @@ pub mod flight_core_event;
 pub mod flight_profile;
 mod self_test;
 mod up_right_vector_file;
-
-async fn save_sensor_reading(
-    reading: SensorReading,
-    sensors_file: &mut FileWriter<'_, impl Flash, impl Crc>,
-    buffer: [u8; 100],
-) -> [u8; 100] {
-    let mut serializer = BufferSerializer::new(buffer);
-    match reading {
-        SensorReading::GPS(gps) => {
-            serializer.serialize_value(&gps).unwrap();
-            let buffer = serializer.into_inner();
-            let buffer_slice =
-                &buffer[..core::mem::size_of::<<GPSLocation as Archive>::Archived>()];
-            sensors_file.extend_from_u8(0).await.unwrap();
-            sensors_file.extend_from_slice(buffer_slice).await.unwrap();
-
-            buffer
-        }
-        SensorReading::IMU(imu) => {
-            serializer.serialize_value(&imu).unwrap();
-            let buffer = serializer.into_inner();
-            let buffer_slice =
-                &buffer[..core::mem::size_of::<<IMUReading<BootTimestamp> as Archive>::Archived>()];
-            sensors_file.extend_from_u8(1).await.unwrap();
-            sensors_file.extend_from_slice(buffer_slice).await.unwrap();
-
-            buffer
-        }
-        SensorReading::Baro(baro) => {
-            serializer.serialize_value(&baro).unwrap();
-            let buffer = serializer.into_inner();
-            let buffer_slice = &buffer
-                [..core::mem::size_of::<<BaroReading<BootTimestamp> as Archive>::Archived>()];
-            sensors_file.extend_from_u8(2).await.unwrap();
-            sensors_file.extend_from_slice(buffer_slice).await.unwrap();
-
-            buffer
-        }
-        SensorReading::Meg(meg) => {
-            serializer.serialize_value(&meg).unwrap();
-            let buffer = serializer.into_inner();
-            let buffer_slice =
-                &buffer[..core::mem::size_of::<<MegReading<BootTimestamp> as Archive>::Archived>()];
-            sensors_file.extend_from_u8(3).await.unwrap();
-            sensors_file.extend_from_slice(buffer_slice).await.unwrap();
-
-            buffer
-        }
-        SensorReading::BatteryVoltage(battery_voltage) => {
-            serializer.serialize_value(&battery_voltage).unwrap();
-            let buffer = serializer.into_inner();
-            let buffer_slice =
-                &buffer[..core::mem::size_of::<<BatteryVoltage as Archive>::Archived>()];
-            sensors_file.extend_from_u8(4).await.unwrap();
-            sensors_file.extend_from_slice(buffer_slice).await.unwrap();
-
-            buffer
-        }
-    }
-}
 
 #[inline(never)]
 pub async fn avionics_main(
@@ -281,8 +231,24 @@ pub async fn avionics_main(
         camera
     );
 
+    let telemetry_packet_builder = BlockingMutex::<NoopRawMutex, _>::new(RefCell::new(
+        TelemetryPacketBuilder::new(services.unix_clock),
+    ));
     let vlp = VLPUplinkClient::new(&config.lora, services.unix_clock, services.delay, lora_key);
-    let vlp_fut = vlp.run(&mut lora);
+    let vlp_tx_fut = async {
+        // Wait 1 sec for all the fields to be populated
+        services.delay.delay_ms(1000).await;
+
+        let mut update_ticker = Ticker::every(services.clock, services.delay, 100.0);
+        loop {
+            let packet = telemetry_packet_builder.lock(|b| {
+                let mut b = b.borrow();
+                b.create_packet()
+            });
+            vlp.send(packet);
+            update_ticker.next().await;
+        }
+    };
     let vlp_rx_fut = async {
         loop {
             let (packet, status) = vlp.wait_receive().await;
@@ -294,21 +260,11 @@ pub async fn avionics_main(
             }
         }
     };
-
-
-    let clock = device_manager.clock;
+    let vlp_fut = vlp.run(&mut lora);
 
     let imu = Mutex::<NoopRawMutex, _>::new(imu);
 
-    let gps_parser = GPSParser::new();
-
     let cal_info = read_imu_calibration_file(fs).await;
-
-    let radio_tx = Channel::<NoopRawMutex, ApplicationLayerTxPackage, 1>::new();
-    let radio_rx = Channel::<NoopRawMutex, ApplicationLayerRxPackage, 3>::new();
-
-    let telemetry_data: BlockingMutex<NoopRawMutex, RefCell<TelemetryData>> =
-        BlockingMutex::new(RefCell::new(TelemetryData::default()));
 
     let flight_core_events = Channel::<NoopRawMutex, FlightCoreEvent, 3>::new();
 
@@ -318,8 +274,6 @@ pub async fn avionics_main(
         hardware_armed: false,
         software_armed: false,
     }));
-
-    
 
     let mut delay = device_manager.delay;
     let main_fut = async {
