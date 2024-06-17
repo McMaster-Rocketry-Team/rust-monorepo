@@ -14,6 +14,17 @@ macro_rules! fixed_point_factory {
                 Some(value as $fixed)
             }
 
+            pub fn to_fixed_point_capped(value: $float) -> $fixed {
+                let value = if value < $min {
+                    $min
+                } else if value > $max {
+                    $max
+                } else {
+                    value
+                };
+                return Self::to_fixed_point(value).unwrap();
+            }
+
             pub fn to_float(value: $fixed) -> $float {
                 let value = value as $float;
                 let value = value / $fixed::max_value() as $float;

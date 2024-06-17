@@ -1,0 +1,270 @@
+use rkyv::{Archive, Deserialize, Serialize};
+
+use crate::{
+    common::unix_clock::{self, UnixClock},
+    driver::gps::{self, GPSLocation},
+    Clock,
+};
+
+use super::packet::VLPDownlinkPacket;
+
+mod factories {
+    use crate::fixed_point_factory;
+
+    fixed_point_factory!(BatteryV, 2.0 * 2.0, 4.3 * 2.0, f32, u16);
+    fixed_point_factory!(Temperature, -10.0, 85.0, f32, u16);
+}
+
+#[derive(defmt::Format, Debug, Clone, Archive, Deserialize, Serialize)]
+pub struct PadIdleTelemetryPacket {
+    timestamp: f64,
+    lat_lon: (f64, f64),
+    battery_v: u16,
+    temperature: u16,
+    software_armed: bool,
+}
+
+impl PadIdleTelemetryPacket {
+    pub fn new(
+        timestamp: f64,
+        lat_lon: (f64, f64),
+        battery_v: f32,
+        temperature: f32,
+        software_armed: bool,
+    ) -> Self {
+        Self {
+            timestamp,
+            lat_lon,
+            battery_v: factories::BatteryV::to_fixed_point_capped(battery_v),
+            temperature: factories::Temperature::to_fixed_point_capped(temperature),
+            software_armed,
+        }
+    }
+
+    pub fn timestamp(&self) -> f64 {
+        self.timestamp
+    }
+
+    pub fn lat_lon(&self) -> (f64, f64) {
+        self.lat_lon
+    }
+
+    pub fn battery_v(&self) -> f32 {
+        factories::BatteryV::to_float(self.battery_v)
+    }
+
+    pub fn temperature(&self) -> f32 {
+        factories::Temperature::to_float(self.temperature)
+    }
+
+    pub fn software_armed(&self) -> bool {
+        self.software_armed
+    }
+}
+
+#[derive(defmt::Format, Debug, Clone, Archive, Deserialize, Serialize)]
+pub struct PadDiagnosticTelemetryPacket {
+    pub timestamp: f64,
+    pub unix_clock_ready: bool,
+    pub lat_lon: Option<(f64, f64)>,
+    pub battery_v: u16,
+    pub temperature: u16,
+    pub hardware_armed: bool,
+    pub software_armed: bool,
+
+    pub num_of_fix_satellites: u8,
+    pub pyro_main_continuity: bool,
+    pub pyro_drogue_continuity: bool,
+    // TODO more
+}
+
+impl PadDiagnosticTelemetryPacket {
+    pub fn new(
+        timestamp: f64,
+        unix_clock_ready: bool,
+        lat_lon: Option<(f64, f64)>,
+        battery_v: f32,
+        temperature: f32,
+        hardware_armed: bool,
+        software_armed: bool,
+        num_of_fix_satellites: u8,
+        pyro_main_continuity: bool,
+        pyro_drogue_continuity: bool,
+    ) -> Self {
+        Self {
+            timestamp,
+            unix_clock_ready,
+            lat_lon,
+            battery_v: factories::BatteryV::to_fixed_point_capped(battery_v),
+            temperature: factories::Temperature::to_fixed_point_capped(temperature),
+            hardware_armed,
+            software_armed,
+            num_of_fix_satellites,
+            pyro_main_continuity,
+            pyro_drogue_continuity,
+        }
+    }
+
+    pub fn timestamp(&self) -> f64 {
+        self.timestamp
+    }
+
+    pub fn unix_clock_ready(&self) -> bool {
+        self.unix_clock_ready
+    }
+
+    pub fn lat_lon(&self) -> Option<(f64, f64)> {
+        self.lat_lon
+    }
+
+    pub fn battery_v(&self) -> f32 {
+        factories::BatteryV::to_float(self.battery_v)
+    }
+
+    pub fn temperature(&self) -> f32 {
+        factories::Temperature::to_float(self.temperature)
+    }
+
+    pub fn hardware_armed(&self) -> bool {
+        self.hardware_armed
+    }
+
+    pub fn software_armed(&self) -> bool {
+        self.software_armed
+    }
+
+    pub fn num_of_fix_satellites(&self) -> u8 {
+        self.num_of_fix_satellites
+    }
+
+    pub fn pyro_main_continuity(&self) -> bool {
+        self.pyro_main_continuity
+    }
+
+    pub fn pyro_drogue_continuity(&self) -> bool {
+        self.pyro_drogue_continuity
+    }
+}
+
+#[derive(defmt::Format, Debug, Clone, Archive, Deserialize, Serialize)]
+pub enum FlightCoreStateTelemetry {
+    DisArmed,
+    Armed,
+    PowerAscend,
+    Coast,
+    DrogueChute,
+    MainChute,
+    MainChuteDescend,
+    Landed,
+}
+
+#[derive(defmt::Format, Debug, Clone, Archive, Deserialize, Serialize)]
+pub struct InFlightNominalTelemetryPacket {
+    pub timestamp_offset: f32,
+    pub altitude: f32,
+    pub temperature: u16,
+    pub max_altitude: f32,
+    pub max_speed: u16,
+    pub lat_lon_offset: (u16, u16),
+    pub battery_v: u16,
+    pub flight_core_state: FlightCoreStateTelemetry,
+}
+
+#[derive(defmt::Format, Debug, Clone, Archive, Deserialize, Serialize)]
+pub struct InFlightDiagnosticTelemetryPacket {
+    pub timestamp_offset: f32,
+    pub altitude: f32,
+    pub temperature: u16,
+    pub max_altitude: f32,
+    pub max_speed: u16,
+    pub lat_lon_offset: (u16, u16),
+    pub battery_v: u16,
+    pub flight_core_state: FlightCoreStateTelemetry,
+
+    pub num_of_fix_satellites: u8,
+}
+
+pub struct TelemetryPacketBuilder<'a, K: Clock> {
+    unix_clock: UnixClock<'a, K>,
+    pub gps_location: Option<GPSLocation>,
+    pub battery_v: f32,
+    pub temperature: f32,
+    pub hardware_armed: bool,
+    pub software_armed: bool,
+    pub pyro_main_continuity: bool,
+    pub pyro_drogue_continuity: bool,
+}
+
+impl<'a, K: Clock> TelemetryPacketBuilder<'a, K> {
+    pub fn new(unix_clock: UnixClock<'a, K>) -> Self {
+        Self {
+            unix_clock,
+            gps_location: None,
+            battery_v: 0.0,
+            temperature: 0.0,
+            hardware_armed: false,
+            software_armed: false,
+            pyro_main_continuity: false,
+            pyro_drogue_continuity: false,
+        }
+    }
+
+    fn is_pad_ready(&self) -> bool {
+        if !self.unix_clock.ready() {
+            return false;
+        }
+        if let Some(gps_location) = &self.gps_location {
+            if gps_location.lat_lon.is_none() {
+                return false;
+            }
+        } else {
+            return false;
+        }
+        if !self.hardware_armed {
+            return false;
+        }
+        if !self.pyro_main_continuity {
+            return false;
+        }
+        if !self.pyro_drogue_continuity {
+            return false;
+        }
+
+        return true;
+    }
+
+    pub fn create_packet(&self) -> VLPDownlinkPacket {
+        if true {
+            // create pad telemetry packet
+            if self.is_pad_ready() {
+                PadIdleTelemetryPacket::new(
+                    self.unix_clock.now_ms(),
+                    self.gps_location.as_ref().unwrap().lat_lon.unwrap(),
+                    self.battery_v,
+                    self.temperature,
+                    self.software_armed,
+                )
+                .into()
+            } else {
+                PadDiagnosticTelemetryPacket::new(
+                    self.unix_clock.now_ms(),
+                    self.unix_clock.ready(),
+                    self.gps_location.as_ref().map(|l| l.lat_lon).flatten(),
+                    self.battery_v,
+                    self.temperature,
+                    self.hardware_armed,
+                    self.software_armed,
+                    self.gps_location
+                        .as_ref()
+                        .map_or(0, |l| l.num_of_fix_satellites),
+                    self.pyro_main_continuity,
+                    self.pyro_drogue_continuity,
+                )
+                .into()
+            }
+        } else {
+            // create in-flight telemetry packet
+            todo!()
+        }
+    }
+}

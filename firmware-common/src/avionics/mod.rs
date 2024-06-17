@@ -1,26 +1,33 @@
 use core::cell::RefCell;
 
 use embassy_sync::{
-    blocking_mutex::raw::NoopRawMutex,
-    blocking_mutex::Mutex as BlockingMutex,
+    blocking_mutex::{raw::NoopRawMutex, Mutex as BlockingMutex},
     channel::{Channel, Sender},
     mutex::Mutex,
-    pubsub::{PubSubBehavior, PubSubChannel},
+    pubsub::{PubSubBehavior, PubSubChannel}, signal::Signal,
 };
+use flight_profile::FlightProfile;
 use futures::join;
 use nalgebra::Vector3;
 use rkyv::{
     ser::{serializers::BufferSerializer, Serializer},
     Archive,
 };
-use vlfs::{AsyncWriter, Crc, FileWriter, Flash, VLFS};
+use vlfs::{AsyncWriter, Crc, FileWriter, Flash};
 
 use self::flight_core::Config as FlightCoreConfig;
 use crate::{
     allocator::HEAP,
     avionics::up_right_vector_file::write_up_right_vector,
-    common::telemetry::telemetry_data::{AvionicsState, TelemetryData},
-    driver::{imu::IMUReading, timestamp::BootTimestamp},
+    common::{
+        buzzer_queue::BuzzerTone, config_file::ConfigFile, config_structs::{DeviceConfig, DeviceModeConfig}, delta_logger::{
+            BufferedTieredRingDeltaLogger, TieredRingDeltaLogger, TieredRingDeltaLoggerConfig,
+        }, file_types::*, telemetry::telemetry_data::{AvionicsState, TelemetryData}, vlp2::{packet::VLPUplinkPacket, uplink_client::VLPUplinkClient}
+    },
+    driver::{
+        imu::IMUReading,
+        timestamp::{BootTimestamp, UnixTimestamp},
+    },
     vlp::application_layer::{ApplicationLayerRxPackage, ApplicationLayerTxPackage},
 };
 use crate::{
@@ -32,7 +39,7 @@ use crate::{
     claim_devices,
     common::{
         device_manager::prelude::*,
-        files::{AVIONICS_LOG_FILE_TYPE, AVIONICS_SENSORS_FILE_TYPE},
+        file_types::{AVIONICS_LOG_FILE_TYPE, AVIONICS_SENSORS_FILE_TYPE},
         gps_parser::{GPSLocation, GPSParser},
         imu_calibration_file::read_imu_calibration_file,
         sensor_snapshot::{BatteryVoltage, PartialSensorSnapshot, SensorReading},
@@ -45,11 +52,13 @@ use crate::{
     },
 };
 use heapless::Vec;
-use self_test::self_test;
+use self_test::{self_test, SelfTestResult};
 
+pub mod avionics_state;
 pub mod baro_reading_filter;
 pub mod flight_core;
 pub mod flight_core_event;
+pub mod flight_profile;
 mod self_test;
 mod up_right_vector_file;
 
@@ -115,9 +124,16 @@ async fn save_sensor_reading(
 
 #[inline(never)]
 pub async fn avionics_main(
-    fs: &VLFS<impl Flash, impl Crc>,
     device_manager: device_manager_type!(),
+    services: system_services_type!(),
+    config: &DeviceConfig,
 ) -> ! {
+    let lora_key = if let DeviceModeConfig::Avionics { lora_key } = &config.mode {
+        lora_key
+    } else {
+        log_unreachable!()
+    };
+
     // Init 1KiB heap
     {
         use core::mem::MaybeUninit;
@@ -126,107 +142,130 @@ pub async fn avionics_main(
         unsafe { HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE) }
     }
 
-    claim_devices!(device_manager, buzzer);
+    claim_devices!(device_manager, indicators);
 
-    let sensors_file = fs.create_file(AVIONICS_SENSORS_FILE_TYPE).await.unwrap();
-    let mut sensors_file = fs.open_file_for_write(sensors_file.id).await.unwrap();
-    let log_file = fs.create_file(AVIONICS_LOG_FILE_TYPE).await.unwrap();
-    let mut logs_file = fs.open_file_for_write(log_file.id).await.unwrap();
+    let flight_profile_file =
+        ConfigFile::<FlightProfile, _, _>::new(services.fs, FLIGHT_PROFILE_FILE_TYPE);
+    let flight_profile: FlightProfile =
+        if let Some(flight_profile) = flight_profile_file.read().await {
+            log_info!("Flight profile: {:?}", flight_profile);
+            flight_profile
+        } else {
+            log_info!("No flight profile file found, halting");
+            indicators
+                .run([333, 666], [0, 333, 333, 333], [0, 666, 333, 0])
+                .await
+        };
+
+    log_info!("Running self test");
+    match self_test(device_manager).await {
+        SelfTestResult::Ok => {
+            log_info!("Self test passed");
+            services.buzzer_queue.publish(BuzzerTone(2000, 50, 150));
+            services.buzzer_queue.publish(BuzzerTone(2000, 50, 150));
+            services.buzzer_queue.publish(BuzzerTone(3000, 50, 150));
+            services.buzzer_queue.publish(BuzzerTone(3000, 50, 150));
+        }
+        SelfTestResult::PartialFailed => {
+            log_warn!("Self test partially failed");
+            services.buzzer_queue.publish(BuzzerTone(2000, 50, 150));
+            services.buzzer_queue.publish(BuzzerTone(2000, 50, 150));
+            services.buzzer_queue.publish(BuzzerTone(3000, 50, 150));
+            services.buzzer_queue.publish(BuzzerTone(2000, 50, 150));
+        }
+        SelfTestResult::Failed => {
+            log_error!("Self test failed");
+            services.buzzer_queue.publish(BuzzerTone(2000, 50, 150));
+            services.buzzer_queue.publish(BuzzerTone(2000, 50, 150));
+            services.buzzer_queue.publish(BuzzerTone(3000, 50, 150));
+            services.buzzer_queue.publish(BuzzerTone(3000, 50, 150));
+            indicators.run([200, 200], [], []).await;
+        }
+    }
+
+    log_info!("Creating loggers");
+    let sensor_logger_config = TieredRingDeltaLoggerConfig::new(60, 20 * 60, 10 * 60, 4 * 60 * 60);
+    let gps_logger = BufferedTieredRingDeltaLogger::<GPSLocation, _, _, 1>::new(
+        services.fs,
+        &sensor_logger_config,
+        AVIONICS_GPS_LOGGER_TIER_1,
+        10,
+        AVIONICS_GPS_LOGGER_TIER_2,
+        1,
+    )
+    .await
+    .unwrap();
+    let gps_logger_fut = gps_logger.run();
+    let low_g_imu_logger =
+        BufferedTieredRingDeltaLogger::<IMUReading<UnixTimestamp>, _, _, 10>::new(
+            services.fs,
+            &sensor_logger_config,
+            AVIONICS_LOW_G_IMU_LOGGER_TIER_1,
+            200,
+            AVIONICS_LOW_G_IMU_LOGGER_TIER_2,
+            10,
+        )
+        .await
+        .unwrap();
+    let low_g_imu_logger_fut = low_g_imu_logger.run();
+    let high_g_imu_logger =
+        BufferedTieredRingDeltaLogger::<IMUReading<UnixTimestamp>, _, _, 10>::new(
+            services.fs,
+            &sensor_logger_config,
+            AVIONICS_HIGH_G_IMU_LOGGER_TIER_1,
+            200,
+            AVIONICS_HIGH_G_IMU_LOGGER_TIER_2,
+            10,
+        )
+        .await
+        .unwrap();
+    let high_g_imu_logger_fut = high_g_imu_logger.run();
+    let baro_logger = BufferedTieredRingDeltaLogger::<IMUReading<UnixTimestamp>, _, _, 10>::new(
+        services.fs,
+        &sensor_logger_config,
+        AVIONICS_BARO_LOGGER_TIER_1,
+        200,
+        AVIONICS_BARO_LOGGER_TIER_2,
+        10,
+    )
+    .await
+    .unwrap();
+    let baro_logger_fut = baro_logger.run();
+    let meg_logger = BufferedTieredRingDeltaLogger::<IMUReading<UnixTimestamp>, _, _, 10>::new(
+        services.fs,
+        &sensor_logger_config,
+        AVIONICS_MEG_LOGGER_TIER_1,
+        20,
+        AVIONICS_MEG_LOGGER_TIER_2,
+        1,
+    )
+    .await
+    .unwrap();
+    let meg_logger_fut = meg_logger.run();
+    let battery_logger = BufferedTieredRingDeltaLogger::<IMUReading<UnixTimestamp>, _, _, 10>::new(
+        services.fs,
+        &sensor_logger_config,
+        AVIONICS_BATTERY_LOGGER_TIER_1,
+        50,
+        AVIONICS_BATTERY_LOGGER_TIER_2,
+        1,
+    )
+    .await
+    .unwrap();
+    let battery_logger_fut = battery_logger.run();
+    let total_logger_max_size = gps_logger.max_total_file_size()
+        + low_g_imu_logger.max_total_file_size()
+        + high_g_imu_logger.max_total_file_size()
+        + baro_logger.max_total_file_size()
+        + meg_logger.max_total_file_size()
+        + battery_logger.max_total_file_size();
+    log_info!(
+        "Loggers created, total logger max size: {}",
+        total_logger_max_size
+    );
 
     let landed = BlockingMutex::<NoopRawMutex, _>::new(RefCell::new(false));
     let sensors_file_should_write_all = BlockingMutex::<NoopRawMutex, _>::new(RefCell::new(false));
-    let sensors_file_channel = PubSubChannel::<NoopRawMutex, SensorReading, 200, 1, 1>::new();
-
-    let sensors_file_fut = async {
-        let write_interval_ms = 10000.0;
-        let mut last_gps_timestamp = 0.0f64;
-        let mut last_imu_timestamp = 0.0f64;
-        let mut last_baro_timestamp = 0.0f64;
-        let mut last_meg_timestamp = 0.0f64;
-        let mut last_batt_volt = 0.0f64;
-        let mut buffer = [0u8; 100];
-        let mut subscriber = sensors_file_channel.subscriber().unwrap();
-
-        loop {
-            let sensor_reading = subscriber.next_message_pure().await;
-            if sensors_file_should_write_all.lock(|v| *v.borrow()) {
-                buffer = save_sensor_reading(sensor_reading, &mut sensors_file, buffer).await;
-            } else {
-                match &sensor_reading {
-                    SensorReading::GPS(gps_reading) => {
-                        if gps_reading.timestamp - last_gps_timestamp > write_interval_ms {
-                            last_gps_timestamp = gps_reading.timestamp;
-                            buffer = save_sensor_reading(sensor_reading, &mut sensors_file, buffer)
-                                .await;
-                        }
-                    }
-                    SensorReading::IMU(imu_reading) => {
-                        if imu_reading.timestamp - last_imu_timestamp > write_interval_ms {
-                            last_imu_timestamp = imu_reading.timestamp;
-                            buffer = save_sensor_reading(sensor_reading, &mut sensors_file, buffer)
-                                .await;
-                        }
-                    }
-                    SensorReading::Baro(baro_reading) => {
-                        if baro_reading.timestamp - last_baro_timestamp > write_interval_ms {
-                            last_baro_timestamp = baro_reading.timestamp;
-                            buffer = save_sensor_reading(sensor_reading, &mut sensors_file, buffer)
-                                .await;
-                        }
-                    }
-                    SensorReading::Meg(meg_reading) => {
-                        if meg_reading.timestamp - last_meg_timestamp > write_interval_ms {
-                            last_meg_timestamp = meg_reading.timestamp;
-                            buffer = save_sensor_reading(sensor_reading, &mut sensors_file, buffer)
-                                .await;
-                        }
-                    }
-                    SensorReading::BatteryVoltage(battery_voltage) => {
-                        if battery_voltage.timestamp - last_batt_volt > write_interval_ms {
-                            last_batt_volt = battery_voltage.timestamp;
-                            buffer = save_sensor_reading(sensor_reading, &mut sensors_file, buffer)
-                                .await;
-                        }
-                    }
-                }
-            }
-        }
-    };
-
-    let mut delay = device_manager.delay;
-    if self_test(device_manager).await {
-        buzzer.play(2000, 50).await;
-        delay.delay_ms(150).await;
-        buzzer.play(2000, 50).await;
-        delay.delay_ms(150).await;
-        buzzer.play(3000, 50).await;
-        delay.delay_ms(150).await;
-        buzzer.play(3000, 50).await;
-    } else {
-        buzzer.play(3000, 50).await;
-        delay.delay_ms(150).await;
-        buzzer.play(3000, 50).await;
-        delay.delay_ms(150).await;
-        buzzer.play(2000, 50).await;
-        delay.delay_ms(150).await;
-        buzzer.play(2000, 50).await;
-    }
-
-    let shared_buzzer_channel = PubSubChannel::<NoopRawMutex, Vec<BuzzerTone, 7>, 2, 1, 1>::new();
-
-    let shared_buzzer_fut = async {
-        let mut sub = shared_buzzer_channel.subscriber().unwrap();
-        loop {
-            let tones = sub.next_message_pure().await;
-            for tone in tones {
-                if let Some(frequency) = tone.0 {
-                    buzzer.play(frequency, tone.1).await;
-                } else {
-                    delay.delay_ms(tone.1).await;
-                }
-            }
-        }
-    };
 
     claim_devices!(
         device_manager,
@@ -241,10 +280,23 @@ pub async fn avionics_main(
         lora,
         camera
     );
+
+    let vlp = VLPUplinkClient::new(&config.lora, services.unix_clock, services.delay, lora_key);
+    let vlp_fut = vlp.run(&mut lora);
+    let vlp_rx_fut = async {
+        loop {
+            let (packet, status) = vlp.wait_receive().await;
+            match packet {
+                VLPUplinkPacket::VerticalCalibrationPacket(_) => todo!(),
+                VLPUplinkPacket::SoftArmPacket(_) => todo!(),
+                VLPUplinkPacket::LowPowerModePacket(_) => todo!(),
+                VLPUplinkPacket::ResetPacket(_) => todo!(),
+            }
+        }
+    };
+
+
     let clock = device_manager.clock;
-    imu.reset().await.unwrap();
-    barometer.reset().await.unwrap();
-    meg.reset().await.unwrap();
 
     let imu = Mutex::<NoopRawMutex, _>::new(imu);
 
@@ -267,17 +319,7 @@ pub async fn avionics_main(
         software_armed: false,
     }));
 
-    let radio_fut = async {
-        // let mut socket = PVLPMaster::new(PVLP(radio_phy), clock);
-
-        // loop {
-        //     let tx_package = radio_tx.receive().await;
-        //     let rx = socket.tx_and_rx(tx_package).await;
-        //     if let Some(rx_package) = rx {
-        //         radio_rx.send(rx_package).await;
-        //     }
-        // }
-    };
+    
 
     let mut delay = device_manager.delay;
     let main_fut = async {
@@ -300,62 +342,62 @@ pub async fn avionics_main(
         let pyro1_cont_fut = async {
             let cont = pyro1_cont.read_continuity().await.unwrap();
             telemetry_data.lock(|d| {
-            let mut d = d.borrow_mut();
-            d.pyro1_cont = cont
-            });
-
-            loop {
-            let cont = pyro1_cont.wait_continuity_change().await.unwrap();
-            telemetry_data.lock(|d| {
                 let mut d = d.borrow_mut();
                 d.pyro1_cont = cont
             });
+
+            loop {
+                let cont = pyro1_cont.wait_continuity_change().await.unwrap();
+                telemetry_data.lock(|d| {
+                    let mut d = d.borrow_mut();
+                    d.pyro1_cont = cont
+                });
             }
         };
 
         let pyro2_cont_fut = async {
             let cont = pyro2_cont.read_continuity().await.unwrap();
             telemetry_data.lock(|d| {
-            let mut d = d.borrow_mut();
-            d.pyro2_cont = cont
-            });
-
-            loop {
-            let cont = pyro2_cont.wait_continuity_change().await.unwrap();
-            telemetry_data.lock(|d| {
                 let mut d = d.borrow_mut();
                 d.pyro2_cont = cont
             });
+
+            loop {
+                let cont = pyro2_cont.wait_continuity_change().await.unwrap();
+                telemetry_data.lock(|d| {
+                    let mut d = d.borrow_mut();
+                    d.pyro2_cont = cont
+                });
             }
         };
 
         let imu_fut = async {
             loop {
-            if arming_state.lock(|s| (*s.borrow()).is_armed())
-                && let Ok(mut imu) = imu.try_lock()
-            {
-                let imu_reading = imu.read().await.unwrap();
-                sensors_file_channel.publish_immediate(SensorReading::IMU(imu_reading.clone()));
-                imu_channel.publish_immediate(imu_reading);
-            }
-            imu_ticker.next().await;
+                if arming_state.lock(|s| (*s.borrow()).is_armed())
+                    && let Ok(mut imu) = imu.try_lock()
+                {
+                    let imu_reading = imu.read().await.unwrap();
+                    sensors_file_channel.publish_immediate(SensorReading::IMU(imu_reading.clone()));
+                    imu_channel.publish_immediate(imu_reading);
+                }
+                imu_ticker.next().await;
             }
         };
 
         let baro_fut = async {
             loop {
-            if arming_state.lock(|s| (*s.borrow()).is_armed()) {
-                let baro_reading = barometer.read().await.unwrap();
-                telemetry_data.lock(|d| {
-                let mut d = d.borrow_mut();
-                d.pressure = baro_reading.pressure;
-                d.temperature = baro_reading.temperature;
-                });
-                sensors_file_channel
-                .publish_immediate(SensorReading::Baro(baro_reading.clone()));
-                baro_channel.publish_immediate(baro_reading);
-            }
-            baro_ticker.next().await;
+                if arming_state.lock(|s| (*s.borrow()).is_armed()) {
+                    let baro_reading = barometer.read().await.unwrap();
+                    telemetry_data.lock(|d| {
+                        let mut d = d.borrow_mut();
+                        d.pressure = baro_reading.pressure;
+                        d.temperature = baro_reading.temperature;
+                    });
+                    sensors_file_channel
+                        .publish_immediate(SensorReading::Baro(baro_reading.clone()));
+                    baro_channel.publish_immediate(baro_reading);
+                }
+                baro_ticker.next().await;
             }
         };
 
@@ -691,7 +733,6 @@ pub async fn avionics_main(
         radio_fut,
         main_fut,
         flight_core_event_consumer,
-        sensors_file_fut,
         camera_ctrl_future,
     );
     log_unreachable!();
@@ -704,9 +745,6 @@ const MARAUDER_2_FLIGHT_CONFIG: FlightCoreConfig = FlightCoreConfig {
     main_chute_delay_ms: 0.0,
     main_chute_altitude_agl: 365.0, // 1200 ft
 };
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-struct BuzzerTone(Option<u32>, u32);
 
 struct ArmingState {
     pub hardware_armed: bool,

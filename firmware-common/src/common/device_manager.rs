@@ -1,11 +1,27 @@
 use embedded_hal_async::delay::DelayNs;
+use heapless::Vec;
 use lora_phy::{mod_traits::RadioKind, LoRa};
 use vlfs::{Crc, Flash, VLFS};
-use heapless::Vec;
 
-use crate::{driver::{
-    adc::ADC, arming::HardwareArming, barometer::Barometer, buzzer::Buzzer, camera::Camera, can_bus::SplitableCanBus, clock::Clock, debugger::Debugger, gps::{GPS, GPSPPS}, imu::IMU, indicator::Indicator, meg::Megnetometer, pyro::{Continuity, PyroCtrl}, rng::RNG, serial::SplitableSerial, sys_reset::SysReset, usb::SplitableUSB
-}, ConfigFiles};
+use crate::driver::{
+    adc::{Ampere, Volt, ADC},
+    arming::HardwareArming,
+    barometer::Barometer,
+    buzzer::Buzzer,
+    camera::Camera,
+    can_bus::SplitableCanBus,
+    clock::Clock,
+    debugger::Debugger,
+    gps::{GPS, GPSPPS},
+    imu::IMU,
+    indicator::Indicator,
+    meg::Megnetometer,
+    pyro::{Continuity, PyroCtrl},
+    rng::RNG,
+    serial::SplitableSerial,
+    sys_reset::SysReset,
+    usb::SplitableUSB,
+};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
 
 use super::{
@@ -22,8 +38,8 @@ pub struct DeviceManager<
     F: Flash,
     C: Crc,
     I: IMU,
-    V: ADC,
-    A: ADC,
+    V: ADC<Volt>,
+    A: ADC<Ampere>,
     P1C: Continuity,
     P1T: PyroCtrl,
     P2C: Continuity,
@@ -71,7 +87,7 @@ pub struct DeviceManager<
     pub(crate) gps_pps: Mutex<NoopRawMutex, GP>,
     pub(crate) camera: Mutex<NoopRawMutex, CAM>,
     pub(crate) can_bus: Mutex<NoopRawMutex, CB>,
-    pub(crate) can_bus_health_check_ids:Vec<u32,8>,
+    pub(crate) can_bus_health_check_ids: Vec<u32, 8>,
     pub(crate) clock: T,
     pub(crate) delay: DL,
     pub(crate) debugger: DB,
@@ -85,8 +101,8 @@ impl<
         F: Flash,
         C: Crc,
         I: IMU,
-        V: ADC,
-        A: ADC,
+        V: ADC<Volt>,
+        A: ADC<Ampere>,
         P1C: Continuity,
         P1T: PyroCtrl,
         P2C: Continuity,
@@ -169,7 +185,7 @@ impl<
         gps_pps: GP,
         camera: CAM,
         can_bus: CB,
-        can_bus_health_check_ids:Vec<u32,8>,
+        can_bus_health_check_ids: Vec<u32, 8>,
         debugger: DB,
     ) -> Self {
         Self {
@@ -247,8 +263,8 @@ macro_rules! device_manager_type {
     impl Flash,
     impl Crc,
     impl IMU,
-    impl ADC,
-    impl ADC,
+    impl ADC<Volt>,
+    impl ADC<Ampere>,
     impl Continuity,
     impl PyroCtrl,
     impl Continuity,
@@ -280,8 +296,8 @@ macro_rules! device_manager_type {
     impl Flash,
     impl Crc,
     impl IMU,
-    impl ADC,
-    impl ADC,
+    impl ADC<Volt>,
+    impl ADC<Ampere>,
     impl Continuity,
     impl PyroCtrl,
     impl Continuity,
@@ -310,11 +326,12 @@ pub mod prelude {
     pub use super::DeviceManager;
     pub use super::SystemServices;
     pub use crate::device_manager_type;
-    pub use crate::driver::adc::ADC;
+    pub use crate::driver::adc::{Ampere, Volt, ADC};
     pub use crate::driver::arming::HardwareArming;
     pub use crate::driver::barometer::Barometer;
     pub use crate::driver::buzzer::Buzzer;
     pub use crate::driver::camera::Camera;
+    pub use crate::driver::can_bus::SplitableCanBus;
     pub use crate::driver::clock::Clock;
     pub use crate::driver::debugger::Debugger;
     pub use crate::driver::gps::{GPS, GPSPPS};
@@ -327,8 +344,6 @@ pub mod prelude {
     pub use crate::driver::serial::SplitableSerial;
     pub use crate::driver::sys_reset::SysReset;
     pub use crate::driver::usb::SplitableUSB;
-    pub use crate::driver::can_bus::SplitableCanBus;
-    pub use crate::common::config_file::ConfigFiles;
     pub use crate::system_services_type;
     pub use embedded_hal_async::delay::DelayNs;
     pub use lora_phy::mod_traits::RadioKind;
@@ -337,7 +352,6 @@ pub mod prelude {
 
 pub struct SystemServices<'f, 'a, 'b, 'c, DL: DelayNs + Copy, T: Clock, F: Flash, C: Crc> {
     pub(crate) fs: &'f VLFS<F, C>,
-    pub(crate) config: ConfigFiles<'f, F, C>,
     pub(crate) gps: &'a GPSParser,
     pub(crate) delay: DL,
     pub(crate) clock: T,

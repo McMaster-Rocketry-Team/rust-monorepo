@@ -1,4 +1,4 @@
-use super::files::CALIBRATION_FILE_TYPE;
+use super::file_types::CALIBRATION_FILE_TYPE;
 use ferraris_calibration::CalibrationInfo;
 use vlfs::{AsyncReader, Crc, Flash, VLFS};
 

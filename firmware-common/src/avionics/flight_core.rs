@@ -12,7 +12,6 @@ use ferraris_calibration::CalibrationInfo;
 use heapless::Deque;
 #[allow(unused_imports)]
 use micromath::F32Ext;
-use nalgebra::Matrix3;
 use nalgebra::UnitQuaternion;
 use nalgebra::Vector3;
 
@@ -51,6 +50,7 @@ pub struct Config {
 }
 
 pub enum FlightCoreState {
+    // TODO add DisArmed
     Armed {
         // 500ms history
         snapshot_history: Deque<PartialSensorSnapshot, 100>,

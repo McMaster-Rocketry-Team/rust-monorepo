@@ -9,7 +9,9 @@ use rkyv::{
 };
 use vlfs::{AsyncWriter, Crc, FileType, Flash, VLFSError, VLFS};
 
-use super::{config_structs::DeviceConfig, files::DEVICE_CONFIG_FILE_TYPE};
+use crate::avionics::flight_profile::FlightProfile;
+
+use super::{config_structs::DeviceConfig, file_types::{DEVICE_CONFIG_FILE_TYPE, FLIGHT_PROFILE_FILE_TYPE}};
 
 pub struct ConfigFile<'a, T, F, C>
 where
@@ -86,25 +88,5 @@ where
 
         writer.extend_from_slice(&buffer).await?;
         todo!()
-    }
-}
-
-pub struct ConfigFiles<'a, F, C>
-where
-    F: Flash,
-    C: Crc,
-{
-    pub device: ConfigFile<'a, DeviceConfig, F, C>,
-}
-
-impl<'a, F, C> ConfigFiles<'a, F, C>
-where
-    F: Flash,
-    C: Crc,
-{
-    pub fn new(fs: &'a VLFS<F, C>) -> Self {
-        ConfigFiles {
-            device: ConfigFile::new(fs, DEVICE_CONFIG_FILE_TYPE),
-        }
     }
 }

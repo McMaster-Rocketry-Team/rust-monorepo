@@ -25,7 +25,6 @@ impl<T: TimestampType> IMUReading<T> {
             gyro,
         }
     }
-
 }
 
 impl<T: TimestampType> IMUReadingTrait for IMUReading<T> {
@@ -66,7 +65,7 @@ mod factories {
     fixed_point_factory!(Gyro, -2.0, 2.0, f32, u8);
 }
 
-impl<T:TimestampType> Deltable for IMUReading<T>{
+impl<T: TimestampType> Deltable for IMUReading<T> {
     type DeltaType = IMUReadingDelta<T>;
 
     fn add_delta(&self, delta: &Self::DeltaType) -> Option<Self> {
@@ -103,7 +102,6 @@ impl<T:TimestampType> Deltable for IMUReading<T>{
         })
     }
 }
-
 
 pub trait IMU {
     type Error: defmt::Format + Debug;

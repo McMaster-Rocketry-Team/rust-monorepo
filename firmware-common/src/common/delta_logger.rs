@@ -1,7 +1,10 @@
+use core::cell::RefCell;
 use core::mem::{replace, size_of};
 
 use super::delta_factory::{DeltaFactory, Deltable, UnDeltaFactory};
 use either::Either;
+use embassy_sync::blocking_mutex::raw::NoopRawMutex;
+use embassy_sync::channel::Channel;
 use rkyv::ser::serializers::BufferSerializer;
 use rkyv::ser::Serializer;
 use rkyv::{archived_root, Archive, Deserialize, Serialize};
@@ -330,6 +333,177 @@ where
         }
 
         todo!();
+    }
+}
+
+pub struct TieredRingDeltaLoggerConfig {
+    tier_1_seconds_per_segment: u32,
+    tier_1_keep_seconds: u32,
+    tier_2_seconds_per_segment: u32,
+    tier_2_keep_seconds: u32,
+    tier_2_ratio: u32,
+}
+
+impl TieredRingDeltaLoggerConfig {
+    pub fn new(
+        tier_1_seconds_per_segment: u32,
+        tier_1_keep_seconds: u32,
+        tier_2_seconds_per_segment: u32,
+        tier_2_keep_seconds: u32,
+    ) -> Self {
+        Self {
+            tier_1_seconds_per_segment,
+            tier_1_keep_seconds,
+            tier_2_seconds_per_segment,
+            tier_2_keep_seconds,
+            tier_2_ratio: tier_1_seconds_per_segment / tier_2_seconds_per_segment,
+        }
+    }
+}
+
+pub struct TieredRingDeltaLogger<'a, 'b, T, C: Crc, F: Flash>
+where
+    F::Error: defmt::Format,
+    T: Deltable,
+    T: Archive + Serialize<BufferSerializer<[u8; size_of::<T::Archived>()]>>,
+    T::DeltaType: Archive + Serialize<BufferSerializer<[u8; size_of::<T::Archived>()]>>,
+    [(); size_of::<T::Archived>()]:,
+{
+    logger_1: RingDeltaLogger<'a, T, C, F>,
+    logger_2: RingDeltaLogger<'a, T, C, F>,
+    config: &'b TieredRingDeltaLoggerConfig,
+    tier_2_counter: u32,
+    max_total_file_size: u32,
+}
+
+impl<'a, 'b, T, C: Crc, F: Flash> TieredRingDeltaLogger<'a, 'b, T, C, F>
+where
+    F::Error: defmt::Format,
+    T: Deltable + Clone,
+    T: Archive + Serialize<BufferSerializer<[u8; size_of::<T::Archived>()]>>,
+    T::DeltaType: Archive + Serialize<BufferSerializer<[u8; size_of::<T::Archived>()]>>,
+    [(); size_of::<T::Archived>()]:,
+{
+    pub async fn new(
+        fs: &'a VLFS<F, C>,
+        config: &'b TieredRingDeltaLoggerConfig,
+        tier_1_file_type: FileType,
+        tier_1_logs_per_second: u32,
+        tier_2_file_type: FileType,
+        tier_2_logs_per_second: u32,
+    ) -> Result<Self, VLFSError<F::Error>> {
+        let logger_1 = RingDeltaLogger::new(
+            fs,
+            tier_1_file_type,
+            tier_1_logs_per_second * config.tier_1_seconds_per_segment,
+            config.tier_1_keep_seconds / config.tier_1_seconds_per_segment,
+        )
+        .await?;
+        let logger_2 = RingDeltaLogger::new(
+            fs,
+            tier_2_file_type,
+            tier_2_logs_per_second * config.tier_2_seconds_per_segment,
+            config.tier_2_keep_seconds / config.tier_2_seconds_per_segment,
+        )
+        .await?;
+        Ok(Self {
+            logger_1,
+            logger_2,
+            config,
+            tier_2_counter: 0,
+            max_total_file_size: (tier_1_logs_per_second * config.tier_1_keep_seconds
+                + tier_2_logs_per_second * config.tier_2_keep_seconds)
+                * size_of::<T::Archived>() as u32,
+        })
+    }
+
+    pub fn max_total_file_size(&self) -> u32 {
+        self.max_total_file_size
+    }
+
+    pub async fn log(&mut self, value: T) -> Result<(), VLFSError<F::Error>> {
+        if self.tier_2_counter == 0 {
+            self.logger_2.log(value.clone()).await?;
+        }
+
+        self.tier_2_counter += 1;
+        if self.tier_2_counter >= self.config.tier_2_ratio {
+            self.tier_2_counter = 0;
+        }
+
+        self.logger_1.log(value).await?;
+
+        Ok(())
+    }
+
+    pub async fn close(self) -> Result<(), VLFSError<F::Error>> {
+        self.logger_1.close().await?;
+        self.logger_2.close().await?;
+        Ok(())
+    }
+}
+
+pub struct BufferedTieredRingDeltaLogger<'a, 'b, T, C: Crc, F: Flash, const SIZE: usize>
+where
+    F::Error: defmt::Format,
+    T: Deltable,
+    T: Archive + Serialize<BufferSerializer<[u8; size_of::<T::Archived>()]>>,
+    T::DeltaType: Archive + Serialize<BufferSerializer<[u8; size_of::<T::Archived>()]>>,
+    [(); size_of::<T::Archived>()]:,
+{
+    logger: RefCell<Option<TieredRingDeltaLogger<'a, 'b, T, C, F>>>,
+    max_total_file_size: u32,
+    queue: Channel<NoopRawMutex, T, SIZE>,
+}
+
+impl<'a, 'b, T, C: Crc, F: Flash, const SIZE: usize>
+    BufferedTieredRingDeltaLogger<'a, 'b, T, C, F, SIZE>
+where
+    F::Error: defmt::Format,
+    T: Deltable,
+    T: Archive + Serialize<BufferSerializer<[u8; size_of::<T::Archived>()]>>,
+    T::DeltaType: Archive + Serialize<BufferSerializer<[u8; size_of::<T::Archived>()]>>,
+    [(); size_of::<T::Archived>()]:,
+{
+    pub async fn new(
+        fs: &'a VLFS<F, C>,
+        config: &'b TieredRingDeltaLoggerConfig,
+        tier_1_file_type: FileType,
+        tier_1_logs_per_second: u32,
+        tier_2_file_type: FileType,
+        tier_2_logs_per_second: u32,
+    ) -> Result<Self, VLFSError<F::Error>> {
+        let logger = TieredRingDeltaLogger::new(
+            fs,
+            config,
+            tier_1_file_type,
+            tier_1_logs_per_second,
+            tier_2_file_type,
+            tier_2_logs_per_second,
+        )
+        .await?;
+        let queue = Channel::new();
+        Ok(Self {
+            max_total_file_size: logger.max_total_file_size(),
+            logger: RefCell::new(Some(logger)),
+            queue,
+        })
+    }
+
+    pub fn max_total_file_size(&self) -> u32 {
+        self.max_total_file_size
+    }
+
+    pub async fn log(&self, value: T) {
+        self.queue.send(value).await;
+    }
+
+    pub async fn run(&self) {
+        let mut logger = self.logger.borrow_mut().take().unwrap();
+        loop {
+            let value = self.queue.receive().await;
+            logger.log(value).await.unwrap();
+        }
     }
 }
 

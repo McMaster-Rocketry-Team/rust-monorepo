@@ -7,7 +7,7 @@ use crate::driver::barometer::ArchivedBaroReading;
 use crate::driver::barometer::BaroReading;
 use crate::{
     claim_devices,
-    common::{device_manager::prelude::*, files::GROUND_TEST_LOG_FILE_TYPE, ticker::Ticker},
+    common::{device_manager::prelude::*, file_types::GROUND_TEST_LOG_FILE_TYPE, ticker::Ticker},
     create_serialized_enum, device_manager_type,
     driver::{gps::GPS, indicator::Indicator, timestamp::UnixTimestamp},
 };

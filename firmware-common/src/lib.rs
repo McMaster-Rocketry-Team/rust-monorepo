@@ -8,9 +8,11 @@
 
 mod fmt;
 
+use common::config_file::ConfigFile;
 use common::config_structs::{DeviceConfig, DeviceModeConfig};
 use common::console::rpc::run_rpc_server;
 use common::device_manager::SystemServices;
+use common::file_types::DEVICE_CONFIG_FILE_TYPE;
 use common::rpc_channel::RpcChannel;
 use common::{buzzer_queue::BuzzerQueueRunner, unix_clock::UnixClockTask};
 use driver::clock::VLFSTimerWrapper;
@@ -85,7 +87,6 @@ pub async fn init(
 
     let services = SystemServices {
         fs: &fs,
-        config: ConfigFiles::new(&fs),
         gps: &parser,
         delay,
         clock,
@@ -114,7 +115,8 @@ pub async fn init(
         log_info!("Using device config overwrite");
         Some(device_config)
     } else {
-        if let Some(device_config) = services.config.device.read().await {
+        let device_config_file = ConfigFile::new(services.fs, DEVICE_CONFIG_FILE_TYPE);
+        if let Some(device_config) = device_config_file.read().await {
             log_info!("Read device mode from disk");
             Some(device_config)
         } else {
@@ -167,7 +169,7 @@ pub async fn init(
 
         log_info!("Starting in mode {:?}", device_config);
         match device_config.mode {
-            DeviceModeConfig::Avionics { .. } => avionics_main(&services.fs, device_manager).await,
+            DeviceModeConfig::Avionics { .. } => avionics_main(device_manager, &services, &device_config).await,
             DeviceModeConfig::GCM { .. } => {
                 gcm_main(
                     device_manager,

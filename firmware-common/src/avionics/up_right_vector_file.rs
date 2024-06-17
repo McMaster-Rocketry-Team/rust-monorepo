@@ -1,4 +1,4 @@
-use crate::common::files::AVIONICS_UP_RIGHT_FILE_TYPE;
+use crate::common::file_types::AVIONICS_UP_RIGHT_FILE_TYPE;
 use nalgebra::Vector3;
 use vlfs::{AsyncReader, AsyncWriter, Crc, Flash, VLFSError, VLFS};
 

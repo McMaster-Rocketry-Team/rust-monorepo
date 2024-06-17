@@ -10,7 +10,7 @@ use crate::{
     beacon::beacon_data::BeaconData,
     claim_devices,
     common::{
-        device_manager::prelude::*, files::BEACON_SENDER_LOG_FILE_TYPE, gps_parser::GPSParser,
+        device_manager::prelude::*, file_types::BEACON_SENDER_LOG_FILE_TYPE, gps_parser::GPSParser,
     },
     device_manager_type,
     driver::{gps::GPS, indicator::Indicator},
