@@ -1,4 +1,6 @@
 use crate::common::vlp2::telemetry_packet::{
+    ArchivedInFlightDiagnosticTelemetryPacket, ArchivedInFlightNominalTelemetryPacket,
+    ArchivedPadDiagnosticTelemetryPacket, ArchivedPadIdleTelemetryPacket,
     InFlightDiagnosticTelemetryPacket, InFlightNominalTelemetryPacket,
     PadDiagnosticTelemetryPacket, PadIdleTelemetryPacket,
 };

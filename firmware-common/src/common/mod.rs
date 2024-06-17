@@ -5,7 +5,6 @@ pub mod gps_parser;
 pub mod imu_calibration_file;
 pub mod moving_average;
 mod multi_waker;
-pub mod pvlp;
 pub mod sensor_snapshot;
 pub mod telemetry;
 pub mod ticker;
@@ -22,6 +21,3 @@ pub mod config_structs;
 pub mod vlp2;
 pub mod rpc_channel;
 pub mod can_bus;
-
-#[macro_use]
-pub mod vlp;
