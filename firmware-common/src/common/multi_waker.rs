@@ -57,6 +57,12 @@ pub struct MultiWakerRegistration<const N: usize> {
     wakers: [WakerRegistration; N],
 }
 
+impl<const N: usize> Default for MultiWakerRegistration<N> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<const N: usize> MultiWakerRegistration<N> {
     /// Create a new empty instance
     pub const fn new() -> Self {

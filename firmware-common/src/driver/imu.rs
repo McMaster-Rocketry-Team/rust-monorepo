@@ -4,9 +4,12 @@ use embedded_hal_async::delay::DelayNs;
 use ferraris_calibration::IMUReadingTrait;
 use rkyv::{Archive, Deserialize, Serialize};
 
-use crate::common::delta_factory::Deltable;
+use crate::{
+    common::{delta_factory::Deltable, unix_clock::UnixClock},
+    Clock,
+};
 
-use super::timestamp::{BootTimestamp, TimestampType};
+use super::timestamp::{BootTimestamp, TimestampType, UnixTimestamp};
 
 #[derive(defmt::Format, Debug, Clone, Archive, Deserialize, Serialize)]
 pub struct IMUReading<T: TimestampType> {
@@ -23,6 +26,17 @@ impl<T: TimestampType> IMUReading<T> {
             timestamp,
             acc,
             gyro,
+        }
+    }
+}
+
+impl IMUReading<BootTimestamp> {
+    pub fn to_unix_timestamp(self, unix_clock: UnixClock<impl Clock>) -> IMUReading<UnixTimestamp> {
+        IMUReading {
+            _phantom: PhantomData,
+            timestamp: unix_clock.convert_to_unix(self.timestamp),
+            acc: self.acc,
+            gyro: self.gyro,
         }
     }
 }

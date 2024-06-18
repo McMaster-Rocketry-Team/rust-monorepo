@@ -95,8 +95,7 @@ where
                         {
                             low_power_mode = *enabled;
                         }
-                        self.rx_signal.signal((packet, packet_status));
-
+                        
                         let ack_packet_serialized = self.packet_builder.serialize_downlink(
                             &mut buffer,
                             &AckPacket {
@@ -105,6 +104,8 @@ where
                             .into(),
                         );
                         lora.tx(ack_packet_serialized).await?;
+
+                        self.rx_signal.signal((packet, packet_status));
                     }
                     Err(RadioError::ReceiveTimeout) | Ok(None) => {}
                     Err(e) => {

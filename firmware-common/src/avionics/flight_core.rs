@@ -4,6 +4,7 @@ use super::baro_reading_filter::BaroFilterOutput;
 use super::baro_reading_filter::BaroReadingFilter;
 use super::flight_core_event::FlightCoreEvent;
 use super::flight_core_event::FlightCoreEventDispatcher;
+use super::flight_profile::FlightProfile;
 use crate::common::moving_average::NoSumSMA;
 use crate::common::sensor_snapshot::PartialSensorSnapshot;
 use crate::common::telemetry::telemetry_data::AvionicsState;
@@ -39,14 +40,6 @@ impl Default for Variances {
             baro_altemeter: 2.0,
         }
     }
-}
-
-pub struct Config {
-    pub drogue_chute_minimum_time_ms: f64,
-    pub drogue_chute_minimum_altitude_agl: f32,
-    pub drogue_chute_delay_ms: f64,
-    pub main_chute_delay_ms: f64,
-    pub main_chute_altitude_agl: f32,
 }
 
 pub enum FlightCoreState {
@@ -100,7 +93,7 @@ impl FlightCoreState {
 // Designed to run at 200hz
 pub struct FlightCore<D: FlightCoreEventDispatcher> {
     event_dispatcher: D,
-    config: Config,
+    flight_profile: FlightProfile,
     state: FlightCoreState,
     mounting_angle_compensation_quat: UnitQuaternion<f32>,
     last_snapshot_timestamp: Option<f64>,
@@ -113,7 +106,7 @@ pub struct FlightCore<D: FlightCoreEventDispatcher> {
 
 impl<D: FlightCoreEventDispatcher> FlightCore<D> {
     pub fn new(
-        config: Config,
+        flight_profile: FlightProfile,
         mut event_dispatcher: D,
         rocket_upright_acc: Vector3<f32>,
         variances: Variances,
@@ -131,7 +124,7 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
         event_dispatcher.dispatch(FlightCoreEvent::ChangeState(AvionicsState::Armed));
         Self {
             event_dispatcher,
-            config,
+            flight_profile,
             baro_altimeter_offset: None,
             state: FlightCoreState::new(),
             // panics when sky_vector and plus_y_vector are pointing in the opposite direction,

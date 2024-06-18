@@ -1,7 +1,7 @@
 use rkyv::{Archive, Deserialize, Serialize};
 
 #[derive(Clone, Debug, defmt::Format, Archive, Serialize, Deserialize)]
-pub enum PyroSelection{
+pub enum PyroSelection {
     Pyro1,
     Pyro2,
     Pyro3,

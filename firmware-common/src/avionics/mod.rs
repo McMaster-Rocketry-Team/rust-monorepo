@@ -7,30 +7,33 @@ use embassy_sync::{
     pubsub::{PubSubBehavior, PubSubChannel},
     signal::Signal,
 };
-use flight_profile::FlightProfile;
+use flight_profile::{FlightProfile, PyroSelection};
 use futures::join;
+use imu_calibration_info::IMUCalibrationInfo;
 use nalgebra::Vector3;
 use rkyv::{
     ser::{serializers::BufferSerializer, Serializer},
-    Archive,
+    Archive, Deserialize, Serialize,
 };
 use vlfs::{AsyncWriter, Crc, FileWriter, Flash};
 
-use self::flight_core::Config as FlightCoreConfig;
 use crate::{
     allocator::HEAP,
     avionics::up_right_vector_file::write_up_right_vector,
     common::{
-        buzzer_queue::BuzzerTone,
+        buzzer_queue::{self, BuzzerTone},
         config_file::ConfigFile,
         config_structs::{DeviceConfig, DeviceModeConfig},
         delta_logger::{
             BufferedTieredRingDeltaLogger, TieredRingDeltaLogger, TieredRingDeltaLoggerConfig,
         },
         file_types::*,
+        imu_calibration_file,
         telemetry::telemetry_data::{AvionicsState, TelemetryData},
         vlp2::{
-            packet::VLPUplinkPacket, telemetry_packet::TelemetryPacketBuilder,
+            packet::{SoftArmPacket, VLPUplinkPacket},
+            packet_builder,
+            telemetry_packet::TelemetryPacketBuilder,
             uplink_client::VLPUplinkClient,
         },
     },
@@ -69,6 +72,7 @@ pub mod baro_reading_filter;
 pub mod flight_core;
 pub mod flight_core_event;
 pub mod flight_profile;
+mod imu_calibration_info;
 mod self_test;
 mod up_right_vector_file;
 
@@ -133,6 +137,27 @@ pub async fn avionics_main(
         }
     }
 
+    claim_devices!(
+        device_manager,
+        pyro1_cont,
+        pyro1_ctrl,
+        pyro2_cont,
+        pyro2_ctrl,
+        pyro3_cont,
+        pyro3_ctrl
+    );
+
+    let (mut pyro_main_cont, mut pyro_main_ctrl) = match flight_profile.main_pyro {
+        PyroSelection::Pyro1 => (pyro1_cont, pyro1_ctrl),
+        PyroSelection::Pyro2 => (pyro2_cont, pyro2_ctrl),
+        PyroSelection::Pyro3 => (pyro3_cont, pyro3_ctrl),
+    };
+    let (mut pyro_drogue_cont, mut pyro_drouge_ctrl) = match flight_profile.drogue_pyro {
+        PyroSelection::Pyro1 => (pyro1_cont, pyro1_ctrl),
+        PyroSelection::Pyro2 => (pyro2_cont, pyro2_ctrl),
+        PyroSelection::Pyro3 => (pyro3_cont, pyro3_ctrl),
+    };
+
     log_info!("Creating loggers");
     let sensor_logger_config = TieredRingDeltaLoggerConfig::new(60, 20 * 60, 10 * 60, 4 * 60 * 60);
     let gps_logger = BufferedTieredRingDeltaLogger::<GPSLocation, _, _, 1>::new(
@@ -170,7 +195,7 @@ pub async fn avionics_main(
         .await
         .unwrap();
     let high_g_imu_logger_fut = high_g_imu_logger.run();
-    let baro_logger = BufferedTieredRingDeltaLogger::<IMUReading<UnixTimestamp>, _, _, 10>::new(
+    let baro_logger = BufferedTieredRingDeltaLogger::<BaroReading<UnixTimestamp>, _, _, 10>::new(
         services.fs,
         &sensor_logger_config,
         AVIONICS_BARO_LOGGER_TIER_1,
@@ -181,7 +206,7 @@ pub async fn avionics_main(
     .await
     .unwrap();
     let baro_logger_fut = baro_logger.run();
-    let meg_logger = BufferedTieredRingDeltaLogger::<IMUReading<UnixTimestamp>, _, _, 10>::new(
+    let meg_logger = BufferedTieredRingDeltaLogger::<MegReading<UnixTimestamp>, _, _, 10>::new(
         services.fs,
         &sensor_logger_config,
         AVIONICS_MEG_LOGGER_TIER_1,
@@ -214,6 +239,29 @@ pub async fn avionics_main(
         total_logger_max_size
     );
 
+    // states
+    let arming_state = BlockingMutex::<NoopRawMutex, _>::new(RefCell::new(ArmingState {
+        hardware_armed: false,
+        software_armed: false,
+    }));
+    let arming_changed_signal = Signal::<NoopRawMutex, ()>::new();
+    let flight_core: BlockingMutex<
+        NoopRawMutex,
+        RefCell<Option<FlightCore<Sender<NoopRawMutex, FlightCoreEvent, 3>>>>,
+    > = BlockingMutex::new(RefCell::new(None));
+    let flight_core_events = Channel::<NoopRawMutex, FlightCoreEvent, 3>::new();
+
+    let low_g_imu_signal = Signal::<NoopRawMutex, IMUReading<UnixTimestamp>>::new();
+    let high_g_imu_signal = Signal::<NoopRawMutex, IMUReading<UnixTimestamp>>::new();
+    let baro_signal = Signal::<NoopRawMutex, BaroReading<UnixTimestamp>>::new();
+
+    let imu_config_file = ConfigFile::<IMUCalibrationInfo, _, _>::new(
+        services.fs,
+        UPRIGHT_VECTOR_AND_GYRO_OFFSET_FILE_TYPE,
+    );
+    let mut imu_config =
+        BlockingMutex::<NoopRawMutex, _>::new(RefCell::new(imu_config_file.read().await));
+
     let landed = BlockingMutex::<NoopRawMutex, _>::new(RefCell::new(false));
     let sensors_file_should_write_all = BlockingMutex::<NoopRawMutex, _>::new(RefCell::new(false));
 
@@ -225,15 +273,12 @@ pub async fn avionics_main(
         gps,
         meg,
         batt_voltmeter,
-        pyro1_cont,
-        pyro2_cont,
         lora,
-        camera
+        camera,
+        sys_reset
     );
 
-    let telemetry_packet_builder = BlockingMutex::<NoopRawMutex, _>::new(RefCell::new(
-        TelemetryPacketBuilder::new(services.unix_clock),
-    ));
+    let telemetry_packet_builder = TelemetryPacketBuilder::new(services.unix_clock);
     let vlp = VLPUplinkClient::new(&config.lora, services.unix_clock, services.delay, lora_key);
     let vlp_tx_fut = async {
         // Wait 1 sec for all the fields to be populated
@@ -241,10 +286,7 @@ pub async fn avionics_main(
 
         let mut update_ticker = Ticker::every(services.clock, services.delay, 100.0);
         loop {
-            let packet = telemetry_packet_builder.lock(|b| {
-                let mut b = b.borrow();
-                b.create_packet()
-            });
+            let packet = telemetry_packet_builder.create_packet();
             vlp.send(packet);
             update_ticker.next().await;
         }
@@ -253,107 +295,188 @@ pub async fn avionics_main(
         loop {
             let (packet, status) = vlp.wait_receive().await;
             match packet {
-                VLPUplinkPacket::VerticalCalibrationPacket(_) => todo!(),
-                VLPUplinkPacket::SoftArmPacket(_) => todo!(),
+                VLPUplinkPacket::VerticalCalibrationPacket(_) => {
+                    log_info!("Vertical calibration");
+                    if services.unix_clock.ready()
+                        && !arming_state.lock(|s| (*s.borrow()).is_armed())
+                    {
+                        let mut ticker = Ticker::every(services.clock, services.delay, 1.0);
+                        let mut acc_sum = Vector3::<f32>::zeros();
+                        let mut gyro_sum = Vector3::<f32>::zeros();
+                        for _ in 0..100 {
+                            let mut reading = low_g_imu_signal.wait().await;
+                            acc_sum += Vector3::from(reading.acc);
+                            gyro_sum += Vector3::from(reading.gyro);
+                            ticker.next().await;
+                        }
+                        acc_sum /= 100.0;
+                        gyro_sum /= 100.0;
+
+                        let new_imu_config = IMUCalibrationInfo {
+                            gyro_offset: (-gyro_sum).into(),
+                            up_right_vector: acc_sum.into(),
+                        };
+                        imu_config_file.write(&new_imu_config);
+                        imu_config.lock(|s| s.borrow_mut().replace(new_imu_config));
+                    }
+                }
+                VLPUplinkPacket::SoftArmPacket(SoftArmPacket { armed, .. }) => {
+                    arming_state.lock(|s| s.borrow_mut().software_armed = armed);
+                    arming_changed_signal.signal(());
+                    telemetry_packet_builder.update(|b| {
+                        b.software_armed = armed;
+                    });
+                }
                 VLPUplinkPacket::LowPowerModePacket(_) => todo!(),
-                VLPUplinkPacket::ResetPacket(_) => todo!(),
+                VLPUplinkPacket::ResetPacket(_) => {
+                    sys_reset.reset();
+                }
             }
         }
     };
     let vlp_fut = vlp.run(&mut lora);
 
-    let imu = Mutex::<NoopRawMutex, _>::new(imu);
+    let hardware_arming_fut = async {
+        let mut hardware_armed = arming_switch.read_arming().await.unwrap();
+        if hardware_armed {
+            services.buzzer_queue.publish(BuzzerTone(2000, 700, 300));
+            services.buzzer_queue.publish(BuzzerTone(3000, 700, 300));
+        }
+        loop {
+            arming_state.lock(|s| {
+                s.borrow_mut().hardware_armed = hardware_armed;
+            });
+            telemetry_packet_builder.update(|b| {
+                b.hardware_armed = hardware_armed;
+            });
+            arming_changed_signal.signal(());
+            hardware_armed = arming_switch.wait_arming_change().await.unwrap();
+            if hardware_armed {
+                services.buzzer_queue.publish(BuzzerTone(2000, 700, 300));
+                services.buzzer_queue.publish(BuzzerTone(3000, 700, 300));
+            } else {
+                services.buzzer_queue.publish(BuzzerTone(3000, 700, 300));
+                services.buzzer_queue.publish(BuzzerTone(2000, 700, 300));
+            }
+        }
+    };
 
-    let cal_info = read_imu_calibration_file(fs).await;
+    let setup_flight_core_fut = async {
+        loop {
+            arming_changed_signal.wait().await;
+            let armed = arming_state.lock(|s| (*s.borrow()).is_armed());
+            let flight_core_initialized = flight_core.lock(|s| s.borrow().is_some());
+            if armed && !flight_core_initialized {
+                if let Some(imu_config) = imu_config.lock(|s| s.borrow().clone()) {
+                    flight_core.lock(|s| {
+                        let mut s = s.borrow_mut();
+                        s.replace(FlightCore::new(
+                            flight_profile,
+                            flight_core_events.sender(),
+                            imu_config.up_right_vector.into(),
+                            Variances::default(),
+                        ));
+                    })
+                }
+            } else if !armed && flight_core_initialized {
+                flight_core.lock(|s| s.take());
+            }
+        }
+    };
 
-    let flight_core_events = Channel::<NoopRawMutex, FlightCoreEvent, 3>::new();
+    let flight_core_events_receiver_fut = async {
+        let receiver = flight_core_events.receiver();
+        loop {
+            let event = receiver.receive().await;
+            match event {
+                FlightCoreEvent::CriticalError => todo!(),
+                FlightCoreEvent::Ignition => todo!(),
+                FlightCoreEvent::Apogee => todo!(),
+                FlightCoreEvent::DeployMain => todo!(),
+                FlightCoreEvent::DeployDrogue => todo!(),
+                FlightCoreEvent::Landed => todo!(),
+                FlightCoreEvent::DidNotReachMinApogee => todo!(),
+                FlightCoreEvent::ChangeState(_) => todo!(),
+                FlightCoreEvent::ChangeAltitude(_) => todo!(),
+            }
+        }
+    };
 
-    let gps_fut = gps_parser.run(&mut gps);
+    let pyro_main_cont_fut = async {
+        let mut cont = pyro_main_cont.read_continuity().await.unwrap();
 
-    let arming_state = BlockingMutex::<NoopRawMutex, _>::new(RefCell::new(ArmingState {
-        hardware_armed: false,
-        software_armed: false,
-    }));
+        loop {
+            telemetry_packet_builder.update(|b| {
+                b.pyro_main_continuity = cont;
+            });
+            cont = pyro_main_cont.wait_continuity_change().await.unwrap();
+        }
+    };
 
-    let mut delay = device_manager.delay;
+    let pyro_drogue_cont_fut = async {
+        let mut cont = pyro_drogue_cont.read_continuity().await.unwrap();
+
+        loop {
+            telemetry_packet_builder.update(|b| {
+                b.pyro_drogue_continuity = cont;
+            });
+            cont = pyro_drogue_cont.wait_continuity_change().await.unwrap();
+        }
+    };
+
+    let sensors_fut = async {
+        services.unix_clock.wait_until_ready().await;
+
+        let mut low_g_imu_ticker = Ticker::every(services.clock, services.delay, 5.0);
+        let low_g_imu_fut = async {
+            loop {
+                let imu_reading = imu.read().await.unwrap().to_unix_timestamp(services.unix_clock);
+                low_g_imu_signal.signal(imu_reading.clone());
+                low_g_imu_logger.log(imu_reading).await;
+                low_g_imu_ticker.next().await;
+            }
+        };
+
+        let mut high_g_imu_ticker = Ticker::every(services.clock, services.delay, 5.0);
+        let high_g_imu_fut = async {
+            loop {
+                let imu_reading = imu.read().await.unwrap().to_unix_timestamp(services.unix_clock);
+                high_g_imu_signal.signal(imu_reading.clone());
+                high_g_imu_logger.log(imu_reading).await;
+                high_g_imu_ticker.next().await;
+            }
+        };
+
+        let mut baro_ticker = Ticker::every(services.clock, services.delay, 5.0);
+        let baro_fut = async {
+            loop {
+                let baro_reading = barometer.read().await.unwrap().to_unix_timestamp(services.unix_clock);
+                baro_signal.signal(baro_reading.clone());
+                baro_logger.log(baro_reading).await;
+                baro_ticker.next().await;
+            }
+        };
+
+        let mut gps_ticker = Ticker::every(services.clock, services.delay, 100.0);
+        let gps_fut = async {
+            loop {
+                let gps_location = services.gps.get_nmea();
+                gps_logger.log(gps_location).await;
+                gps_ticker.next().await;
+            }
+        };
+    };
+
     let main_fut = async {
-        // TODO buzzer
-        let rocket_upright_acc: BlockingMutex<NoopRawMutex, RefCell<Option<Vector3<f32>>>> =
-            BlockingMutex::new(RefCell::new(read_up_right_vector(fs).await));
+        let delay = services.delay;
+        let clock = services.clock;
         let flight_core: Mutex<
             NoopRawMutex,
             Option<FlightCore<Sender<NoopRawMutex, FlightCoreEvent, 3>>>,
         > = Mutex::new(None);
 
-        let mut imu_ticker = Ticker::every(clock, delay, 5.0);
-        let imu_channel = PubSubChannel::<NoopRawMutex, IMUReading<BootTimestamp>, 1, 1, 1>::new();
-        let mut baro_ticker = Ticker::every(clock, delay, 5.0);
-        let baro_channel =
-            PubSubChannel::<NoopRawMutex, BaroReading<BootTimestamp>, 1, 1, 1>::new();
         let mut meg_ticker = Ticker::every(clock, delay, 50.0);
         let mut batt_volt_ticker = Ticker::every(clock, delay, 5.0);
-
-        let pyro1_cont_fut = async {
-            let cont = pyro1_cont.read_continuity().await.unwrap();
-            telemetry_data.lock(|d| {
-                let mut d = d.borrow_mut();
-                d.pyro1_cont = cont
-            });
-
-            loop {
-                let cont = pyro1_cont.wait_continuity_change().await.unwrap();
-                telemetry_data.lock(|d| {
-                    let mut d = d.borrow_mut();
-                    d.pyro1_cont = cont
-                });
-            }
-        };
-
-        let pyro2_cont_fut = async {
-            let cont = pyro2_cont.read_continuity().await.unwrap();
-            telemetry_data.lock(|d| {
-                let mut d = d.borrow_mut();
-                d.pyro2_cont = cont
-            });
-
-            loop {
-                let cont = pyro2_cont.wait_continuity_change().await.unwrap();
-                telemetry_data.lock(|d| {
-                    let mut d = d.borrow_mut();
-                    d.pyro2_cont = cont
-                });
-            }
-        };
-
-        let imu_fut = async {
-            loop {
-                if arming_state.lock(|s| (*s.borrow()).is_armed())
-                    && let Ok(mut imu) = imu.try_lock()
-                {
-                    let imu_reading = imu.read().await.unwrap();
-                    sensors_file_channel.publish_immediate(SensorReading::IMU(imu_reading.clone()));
-                    imu_channel.publish_immediate(imu_reading);
-                }
-                imu_ticker.next().await;
-            }
-        };
-
-        let baro_fut = async {
-            loop {
-                if arming_state.lock(|s| (*s.borrow()).is_armed()) {
-                    let baro_reading = barometer.read().await.unwrap();
-                    telemetry_data.lock(|d| {
-                        let mut d = d.borrow_mut();
-                        d.pressure = baro_reading.pressure;
-                        d.temperature = baro_reading.temperature;
-                    });
-                    sensors_file_channel
-                        .publish_immediate(SensorReading::Baro(baro_reading.clone()));
-                    baro_channel.publish_immediate(baro_reading);
-                }
-                baro_ticker.next().await;
-            }
-        };
 
         let gps_logging_fut = async {
             loop {
@@ -403,117 +526,6 @@ pub async fn avionics_main(
             }
         };
 
-        let arming_fut = async {
-            let mut last_arming_state = arming_state.lock(|s| (*s.borrow()).is_armed());
-            loop {
-                let new_arming_state = arming_switch.wait_arming_change().await.unwrap();
-                telemetry_data.lock(|s| {
-                    s.borrow_mut().hardware_armed = new_arming_state;
-                });
-                let new_arming_state = arming_state.lock(|s| {
-                    let mut s = s.borrow_mut();
-                    s.hardware_armed = new_arming_state;
-                    s.is_armed()
-                });
-                if new_arming_state != last_arming_state {
-                    if new_arming_state {
-                        if let Some(rocket_upright_acc) = rocket_upright_acc.lock(|s| *s.borrow()) {
-                            let variances = if let Some(cal_info) = &cal_info {
-                                Variances::from_imu_cal_info(cal_info, 2.0)
-                            } else {
-                                Variances::default()
-                            };
-                            let mut flight_core = flight_core.lock().await;
-                            flight_core.replace(FlightCore::new(
-                                MARAUDER_2_FLIGHT_CONFIG,
-                                flight_core_events.sender(),
-                                rocket_upright_acc,
-                                variances,
-                            ));
-                            drop(flight_core);
-
-                            let mut tones = Vec::new();
-                            tones.push(BuzzerTone(Some(2000), 500)).unwrap();
-                            tones.push(BuzzerTone(None, 500)).unwrap();
-                            tones.push(BuzzerTone(Some(3000), 500)).unwrap();
-                            shared_buzzer_channel.publish_immediate(tones);
-                        } else {
-                            let mut tones = Vec::new();
-                            tones.push(BuzzerTone(Some(3000), 500)).unwrap();
-                            tones.push(BuzzerTone(None, 500)).unwrap();
-                            tones.push(BuzzerTone(Some(2000), 500)).unwrap();
-                            shared_buzzer_channel.publish_immediate(tones);
-                        }
-                    } else {
-                        telemetry_data.lock(|s| {
-                            s.borrow_mut().avionics_state = AvionicsState::Idle;
-                        });
-                        let mut flight_core = flight_core.lock().await;
-                        flight_core.take();
-                    }
-                }
-                last_arming_state = new_arming_state;
-            }
-        };
-
-        let mut delay = device_manager.delay;
-        let radio_fut = async {
-            loop {
-                match radio_rx.receive().await {
-                    ApplicationLayerRxPackage::VerticalCalibration => {
-                        log_info!("Vertical calibration");
-                        if !arming_state.lock(|s| (*s.borrow()).is_armed()) {
-                            let mut ticker = Ticker::every(clock, delay, 1.0);
-                            let mut acc_sum = Vector3::<f32>::zeros();
-                            let mut imu = imu.lock().await;
-                            for _ in 0..100 {
-                                let mut reading = imu.read().await.unwrap();
-                                if let Some(cal_info) = &cal_info {
-                                    reading = cal_info.apply_calibration(reading);
-                                }
-                                acc_sum += Vector3::from(reading.acc);
-                                ticker.next().await;
-                            }
-                            drop(imu);
-                            acc_sum /= 100.0;
-                            rocket_upright_acc.lock(|s| s.borrow_mut().replace(acc_sum));
-                            write_up_right_vector(fs, acc_sum).await.unwrap();
-
-                            let mut tones = Vec::new();
-                            tones.push(BuzzerTone(Some(2700), 500)).unwrap();
-                            tones.push(BuzzerTone(None, 250)).unwrap();
-                            tones.push(BuzzerTone(Some(2700), 50)).unwrap();
-                            tones.push(BuzzerTone(None, 150)).unwrap();
-                            tones.push(BuzzerTone(Some(2700), 50)).unwrap();
-                            shared_buzzer_channel.publish_immediate(tones);
-                        }
-                    }
-                    ApplicationLayerRxPackage::ClearStorage => {
-                        log_info!("Clearing storage");
-                        fs.remove_files(|file| {
-                            file.typ == AVIONICS_LOG_FILE_TYPE
-                                || file.typ == AVIONICS_SENSORS_FILE_TYPE
-                        })
-                        .await
-                        .unwrap();
-                        let mut tones = Vec::new();
-                        tones.push(BuzzerTone(Some(2700), 500)).unwrap();
-                        tones.push(BuzzerTone(None, 250)).unwrap();
-                        tones.push(BuzzerTone(Some(2700), 50)).unwrap();
-                        tones.push(BuzzerTone(None, 150)).unwrap();
-                        tones.push(BuzzerTone(Some(3700), 50)).unwrap();
-                        shared_buzzer_channel.publish_immediate(tones);
-                    }
-                    ApplicationLayerRxPackage::SoftArming(software_armed) => {
-                        arming_state.lock(|s| s.borrow_mut().software_armed = software_armed);
-                        telemetry_data.lock(|s| {
-                            s.borrow_mut().software_armed = software_armed;
-                        });
-                    }
-                }
-            }
-        };
-
         let mut delay = device_manager.delay;
         let flight_core_fut = async {
             let mut imu_sub = imu_channel.subscriber().unwrap();
@@ -556,29 +568,6 @@ pub async fn avionics_main(
                 pyro1_cont_fut,
                 pyro2_cont_fut
             );
-        }
-    };
-
-    let mut delay = device_manager.delay;
-    let telemetry_fut = async {
-        let mut telemetry_ticker = Ticker::every(clock, delay, 3000.);
-        let mut last_telemetry_timestamp = -60_000.0f64;
-        loop {
-            let should_throttle = !arming_state.lock(|s| (*s.borrow()).is_armed())
-                || telemetry_data.lock(|d| d.borrow().avionics_state == AvionicsState::Landed);
-            if should_throttle && clock.now_ms() - last_telemetry_timestamp <= 60_000.0 {
-                telemetry_ticker.next().await;
-                continue;
-            }
-
-            let mut telemetry_data = telemetry_data.lock(|d| d.borrow().clone());
-            telemetry_data.timestamp = clock.now_ms();
-            last_telemetry_timestamp = telemetry_data.timestamp;
-            log_info!("Sending telemetry {:?}", telemetry_data);
-            radio_tx
-                .send(ApplicationLayerTxPackage::Telemetry(telemetry_data))
-                .await;
-            telemetry_ticker.next().await;
         }
     };
 
@@ -692,15 +681,8 @@ pub async fn avionics_main(
     log_unreachable!();
 }
 
-const MARAUDER_2_FLIGHT_CONFIG: FlightCoreConfig = FlightCoreConfig {
-    drogue_chute_minimum_time_ms: 20_000.0,
-    drogue_chute_minimum_altitude_agl: 2000.0,
-    drogue_chute_delay_ms: 2000.0,
-    main_chute_delay_ms: 0.0,
-    main_chute_altitude_agl: 365.0, // 1200 ft
-};
-
-struct ArmingState {
+#[derive(defmt::Format, Debug, Clone, Archive, Deserialize, Serialize)]
+pub struct ArmingState {
     pub hardware_armed: bool,
     pub software_armed: bool,
 }

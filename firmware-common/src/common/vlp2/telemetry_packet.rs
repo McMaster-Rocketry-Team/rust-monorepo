@@ -1,3 +1,5 @@
+use core::cell::{RefCell, RefMut};
+
 use rkyv::{Archive, Deserialize, Serialize};
 
 use crate::{
@@ -5,6 +7,7 @@ use crate::{
     driver::gps::{self, GPSLocation},
     Clock,
 };
+use embassy_sync::blocking_mutex::{raw::NoopRawMutex, Mutex as BlockingMutex};
 
 use super::packet::VLPDownlinkPacket;
 
@@ -184,8 +187,7 @@ pub struct InFlightDiagnosticTelemetryPacket {
     pub num_of_fix_satellites: u8,
 }
 
-pub struct TelemetryPacketBuilder<'a, K: Clock> {
-    unix_clock: UnixClock<'a, K>,
+pub struct TelemetryPacketBuilderState {
     pub gps_location: Option<GPSLocation>,
     pub battery_v: f32,
     pub temperature: f32,
@@ -195,17 +197,24 @@ pub struct TelemetryPacketBuilder<'a, K: Clock> {
     pub pyro_drogue_continuity: bool,
 }
 
+pub struct TelemetryPacketBuilder<'a, K: Clock> {
+    unix_clock: UnixClock<'a, K>,
+    state: BlockingMutex<NoopRawMutex, RefCell<TelemetryPacketBuilderState>>,
+}
+
 impl<'a, K: Clock> TelemetryPacketBuilder<'a, K> {
     pub fn new(unix_clock: UnixClock<'a, K>) -> Self {
         Self {
             unix_clock,
-            gps_location: None,
-            battery_v: 0.0,
-            temperature: 0.0,
-            hardware_armed: false,
-            software_armed: false,
-            pyro_main_continuity: false,
-            pyro_drogue_continuity: false,
+            state: BlockingMutex::new(RefCell::new(TelemetryPacketBuilderState {
+                gps_location: None,
+                battery_v: 0.0,
+                temperature: 0.0,
+                hardware_armed: false,
+                software_armed: false,
+                pyro_main_continuity: false,
+                pyro_drogue_continuity: false,
+            })),
         }
     }
 
@@ -213,58 +222,78 @@ impl<'a, K: Clock> TelemetryPacketBuilder<'a, K> {
         if !self.unix_clock.ready() {
             return false;
         }
-        if let Some(gps_location) = &self.gps_location {
-            if gps_location.lat_lon.is_none() {
+        self.state.lock(|state| {
+            let state = state.borrow();
+
+            if let Some(gps_location) = &state.gps_location {
+                if gps_location.lat_lon.is_none() {
+                    return false;
+                }
+            } else {
                 return false;
             }
-        } else {
-            return false;
-        }
-        if !self.hardware_armed {
-            return false;
-        }
-        if !self.pyro_main_continuity {
-            return false;
-        }
-        if !self.pyro_drogue_continuity {
-            return false;
-        }
+            if state.hardware_armed {
+                return false;
+            }
+            if state.pyro_main_continuity {
+                return false;
+            }
+            if state.pyro_drogue_continuity {
+                return false;
+            }
 
-        return true;
+            return true;
+        })
     }
 
     pub fn create_packet(&self) -> VLPDownlinkPacket {
-        if true {
-            // create pad telemetry packet
-            if self.is_pad_ready() {
-                PadIdleTelemetryPacket::new(
-                    self.unix_clock.now_ms(),
-                    self.gps_location.as_ref().unwrap().lat_lon.unwrap(),
-                    self.battery_v,
-                    self.temperature,
-                    self.software_armed,
-                )
-                .into()
+        let is_pad_ready = self.is_pad_ready();
+        self.state.lock(|state| {
+            let state = state.borrow();
+
+            if true {
+                // create pad telemetry packet
+                if is_pad_ready {
+                    PadIdleTelemetryPacket::new(
+                        self.unix_clock.now_ms(),
+                        state.gps_location.as_ref().unwrap().lat_lon.unwrap(),
+                        state.battery_v,
+                        state.temperature,
+                        state.software_armed,
+                    )
+                    .into()
+                } else {
+                    PadDiagnosticTelemetryPacket::new(
+                        self.unix_clock.now_ms(),
+                        self.unix_clock.ready(),
+                        state.gps_location.as_ref().map(|l| l.lat_lon).flatten(),
+                        state.battery_v,
+                        state.temperature,
+                        state.hardware_armed,
+                        state.software_armed,
+                        state
+                            .gps_location
+                            .as_ref()
+                            .map_or(0, |l| l.num_of_fix_satellites),
+                        state.pyro_main_continuity,
+                        state.pyro_drogue_continuity,
+                    )
+                    .into()
+                }
             } else {
-                PadDiagnosticTelemetryPacket::new(
-                    self.unix_clock.now_ms(),
-                    self.unix_clock.ready(),
-                    self.gps_location.as_ref().map(|l| l.lat_lon).flatten(),
-                    self.battery_v,
-                    self.temperature,
-                    self.hardware_armed,
-                    self.software_armed,
-                    self.gps_location
-                        .as_ref()
-                        .map_or(0, |l| l.num_of_fix_satellites),
-                    self.pyro_main_continuity,
-                    self.pyro_drogue_continuity,
-                )
-                .into()
+                // create in-flight telemetry packet
+                todo!()
             }
-        } else {
-            // create in-flight telemetry packet
-            todo!()
-        }
+        })
+    }
+
+    pub fn update<U>(&self, update_fn: U)
+    where
+        U: FnOnce(RefMut<TelemetryPacketBuilderState>) -> (),
+    {
+        self.state.lock(|state| {
+            let mut state = state.borrow_mut();
+            update_fn(state);
+        })
     }
 }

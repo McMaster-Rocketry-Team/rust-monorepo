@@ -1,18 +1,15 @@
 use core::{cell::RefCell, future::poll_fn, task::Poll};
 
-use embassy_sync::{
-    blocking_mutex::{raw::NoopRawMutex, Mutex as BlockingMutex},
-    waitqueue::WakerRegistration,
-};
+use embassy_sync::blocking_mutex::{raw::NoopRawMutex, Mutex as BlockingMutex};
 
 use crate::{driver::gps::GPSPPS, Clock};
 
-use super::{gps_parser::GPSParser, moving_average::NoSumSMA};
+use super::{gps_parser::GPSParser, moving_average::NoSumSMA, multi_waker::MultiWakerRegistration};
 
 #[derive(Default)]
 struct UnixClockState {
     offset: Option<f64>,
-    waker: WakerRegistration,
+    waker: MultiWakerRegistration<10>,
 }
 
 pub struct UnixClockTask<K: Clock> {
