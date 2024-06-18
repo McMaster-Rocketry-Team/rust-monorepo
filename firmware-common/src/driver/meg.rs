@@ -4,15 +4,28 @@ use rkyv::{Archive, Deserialize, Serialize};
 
 use embedded_hal_async::delay::DelayNs;
 
-use crate::common::delta_factory::Deltable;
+use crate::{common::{delta_factory::Deltable, unix_clock::UnixClock}, Clock};
 
-use super::timestamp::{BootTimestamp, TimestampType};
+use super::timestamp::{BootTimestamp, TimestampType, UnixTimestamp};
 
 #[derive(Archive, Deserialize, Serialize, Debug, Clone)]
 pub struct MegReading<T: TimestampType> {
     _phantom: PhantomData<T>,
     pub timestamp: f64, // ms
     pub meg: [f32; 3],  // gauss
+}
+
+impl MegReading<BootTimestamp> {
+    pub fn to_unix_timestamp(
+        self,
+        unix_clock: UnixClock<impl Clock>,
+    ) -> MegReading<UnixTimestamp> {
+        MegReading {
+            _phantom: PhantomData,
+            timestamp: unix_clock.convert_to_unix(self.timestamp),
+            meg: self.meg,
+        }
+    }
 }
 
 impl<T: TimestampType> MegReading<T> {

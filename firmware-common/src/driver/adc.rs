@@ -3,9 +3,12 @@ use core::marker::PhantomData;
 use embedded_hal_async::delay::DelayNs;
 use rkyv::{Archive, Deserialize, Serialize};
 
-use crate::common::delta_factory::Deltable;
+use crate::{
+    common::{delta_factory::Deltable, unix_clock::UnixClock},
+    Clock,
+};
 
-use super::timestamp::{BootTimestamp, TimestampType};
+use super::timestamp::{BootTimestamp, TimestampType, UnixTimestamp};
 
 pub trait UnitType: Clone {}
 
@@ -25,6 +28,20 @@ pub struct ADCReading<U: UnitType, T: TimestampType> {
     _phantom_timestamp: PhantomData<T>,
     pub timestamp: f64,
     pub value: f32,
+}
+
+impl<U: UnitType> ADCReading<U, BootTimestamp> {
+    pub fn to_unix_timestamp(
+        self,
+        unix_clock: UnixClock<impl Clock>,
+    ) -> ADCReading<U, UnixTimestamp> {
+        ADCReading {
+            _phantom_unit: PhantomData,
+            _phantom_timestamp: PhantomData,
+            timestamp: unix_clock.convert_to_unix(self.timestamp),
+            value: self.value,
+        }
+    }
 }
 
 impl<U: UnitType, T: TimestampType> ADCReading<U, T> {
@@ -57,7 +74,7 @@ impl<U: UnitType, T: TimestampType> Deltable for ADCReading<U, T> {
     type DeltaType = ADCReadingDelta<U, T>;
 
     fn add_delta(&self, delta: &Self::DeltaType) -> Option<Self> {
-        Some(Self{
+        Some(Self {
             _phantom_unit: PhantomData,
             _phantom_timestamp: PhantomData,
             timestamp: self.timestamp + factories::Timestamp::to_float(delta.timestamp),
@@ -66,14 +83,12 @@ impl<U: UnitType, T: TimestampType> Deltable for ADCReading<U, T> {
     }
 
     fn subtract(&self, other: &Self) -> Option<Self::DeltaType> {
-        Some(
-            ADCReadingDelta {
-                _phantom_unit: PhantomData,
-                _phantom_timestamp: PhantomData,
-                timestamp: factories::Timestamp::to_fixed_point(self.timestamp - other.timestamp)?,
-                value: factories::Value::to_fixed_point(self.value - other.value)?,
-            }
-        )
+        Some(ADCReadingDelta {
+            _phantom_unit: PhantomData,
+            _phantom_timestamp: PhantomData,
+            timestamp: factories::Timestamp::to_fixed_point(self.timestamp - other.timestamp)?,
+            value: factories::Value::to_fixed_point(self.value - other.value)?,
+        })
     }
 }
 

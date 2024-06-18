@@ -38,8 +38,7 @@ use crate::{
         },
     },
     driver::{
-        imu::IMUReading,
-        timestamp::{BootTimestamp, UnixTimestamp},
+        adc::ADCReading, imu::IMUReading, timestamp::{BootTimestamp, UnixTimestamp}
     },
     vlp::application_layer::{ApplicationLayerRxPackage, ApplicationLayerTxPackage},
 };
@@ -217,7 +216,7 @@ pub async fn avionics_main(
     .await
     .unwrap();
     let meg_logger_fut = meg_logger.run();
-    let battery_logger = BufferedTieredRingDeltaLogger::<IMUReading<UnixTimestamp>, _, _, 10>::new(
+    let battery_logger = BufferedTieredRingDeltaLogger::<ADCReading<Volt,UnixTimestamp>, _, _, 10>::new(
         services.fs,
         &sensor_logger_config,
         AVIONICS_BATTERY_LOGGER_TIER_1,
@@ -251,9 +250,9 @@ pub async fn avionics_main(
     > = BlockingMutex::new(RefCell::new(None));
     let flight_core_events = Channel::<NoopRawMutex, FlightCoreEvent, 3>::new();
 
-    let low_g_imu_signal = Signal::<NoopRawMutex, IMUReading<UnixTimestamp>>::new();
-    let high_g_imu_signal = Signal::<NoopRawMutex, IMUReading<UnixTimestamp>>::new();
-    let baro_signal = Signal::<NoopRawMutex, BaroReading<UnixTimestamp>>::new();
+    let low_g_imu_signal = Signal::<NoopRawMutex, IMUReading<BootTimestamp>>::new();
+    let high_g_imu_signal = Signal::<NoopRawMutex, IMUReading<BootTimestamp>>::new();
+    let baro_signal = Signal::<NoopRawMutex, BaroReading<BootTimestamp>>::new();
 
     let imu_config_file = ConfigFile::<IMUCalibrationInfo, _, _>::new(
         services.fs,
@@ -261,9 +260,6 @@ pub async fn avionics_main(
     );
     let mut imu_config =
         BlockingMutex::<NoopRawMutex, _>::new(RefCell::new(imu_config_file.read().await));
-
-    let landed = BlockingMutex::<NoopRawMutex, _>::new(RefCell::new(false));
-    let sensors_file_should_write_all = BlockingMutex::<NoopRawMutex, _>::new(RefCell::new(false));
 
     claim_devices!(
         device_manager,
@@ -300,14 +296,12 @@ pub async fn avionics_main(
                     if services.unix_clock.ready()
                         && !arming_state.lock(|s| (*s.borrow()).is_armed())
                     {
-                        let mut ticker = Ticker::every(services.clock, services.delay, 1.0);
                         let mut acc_sum = Vector3::<f32>::zeros();
                         let mut gyro_sum = Vector3::<f32>::zeros();
                         for _ in 0..100 {
                             let mut reading = low_g_imu_signal.wait().await;
                             acc_sum += Vector3::from(reading.acc);
                             gyro_sum += Vector3::from(reading.gyro);
-                            ticker.next().await;
                         }
                         acc_sum /= 100.0;
                         gyro_sum /= 100.0;
@@ -424,47 +418,88 @@ pub async fn avionics_main(
         }
     };
 
-    let sensors_fut = async {
-        services.unix_clock.wait_until_ready().await;
-
-        let mut low_g_imu_ticker = Ticker::every(services.clock, services.delay, 5.0);
-        let low_g_imu_fut = async {
-            loop {
-                let imu_reading = imu.read().await.unwrap().to_unix_timestamp(services.unix_clock);
-                low_g_imu_signal.signal(imu_reading.clone());
-                low_g_imu_logger.log(imu_reading).await;
-                low_g_imu_ticker.next().await;
+    let mut low_g_imu_ticker = Ticker::every(services.clock, services.delay, 5.0);
+    let low_g_imu_fut = async {
+        loop {
+            let imu_reading = imu.read().await.unwrap();
+            low_g_imu_signal.signal(imu_reading.clone());
+            if services.unix_clock.ready() {
+                low_g_imu_logger
+                    .log(imu_reading.to_unix_timestamp(services.unix_clock))
+                    .await;
             }
-        };
+            low_g_imu_ticker.next().await;
+        }
+    };
 
-        let mut high_g_imu_ticker = Ticker::every(services.clock, services.delay, 5.0);
-        let high_g_imu_fut = async {
-            loop {
-                let imu_reading = imu.read().await.unwrap().to_unix_timestamp(services.unix_clock);
-                high_g_imu_signal.signal(imu_reading.clone());
-                high_g_imu_logger.log(imu_reading).await;
-                high_g_imu_ticker.next().await;
+    let mut high_g_imu_ticker = Ticker::every(services.clock, services.delay, 5.0);
+    let high_g_imu_fut = async {
+        loop {
+            let imu_reading = imu.read().await.unwrap();
+            high_g_imu_signal.signal(imu_reading.clone());
+            if services.unix_clock.ready() {
+                high_g_imu_logger
+                    .log(imu_reading.to_unix_timestamp(services.unix_clock))
+                    .await;
             }
-        };
+            high_g_imu_ticker.next().await;
+        }
+    };
 
-        let mut baro_ticker = Ticker::every(services.clock, services.delay, 5.0);
-        let baro_fut = async {
-            loop {
-                let baro_reading = barometer.read().await.unwrap().to_unix_timestamp(services.unix_clock);
-                baro_signal.signal(baro_reading.clone());
-                baro_logger.log(baro_reading).await;
-                baro_ticker.next().await;
+    let mut baro_ticker = Ticker::every(services.clock, services.delay, 5.0);
+    let baro_fut = async {
+        loop {
+            let baro_reading = barometer.read().await.unwrap();
+            baro_signal.signal(baro_reading.clone());
+            if services.unix_clock.ready() {
+                baro_logger
+                    .log(baro_reading.to_unix_timestamp(services.unix_clock))
+                    .await;
             }
-        };
+            baro_ticker.next().await;
+        }
+    };
 
-        let mut gps_ticker = Ticker::every(services.clock, services.delay, 100.0);
-        let gps_fut = async {
-            loop {
-                let gps_location = services.gps.get_nmea();
-                gps_logger.log(gps_location).await;
-                gps_ticker.next().await;
+    let mut gps_ticker = Ticker::every(services.clock, services.delay, 100.0);
+    let gps_fut = async {
+        loop {
+            let gps_location = services.gps.get_nmea();
+            gps_logger.log(gps_location).await;
+            gps_ticker.next().await;
+        }
+    };
+
+    let mut meg_ticker = Ticker::every(services.clock, services.delay, 50.0);
+    let meg_fut = async {
+        loop {
+            let meg_reading = meg.read().await.unwrap();
+            if services.unix_clock.ready() {
+                meg_logger
+                    .log(meg_reading.to_unix_timestamp(services.unix_clock))
+                    .await;
             }
-        };
+            meg_ticker.next().await;
+        }
+    };
+
+    let mut batt_volt_ticker = Ticker::every(services.clock, services.delay, 5.0);
+    let bat_fut = async {
+        loop {
+            let battery_v = batt_voltmeter.read().await.unwrap();
+            if services.unix_clock.ready() {
+                battery_logger
+                    .log(battery_v.to_unix_timestamp(services.unix_clock))
+                    .await;
+            }
+            telemetry_packet_builder.update(|b| {
+                b.battery_v = battery_v.value;
+            });
+            batt_volt_ticker.next().await;
+        }
+    };
+
+    let flight_core_fut = async {
+
     };
 
     let main_fut = async {
@@ -475,56 +510,6 @@ pub async fn avionics_main(
             Option<FlightCore<Sender<NoopRawMutex, FlightCoreEvent, 3>>>,
         > = Mutex::new(None);
 
-        let mut meg_ticker = Ticker::every(clock, delay, 50.0);
-        let mut batt_volt_ticker = Ticker::every(clock, delay, 5.0);
-
-        let gps_logging_fut = async {
-            loop {
-                if gps_parser.get_updated() {
-                    let nmea = gps_parser.get_nmea();
-                    telemetry_data.lock(|d| {
-                        let mut d = d.borrow_mut();
-                        d.satellites_in_use = nmea.num_of_fix_satellites as u32;
-                        d.lat_lon = nmea.lat_lon;
-                    });
-                    sensors_file_channel.publish_immediate(SensorReading::GPS(nmea));
-                }
-
-                delay.delay_ms(5).await;
-            }
-        };
-
-        let meg_fut = async {
-            loop {
-                if arming_state.lock(|s| (*s.borrow()).is_armed()) {
-                    if let Ok(meg_reading) = meg.read().await {
-                        sensors_file_channel.publish_immediate(SensorReading::Meg(meg_reading));
-                    } else {
-                        log_warn!("Failed to read meg")
-                    }
-                }
-                meg_ticker.next().await;
-            }
-        };
-
-        let bat_fut = async {
-            loop {
-                if arming_state.lock(|s| (*s.borrow()).is_armed()) {
-                    let batt_volt_reading = batt_voltmeter.read().await.unwrap();
-                    telemetry_data.lock(|d| {
-                        let mut d = d.borrow_mut();
-                        d.battery_voltage = batt_volt_reading;
-                    });
-                    sensors_file_channel.publish_immediate(SensorReading::BatteryVoltage(
-                        BatteryVoltage {
-                            timestamp: clock.now_ms(),
-                            voltage: batt_volt_reading,
-                        },
-                    ));
-                }
-                batt_volt_ticker.next().await;
-            }
-        };
 
         let mut delay = device_manager.delay;
         let flight_core_fut = async {
@@ -647,25 +632,6 @@ pub async fn avionics_main(
                     });
                 }
             }
-        }
-    };
-
-    let delay = device_manager.delay;
-    let mut landed_buzzing_ticker = Ticker::every(clock, delay, 5000.0);
-    let landed_buzzing_fut = async {
-        loop {
-            if landed.lock(|s| *s.borrow()) {
-                let mut tones = Vec::new();
-                tones.push(BuzzerTone(Some(2700), 50)).unwrap();
-                tones.push(BuzzerTone(None, 150)).unwrap();
-                tones.push(BuzzerTone(Some(2700), 50)).unwrap();
-                tones.push(BuzzerTone(None, 500)).unwrap();
-                tones.push(BuzzerTone(Some(2700), 50)).unwrap();
-                tones.push(BuzzerTone(None, 150)).unwrap();
-                tones.push(BuzzerTone(Some(2700), 50)).unwrap();
-                shared_buzzer_channel.publish_immediate(tones);
-            }
-            landed_buzzing_ticker.next().await;
         }
     };
 
