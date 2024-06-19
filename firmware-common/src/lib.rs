@@ -17,10 +17,8 @@ use common::rpc_channel::RpcChannel;
 use common::{buzzer_queue::BuzzerQueueRunner, unix_clock::UnixClockTask};
 use driver::clock::VLFSTimerWrapper;
 use driver::gps::{GPSParser, GPSPPS};
-use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::channel::Channel;
 use futures::join;
-use lora_phy::mod_params::PacketStatus;
 
 use crate::{
     avionics::avionics_main, common::device_manager::prelude::*, ground_test::gcm::ground_test_gcm,
@@ -62,7 +60,7 @@ pub async fn init(
     let mut serial = serial.take().unwrap();
     let mut usb = usb.take().unwrap();
     let clock = device_manager.clock;
-    let mut delay = device_manager.delay;
+    let delay = device_manager.delay;
 
     // Start VLFS
     let stat_flash = StatFlash::new();
@@ -168,7 +166,9 @@ pub async fn init(
 
         log_info!("Starting in mode {:?}", device_config);
         match device_config.mode {
-            DeviceModeConfig::Avionics { .. } => avionics_main(device_manager, &services, &device_config).await,
+            DeviceModeConfig::Avionics { .. } => {
+                avionics_main(device_manager, &services, &device_config).await
+            }
             DeviceModeConfig::GCM { .. } => {
                 gcm_main(
                     device_manager,
@@ -184,13 +184,7 @@ pub async fn init(
             }
             DeviceModeConfig::BeaconReceiver => beacon_receiver(&services.fs, device_manager).await,
             DeviceModeConfig::GroundTestAvionics => {
-                ground_test_avionics(
-                    &services.fs,
-                    unix_clock,
-                    &services.buzzer_queue,
-                    device_manager,
-                )
-                .await
+                ground_test_avionics(device_manager, &services).await
             }
             DeviceModeConfig::GroundTestGCM => ground_test_gcm(device_manager).await,
         };

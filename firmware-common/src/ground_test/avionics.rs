@@ -1,8 +1,5 @@
 use core::cell::RefCell;
 
-use crate::common::buzzer_queue::BuzzerQueue;
-use crate::common::buzzer_queue::BuzzerTone;
-use crate::common::unix_clock::UnixClock;
 use crate::driver::barometer::ArchivedBaroReading;
 use crate::driver::barometer::BaroReading;
 use crate::{
@@ -14,7 +11,6 @@ use crate::{
 use core::fmt::Write;
 use embassy_sync::channel::Channel;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, blocking_mutex::Mutex as BlockingMutex};
-use embedded_hal_async::delay::DelayNs;
 use futures::join;
 use heapless::String;
 use lora_phy::mod_params::Bandwidth;
@@ -22,7 +18,6 @@ use lora_phy::mod_params::CodingRate;
 use lora_phy::mod_params::SpreadingFactor;
 use lora_phy::RxMode;
 use rkyv::{Archive, Deserialize, Serialize};
-use vlfs::VLFS;
 
 #[derive(defmt::Format, Debug, Clone, Archive, Deserialize, Serialize)]
 struct FireEvent {
@@ -41,15 +36,16 @@ create_serialized_enum!(
 );
 
 async fn fire_pyro(
-    fs: &VLFS<impl Flash, impl Crc>,
-    unix_clock: UnixClock<'_, impl Clock>,
-    mut delay: impl DelayNs + Copy,
+    services: system_services_type!(),
     ctrl: &mut impl PyroCtrl,
     baro: &mut impl Barometer,
-    buzzer_queue: &BuzzerQueue<'_>,
 ) {
-    let file = fs.create_file(GROUND_TEST_LOG_FILE_TYPE).await.unwrap();
-    let writer = fs.open_file_for_write(file.id).await.unwrap();
+    let file = services
+        .fs
+        .create_file(GROUND_TEST_LOG_FILE_TYPE)
+        .await
+        .unwrap();
+    let writer = services.fs.open_file_for_write(file.id).await.unwrap();
     let mut logger = GroundTestLogger::new(writer);
 
     let finished = BlockingMutex::<NoopRawMutex, _>::new(RefCell::new(false));
@@ -62,12 +58,12 @@ async fn fire_pyro(
         }
     };
 
-    let mut baro_ticker = Ticker::every(unix_clock, delay.clone(), 5.0);
+    let mut baro_ticker = Ticker::every(services.unix_clock, services.delay, 5.0);
     let log_baro_fut = async {
         while !finished.lock(|s| *s.borrow()) {
             baro_ticker.next().await;
             if let Ok(reading) = baro.read().await {
-                let reading = reading.to_unix_timestamp(unix_clock);
+                let reading = reading.to_unix_timestamp(services.unix_clock);
                 logs_channel
                     .try_send(GroundTestLog::BaroReadingUnix(reading))
                     .unwrap();
@@ -75,35 +71,34 @@ async fn fire_pyro(
         }
     };
 
+    let buzzer_queue = &services.buzzer_queue;
     let fire_fut = async {
         log_info!("3");
-        buzzer_queue.publish(BuzzerTone(Some(3000), 50));
-        buzzer_queue.publish(BuzzerTone(None, 50));
-        buzzer_queue.publish(BuzzerTone(Some(3000), 50));
-        buzzer_queue.publish(BuzzerTone(None, 50));
-        buzzer_queue.publish(BuzzerTone(Some(3000), 50));
-        delay.delay_ms(1000).await;
+
+        buzzer_queue.publish(3000, 50, 100);
+        buzzer_queue.publish(3000, 50, 100);
+        buzzer_queue.publish(3000, 50, 100);
+        services.delay.delay_ms(1000).await;
 
         log_info!("2");
-        buzzer_queue.publish(BuzzerTone(Some(3000), 50));
-        buzzer_queue.publish(BuzzerTone(None, 50));
-        buzzer_queue.publish(BuzzerTone(Some(3000), 50));
-        delay.delay_ms(1000).await;
+        buzzer_queue.publish(3000, 50, 100);
+        buzzer_queue.publish(3000, 50, 100);
+        services.delay.delay_ms(1000).await;
 
         log_info!("1");
-        buzzer_queue.publish(BuzzerTone(Some(3000), 50));
-        delay.delay_ms(1000).await;
+        buzzer_queue.publish(3000, 50, 100);
+        services.delay.delay_ms(1000).await;
 
         log_info!("fire");
         logs_channel
             .try_send(GroundTestLog::FireEvent(FireEvent {
-                timestamp: unix_clock.now_ms(),
+                timestamp: services.unix_clock.now_ms(),
             }))
             .unwrap();
         ctrl.set_enable(true).await.unwrap();
-        delay.delay_ms(2000).await;
+        services.delay.delay_ms(2000).await;
         ctrl.set_enable(false).await.unwrap();
-        delay.delay_ms(10000).await;
+        services.delay.delay_ms(10000).await;
         finished.lock(|s| *s.borrow_mut() = true);
     };
 
@@ -115,10 +110,8 @@ async fn fire_pyro(
 
 #[inline(never)]
 pub async fn ground_test_avionics(
-    fs: &VLFS<impl Flash, impl Crc>,
-    unix_clock: UnixClock<'_, impl Clock>,
-    buzzer_queue: &BuzzerQueue<'_>,
     device_manager: device_manager_type!(),
+    services: system_services_type!(),
 ) -> ! {
     claim_devices!(
         device_manager,
@@ -127,25 +120,16 @@ pub async fn ground_test_avionics(
         pyro1_ctrl,
         pyro2_cont,
         pyro2_ctrl,
-        // green_indicator,
         barometer,
-        arming_switch
+        arming_switch,
+        indicators
     );
 
     log_info!("resetting barometer");
     barometer.reset().await.unwrap();
 
-    let mut delay = device_manager.delay;
-    let indicator_fut = async {
-        // loop {
-        //     green_indicator.set_enable(true).await;
-        //     delay.delay_ms(50).await;
-        //     green_indicator.set_enable(false).await;
-        //     delay.delay_ms(2000).await;
-        // }
-    };
+    let indicator_fut = indicators.run([], [50, 2000], []);
 
-    let delay = device_manager.delay;
     let avionics_fut = async {
         let modulation_params = lora
             .create_modulation_params(
@@ -179,10 +163,10 @@ pub async fn ground_test_avionics(
             } else {
                 lora_message.push_str("Disarmed | ").unwrap();
             }
-            if unix_clock.ready() {
+            if services.unix_clock.ready() {
                 lora_message.push_str("Clock Ready ").unwrap();
                 let mut timestamp_str = String::<32>::new();
-                core::write!(&mut timestamp_str, "{}", unix_clock.now_ms()).unwrap();
+                core::write!(&mut timestamp_str, "{}", services.unix_clock.now_ms()).unwrap();
                 lora_message.push_str(timestamp_str.as_str()).unwrap();
             } else {
                 lora_message.push_str("Clock Not Ready").unwrap();
@@ -203,33 +187,17 @@ pub async fn ground_test_avionics(
             lora.prepare_for_rx(RxMode::Single(1000), &modulation_params, &rx_pkt_params)
                 .await
                 .unwrap();
-            
+
             match lora.rx(&rx_pkt_params, &mut receiving_buffer).await {
                 Ok((length, _)) => {
                     let data = &receiving_buffer[0..(length as usize)];
                     log_info!("Received {} bytes", length);
                     if data == b"VLF4 fire 1" {
                         log_info!("Firing pyro 1");
-                        fire_pyro(
-                            fs,
-                            unix_clock,
-                            delay,
-                            &mut pyro1_ctrl,
-                            &mut barometer,
-                            buzzer_queue,
-                        )
-                        .await;
+                        fire_pyro(services, &mut pyro1_ctrl, &mut barometer).await;
                     } else if data == b"VLF4 fire 2" {
                         log_info!("Firing pyro 2");
-                        fire_pyro(
-                            fs,
-                            unix_clock,
-                            delay,
-                            &mut pyro2_ctrl,
-                            &mut barometer,
-                            buzzer_queue,
-                        )
-                        .await;
+                        fire_pyro(services, &mut pyro2_ctrl, &mut barometer).await;
                     }
                 }
                 Err(lora_error) => {

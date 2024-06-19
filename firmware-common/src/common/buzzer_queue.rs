@@ -7,10 +7,10 @@ use embedded_hal_async::delay::DelayNs;
 use crate::Buzzer;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BuzzerTone(
-    pub u32, // frequency
-    pub u32, // duration
-    pub u32, // silent duration
+struct BuzzerTone(
+    u32, // frequency
+    u32, // duration
+    u32, // silent duration
 );
 
 pub struct BuzzerQueueRunner {
@@ -45,7 +45,8 @@ pub struct BuzzerQueue<'a> {
 }
 
 impl BuzzerQueue<'_> {
-    pub fn publish(&self, tone: BuzzerTone) {
-        self.publisher.publish_immediate(tone);
+    pub fn publish(&self, frequency: u32, duration: u32, silent_duration: u32) {
+        self.publisher
+            .publish_immediate(BuzzerTone(frequency, duration, silent_duration));
     }
 }

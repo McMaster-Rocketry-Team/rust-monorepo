@@ -36,7 +36,7 @@ create_rpc! {
         }
     }
     state<F: Flash, C: Crc>(
-        services: &SystemServices<'_, '_, '_, '_, impl DelayNs + Copy, impl Clock, F, C>,
+        services: &SystemServices<'_, '_, '_, '_, impl Delay, impl Clock, F, C>,
         config: &Option<DeviceConfig>,
         device_serial_number: &[u8; 12],
         downlink_package_receiver: Receiver<'_, NoopRawMutex, (VLPDownlinkPacket, PacketStatus), 1>,

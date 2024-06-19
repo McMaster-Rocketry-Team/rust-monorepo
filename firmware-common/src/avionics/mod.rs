@@ -10,20 +10,15 @@ use flight_profile::{FlightProfile, PyroSelection};
 use futures::join;
 use imu_calibration_info::IMUCalibrationInfo;
 use nalgebra::Vector3;
-use rkyv::{
-    Archive, Deserialize, Serialize,
-};
+use rkyv::{Archive, Deserialize, Serialize};
 use vlfs::{Crc, Flash};
 
 use crate::{
     allocator::HEAP,
     common::{
-        buzzer_queue::BuzzerTone,
         config_file::ConfigFile,
         config_structs::{DeviceConfig, DeviceModeConfig},
-        delta_logger::{
-            BufferedTieredRingDeltaLogger, TieredRingDeltaLoggerConfig,
-        },
+        delta_logger::{BufferedTieredRingDeltaLogger, TieredRingDeltaLoggerConfig},
         file_types::*,
         vlp2::{
             packet::{SoftArmPacket, VLPUplinkPacket},
@@ -44,10 +39,8 @@ use crate::{
     },
     claim_devices,
     common::{
-        device_manager::prelude::*,
-        gps_parser::GPSLocation,
-        sensor_snapshot::PartialSensorSnapshot,
-        ticker::Ticker,
+        device_manager::prelude::*, gps_parser::GPSLocation,
+        sensor_snapshot::PartialSensorSnapshot, ticker::Ticker,
     },
     device_manager_type,
     driver::{
@@ -104,77 +97,53 @@ pub async fn avionics_main(
     match self_test(device_manager).await {
         SelfTestResult::Ok => {
             log_info!("Self test passed");
-            services.buzzer_queue.publish(BuzzerTone(2000, 50, 150));
-            services.buzzer_queue.publish(BuzzerTone(2000, 50, 150));
-            services.buzzer_queue.publish(BuzzerTone(3000, 50, 150));
-            services.buzzer_queue.publish(BuzzerTone(3000, 50, 150));
+            services.buzzer_queue.publish(2000, 50, 150);
+            services.buzzer_queue.publish(2000, 50, 150);
+            services.buzzer_queue.publish(3000, 50, 150);
+            services.buzzer_queue.publish(3000, 50, 150);
         }
         SelfTestResult::PartialFailed => {
             log_warn!("Self test partially failed");
-            services.buzzer_queue.publish(BuzzerTone(2000, 50, 150));
-            services.buzzer_queue.publish(BuzzerTone(2000, 50, 150));
-            services.buzzer_queue.publish(BuzzerTone(3000, 50, 150));
-            services.buzzer_queue.publish(BuzzerTone(2000, 50, 150));
+            services.buzzer_queue.publish(2000, 50, 150);
+            services.buzzer_queue.publish(2000, 50, 150);
+            services.buzzer_queue.publish(3000, 50, 150);
+            services.buzzer_queue.publish(2000, 50, 150);
         }
         SelfTestResult::Failed => {
             log_error!("Self test failed");
-            services.buzzer_queue.publish(BuzzerTone(2000, 50, 150));
-            services.buzzer_queue.publish(BuzzerTone(2000, 50, 150));
-            services.buzzer_queue.publish(BuzzerTone(3000, 50, 150));
-            services.buzzer_queue.publish(BuzzerTone(3000, 50, 150));
+            services.buzzer_queue.publish(2000, 50, 150);
+            services.buzzer_queue.publish(2000, 50, 150);
+            services.buzzer_queue.publish(3000, 50, 150);
+            services.buzzer_queue.publish(3000, 50, 150);
             indicators.run([200, 200], [], []).await;
         }
     }
 
     let (mut pyro_main_cont, mut pyro_main_ctrl) = match flight_profile.main_pyro {
         PyroSelection::Pyro1 => {
-            claim_devices!(
-                device_manager,
-                pyro1_cont,
-                pyro1_ctrl
-            );
+            claim_devices!(device_manager, pyro1_cont, pyro1_ctrl);
             (pyro1_cont, pyro1_ctrl)
-        },
+        }
         PyroSelection::Pyro2 => {
-            claim_devices!(
-                device_manager,
-                pyro2_cont,
-                pyro2_ctrl
-            );
+            claim_devices!(device_manager, pyro2_cont, pyro2_ctrl);
             (pyro2_cont, pyro2_ctrl)
-        },
+        }
         PyroSelection::Pyro3 => {
-            claim_devices!(
-                device_manager,
-                pyro3_cont,
-                pyro3_ctrl
-            );
+            claim_devices!(device_manager, pyro3_cont, pyro3_ctrl);
             (pyro3_cont, pyro3_ctrl)
         }
     };
     let (mut pyro_drogue_cont, mut pyro_drouge_ctrl) = match flight_profile.drogue_pyro {
         PyroSelection::Pyro1 => {
-            claim_devices!(
-                device_manager,
-                pyro1_cont,
-                pyro1_ctrl
-            );
+            claim_devices!(device_manager, pyro1_cont, pyro1_ctrl);
             (pyro1_cont, pyro1_ctrl)
-        },
+        }
         PyroSelection::Pyro2 => {
-            claim_devices!(
-                device_manager,
-                pyro2_cont,
-                pyro2_ctrl
-            );
+            claim_devices!(device_manager, pyro2_cont, pyro2_ctrl);
             (pyro2_cont, pyro2_ctrl)
-        },
+        }
         PyroSelection::Pyro3 => {
-            claim_devices!(
-                device_manager,
-                pyro3_cont,
-                pyro3_ctrl
-            );
+            claim_devices!(device_manager, pyro3_cont, pyro3_ctrl);
             (pyro3_cont, pyro3_ctrl)
         }
     };
@@ -360,8 +329,8 @@ pub async fn avionics_main(
     let hardware_arming_fut = async {
         let mut hardware_armed = arming_switch.read_arming().await.unwrap();
         if hardware_armed {
-            services.buzzer_queue.publish(BuzzerTone(2000, 700, 300));
-            services.buzzer_queue.publish(BuzzerTone(3000, 700, 300));
+            services.buzzer_queue.publish(2000, 700, 300);
+            services.buzzer_queue.publish(3000, 700, 300);
         }
         loop {
             arming_state.lock(|s| {
@@ -373,11 +342,11 @@ pub async fn avionics_main(
             arming_changed_signal.signal(());
             hardware_armed = arming_switch.wait_arming_change().await.unwrap();
             if hardware_armed {
-                services.buzzer_queue.publish(BuzzerTone(2000, 700, 300));
-                services.buzzer_queue.publish(BuzzerTone(3000, 700, 300));
+                services.buzzer_queue.publish(2000, 700, 300);
+                services.buzzer_queue.publish(3000, 700, 300);
             } else {
-                services.buzzer_queue.publish(BuzzerTone(3000, 700, 300));
-                services.buzzer_queue.publish(BuzzerTone(2000, 700, 300));
+                services.buzzer_queue.publish(3000, 700, 300);
+                services.buzzer_queue.publish(2000, 700, 300);
             }
         }
     };
@@ -626,18 +595,14 @@ pub async fn avionics_main(
                 s.flight_core_state = state;
             });
             match state {
-                FlightCoreStateTelemetry::DisArmed => {
-
-                },
+                FlightCoreStateTelemetry::DisArmed => {}
                 FlightCoreStateTelemetry::Armed => todo!(),
-                FlightCoreStateTelemetry::PowerAscend => {
-                },
+                FlightCoreStateTelemetry::PowerAscend => {}
                 FlightCoreStateTelemetry::Coast => todo!(),
                 FlightCoreStateTelemetry::Descent => todo!(),
-                FlightCoreStateTelemetry::Landed => {
-                },
+                FlightCoreStateTelemetry::Landed => {}
             }
-        }  
+        }
     };
 
     let camera_ctrl_fut = async {
@@ -647,15 +612,15 @@ pub async fn avionics_main(
             match state {
                 FlightCoreStateTelemetry::DisArmed => {
                     camera.set_recording(false).await;
-                },
+                }
                 FlightCoreStateTelemetry::Armed => {
                     camera.set_recording(true).await;
-                },
+                }
                 FlightCoreStateTelemetry::Landed => {
-                    services.delay.delay_ms(60*1000).await;
+                    services.delay.delay_ms(60 * 1000).await;
                     camera.set_recording(false).await;
-                },
-                _=>{}
+                }
+                _ => {}
             }
         }
     };
