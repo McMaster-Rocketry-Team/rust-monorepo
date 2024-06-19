@@ -7,11 +7,18 @@ use clap_num::maybe_hex;
 use crc::Crc;
 use crc::CRC_8_SMBUS;
 use embedded_hal_async::delay::DelayNs;
+use firmware_common::common::console::rpc::GCMPollDownlinkPacketResponse;
+use firmware_common::common::rkyv_structs::RkyvString;
+use firmware_common::common::vlp2::packet::LowPowerModePacket;
+use firmware_common::common::vlp2::packet::ResetPacket;
+use firmware_common::common::vlp2::packet::SoftArmPacket;
+use firmware_common::common::vlp2::packet::VLPUplinkPacket;
+use firmware_common::common::vlp2::packet::VerticalCalibrationPacket;
 use firmware_common::{driver::serial::SplitableSerialWrapper, RpcClient};
+use log::LevelFilter;
 use tokio::io::{split, AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::time::sleep;
 use tokio_serial::{SerialPortBuilderExt, SerialStream};
-use log::LevelFilter;
 
 struct Delay;
 
@@ -37,6 +44,10 @@ enum Commands {
     Detect,
     LS(LSArgs),
     Pull(PullArgs),
+    SendUplink(SendUplinkArgs),
+    GCM(GCMArgs),
+    FlightProfile(FlightProfileArgs),
+    DeviceConfig(DeviceConfigArgs),
 }
 
 fn file_type_parser(s: &str) -> Result<u16, String> {
@@ -62,9 +73,45 @@ struct PullArgs {
     host_path: std::path::PathBuf,
 }
 
+#[derive(clap::Args)]
+#[command(about = "Send VLP Uplink packet")]
+struct SendUplinkArgs {
+    command: String,
+}
+
+#[derive(clap::Args)]
+#[command(about = "Pull VLP Downlink packet")]
+struct GCMArgs {}
+
+#[derive(clap::Args)]
+#[command(about = "Set flight profile")]
+struct FlightProfileArgs {
+    drogue_pyro: u8,
+    drogue_chute_minimum_time_ms: f64,
+    drogue_chute_minimum_altitude_agl: f32,
+    drogue_chute_delay_ms: f64,
+    main_pyro: u8,
+    main_chute_altitude_agl: f32,
+    main_chute_delay_ms: f64,
+}
+
+#[derive(clap::Args)]
+#[command(about = "Set device config")]
+struct DeviceConfigArgs {
+    is_avionics: bool,
+    name: String,
+    lora_frequency: u32,
+    lora_sf: u8,
+    lora_bw: u32,
+    lora_cr: u8,
+    lora_power: i32,
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
-    let _ = env_logger::builder().filter_level(LevelFilter::Trace).try_init();
+    let _ = env_logger::builder()
+        .filter_level(LevelFilter::Trace)
+        .try_init();
 
     let crc = Crc::<u8>::new(&CRC_8_SMBUS);
     println!("{:?}", crc.checksum(&[]));
@@ -105,7 +152,97 @@ async fn main() -> Result<()> {
         Commands::Pull(args) => {
             println!("{:?} {:?}", args.file_id, args.host_path);
         }
-        Commands::Detect => unreachable!(),
+        Commands::Detect => todo!(),
+        Commands::SendUplink(SendUplinkArgs { command }) => {
+            let packet: VLPUplinkPacket = match command.as_str() {
+                "vertical_calibration" => VerticalCalibrationPacket { timestamp: 0.0 }.into(),
+                "soft_arm" => SoftArmPacket {
+                    timestamp: 0.0,
+                    armed: true,
+                }
+                .into(),
+
+                "soft_disarm" => SoftArmPacket {
+                    timestamp: 0.0,
+                    armed: false,
+                }
+                .into(),
+                "low_power_mode_on" => LowPowerModePacket {
+                    timestamp: 0.0,
+                    enabled: true,
+                }
+                .into(),
+                "low_power_mode_off" => LowPowerModePacket {
+                    timestamp: 0.0,
+                    enabled: false,
+                }
+                .into(),
+                "reset" => ResetPacket {}.into(),
+                _ => {
+                    return Err(anyhow!("Invalid command"));
+                }
+            };
+            let result = client.g_c_m_send_uplink_packet(packet).await.unwrap();
+            println!("{:?}", result);
+            loop {
+                match client.g_c_m_poll_downlink_packet().await {
+                    Ok(GCMPollDownlinkPacketResponse {
+                        packet: Some((packet, status)),
+                    }) => {
+                        println!("{:?} {:?}", packet, status);
+                    }
+                    Err(e) => {
+                        println!("{:?}", e);
+                    }
+                    _ => {}
+                }
+                sleep(Duration::from_millis(100)).await;
+            }
+        }
+        Commands::GCM(_) => loop {
+            match client.g_c_m_poll_downlink_packet().await {
+                Ok(GCMPollDownlinkPacketResponse {
+                    packet: Some((packet, status)),
+                }) => {
+                    println!("{:?} {:?}", packet, status);
+                }
+                Err(e) => {
+                    println!("{:?}", e);
+                }
+                _ => {}
+            }
+            sleep(Duration::from_millis(100)).await;
+        },
+        Commands::FlightProfile(profile) => {
+            client
+                .set_flight_profile(
+                    profile.drogue_pyro,
+                    profile.drogue_chute_minimum_time_ms,
+                    profile.drogue_chute_minimum_altitude_agl,
+                    profile.drogue_chute_delay_ms,
+                    profile.main_pyro,
+                    profile.main_chute_altitude_agl,
+                    profile.main_chute_delay_ms,
+                )
+                .await
+                .unwrap();
+        }
+        Commands::DeviceConfig(config) => {
+            let lora_key = [0x69u8; 32];
+            client
+                .set_device_config(
+                    config.is_avionics,
+                    RkyvString::from_str(&config.name),
+                    lora_key,
+                    config.lora_frequency,
+                    config.lora_sf,
+                    config.lora_bw,
+                    config.lora_cr,
+                    config.lora_power,
+                )
+                .await
+                .unwrap();
+        }
     }
     Ok(())
 }

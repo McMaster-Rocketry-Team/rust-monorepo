@@ -7,7 +7,7 @@ use vlfs::{Crc, Flash};
 use crate::{
     claim_devices,
     common::{
-        config_structs::{DeviceConfig, DeviceModeConfig},
+        device_config::{DeviceConfig, DeviceModeConfig},
         device_manager::prelude::*,
         rpc_channel::RpcChannelServer,
         vlp2::{

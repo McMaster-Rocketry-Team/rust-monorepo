@@ -22,11 +22,11 @@ use crate::{
     common::{
         can_bus::message::{AvionicsStatus, APOGEE_MESSAGE_ID, LANDED_MESSAGE_ID},
         config_file::ConfigFile,
-        config_structs::{DeviceConfig, DeviceModeConfig},
+        device_config::{DeviceConfig, DeviceModeConfig},
         delta_logger::{BufferedTieredRingDeltaLogger, TieredRingDeltaLoggerConfig},
         file_types::*,
         vlp2::{
-            packet::{SoftArmPacket, VLPUplinkPacket},
+            packet::{LowPowerModePacket, SoftArmPacket, VLPUplinkPacket},
             telemetry_packet::{FlightCoreStateTelemetry, TelemetryPacketBuilder},
             uplink_client::VLPUplinkClient,
         },
@@ -238,6 +238,8 @@ pub async fn avionics_main(
     );
 
     // states
+    let low_power_mode = BlockingMutex::<NoopRawMutex, _>::new(RefCell::new(false));
+    let is_low_power_mode = || low_power_mode.lock(|s| *s.borrow());
     let arming_state = BlockingMutex::<NoopRawMutex, _>::new(RefCell::new(ArmingState {
         hardware_armed: false,
         software_armed: false,
@@ -326,6 +328,7 @@ pub async fn avionics_main(
     let vlp_rx_fut = async {
         loop {
             let (packet, status) = vlp.wait_receive().await;
+            low_power_mode.lock(|s| *s.borrow_mut() = false);
             match packet {
                 VLPUplinkPacket::VerticalCalibrationPacket(_) => {
                     log_info!("Vertical calibration");
@@ -359,7 +362,9 @@ pub async fn avionics_main(
                         b.software_armed = armed;
                     });
                 }
-                VLPUplinkPacket::LowPowerModePacket(_) => todo!(),
+                VLPUplinkPacket::LowPowerModePacket(LowPowerModePacket { enabled, .. }) => {
+                    low_power_mode.lock(|s| *s.borrow_mut() = enabled);
+                }
                 VLPUplinkPacket::ResetPacket(_) => {
                     sys_reset.reset();
                 }
@@ -417,24 +422,6 @@ pub async fn avionics_main(
         }
     };
 
-    let flight_core_events_receiver_fut = async {
-        let receiver = flight_core_events.receiver();
-        loop {
-            let event = receiver.receive().await;
-            match event {
-                FlightCoreEvent::CriticalError => todo!(),
-                FlightCoreEvent::Ignition => todo!(),
-                FlightCoreEvent::Apogee => todo!(),
-                FlightCoreEvent::DeployMain => todo!(),
-                FlightCoreEvent::DeployDrogue => todo!(),
-                FlightCoreEvent::Landed => todo!(),
-                FlightCoreEvent::DidNotReachMinApogee => todo!(),
-                FlightCoreEvent::ChangeState(_) => todo!(),
-                FlightCoreEvent::ChangeAltitude(_) => todo!(),
-            }
-        }
-    };
-
     let pyro_main_cont_fut = async {
         let mut cont = pyro_main_cont.read_continuity().await.unwrap();
 
@@ -460,6 +447,10 @@ pub async fn avionics_main(
     let mut low_g_imu_ticker = Ticker::every(services.clock, services.delay, 5.0);
     let low_g_imu_fut = async {
         loop {
+            low_g_imu_ticker.next().await;
+            if is_low_power_mode() {
+                continue;
+            }
             let imu_reading = low_g_imu.read().await.unwrap();
             low_g_imu_signal.signal(imu_reading.clone());
             if services.unix_clock.ready() {
@@ -467,13 +458,16 @@ pub async fn avionics_main(
                     .log(imu_reading.to_unix_timestamp(services.unix_clock))
                     .await;
             }
-            low_g_imu_ticker.next().await;
         }
     };
 
     let mut high_g_imu_ticker = Ticker::every(services.clock, services.delay, 5.0);
     let high_g_imu_fut = async {
         loop {
+            high_g_imu_ticker.next().await;
+            if is_low_power_mode() {
+                continue;
+            }
             let imu_reading = high_g_imu.read().await.unwrap();
             high_g_imu_signal.signal(imu_reading.clone());
             if services.unix_clock.ready() {
@@ -481,13 +475,17 @@ pub async fn avionics_main(
                     .log(imu_reading.to_unix_timestamp(services.unix_clock))
                     .await;
             }
-            high_g_imu_ticker.next().await;
         }
     };
 
     let mut baro_ticker = Ticker::every(services.clock, services.delay, 5.0);
     let baro_fut = async {
         loop {
+            baro_ticker.next().await;
+            if is_low_power_mode() {
+                continue;
+            }
+
             let baro_reading = barometer.read().await.unwrap();
             baro_signal.signal(baro_reading.clone());
             if services.unix_clock.ready() {
@@ -495,7 +493,6 @@ pub async fn avionics_main(
                     .log(baro_reading.to_unix_timestamp(services.unix_clock))
                     .await;
             }
-            baro_ticker.next().await;
         }
     };
 
@@ -511,17 +508,20 @@ pub async fn avionics_main(
     let mut meg_ticker = Ticker::every(services.clock, services.delay, 50.0);
     let meg_fut = async {
         loop {
+            meg_ticker.next().await;
+            if is_low_power_mode() {
+                continue;
+            }
             let meg_reading = meg.read().await.unwrap();
             if services.unix_clock.ready() {
                 meg_logger
                     .log(meg_reading.to_unix_timestamp(services.unix_clock))
                     .await;
             }
-            meg_ticker.next().await;
         }
     };
 
-    let mut batt_volt_ticker = Ticker::every(services.clock, services.delay, 5.0);
+    let mut batt_volt_ticker = Ticker::every(services.clock, services.delay, 20.0);
     let bat_fut = async {
         loop {
             let battery_v = batt_voltmeter.read().await.unwrap();
@@ -697,7 +697,6 @@ pub async fn avionics_main(
         vlp_fut,
         hardware_arming_fut,
         setup_flight_core_fut,
-        flight_core_events_receiver_fut,
         pyro_main_cont_fut,
         pyro_drogue_cont_fut,
         low_g_imu_fut,

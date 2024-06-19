@@ -1,5 +1,5 @@
 use crate::{
-    common::{config_structs::LoraConfig, unix_clock::UnixClock},
+    common::{device_config::LoraConfig, unix_clock::UnixClock},
     Clock,
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};

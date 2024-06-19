@@ -7,7 +7,7 @@ use lora_phy::{
 };
 
 use crate::{
-    common::{config_structs::LoraConfig, unix_clock::UnixClock},
+    common::{device_config::LoraConfig, unix_clock::UnixClock},
     Clock,
 };
 

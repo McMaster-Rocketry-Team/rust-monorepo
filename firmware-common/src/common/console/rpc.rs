@@ -11,6 +11,13 @@ use embassy_sync::{blocking_mutex::raw::NoopRawMutex, channel::Receiver};
 use lora_phy::mod_params::PacketStatus;
 use rkyv::{Archive, Deserialize, Serialize};
 use vlfs::{AsyncReader, Crc, FileID, FileReader, FileType, Flash, VLFSError, VLFSReadStatus};
+use crate::ConfigFile;
+use crate::avionics::flight_profile::FlightProfile;
+use crate::common::file_types::{FLIGHT_PROFILE_FILE_TYPE, DEVICE_CONFIG_FILE_TYPE};
+use crate::avionics::flight_profile::PyroSelection;
+use crate::DeviceModeConfig;
+use crate::common::device_config::LoraConfig;
+use crate::common::rkyv_structs::RkyvVec;
 
 #[derive(defmt::Format, Debug, Clone, Archive, Deserialize, Serialize)]
 pub struct RpcPacketStatus {
@@ -147,5 +154,64 @@ create_rpc! {
         GCMPollDownlinkPacketResponse {
             packet: downlink_package_receiver.try_receive().ok().map(|(packet, status)|(packet, status.into()))
         }
+    }
+    rpc 8 SetFlightProfile |
+        drogue_pyro: u8,
+        drogue_chute_minimum_time_ms: f64,
+        drogue_chute_minimum_altitude_agl: f32,
+        drogue_chute_delay_ms: f64,
+        main_pyro: u8,
+        main_chute_altitude_agl: f32,
+        main_chute_delay_ms: f64
+    | -> () {
+        let flight_profile_file = ConfigFile::<FlightProfile, _, _>::new(services.fs, FLIGHT_PROFILE_FILE_TYPE);
+        flight_profile_file.write(&FlightProfile {
+            drogue_pyro: match drogue_pyro {
+                1 => PyroSelection::Pyro1,
+                2 => PyroSelection::Pyro2,
+                3 => PyroSelection::Pyro3,
+                _ => PyroSelection::Pyro1,
+            },
+            drogue_chute_minimum_time_ms,
+            drogue_chute_minimum_altitude_agl,
+            drogue_chute_delay_ms,
+            main_pyro: match main_pyro {
+                1 => PyroSelection::Pyro1,
+                2 => PyroSelection::Pyro2,
+                3 => PyroSelection::Pyro3,
+                _ => PyroSelection::Pyro1,
+            },
+            main_chute_altitude_agl,
+            main_chute_delay_ms,
+        }).await.unwrap();
+        SetFlightProfileResponse {}
+    }
+    rpc 9 SetDeviceConfig |
+        is_avionics: bool,
+        name: RkyvString<64>,
+        lora_key: [u8; 32],
+        lora_frequency: u32,
+        lora_sf: u8,
+        lora_bw: u32,
+        lora_cr: u8,
+        lora_power: i32
+    | -> () {
+        let device_config_file = ConfigFile::<DeviceConfig, _, _>::new(services.fs, DEVICE_CONFIG_FILE_TYPE);
+        device_config_file.write(&DeviceConfig {
+            name,
+            mode: if is_avionics {
+                DeviceModeConfig::Avionics { lora_key }
+            } else {
+                DeviceModeConfig::GCM { lora_key }
+            },
+            lora: LoraConfig {
+                frequencies: RkyvVec::from_slice(&[lora_frequency]),
+                sf: lora_sf,
+                bw: lora_bw,
+                cr: lora_cr,
+                power: lora_power,
+            }
+        }).await.unwrap();
+        SetDeviceConfigResponse {}
     }
 }

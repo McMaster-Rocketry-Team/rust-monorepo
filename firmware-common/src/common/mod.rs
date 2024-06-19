@@ -16,7 +16,7 @@ pub mod delta_logger;
 pub mod indicator_controller;
 pub mod rkyv_structs;
 pub mod config_file;
-pub mod config_structs;
+pub mod device_config;
 pub mod vlp2;
 pub mod rpc_channel;
 pub mod can_bus;

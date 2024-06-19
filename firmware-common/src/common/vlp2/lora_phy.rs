@@ -5,7 +5,7 @@ use lora_phy::{
     LoRa, RxMode,
 };
 
-use crate::common::config_structs::LoraConfig;
+use crate::common::device_config::LoraConfig;
 
 pub struct LoraPhy<'a, 'b, LK: RadioKind, DL: DelayNs> {
     lora: &'a mut LoRa<LK, DL>,

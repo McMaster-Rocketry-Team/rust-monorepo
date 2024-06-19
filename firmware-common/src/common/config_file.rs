@@ -11,7 +11,7 @@ use vlfs::{AsyncWriter, Crc, FileType, Flash, VLFSError, VLFS};
 
 use crate::avionics::flight_profile::FlightProfile;
 
-use super::{config_structs::DeviceConfig, file_types::{DEVICE_CONFIG_FILE_TYPE, FLIGHT_PROFILE_FILE_TYPE}};
+use super::{device_config::DeviceConfig, file_types::{DEVICE_CONFIG_FILE_TYPE, FLIGHT_PROFILE_FILE_TYPE}};
 
 pub struct ConfigFile<'a, T, F, C>
 where

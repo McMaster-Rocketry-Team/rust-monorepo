@@ -9,7 +9,7 @@
 mod fmt;
 
 use common::config_file::ConfigFile;
-use common::config_structs::{DeviceConfig, DeviceModeConfig};
+use common::device_config::{DeviceConfig, DeviceModeConfig};
 use common::console::rpc::run_rpc_server;
 use common::device_manager::SystemServices;
 use common::file_types::DEVICE_CONFIG_FILE_TYPE;
@@ -36,7 +36,7 @@ pub use common::console::rpc::RpcClient;
 mod allocator;
 mod avionics;
 mod beacon;
-mod common;
+pub mod common;
 pub mod driver;
 mod gcm;
 mod ground_test;
