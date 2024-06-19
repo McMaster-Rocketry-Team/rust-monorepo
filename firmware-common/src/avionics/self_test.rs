@@ -7,17 +7,17 @@ pub enum SelfTestResult {
 }
 
 pub async fn self_test(device_manager: device_manager_type!()) -> SelfTestResult {
-    claim_devices!(device_manager, imu, barometer, meg);
+    claim_devices!(device_manager, barometer, meg);
     // reset all devices
-    imu.reset().await.unwrap();
+    // imu.reset().await.unwrap();
     barometer.reset().await.unwrap();
     meg.reset().await.unwrap();
 
-    let imu = imu.read().await;
+    // let imu = imu.read().await;
     let baro = barometer.read().await;
     let meg = meg.read().await;
 
-    log_info!("Self test: {:?} {:?} {:?}", imu, baro, meg);
-    imu.is_ok() && baro.is_ok() && meg.is_ok();
+    log_info!("Self test: {:?} {:?}", baro, meg);
+    baro.is_ok() && meg.is_ok();
     SelfTestResult::Ok // FIXME
 }

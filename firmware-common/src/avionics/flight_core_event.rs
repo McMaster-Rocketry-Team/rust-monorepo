@@ -1,6 +1,6 @@
 use embassy_sync::{blocking_mutex::raw::RawMutex, channel::Sender};
 
-use crate::common::telemetry::telemetry_data::AvionicsState;
+use crate::common::vlp2::telemetry_packet::FlightCoreStateTelemetry;
 
 #[derive(Debug, Clone, Copy)]
 pub enum FlightCoreEvent {
@@ -11,7 +11,7 @@ pub enum FlightCoreEvent {
     DeployDrogue,
     Landed,
     DidNotReachMinApogee,
-    ChangeState(AvionicsState),
+    ChangeState(FlightCoreStateTelemetry),
     ChangeAltitude(f32),
 }
 

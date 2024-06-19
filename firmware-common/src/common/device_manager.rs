@@ -1,26 +1,9 @@
-use embedded_hal_async::delay::DelayNs;
 use heapless::Vec;
 use lora_phy::{mod_traits::RadioKind, LoRa};
 use vlfs::{Crc, Flash, VLFS};
 
 use crate::driver::{
-    adc::{Ampere, Volt, ADC},
-    arming::HardwareArming,
-    barometer::Barometer,
-    buzzer::Buzzer,
-    camera::Camera,
-    can_bus::SplitableCanBus,
-    clock::Clock,
-    debugger::Debugger,
-    gps::{GPS, GPSPPS},
-    imu::IMU,
-    indicator::Indicator,
-    meg::Megnetometer,
-    pyro::{Continuity, PyroCtrl},
-    rng::RNG,
-    serial::SplitableSerial,
-    sys_reset::SysReset,
-    usb::SplitableUSB,
+    adc::{Ampere, Volt, ADC}, arming::HardwareArming, barometer::Barometer, buzzer::Buzzer, camera::Camera, can_bus::SplitableCanBus, clock::Clock, debugger::Debugger, delay::Delay, gps::{GPS, GPSPPS}, imu::IMU, indicator::Indicator, meg::Megnetometer, pyro::{Continuity, PyroCtrl}, rng::RNG, serial::SplitableSerial, sys_reset::SysReset, usb::SplitableUSB
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
 
@@ -34,10 +17,11 @@ pub struct DeviceManager<
     DB: Debugger,
     D: SysReset,
     T: Clock,
-    DL: DelayNs + Copy,
+    DL: Delay,
     F: Flash,
     C: Crc,
     I: IMU,
+    IH: IMU,
     V: ADC<Volt>,
     A: ADC<Ampere>,
     PC: Continuity,
@@ -61,7 +45,8 @@ pub struct DeviceManager<
     pub(crate) sys_reset: Mutex<NoopRawMutex, D>,
     pub(crate) flash: Mutex<NoopRawMutex, F>,
     pub(crate) crc: Mutex<NoopRawMutex, C>,
-    pub(crate) imu: Mutex<NoopRawMutex, I>,
+    pub(crate) low_g_imu: Mutex<NoopRawMutex, I>,
+    pub(crate) high_g_imu: Mutex<NoopRawMutex, IH>,
     pub(crate) batt_voltmeter: Mutex<NoopRawMutex, V>,
     pub(crate) batt_ammeter: Mutex<NoopRawMutex, A>,
     pub(crate) pyro1_cont: Mutex<NoopRawMutex, PC>,
@@ -93,10 +78,11 @@ impl<
         DB: Debugger,
         D: SysReset,
         T: Clock,
-        DL: DelayNs + Copy,
+        DL: Delay,
         F: Flash,
         C: Crc,
         I: IMU,
+        IH: IMU,
         V: ADC<Volt>,
         A: ADC<Ampere>,
         PC: Continuity,
@@ -125,6 +111,7 @@ impl<
         F,
         C,
         I,
+        IH,
         V,
         A,
         PC,
@@ -152,7 +139,8 @@ impl<
         delay: DL,
         flash: F,
         crc: C,
-        imu: I,
+        low_g_imu: I,
+        high_g_imu: IH,
         batt_voltmeter: V,
         batt_ammeter: A,
         pyro1: (PC, PT),
@@ -181,7 +169,8 @@ impl<
             sys_reset: Mutex::new(sys_reset),
             flash: Mutex::new(flash),
             crc: Mutex::new(crc),
-            imu: Mutex::new(imu),
+            low_g_imu: Mutex::new(low_g_imu),
+            high_g_imu: Mutex::new(high_g_imu),
             batt_voltmeter: Mutex::new(batt_voltmeter),
             batt_ammeter: Mutex::new(batt_ammeter),
             pyro1_cont: Mutex::new(pyro1.0),
@@ -247,9 +236,10 @@ macro_rules! device_manager_type {
     impl Debugger,
     impl SysReset,
     impl Clock,
-    impl embedded_hal_async::delay::DelayNs + Copy,
+    impl Delay,
     impl Flash,
     impl Crc,
+    impl IMU,
     impl IMU,
     impl ADC<Volt>,
     impl ADC<Ampere>,
@@ -276,9 +266,10 @@ macro_rules! device_manager_type {
     impl Debugger,
     impl SysReset,
     impl Clock,
-    impl embedded_hal_async::delay::DelayNs + Copy,
+    impl Delay,
     impl Flash,
     impl Crc,
+    impl IMU,
     impl IMU,
     impl ADC<Volt>,
     impl ADC<Ampere>,
@@ -324,13 +315,14 @@ pub mod prelude {
     pub use crate::driver::serial::SplitableSerial;
     pub use crate::driver::sys_reset::SysReset;
     pub use crate::driver::usb::SplitableUSB;
+    pub use crate::driver::delay::Delay;
     pub use crate::system_services_type;
     pub use embedded_hal_async::delay::DelayNs;
     pub use lora_phy::mod_traits::RadioKind;
     pub use vlfs::{Crc, Flash};
 }
 
-pub struct SystemServices<'f, 'a, 'b, 'c, DL: DelayNs + Copy, T: Clock, F: Flash, C: Crc> {
+pub struct SystemServices<'f, 'a, 'b, 'c, DL: Delay, T: Clock, F: Flash, C: Crc> {
     pub(crate) fs: &'f VLFS<F, C>,
     pub(crate) gps: &'a GPSParser,
     pub(crate) delay: DL,
@@ -346,7 +338,7 @@ macro_rules! system_services_type {
         '_,
         '_,
         '_,
-        impl DelayNs + Copy,
+        impl Delay,
         impl Clock,
         impl Flash,
         impl Crc,

@@ -3,6 +3,7 @@ use core::cell::{RefCell, RefMut};
 use rkyv::{Archive, Deserialize, Serialize};
 
 use crate::{
+    avionics::flight_core::FlightCoreState,
     common::unix_clock::{self, UnixClock},
     driver::gps::{self, GPSLocation},
     Clock,
@@ -149,16 +150,14 @@ impl PadDiagnosticTelemetryPacket {
     }
 }
 
-#[derive(defmt::Format, Debug, Clone, Archive, Deserialize, Serialize)]
+#[derive(defmt::Format, Debug, Clone, Copy, Archive, Deserialize, Serialize)]
 pub enum FlightCoreStateTelemetry {
     DisArmed,
     Armed,
     PowerAscend,
     Coast,
-    DrogueChute,
-    MainChute,
-    MainChuteDescend,
-    Landed,
+    Descent,
+    Landed
 }
 
 #[derive(defmt::Format, Debug, Clone, Archive, Deserialize, Serialize)]
@@ -191,10 +190,14 @@ pub struct TelemetryPacketBuilderState {
     pub gps_location: Option<GPSLocation>,
     pub battery_v: f32,
     pub temperature: f32,
+    pub altitude: f32,
+    max_altitude: f32,
+
     pub hardware_armed: bool,
     pub software_armed: bool,
     pub pyro_main_continuity: bool,
     pub pyro_drogue_continuity: bool,
+    pub flight_core_state: FlightCoreStateTelemetry,
 }
 
 pub struct TelemetryPacketBuilder<'a, K: Clock> {
@@ -210,10 +213,13 @@ impl<'a, K: Clock> TelemetryPacketBuilder<'a, K> {
                 gps_location: None,
                 battery_v: 0.0,
                 temperature: 0.0,
+                altitude: 0.0,
+                max_altitude: 0.0,
                 hardware_armed: false,
                 software_armed: false,
                 pyro_main_continuity: false,
                 pyro_drogue_continuity: false,
+                flight_core_state: FlightCoreStateTelemetry::DisArmed,
             })),
         }
     }
@@ -289,11 +295,12 @@ impl<'a, K: Clock> TelemetryPacketBuilder<'a, K> {
 
     pub fn update<U>(&self, update_fn: U)
     where
-        U: FnOnce(RefMut<TelemetryPacketBuilderState>) -> (),
+        U: FnOnce(&mut RefMut<TelemetryPacketBuilderState>) -> (),
     {
         self.state.lock(|state| {
             let mut state = state.borrow_mut();
-            update_fn(state);
+            update_fn(&mut state);
+            state.max_altitude = state.altitude.max(state.max_altitude);
         })
     }
 }

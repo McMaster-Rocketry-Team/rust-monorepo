@@ -6,7 +6,6 @@ pub mod imu_calibration_file;
 pub mod moving_average;
 mod multi_waker;
 pub mod sensor_snapshot;
-pub mod telemetry;
 pub mod ticker;
 pub mod unix_clock;
 pub mod serialized_enum;
