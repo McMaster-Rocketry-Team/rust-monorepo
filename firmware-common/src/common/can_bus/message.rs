@@ -2,9 +2,9 @@ use rkyv::{Archive, Deserialize, Serialize};
 
 #[derive(defmt::Format, Debug, Clone, Archive, Deserialize, Serialize)]
 pub struct AvionicsStatus {
-    timestamp: f64,
-    low_power: bool,
-    armed: bool,
+    pub timestamp: f64,
+    pub low_power: bool,
+    pub armed: bool,
 }
 
 impl AvionicsStatus {

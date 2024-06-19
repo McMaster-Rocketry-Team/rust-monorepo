@@ -8,14 +8,19 @@ use embassy_sync::{
 };
 use flight_profile::{FlightProfile, PyroSelection};
 use futures::join;
+use heapless::Vec;
 use imu_calibration_info::IMUCalibrationInfo;
 use nalgebra::Vector3;
-use rkyv::{Archive, Deserialize, Serialize};
+use rkyv::{
+    ser::{serializers::BufferSerializer, Serializer},
+    Archive, Deserialize, Serialize,
+};
 use vlfs::{Crc, Flash};
 
 use crate::{
     allocator::HEAP,
     common::{
+        can_bus::message::{AvionicsStatus, APOGEE_MESSAGE_ID, LANDED_MESSAGE_ID},
         config_file::ConfigFile,
         config_structs::{DeviceConfig, DeviceModeConfig},
         delta_logger::{BufferedTieredRingDeltaLogger, TieredRingDeltaLoggerConfig},
@@ -28,6 +33,7 @@ use crate::{
     },
     driver::{
         adc::ADCReading,
+        can_bus::CanBusTXFrame,
         imu::IMUReading,
         timestamp::{BootTimestamp, UnixTimestamp},
     },
@@ -48,6 +54,7 @@ use crate::{
         meg::MegReading,
     },
 };
+use crate::{common::can_bus::message::IGNITION_MESSAGE_ID, driver::can_bus::CanBusTX};
 use self_test::{self_test, SelfTestResult};
 
 pub mod avionics_state;
@@ -257,6 +264,8 @@ pub async fn avionics_main(
     let imu_config =
         BlockingMutex::<NoopRawMutex, _>::new(RefCell::new(imu_config_file.read().await));
 
+    let can_tx_channel = Channel::<NoopRawMutex, CanBusTXFrame, 2>::new();
+
     claim_devices!(
         device_manager,
         arming_switch,
@@ -267,8 +276,39 @@ pub async fn avionics_main(
         batt_voltmeter,
         lora,
         camera,
+        can_bus,
         sys_reset
     );
+    let (mut can_tx, _) = can_bus.split();
+
+    let can_tx_fut = async {
+        loop {
+            let frame = can_tx_channel.receive().await;
+            can_tx.send(frame).await.ok();
+        }
+    };
+
+    let can_tx_avionics_status_fut = async {
+        services.unix_clock.wait_until_ready().await;
+        let mut ticker = Ticker::every(services.clock, services.delay, 1000.0);
+        loop {
+            let packet = AvionicsStatus {
+                timestamp: services.unix_clock.now_ms(),
+                low_power: false,
+                armed: arming_state.lock(|s| (*s.borrow()).is_armed()),
+            };
+            let mut buffer = Vec::<u8, 64>::new();
+            let mut serializer = BufferSerializer::new(buffer.as_mut_slice());
+            serializer.serialize_value(&packet).unwrap();
+            drop(serializer);
+            let frame = CanBusTXFrame::Data {
+                id: AvionicsStatus::message_id(),
+                data: buffer,
+            };
+            can_tx_channel.send(frame).await;
+            ticker.next().await;
+        }
+    };
 
     let telemetry_packet_builder = TelemetryPacketBuilder::new(services.unix_clock);
     let vlp = VLPUplinkClient::new(&config.lora, services.unix_clock, services.delay, lora_key);
@@ -295,7 +335,7 @@ pub async fn avionics_main(
                         let mut acc_sum = Vector3::<f32>::zeros();
                         let mut gyro_sum = Vector3::<f32>::zeros();
                         for _ in 0..100 {
-                            let mut reading = low_g_imu_signal.wait().await;
+                            let reading = low_g_imu_signal.wait().await;
                             acc_sum += Vector3::from(reading.acc);
                             gyro_sum += Vector3::from(reading.gyro);
                         }
@@ -306,8 +346,10 @@ pub async fn avionics_main(
                             gyro_offset: (-gyro_sum).into(),
                             up_right_vector: acc_sum.into(),
                         };
-                        imu_config_file.write(&new_imu_config);
+                        imu_config_file.write(&new_imu_config).await.ok();
                         imu_config.lock(|s| s.borrow_mut().replace(new_imu_config));
+                        services.buzzer_queue.publish(2000, 50, 100);
+                        services.buzzer_queue.publish(2000, 50, 100);
                     }
                 }
                 VLPUplinkPacket::SoftArmPacket(SoftArmPacket { armed, .. }) => {
@@ -495,7 +537,7 @@ pub async fn avionics_main(
         }
     };
 
-    let flight_core_fut = async {
+    let flight_core_tick_fut = async {
         loop {
             let low_g_imu_reading = low_g_imu_signal.wait().await;
             let high_g_imu_reading = high_g_imu_signal.wait().await;
@@ -516,24 +558,6 @@ pub async fn avionics_main(
                     })
                 }
             })
-        }
-    };
-
-    let pyro_main_ctrl_fut = async {
-        loop {
-            pyro_main_fire_signal.wait().await;
-            pyro_main_ctrl.set_enable(true).await.ok();
-            services.delay.delay_ms(2000).await;
-            pyro_main_ctrl.set_enable(false).await.ok();
-        }
-    };
-
-    let pyro_drogue_ctrl_fut = async {
-        loop {
-            pyro_drouge_fire_signal.wait().await;
-            pyro_drouge_ctrl.set_enable(true).await.ok();
-            services.delay.delay_ms(3000).await;
-            pyro_drouge_ctrl.set_enable(false).await.ok();
         }
     };
 
@@ -591,17 +615,53 @@ pub async fn avionics_main(
         let mut sub = flight_core_state_pub_sub.subscriber().unwrap();
         loop {
             let state = sub.next_message_pure().await;
-            telemetry_packet_builder.update(|s| {
-                s.flight_core_state = state;
-            });
             match state {
                 FlightCoreStateTelemetry::DisArmed => {}
-                FlightCoreStateTelemetry::Armed => todo!(),
-                FlightCoreStateTelemetry::PowerAscend => {}
-                FlightCoreStateTelemetry::Coast => todo!(),
-                FlightCoreStateTelemetry::Descent => todo!(),
-                FlightCoreStateTelemetry::Landed => {}
+                FlightCoreStateTelemetry::Armed => {}
+                FlightCoreStateTelemetry::PowerAscend => {
+                    can_tx_channel
+                        .send(CanBusTXFrame::Data {
+                            id: IGNITION_MESSAGE_ID,
+                            data: Vec::new(),
+                        })
+                        .await;
+                }
+                FlightCoreStateTelemetry::Coast => {}
+                FlightCoreStateTelemetry::Descent => {
+                    can_tx_channel
+                        .send(CanBusTXFrame::Data {
+                            id: APOGEE_MESSAGE_ID,
+                            data: Vec::new(),
+                        })
+                        .await;
+                }
+                FlightCoreStateTelemetry::Landed => {
+                    can_tx_channel
+                        .send(CanBusTXFrame::Data {
+                            id: LANDED_MESSAGE_ID,
+                            data: Vec::new(),
+                        })
+                        .await;
+                }
             }
+        }
+    };
+
+    let pyro_main_ctrl_fut = async {
+        loop {
+            pyro_main_fire_signal.wait().await;
+            pyro_main_ctrl.set_enable(true).await.ok();
+            services.delay.delay_ms(2000).await;
+            pyro_main_ctrl.set_enable(false).await.ok();
+        }
+    };
+
+    let pyro_drogue_ctrl_fut = async {
+        loop {
+            pyro_drouge_fire_signal.wait().await;
+            pyro_drouge_ctrl.set_enable(true).await.ok();
+            services.delay.delay_ms(3000).await;
+            pyro_drouge_ctrl.set_enable(false).await.ok();
         }
     };
 
@@ -611,14 +671,14 @@ pub async fn avionics_main(
             let state = sub.next_message_pure().await;
             match state {
                 FlightCoreStateTelemetry::DisArmed => {
-                    camera.set_recording(false).await;
+                    camera.set_recording(false).await.ok();
                 }
                 FlightCoreStateTelemetry::Armed => {
-                    camera.set_recording(true).await;
+                    camera.set_recording(true).await.ok();
                 }
                 FlightCoreStateTelemetry::Landed => {
                     services.delay.delay_ms(60 * 1000).await;
-                    camera.set_recording(false).await;
+                    camera.set_recording(false).await.ok();
                 }
                 _ => {}
             }
@@ -646,12 +706,14 @@ pub async fn avionics_main(
         gps_fut,
         meg_fut,
         bat_fut,
-        flight_core_fut,
+        flight_core_tick_fut,
         pyro_main_ctrl_fut,
         pyro_drogue_ctrl_fut,
         flight_core_event_consumer,
         flight_core_state_sub_fut,
         camera_ctrl_fut,
+        can_tx_fut,
+        can_tx_avionics_status_fut
     );
     log_unreachable!();
 }

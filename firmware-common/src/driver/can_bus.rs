@@ -1,3 +1,5 @@
+use heapless::Vec;
+
 pub trait CanBusMessage {
     fn id(&self) -> u32;
     fn rtr(&self) -> Option<usize>;
@@ -9,7 +11,7 @@ pub trait SplitableCanBus {
 
     async fn reset(&mut self) -> Result<(), Self::Error>;
 
-    async fn split(
+    fn split(
         &mut self,
     ) -> (
         impl CanBusTX<Error = Self::Error>,
@@ -17,11 +19,15 @@ pub trait SplitableCanBus {
     );
 }
 
+pub enum CanBusTXFrame {
+    Data { id: u32, data: Vec<u8,64> },
+    Remote { id: u32, length: usize },
+}
+
 pub trait CanBusTX {
     type Error: defmt::Format + core::fmt::Debug;
 
-    async fn send_data(&mut self, id: u32, data: &[u8]) -> Result<(), Self::Error>;
-    async fn send_remote(&mut self, id: u32, length: usize) -> Result<(), Self::Error>;
+    async fn send(&mut self, frame: CanBusTXFrame) -> Result<(), Self::Error>;
 }
 
 pub trait CanBusRX {
