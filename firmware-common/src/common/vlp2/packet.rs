@@ -1,8 +1,7 @@
 use crate::common::vlp2::telemetry_packet::{
-    ArchivedInFlightDiagnosticTelemetryPacket, ArchivedInFlightNominalTelemetryPacket,
-    ArchivedPadDiagnosticTelemetryPacket, ArchivedPadIdleTelemetryPacket,
-    InFlightDiagnosticTelemetryPacket, InFlightNominalTelemetryPacket,
-    PadDiagnosticTelemetryPacket, PadIdleTelemetryPacket,
+    ArchivedInFlightTelemetryPacket, ArchivedPadDiagnosticTelemetryPacket,
+    ArchivedPadIdleTelemetryPacket, InFlightTelemetryPacket, PadDiagnosticTelemetryPacket,
+    PadIdleTelemetryPacket,
 };
 use core::mem::size_of;
 use rkyv::{Archive, Deserialize, Serialize};
@@ -51,8 +50,7 @@ create_serialized_enum!(
     (0, AckPacket),
     (1, PadIdleTelemetryPacket),
     (2, PadDiagnosticTelemetryPacket),
-    (3, InFlightNominalTelemetryPacket),
-    (4, InFlightDiagnosticTelemetryPacket)
+    (3, InFlightTelemetryPacket)
 );
 
 const fn max(a: usize, b: usize) -> usize {

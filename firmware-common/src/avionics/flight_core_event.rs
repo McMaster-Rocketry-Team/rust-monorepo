@@ -13,6 +13,7 @@ pub enum FlightCoreEvent {
     DidNotReachMinApogee,
     ChangeState(FlightCoreStateTelemetry),
     ChangeAltitude(f32),
+    ChangeSpeed(f32),
 }
 
 pub trait FlightCoreEventDispatcher {

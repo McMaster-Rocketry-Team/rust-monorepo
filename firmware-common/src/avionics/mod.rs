@@ -23,8 +23,8 @@ use crate::{
     common::{
         can_bus::message::{AvionicsStatus, APOGEE_MESSAGE_ID, LANDED_MESSAGE_ID},
         config_file::ConfigFile,
-        device_config::{DeviceConfig, DeviceModeConfig},
         delta_logger::{BufferedTieredRingDeltaLogger, TieredRingDeltaLoggerConfig},
+        device_config::{DeviceConfig, DeviceModeConfig},
         file_types::*,
         vlp2::{
             packet::{LowPowerModePacket, SoftArmPacket, VLPUplinkPacket},
@@ -315,7 +315,7 @@ pub async fn avionics_main(
 
     let indicators_fut = async {
         let wait_gps_fut = services.unix_clock.wait_until_ready();
-        let wait_gps_indicator_fut =  indicators.run([], [], [250, 250]);
+        let wait_gps_indicator_fut = indicators.run([], [], [250, 250]);
         select(wait_gps_fut, wait_gps_indicator_fut).await;
         indicators.run([], [50, 2000], []).await;
     };
@@ -326,7 +326,7 @@ pub async fn avionics_main(
         // Wait 1 sec for all the fields to be populated
         services.delay.delay_ms(1000).await;
 
-        let mut update_ticker = Ticker::every(services.clock, services.delay, 100.0);
+        let mut update_ticker = Ticker::every(services.clock, services.delay, 1000.0);
         loop {
             let packet = telemetry_packet_builder.create_packet();
             vlp.send(packet);
@@ -496,6 +496,9 @@ pub async fn avionics_main(
 
             let baro_reading = barometer.read().await.unwrap();
             baro_signal.signal(baro_reading.clone());
+            telemetry_packet_builder.update(|b| {
+                b.temperature = baro_reading.temperature;
+            });
             if services.unix_clock.ready() {
                 baro_logger
                     .log(baro_reading.to_unix_timestamp(services.unix_clock))
@@ -613,6 +616,11 @@ pub async fn avionics_main(
                 FlightCoreEvent::ChangeAltitude(new_altitude) => {
                     telemetry_packet_builder.update(|s| {
                         s.altitude = new_altitude;
+                    });
+                }
+                FlightCoreEvent::ChangeSpeed(new_speed) => {
+                    telemetry_packet_builder.update(|s| {
+                        s.speed = new_speed;
                     });
                 }
             }

@@ -43,7 +43,6 @@ impl Default for Variances {
 }
 
 pub enum FlightCoreState {
-    // TODO add DisArmed
     Armed {
         // 500ms history
         snapshot_history: Deque<PartialSensorSnapshot, 100>,
@@ -121,7 +120,9 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
             .build();
         eskf.gravity = Vector3::new(0.0, 0.0, -9.81);
 
-        event_dispatcher.dispatch(FlightCoreEvent::ChangeState(FlightCoreStateTelemetry::Armed));
+        event_dispatcher.dispatch(FlightCoreEvent::ChangeState(
+            FlightCoreStateTelemetry::Armed,
+        ));
         Self {
             event_dispatcher,
             flight_profile,
@@ -188,6 +189,8 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
 
             self.event_dispatcher
                 .dispatch(FlightCoreEvent::ChangeAltitude(self.eskf.position.z));
+            self.event_dispatcher
+                .dispatch(FlightCoreEvent::ChangeSpeed(self.eskf.velocity.z));
         }
 
         match &mut self.state {
@@ -283,8 +286,9 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
                     }
 
                     self.event_dispatcher.dispatch(FlightCoreEvent::Ignition);
-                    self.event_dispatcher
-                        .dispatch(FlightCoreEvent::ChangeState(FlightCoreStateTelemetry::PowerAscend));
+                    self.event_dispatcher.dispatch(FlightCoreEvent::ChangeState(
+                        FlightCoreStateTelemetry::PowerAscend,
+                    ));
                     self.state = FlightCoreState::PowerAscend {
                         launch_timestamp: snapshot.timestamp,
                         launch_altitude,
@@ -302,8 +306,9 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
 
                 // coast detection
                 if acc_mag_moving_average.is_full() && acc_mag_moving_average.get_average() < 10.0 {
-                    self.event_dispatcher
-                        .dispatch(FlightCoreEvent::ChangeState(FlightCoreStateTelemetry::Coast));
+                    self.event_dispatcher.dispatch(FlightCoreEvent::ChangeState(
+                        FlightCoreStateTelemetry::Coast,
+                    ));
                     self.state = FlightCoreState::Coast {
                         launch_timestamp: *launch_timestamp,
                         launch_altitude: *launch_altitude,
@@ -316,8 +321,9 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
             } => {
                 // apogee detection
                 if self.eskf.velocity.z <= 0.0 {
-                    self.event_dispatcher
-                        .dispatch(FlightCoreEvent::ChangeState(FlightCoreStateTelemetry::Descent));
+                    self.event_dispatcher.dispatch(FlightCoreEvent::ChangeState(
+                        FlightCoreStateTelemetry::Descent,
+                    ));
                     self.event_dispatcher.dispatch(FlightCoreEvent::Apogee);
                     self.state = FlightCoreState::DrogueChute {
                         deploy_time: snapshot.timestamp + self.flight_profile.drogue_chute_delay_ms,
@@ -357,7 +363,9 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
                 let altitude_agl = self.eskf.position.z - *launch_altitude;
                 if altitude_agl <= self.flight_profile.main_chute_altitude_agl {
                     self.state = FlightCoreState::MainChute {
-                        deploy_time: Some(snapshot.timestamp + self.flight_profile.main_chute_delay_ms),
+                        deploy_time: Some(
+                            snapshot.timestamp + self.flight_profile.main_chute_delay_ms,
+                        ),
                         launch_altitude: *launch_altitude,
                     };
                 }
@@ -375,8 +383,9 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
                 // landing detection
                 if self.eskf.velocity.z.abs() < 0.5 {
                     self.event_dispatcher.dispatch(FlightCoreEvent::Landed);
-                    self.event_dispatcher
-                        .dispatch(FlightCoreEvent::ChangeState(FlightCoreStateTelemetry::Landed));
+                    self.event_dispatcher.dispatch(FlightCoreEvent::ChangeState(
+                        FlightCoreStateTelemetry::Landed,
+                    ));
                     self.state = FlightCoreState::Landed {};
                 }
             }
