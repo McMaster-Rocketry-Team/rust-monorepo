@@ -1,5 +1,6 @@
 use core::cell::RefCell;
 
+use embassy_futures::select::select;
 use embassy_sync::{
     blocking_mutex::{raw::NoopRawMutex, Mutex as BlockingMutex},
     channel::{Channel, Sender},
@@ -310,6 +311,13 @@ pub async fn avionics_main(
             can_tx_channel.send(frame).await;
             ticker.next().await;
         }
+    };
+
+    let indicators_fut = async {
+        let wait_gps_fut = services.unix_clock.wait_until_ready();
+        let wait_gps_indicator_fut =  indicators.run([], [], [250, 250]);
+        select(wait_gps_fut, wait_gps_indicator_fut).await;
+        indicators.run([], [50, 2000], []).await;
     };
 
     let telemetry_packet_builder = TelemetryPacketBuilder::new(services.unix_clock);
@@ -712,7 +720,8 @@ pub async fn avionics_main(
         flight_core_state_sub_fut,
         camera_ctrl_fut,
         can_tx_fut,
-        can_tx_avionics_status_fut
+        can_tx_avionics_status_fut,
+        indicators_fut
     );
     log_unreachable!();
 }
