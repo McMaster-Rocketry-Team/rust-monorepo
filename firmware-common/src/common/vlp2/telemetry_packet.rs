@@ -2,11 +2,7 @@ use core::cell::{RefCell, RefMut};
 
 use rkyv::{Archive, Deserialize, Serialize};
 
-use crate::{
-    common::unix_clock::UnixClock,
-    driver::gps::GPSLocation,
-    Clock,
-};
+use crate::{common::unix_clock::UnixClock, driver::gps::GPSLocation, Clock};
 use embassy_sync::blocking_mutex::{raw::NoopRawMutex, Mutex as BlockingMutex};
 
 use super::packet::VLPDownlinkPacket;
@@ -21,11 +17,12 @@ mod factories {
 
 #[derive(defmt::Format, Debug, Clone, Archive, Deserialize, Serialize)]
 pub struct PadIdleTelemetryPacket {
-    timestamp: f64,
-    lat_lon: (f64, f64),
-    battery_v: u16,
-    temperature: u16,
-    software_armed: bool,
+    pub timestamp: f64,
+    pub lat_lon: (f64, f64),
+    pub battery_v: u16,
+    pub temperature: u16,
+    pub software_armed: bool,
+    pub free_space: u32,
 }
 
 impl PadIdleTelemetryPacket {
@@ -35,6 +32,7 @@ impl PadIdleTelemetryPacket {
         battery_v: f32,
         temperature: f32,
         software_armed: bool,
+        free_space: u32,
     ) -> Self {
         Self {
             timestamp,
@@ -42,6 +40,7 @@ impl PadIdleTelemetryPacket {
             battery_v: factories::BatteryV::to_fixed_point_capped(battery_v),
             temperature: factories::Temperature::to_fixed_point_capped(temperature),
             software_armed,
+            free_space,
         }
     }
 
@@ -75,6 +74,7 @@ pub struct PadDiagnosticTelemetryPacket {
     pub temperature: u16,
     pub hardware_armed: bool,
     pub software_armed: bool,
+    pub free_space: u32,
 
     pub num_of_fix_satellites: u8,
     pub pyro_main_continuity: bool,
@@ -94,6 +94,7 @@ impl PadDiagnosticTelemetryPacket {
         num_of_fix_satellites: u8,
         pyro_main_continuity: bool,
         pyro_drogue_continuity: bool,
+        free_space: u32,
     ) -> Self {
         Self {
             timestamp,
@@ -106,6 +107,7 @@ impl PadDiagnosticTelemetryPacket {
             num_of_fix_satellites,
             pyro_main_continuity,
             pyro_drogue_continuity,
+            free_space,
         }
     }
 
@@ -170,9 +172,10 @@ pub struct InFlightTelemetryPacket {
     pub lat_lon: (f64, f64),
     pub battery_v: u16,
     pub flight_core_state: FlightCoreStateTelemetry,
+    pub free_space: u32,
 }
 
-impl InFlightTelemetryPacket{
+impl InFlightTelemetryPacket {
     pub fn new(
         timestamp: f64,
         temperature: f32,
@@ -182,6 +185,7 @@ impl InFlightTelemetryPacket{
         lat_lon: (f64, f64),
         battery_v: f32,
         flight_core_state: FlightCoreStateTelemetry,
+        free_space: u32,
     ) -> Self {
         Self {
             timestamp,
@@ -192,6 +196,7 @@ impl InFlightTelemetryPacket{
             lat_lon,
             battery_v: factories::BatteryV::to_fixed_point_capped(battery_v),
             flight_core_state,
+            free_space,
         }
     }
 
@@ -226,7 +231,6 @@ impl InFlightTelemetryPacket{
     pub fn flight_core_state(&self) -> FlightCoreStateTelemetry {
         self.flight_core_state
     }
-
 }
 
 pub struct TelemetryPacketBuilderState {
@@ -243,6 +247,7 @@ pub struct TelemetryPacketBuilderState {
     pub pyro_main_continuity: bool,
     pub pyro_drogue_continuity: bool,
     pub flight_core_state: FlightCoreStateTelemetry,
+    pub disk_free_space: u32,
 }
 
 pub struct TelemetryPacketBuilder<'a, K: Clock> {
@@ -267,6 +272,7 @@ impl<'a, K: Clock> TelemetryPacketBuilder<'a, K> {
                 pyro_main_continuity: false,
                 pyro_drogue_continuity: false,
                 flight_core_state: FlightCoreStateTelemetry::DisArmed,
+                disk_free_space: 0,
             })),
         }
     }
@@ -285,13 +291,13 @@ impl<'a, K: Clock> TelemetryPacketBuilder<'a, K> {
             } else {
                 return false;
             }
-            if state.hardware_armed {
+            if !state.hardware_armed {
                 return false;
             }
-            if state.pyro_main_continuity {
+            if !state.pyro_main_continuity {
                 return false;
             }
-            if state.pyro_drogue_continuity {
+            if !state.pyro_drogue_continuity {
                 return false;
             }
 
@@ -315,6 +321,7 @@ impl<'a, K: Clock> TelemetryPacketBuilder<'a, K> {
                         state.battery_v,
                         state.temperature,
                         state.software_armed,
+                        state.disk_free_space,
                     )
                     .into()
                 } else {
@@ -332,12 +339,28 @@ impl<'a, K: Clock> TelemetryPacketBuilder<'a, K> {
                             .map_or(0, |l| l.num_of_fix_satellites),
                         state.pyro_main_continuity,
                         state.pyro_drogue_continuity,
+                        state.disk_free_space,
                     )
                     .into()
                 }
             } else {
-                // create in-flight telemetry packet
-                todo!()
+                InFlightTelemetryPacket::new(
+                    self.unix_clock.now_ms(),
+                    state.temperature,
+                    state.altitude,
+                    state.max_altitude,
+                    state.max_speed,
+                    state
+                        .gps_location
+                        .as_ref()
+                        .map(|l| l.lat_lon)
+                        .flatten()
+                        .unwrap_or((0.0, 0.0)),
+                    state.battery_v,
+                    state.flight_core_state,
+                    state.disk_free_space,
+                )
+                .into()
             }
         })
     }

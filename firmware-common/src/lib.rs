@@ -149,11 +149,11 @@ pub async fn init(
     };
 
     let main_fut = async {
-        if usb_connected {
-            log_info!("USB connected on boot, stopping main");
-            claim_devices!(device_manager, indicators);
-            indicators.run([1000, 1000], [0, 1000, 1000, 0], []).await;
-        }
+        // if usb_connected {
+        //     log_info!("USB connected on boot, stopping main");
+        //     claim_devices!(device_manager, indicators);
+        //     indicators.run([1000, 1000], [0, 1000, 1000, 0], []).await;
+        // }
 
         if device_config.as_ref().is_none() {
             log_info!("No device mode file found, halting");

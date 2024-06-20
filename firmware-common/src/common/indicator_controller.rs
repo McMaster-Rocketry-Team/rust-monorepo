@@ -67,6 +67,7 @@ impl<R: Indicator, G: Indicator, B: Indicator, T: Clock, DL: DelayNs + Copy>
         green_pattern: [u16; GN],
         blue_pattern: [u16; BN],
     ) -> ! {
+        self.reset().await;
         let red_fut = Self::run_single(&mut self.red, red_pattern, self.clock, self.delay);
         let green_fut = Self::run_single(&mut self.green, green_pattern, self.clock, self.delay);
         let blue_fut = Self::run_single(&mut self.blue, blue_pattern, self.clock, self.delay);

@@ -26,7 +26,14 @@ pub struct LowPowerModePacket {
 }
 
 #[derive(defmt::Format, Debug, Clone, Archive, Deserialize, Serialize)]
-pub struct ResetPacket;
+pub struct ResetPacket {
+    pub timestamp: f64,
+}
+
+#[derive(defmt::Format, Debug, Clone, Archive, Deserialize, Serialize)]
+pub struct DeleteLogsPacket {
+    pub timestamp: f64,
+}
 
 create_serialized_enum!(
     VLPUplinkPacketWriter,
@@ -35,7 +42,8 @@ create_serialized_enum!(
     (0, VerticalCalibrationPacket),
     (1, SoftArmPacket),
     (2, LowPowerModePacket),
-    (3, ResetPacket)
+    (3, ResetPacket),
+    (4, DeleteLogsPacket)
 );
 
 #[derive(defmt::Format, Debug, Clone, Archive, Deserialize, Serialize)]

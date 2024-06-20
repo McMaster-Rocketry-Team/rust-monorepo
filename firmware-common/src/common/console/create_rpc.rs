@@ -112,7 +112,7 @@ macro_rules! create_rpc {
                                 Err(e)?;
                             }
                         }
-                        log_info!("Received command: {:x}", request_buffer[15]);
+                        // log_info!("Received command: {:x}", request_buffer[15]);
                         match request_buffer[15] {
                             $(
                                 $rpc_i => {
@@ -133,7 +133,7 @@ macro_rules! create_rpc {
                                         log_info!("Command CRC mismatch, skipping.");
                                         continue;
                                     }
-                                    log_info!("Command CRC matched.");
+                                    //log_info!("Command CRC matched.");
 
                                     let archived = unsafe { archived_root::<[< $name Request >]>(&request_buffer[16..(request_size+16)]) };
                                     #[allow(unused)]
@@ -152,7 +152,7 @@ macro_rules! create_rpc {
 
                                     response_buffer[response_size] = crc.checksum(&response_buffer[..response_size]);
                                     tx.write_all(&response_buffer[..(response_size+1)]).await?;
-                                    log_info!("Response sent.");
+                                    //log_info!("Response sent.");
                                 }
                             )*
                             255 => {
@@ -260,8 +260,8 @@ macro_rules! create_rpc {
 
                         let rx_fut = async {
                             let result: Result<[< $name Response >], RpcClientError> = try {
-                                log_debug!("trying to read response {}", response_buffer.len());
-                                match run_with_timeout(&mut self.delay, 1000.0, rx.read_exact(response_buffer.as_mut_slice())).await{
+                                // log_debug!("trying to read response {}", response_buffer.len());
+                                match run_with_timeout(&mut self.delay, 5000.0, rx.read_exact(response_buffer.as_mut_slice())).await{
                                     Ok(Ok(_))=>{}
                                     Ok(Err(_))=>{
                                         return Err(RpcClientError::Serial);
@@ -276,7 +276,7 @@ macro_rules! create_rpc {
                                 if calculated_crc != received_crc {
                                     return Err(RpcClientError::ECCMismatch);
                                 }
-                                log_debug!("Response CRC matched.");
+                                // log_debug!("Response CRC matched.");
         
                                 let archived = unsafe { archived_root::<[< $name Response >]>(&response_buffer[..response_size]) };
                                 let deserialized = <[<Archived $name Response>] as rkyv::Deserialize<[< $name Response >], rkyv::Infallible>>::deserialize(archived, &mut rkyv::Infallible).unwrap();

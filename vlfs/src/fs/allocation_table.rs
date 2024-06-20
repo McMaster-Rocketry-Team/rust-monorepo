@@ -138,7 +138,7 @@ impl AllocationTableHeader {
 pub(super) struct AllocationTable {
     pub(super) header: AllocationTableHeader,
     pub(super) allocation_table_position: usize, // which half block is the allocation table in
-    pub(super) opened_files: Vec<FileID, 10>,
+    pub(super) opened_files: Vec<FileID, 32>,
 }
 
 impl Default for AllocationTable {
@@ -409,6 +409,7 @@ where
     pub async fn create_file(&self, file_type: FileType) -> Result<FileEntry, VLFSError<F::Error>> {
         log_trace!("Creating file with type: {:?}", file_type);
         let mut at = self.allocation_table.write().await;
+        log_trace!("Aquired allocation table write lock");
         at.header.max_file_id.increment();
         let old_at_address = at.address();
         at.increment_position();

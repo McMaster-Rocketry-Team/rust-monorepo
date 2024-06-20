@@ -5,6 +5,7 @@ use lora_modulation::BaseBandModulationParams;
 use crate::{common::unix_clock::UnixClock, Clock};
 
 use super::packet::{VLPDownlinkPacket, VLPUplinkPacket, MAX_VLP_UPLINK_PACKET_SIZE};
+use heapless::Vec;
 
 pub struct VLPPacketBuilder<'a, 'b, CL: Clock> {
     lora_config: BaseBandModulationParams,
@@ -14,11 +15,11 @@ pub struct VLPPacketBuilder<'a, 'b, CL: Clock> {
     unix_clock: UnixClock<'a, CL>,
 }
 
-impl<'a,'b, CL: Clock> VLPPacketBuilder<'a,'b, CL> {
+impl<'a, 'b, CL: Clock> VLPPacketBuilder<'a, 'b, CL> {
     pub fn new(
         unix_clock: UnixClock<'a, CL>,
         lora_config: BaseBandModulationParams,
-        key:&'b [u8; 32],
+        key: &'b [u8; 32],
     ) -> Self {
         let mut downlink_key = [0u8; 32];
         let mut chacha = ChaCha20::new(key, &[0; 8]);
@@ -71,7 +72,7 @@ impl<'a,'b, CL: Clock> VLPPacketBuilder<'a,'b, CL> {
         &buffer[..(len + 1)]
     }
 
-    fn get_past_nonce(&self, packet_length: usize) -> ([u8; 8], [u8; 8]) {
+    fn get_past_nonce(&self, packet_length: usize) -> Vec<(i32, [u8; 8]), 40> {
         let now = self.unix_clock.now_ms() as u64;
         let air_time = self
             .lora_config
@@ -81,15 +82,16 @@ impl<'a,'b, CL: Clock> VLPPacketBuilder<'a,'b, CL> {
 
         let module = sent_time % 100;
 
-        (
-            (sent_time - module).to_le_bytes(),
-            if module < 50 {
-                sent_time - module - 100
-            } else {
-                sent_time - module + 100
-            }
-            .to_le_bytes(),
-        )
+        let mut result = Vec::new();
+
+        let start = (sent_time - module) - 2000;
+        for i in 0..40 {
+            result
+                .push(((i as i32 * 100 - 2000) as i32, (start + i * 100).to_le_bytes()))
+                .unwrap();
+        }
+
+        result
     }
 
     pub fn deserialize_uplink(&self, buffer: &[u8]) -> Option<VLPUplinkPacket> {
@@ -116,15 +118,17 @@ impl<'a,'b, CL: Clock> VLPPacketBuilder<'a,'b, CL> {
             calculated_crc == deserialize_buffer[deserialize_buffer.len() - 1]
         };
 
-        let (nonce_1, nonce_2) = self.get_past_nonce(buffer.len());
-
-        if check_nonce(&nonce_1) || check_nonce(&nonce_2) {
-            // deserialize
-            VLPUplinkPacket::from_buffer(&deserialize_buffer[..(deserialize_buffer.len() - 1)])
-        } else {
-            log_info!("Received Lora message with invalid CRC");
-            None
+        for (offset, nonce) in self.get_past_nonce(buffer.len()) {
+            if check_nonce(&nonce) {
+                log_info!("Received Lora message with offset {}ms", offset);
+                return VLPUplinkPacket::from_buffer(
+                    &deserialize_buffer[..(deserialize_buffer.len() - 1)],
+                );
+            }
         }
+
+        log_info!("Received Lora message with invalid CRC");
+        None
     }
 
     pub fn deserialize_downlink(&self, buffer: &[u8]) -> Option<VLPDownlinkPacket> {
@@ -143,14 +147,14 @@ impl<'a,'b, CL: Clock> VLPPacketBuilder<'a,'b, CL> {
             calculated_crc == buffer[buffer.len() - 1]
         };
 
-        let (nonce_1, nonce_2) = self.get_past_nonce(buffer.len());
-
-        if check_nonce(&nonce_1) || check_nonce(&nonce_2) {
-            // deserialize
-            VLPDownlinkPacket::from_buffer(&buffer[..(buffer.len() - 1)])
-        } else {
-            log_info!("Received Lora message with invalid CRC");
-            None
+        for (offset, nonce) in self.get_past_nonce(buffer.len()) {
+            if check_nonce(&nonce) {
+                log_info!("Received Lora message with offset {}ms", offset);
+                return VLPDownlinkPacket::from_buffer(&buffer[..(buffer.len() - 1)]);
+            }
         }
+
+        log_info!("Received Lora message with invalid CRC");
+        None
     }
 }

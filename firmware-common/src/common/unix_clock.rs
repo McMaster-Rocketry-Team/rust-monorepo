@@ -38,6 +38,7 @@ impl<K: Clock> UnixClockTask<K> {
             if let Some(gps_timestamp) = gps_location.gps_timestamp {
                 let current_unix_timestamp = ((gps_timestamp + 1) as f64) * 1000.0;
                 let new_offset = current_unix_timestamp - pps_time;
+                // log_info!("New offset: {}", new_offset);
                 offset_running_avg.add_sample(new_offset);
                 self.state.lock(|state| {
                     let mut state = state.borrow_mut();

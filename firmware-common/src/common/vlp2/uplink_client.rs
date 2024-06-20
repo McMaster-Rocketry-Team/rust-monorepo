@@ -80,8 +80,8 @@ where
 
                 let listen_mode = if low_power_mode {
                     RxMode::DutyCycle(DutyCycleParams {
-                        rx_time: 10_000 / 15,     // 10ms
-                        sleep_time: 100_000 / 15, // 100ms
+                        rx_time: 10_000,     // 10ms
+                        sleep_time: 100_000, // 100ms
                     })
                 } else {
                     RxMode::Single(100)

@@ -211,7 +211,7 @@ where
 
     // This function will return the # of bytes of free space in a vlfs instance in the most optimal situation.
     // Since one sector can be only assigned to one file, If a file is 1kb, it will occupy the entire 4kb sector
-    pub async fn free(&mut self) -> u32 {
+    pub async fn free(&self) -> u32 {
         let sectors_mng = self.sectors_mng.read().await;
         let mut free_sector_count = sectors_mng.sector_map.free_sectors_count as u32;
         free_sector_count += sectors_mng.async_erase_ahead_sectors.len() as u32

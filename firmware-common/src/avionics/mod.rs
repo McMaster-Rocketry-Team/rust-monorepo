@@ -23,7 +23,7 @@ use crate::{
     common::{
         can_bus::message::{AvionicsStatus, APOGEE_MESSAGE_ID, LANDED_MESSAGE_ID},
         config_file::ConfigFile,
-        delta_logger::{BufferedTieredRingDeltaLogger, TieredRingDeltaLoggerConfig},
+        delta_logger::BufferedDeltaLogger,
         device_config::{DeviceConfig, DeviceModeConfig},
         file_types::*,
         vlp2::{
@@ -137,8 +137,9 @@ pub async fn avionics_main(
             (pyro2_cont, pyro2_ctrl)
         }
         PyroSelection::Pyro3 => {
-            claim_devices!(device_manager, pyro3_cont, pyro3_ctrl);
-            (pyro3_cont, pyro3_ctrl)
+            todo!();
+            // claim_devices!(device_manager, pyro3_cont, pyro3_ctrl);
+            // (pyro3_cont.unwrap(), pyro3_ctrl.unwrap())
         }
     };
     let (mut pyro_drogue_cont, mut pyro_drouge_ctrl) = match flight_profile.drogue_pyro {
@@ -151,94 +152,66 @@ pub async fn avionics_main(
             (pyro2_cont, pyro2_ctrl)
         }
         PyroSelection::Pyro3 => {
-            claim_devices!(device_manager, pyro3_cont, pyro3_ctrl);
-            (pyro3_cont, pyro3_ctrl)
+            todo!();
+            // claim_devices!(device_manager, pyro3_cont, pyro3_ctrl);
+            // (pyro3_cont, pyro3_ctrl)
         }
     };
 
-    log_info!("Creating loggers");
-    let sensor_logger_config = TieredRingDeltaLoggerConfig::new(60, 20 * 60, 10 * 60, 4 * 60 * 60);
-    let gps_logger = BufferedTieredRingDeltaLogger::<GPSLocation, _, _, 1>::new(
+    log_info!("Creating GPS logger");
+    let gps_logger =
+        BufferedDeltaLogger::<GPSLocation, _, _, 1>::new(services.fs, AVIONICS_GPS_LOGGER_TIER_1)
+            .await
+            .unwrap();
+    let gps_logger_fut = gps_logger.run();
+    log_info!("Creating low G IMU logger");
+    let low_g_imu_logger = BufferedDeltaLogger::<IMUReading<UnixTimestamp>, _, _, 10>::new(
         services.fs,
-        &sensor_logger_config,
-        AVIONICS_GPS_LOGGER_TIER_1,
-        10,
-        AVIONICS_GPS_LOGGER_TIER_2,
-        1,
+        AVIONICS_LOW_G_IMU_LOGGER_TIER_1,
     )
     .await
     .unwrap();
-    let gps_logger_fut = gps_logger.run();
-    let low_g_imu_logger =
-        BufferedTieredRingDeltaLogger::<IMUReading<UnixTimestamp>, _, _, 10>::new(
-            services.fs,
-            &sensor_logger_config,
-            AVIONICS_LOW_G_IMU_LOGGER_TIER_1,
-            200,
-            AVIONICS_LOW_G_IMU_LOGGER_TIER_2,
-            10,
-        )
-        .await
-        .unwrap();
     let low_g_imu_logger_fut = low_g_imu_logger.run();
-    let high_g_imu_logger =
-        BufferedTieredRingDeltaLogger::<IMUReading<UnixTimestamp>, _, _, 10>::new(
-            services.fs,
-            &sensor_logger_config,
-            AVIONICS_HIGH_G_IMU_LOGGER_TIER_1,
-            200,
-            AVIONICS_HIGH_G_IMU_LOGGER_TIER_2,
-            10,
-        )
-        .await
-        .unwrap();
-    let high_g_imu_logger_fut = high_g_imu_logger.run();
-    let baro_logger = BufferedTieredRingDeltaLogger::<BaroReading<UnixTimestamp>, _, _, 10>::new(
+    log_info!("Creating high G IMU logger");
+    let high_g_imu_logger = BufferedDeltaLogger::<IMUReading<UnixTimestamp>, _, _, 10>::new(
         services.fs,
-        &sensor_logger_config,
+        AVIONICS_HIGH_G_IMU_LOGGER_TIER_1,
+    )
+    .await
+    .unwrap();
+    let high_g_imu_logger_fut = high_g_imu_logger.run();
+    log_info!("Creating baro logger");
+    let baro_logger = BufferedDeltaLogger::<BaroReading<UnixTimestamp>, _, _, 10>::new(
+        services.fs,
         AVIONICS_BARO_LOGGER_TIER_1,
-        200,
-        AVIONICS_BARO_LOGGER_TIER_2,
-        10,
     )
     .await
     .unwrap();
     let baro_logger_fut = baro_logger.run();
-    let meg_logger = BufferedTieredRingDeltaLogger::<MegReading<UnixTimestamp>, _, _, 10>::new(
+    log_info!("Creating MEG logger");
+    let meg_logger = BufferedDeltaLogger::<MegReading<UnixTimestamp>, _, _, 10>::new(
         services.fs,
-        &sensor_logger_config,
         AVIONICS_MEG_LOGGER_TIER_1,
-        20,
-        AVIONICS_MEG_LOGGER_TIER_2,
-        1,
     )
     .await
     .unwrap();
     let meg_logger_fut = meg_logger.run();
-    let battery_logger =
-        BufferedTieredRingDeltaLogger::<ADCReading<Volt, UnixTimestamp>, _, _, 10>::new(
-            services.fs,
-            &sensor_logger_config,
-            AVIONICS_BATTERY_LOGGER_TIER_1,
-            50,
-            AVIONICS_BATTERY_LOGGER_TIER_2,
-            1,
-        )
-        .await
-        .unwrap();
+    log_info!("Creating battery logger");
+    let battery_logger = BufferedDeltaLogger::<ADCReading<Volt, UnixTimestamp>, _, _, 10>::new(
+        services.fs,
+        AVIONICS_BATTERY_LOGGER_TIER_1,
+    )
+    .await
+    .unwrap();
     let battery_logger_fut = battery_logger.run();
-    let total_logger_max_size = gps_logger.max_total_file_size()
-        + low_g_imu_logger.max_total_file_size()
-        + high_g_imu_logger.max_total_file_size()
-        + baro_logger.max_total_file_size()
-        + meg_logger.max_total_file_size()
-        + battery_logger.max_total_file_size();
+
     log_info!(
-        "Loggers created, total logger max size: {}",
-        total_logger_max_size
+        "Loggers created, free size: {}MB",
+        services.fs.free().await / 1024 / 1024
     );
 
     // states
+    let storage_full = BlockingMutex::<NoopRawMutex, _>::new(RefCell::new(false));
     let low_power_mode = BlockingMutex::<NoopRawMutex, _>::new(RefCell::new(false));
     let is_low_power_mode = || low_power_mode.lock(|s| *s.borrow());
     let arming_state = BlockingMutex::<NoopRawMutex, _>::new(RefCell::new(ArmingState {
@@ -254,6 +227,8 @@ pub async fn avionics_main(
     let flight_core_state_pub_sub =
         PubSubChannel::<NoopRawMutex, FlightCoreStateTelemetry, 2, 3, 1>::new();
 
+    let vertical_calibration_in_progress =
+        BlockingMutex::<NoopRawMutex, _>::new(RefCell::new(false));
     let low_g_imu_signal = Signal::<NoopRawMutex, IMUReading<BootTimestamp>>::new();
     let high_g_imu_signal = Signal::<NoopRawMutex, IMUReading<BootTimestamp>>::new();
     let baro_signal = Signal::<NoopRawMutex, BaroReading<BootTimestamp>>::new();
@@ -269,6 +244,7 @@ pub async fn avionics_main(
 
     let can_tx_channel = Channel::<NoopRawMutex, CanBusTXFrame, 2>::new();
 
+    log_info!("Claiming devices");
     claim_devices!(
         device_manager,
         arming_switch,
@@ -282,6 +258,7 @@ pub async fn avionics_main(
         can_bus,
         sys_reset
     );
+    log_info!("Devices claimed");
     let (mut can_tx, _) = can_bus.split();
 
     let can_tx_fut = async {
@@ -301,6 +278,9 @@ pub async fn avionics_main(
                 armed: arming_state.lock(|s| (*s.borrow()).is_armed()),
             };
             let mut buffer = Vec::<u8, 64>::new();
+            buffer
+                .resize(size_of::<<AvionicsStatus as Archive>::Archived>(), 0)
+                .unwrap();
             let mut serializer = BufferSerializer::new(buffer.as_mut_slice());
             serializer.serialize_value(&packet).unwrap();
             drop(serializer);
@@ -317,7 +297,7 @@ pub async fn avionics_main(
         let wait_gps_fut = services.unix_clock.wait_until_ready();
         let wait_gps_indicator_fut = indicators.run([], [], [250, 250]);
         select(wait_gps_fut, wait_gps_indicator_fut).await;
-        indicators.run([], [50, 2000], []).await;
+        indicators.run([], [50, 950], []).await;
     };
 
     let telemetry_packet_builder = TelemetryPacketBuilder::new(services.unix_clock);
@@ -328,6 +308,11 @@ pub async fn avionics_main(
 
         let mut update_ticker = Ticker::every(services.clock, services.delay, 1000.0);
         loop {
+            let free = services.fs.free().await;
+            // log_info!("Free space: {}MB", free / 1024 / 1024);
+            telemetry_packet_builder.update(|b| {
+                b.disk_free_space = free;
+            });
             let packet = telemetry_packet_builder.create_packet();
             vlp.send(packet);
             update_ticker.next().await;
@@ -337,12 +322,14 @@ pub async fn avionics_main(
         loop {
             let (packet, status) = vlp.wait_receive().await;
             low_power_mode.lock(|s| *s.borrow_mut() = false);
+            log_info!("Received packet: {:?}", packet);
             match packet {
                 VLPUplinkPacket::VerticalCalibrationPacket(_) => {
                     log_info!("Vertical calibration");
                     if services.unix_clock.ready()
                         && !arming_state.lock(|s| (*s.borrow()).is_armed())
                     {
+                        vertical_calibration_in_progress.lock(|s| *s.borrow_mut() = true);
                         let mut acc_sum = Vector3::<f32>::zeros();
                         let mut gyro_sum = Vector3::<f32>::zeros();
                         for _ in 0..100 {
@@ -361,6 +348,7 @@ pub async fn avionics_main(
                         imu_config.lock(|s| s.borrow_mut().replace(new_imu_config));
                         services.buzzer_queue.publish(2000, 50, 100);
                         services.buzzer_queue.publish(2000, 50, 100);
+                        vertical_calibration_in_progress.lock(|s| *s.borrow_mut() = false);
                     }
                 }
                 VLPUplinkPacket::SoftArmPacket(SoftArmPacket { armed, .. }) => {
@@ -372,9 +360,38 @@ pub async fn avionics_main(
                 }
                 VLPUplinkPacket::LowPowerModePacket(LowPowerModePacket { enabled, .. }) => {
                     low_power_mode.lock(|s| *s.borrow_mut() = enabled);
+                    if !enabled {
+                        arming_state.lock(|s| s.borrow_mut().software_armed = false);
+                    }
                 }
                 VLPUplinkPacket::ResetPacket(_) => {
                     sys_reset.reset();
+                }
+                VLPUplinkPacket::DeleteLogsPacket(_) => {
+                    services
+                        .fs
+                        .remove_files(|file_entry| {
+                            let typ = file_entry.typ;
+                            return typ == BEACON_SENDER_LOG_FILE_TYPE
+                                || typ == BENCHMARK_FILE_TYPE
+                                || typ == AVIONICS_SENSORS_FILE_TYPE
+                                || typ == AVIONICS_LOG_FILE_TYPE
+                                || typ == GROUND_TEST_LOG_FILE_TYPE
+                                || typ == AVIONICS_GPS_LOGGER_TIER_1
+                                || typ == AVIONICS_GPS_LOGGER_TIER_2
+                                || typ == AVIONICS_LOW_G_IMU_LOGGER_TIER_1
+                                || typ == AVIONICS_LOW_G_IMU_LOGGER_TIER_2
+                                || typ == AVIONICS_HIGH_G_IMU_LOGGER_TIER_1
+                                || typ == AVIONICS_HIGH_G_IMU_LOGGER_TIER_2
+                                || typ == AVIONICS_BARO_LOGGER_TIER_1
+                                || typ == AVIONICS_BARO_LOGGER_TIER_2
+                                || typ == AVIONICS_MEG_LOGGER_TIER_1
+                                || typ == AVIONICS_MEG_LOGGER_TIER_2
+                                || typ == AVIONICS_BATTERY_LOGGER_TIER_1
+                                || typ == AVIONICS_BATTERY_LOGGER_TIER_2;
+                        })
+                        .await
+                        .ok();
                 }
             }
         }
@@ -454,6 +471,7 @@ pub async fn avionics_main(
 
     let mut low_g_imu_ticker = Ticker::every(services.clock, services.delay, 5.0);
     let low_g_imu_fut = async {
+        services.unix_clock.wait_until_ready().await;
         loop {
             low_g_imu_ticker.next().await;
             if is_low_power_mode() {
@@ -461,16 +479,13 @@ pub async fn avionics_main(
             }
             let imu_reading = low_g_imu.read().await.unwrap();
             low_g_imu_signal.signal(imu_reading.clone());
-            if services.unix_clock.ready() {
-                low_g_imu_logger
-                    .log(imu_reading.to_unix_timestamp(services.unix_clock))
-                    .await;
-            }
+            low_g_imu_logger.log(imu_reading.to_unix_timestamp(services.unix_clock));
         }
     };
 
     let mut high_g_imu_ticker = Ticker::every(services.clock, services.delay, 5.0);
     let high_g_imu_fut = async {
+        services.unix_clock.wait_until_ready().await;
         loop {
             high_g_imu_ticker.next().await;
             if is_low_power_mode() {
@@ -478,16 +493,13 @@ pub async fn avionics_main(
             }
             let imu_reading = high_g_imu.read().await.unwrap();
             high_g_imu_signal.signal(imu_reading.clone());
-            if services.unix_clock.ready() {
-                high_g_imu_logger
-                    .log(imu_reading.to_unix_timestamp(services.unix_clock))
-                    .await;
-            }
+            high_g_imu_logger.log(imu_reading.to_unix_timestamp(services.unix_clock));
         }
     };
 
     let mut baro_ticker = Ticker::every(services.clock, services.delay, 5.0);
     let baro_fut = async {
+        services.unix_clock.wait_until_ready().await;
         loop {
             baro_ticker.next().await;
             if is_low_power_mode() {
@@ -499,47 +511,44 @@ pub async fn avionics_main(
             telemetry_packet_builder.update(|b| {
                 b.temperature = baro_reading.temperature;
             });
-            if services.unix_clock.ready() {
-                baro_logger
-                    .log(baro_reading.to_unix_timestamp(services.unix_clock))
-                    .await;
-            }
+            baro_logger.log(baro_reading.to_unix_timestamp(services.unix_clock));
         }
     };
 
-    let mut gps_ticker = Ticker::every(services.clock, services.delay, 100.0);
+    let mut gps_ticker = Ticker::every(services.clock, services.delay, 500.0);
     let gps_fut = async {
         loop {
-            let gps_location = services.gps.get_nmea();
-            gps_logger.log(gps_location).await;
             gps_ticker.next().await;
+            if is_low_power_mode() {
+                continue;
+            }
+            let gps_location = services.gps.get_nmea();
+            gps_logger.log(gps_location.clone());
+            telemetry_packet_builder.update(|b| {
+                b.gps_location = Some(gps_location);
+            });
         }
     };
 
     let mut meg_ticker = Ticker::every(services.clock, services.delay, 50.0);
     let meg_fut = async {
+        services.unix_clock.wait_until_ready().await;
         loop {
             meg_ticker.next().await;
             if is_low_power_mode() {
                 continue;
             }
             let meg_reading = meg.read().await.unwrap();
-            if services.unix_clock.ready() {
-                meg_logger
-                    .log(meg_reading.to_unix_timestamp(services.unix_clock))
-                    .await;
-            }
+            meg_logger.log(meg_reading.to_unix_timestamp(services.unix_clock));
         }
     };
 
-    let mut batt_volt_ticker = Ticker::every(services.clock, services.delay, 20.0);
+    let mut batt_volt_ticker = Ticker::every(services.clock, services.delay, 500.0);
     let bat_fut = async {
         loop {
             let battery_v = batt_voltmeter.read().await.unwrap();
             if services.unix_clock.ready() {
-                battery_logger
-                    .log(battery_v.clone().to_unix_timestamp(services.unix_clock))
-                    .await;
+                battery_logger.log(battery_v.clone().to_unix_timestamp(services.unix_clock));
             }
             telemetry_packet_builder.update(|b| {
                 b.battery_v = battery_v.value;
@@ -550,6 +559,10 @@ pub async fn avionics_main(
 
     let flight_core_tick_fut = async {
         loop {
+            if vertical_calibration_in_progress.lock(|s| *s.borrow()) {
+                services.delay.delay_ms(100).await;
+                continue;
+            }
             let low_g_imu_reading = low_g_imu_signal.wait().await;
             let high_g_imu_reading = high_g_imu_signal.wait().await;
             let baro_reading = baro_signal.wait().await;
@@ -681,23 +694,21 @@ pub async fn avionics_main(
         }
     };
 
+    let mut camera_ctrl_ticker = Ticker::every(services.clock, services.delay, 1000.0);
     let camera_ctrl_fut = async {
-        let mut sub = flight_core_state_pub_sub.subscriber().unwrap();
         loop {
-            let state = sub.next_message_pure().await;
-            match state {
-                FlightCoreStateTelemetry::DisArmed => {
-                    camera.set_recording(false).await.ok();
-                }
-                FlightCoreStateTelemetry::Armed => {
-                    camera.set_recording(true).await.ok();
-                }
-                FlightCoreStateTelemetry::Landed => {
-                    services.delay.delay_ms(60 * 1000).await;
-                    camera.set_recording(false).await.ok();
-                }
-                _ => {}
-            }
+            camera_ctrl_ticker.next().await;
+            let armed = arming_state.lock(|s| (*s.borrow()).is_armed());
+            camera.set_recording(armed).await.ok();
+        }
+    };
+
+    let mut storage_full_detection_ticker = Ticker::every(services.clock, services.delay, 1000.0);
+    let storage_full_detection_fut = async {
+        loop {
+            storage_full_detection_ticker.next().await;
+            let free = services.fs.free().await;
+            storage_full.lock(|s| *s.borrow_mut() = free < 1024 * 1024);
         }
     };
 
@@ -729,7 +740,8 @@ pub async fn avionics_main(
         camera_ctrl_fut,
         can_tx_fut,
         can_tx_avionics_status_fut,
-        indicators_fut
+        indicators_fut,
+        storage_full_detection_fut
     );
     log_unreachable!();
 }

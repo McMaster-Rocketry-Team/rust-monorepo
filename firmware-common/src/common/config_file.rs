@@ -9,10 +9,6 @@ use rkyv::{
 };
 use vlfs::{AsyncWriter, Crc, FileType, Flash, VLFSError, VLFS};
 
-use crate::avionics::flight_profile::FlightProfile;
-
-use super::{device_config::DeviceConfig, file_types::{DEVICE_CONFIG_FILE_TYPE, FLIGHT_PROFILE_FILE_TYPE}};
-
 pub struct ConfigFile<'a, T, F, C>
 where
     T: Archive + Serialize<BufferSerializer<[u8; size_of::<T::Archived>()]>>,
@@ -47,7 +43,6 @@ where
             match self.fs.open_file_for_read(file.id).await {
                 Ok(mut reader) => {
                     let mut buffer: AlignedBytes<{ size_of::<T::Archived>() }> = Default::default();
-                    // buffer.as_mut().copy_from_slice(src)
                     let result = reader.read_exact(buffer.as_mut()).await;
                     reader.close().await;
                     if let Err(e) = result {
@@ -87,6 +82,7 @@ where
         let buffer = serializer.into_inner();
 
         writer.extend_from_slice(&buffer).await?;
-        todo!()
+        writer.close().await?;
+        Ok(())
     }
 }

@@ -43,6 +43,7 @@ pub async fn gcm_main(
     let indicators_fut = indicators.run([], [], [250, 250]);
     let wait_gps_fut = services.unix_clock.wait_until_ready();
     select(indicators_fut, wait_gps_fut).await;
+    let indictors_fut =  indicators.run([], [50, 950], []);
 
     let vlp_client =
         VLPDownlinkClient::new(&config.lora, services.unix_clock, services.delay, lora_key);
@@ -59,14 +60,12 @@ pub async fn gcm_main(
     let vlp_receive_fut = async {
         loop {
             let received = vlp_client.wait_receive().await;
-            if downlink_package_sender.try_send(received).is_err() {
-                log_warn!("Downlink package queue full! Is GCM host polling?")
-            }
+            downlink_package_sender.try_send(received).ok();
         }
     };
 
     #[allow(unreachable_code)]
     {
-        join!(vlp_client_fut, vlp_send_fut, vlp_receive_fut);
+        join!(vlp_client_fut, vlp_send_fut, vlp_receive_fut, indictors_fut);
     }
 }

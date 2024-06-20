@@ -65,6 +65,54 @@ where
     }
 }
 
+pub struct BufferedDeltaLogger<'a, T, C: Crc, F: Flash, const SIZE: usize>
+where
+    T: Deltable,
+    T: Archive + Serialize<BufferSerializer<[u8; size_of::<T::Archived>()]>>,
+    T::DeltaType: Archive + Serialize<BufferSerializer<[u8; size_of::<T::Archived>()]>>,
+    [(); size_of::<T::Archived>()]:,
+{
+    logger: RefCell<Option<DeltaLogger<T, vlfs::FileWriter<'a, F, C>>>>,
+    queue: Channel<NoopRawMutex, T, SIZE>,
+}
+
+impl<'a, T, C: Crc, F: Flash, const SIZE: usize> BufferedDeltaLogger<'a, T, C, F, SIZE>
+where
+    T: Deltable,
+    T: Archive + Serialize<BufferSerializer<[u8; size_of::<T::Archived>()]>>,
+    T::DeltaType: Archive + Serialize<BufferSerializer<[u8; size_of::<T::Archived>()]>>,
+    [(); size_of::<T::Archived>()]:,
+{
+    pub async fn new(
+        fs: &'a VLFS<F, C>,
+        file_type: FileType,
+    ) -> Result<Self, VLFSError<F::Error>> {
+        let file = fs.create_file(file_type).await?;
+        let file_writer = fs.open_file_for_write(file.id).await?;
+        let logger = DeltaLogger::new(file_writer);
+        let queue = Channel::new();
+        Ok(Self {
+            logger: RefCell::new(Some(logger)),
+            queue,
+        })
+    }
+
+    pub fn log(&self, value: T) {
+        let result = self.queue.try_send(value);
+        if result.is_err() {
+            // log_warn!("Logger queue full");
+        }
+    }
+
+    pub async fn run(&self) {
+        let mut logger = self.logger.borrow_mut().take().unwrap();
+        loop {
+            let value = self.queue.receive().await;
+            logger.log(value).await.ok();
+        }
+    }
+}
+
 pub struct DeltaLogReader<T, R>
 where
     R: vlfs::AsyncReader,
@@ -171,6 +219,8 @@ where
         while let Some(_) = files_iter.next().await? {
             files_count += 1;
         }
+        drop(files_iter);
+        log_info!("Found {} files", files_count);
         let current_segment_i = if files_count > segments_per_ring {
             let mut files_to_remove = files_count - segments_per_ring;
             log_info!("Removing {} extra files", files_to_remove);
@@ -234,6 +284,7 @@ where
                     })
                     .await?;
             }
+            log_info!("Done");
         }
 
         self.delta_logger.log(value).await?;
@@ -300,6 +351,7 @@ where
     }
 }
 
+// FIXME has bug
 impl<'a, T, C: Crc, F: Flash, P> RingDeltaLogReader<'a, T, C, F, P>
 where
     F::Error: defmt::Format,
@@ -494,8 +546,11 @@ where
         self.max_total_file_size
     }
 
-    pub async fn log(&self, value: T) {
-        self.queue.send(value).await;
+    pub fn log(&self, value: T) {
+        let result = self.queue.try_send(value);
+        if result.is_err() {
+            log_warn!("Logger queue full");
+        }
     }
 
     pub async fn run(&self) {

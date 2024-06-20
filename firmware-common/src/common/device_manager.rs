@@ -53,8 +53,8 @@ pub struct DeviceManager<
     pub(crate) pyro1_ctrl: Mutex<NoopRawMutex, PT>,
     pub(crate) pyro2_cont: Mutex<NoopRawMutex, PC>,
     pub(crate) pyro2_ctrl: Mutex<NoopRawMutex, PT>,
-    pub(crate) pyro3_cont: Mutex<NoopRawMutex, PC>,
-    pub(crate) pyro3_ctrl: Mutex<NoopRawMutex, PT>,
+    pub(crate) pyro3_cont: Mutex<NoopRawMutex, Option<PC>>,
+    pub(crate) pyro3_ctrl: Mutex<NoopRawMutex, Option<PT>>,
     pub(crate) arming_switch: Mutex<NoopRawMutex, ARM>,
     pub(crate) serial: Mutex<NoopRawMutex, Option<S>>,
     pub(crate) usb: Mutex<NoopRawMutex, Option<U>>,
@@ -145,7 +145,7 @@ impl<
         batt_ammeter: A,
         pyro1: (PC, PT),
         pyro2: (PC, PT),
-        pyro3: (PC, PT),
+        pyro3: Option<(PC, PT)>,
         arming_switch: ARM,
         serial: S,
         usb: U,
@@ -164,6 +164,12 @@ impl<
         can_bus_health_check_ids: Vec<u32, 8>,
         debugger: DB,
     ) -> Self {
+        let (pyro3_cont, pyro3_ctrl) = if pyro3.is_some() {
+            let pyro3 = pyro3.unwrap();
+            (Some(pyro3.0), Some(pyro3.1))
+        } else {
+            (None, None)
+        };
         Self {
             debugger,
             sys_reset: Mutex::new(sys_reset),
@@ -177,8 +183,8 @@ impl<
             pyro1_ctrl: Mutex::new(pyro1.1),
             pyro2_cont: Mutex::new(pyro2.0),
             pyro2_ctrl: Mutex::new(pyro2.1),
-            pyro3_cont: Mutex::new(pyro3.0),
-            pyro3_ctrl: Mutex::new(pyro3.1),
+            pyro3_cont: Mutex::new(pyro3_cont),
+            pyro3_ctrl: Mutex::new(pyro3_ctrl),
             arming_switch: Mutex::new(arming_switch),
             serial: Mutex::new(Some(serial)),
             usb: Mutex::new(Some(usb)),

@@ -150,6 +150,7 @@ impl GPSParser {
         let read_fut = async {
             loop {
                 let nmea_sentence = gps.next_nmea_sentence().await;
+                // log_info!("NMEA sentence {}", &nmea_sentence.sentence);
                 signal.signal(nmea_sentence);
             }
         };

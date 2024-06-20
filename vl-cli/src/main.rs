@@ -9,6 +9,7 @@ use crc::CRC_8_SMBUS;
 use embedded_hal_async::delay::DelayNs;
 use firmware_common::common::console::rpc::GCMPollDownlinkPacketResponse;
 use firmware_common::common::rkyv_structs::RkyvString;
+use firmware_common::common::vlp2::packet::DeleteLogsPacket;
 use firmware_common::common::vlp2::packet::LowPowerModePacket;
 use firmware_common::common::vlp2::packet::ResetPacket;
 use firmware_common::common::vlp2::packet::SoftArmPacket;
@@ -18,6 +19,7 @@ use firmware_common::{driver::serial::SplitableSerialWrapper, RpcClient};
 use log::LevelFilter;
 use tokio::io::{split, AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::time::sleep;
+use tokio_serial::available_ports;
 use tokio_serial::{SerialPortBuilderExt, SerialStream};
 
 struct Delay;
@@ -98,7 +100,8 @@ struct FlightProfileArgs {
 #[derive(clap::Args)]
 #[command(about = "Set device config")]
 struct DeviceConfigArgs {
-    is_avionics: bool,
+    #[clap(long, short, action)]
+    avionics: bool,
     name: String,
     lora_frequency: u32,
     lora_sf: u8,
@@ -119,7 +122,9 @@ async fn main() -> Result<()> {
     let args = Cli::parse();
 
     if matches!(args.command, Commands::Detect) {
-        println!("detect");
+        for port in available_ports().unwrap(){
+            println!("{:?}", port);
+        }
         return Ok(());
     }
 
@@ -177,7 +182,12 @@ async fn main() -> Result<()> {
                     enabled: false,
                 }
                 .into(),
-                "reset" => ResetPacket {}.into(),
+                "reset" => ResetPacket {
+                    timestamp: 0.0,
+                }.into(),
+                "delete_logs" => DeleteLogsPacket {
+                    timestamp: 0.0,
+                }.into(),
                 _ => {
                     return Err(anyhow!("Invalid command"));
                 }
@@ -231,7 +241,7 @@ async fn main() -> Result<()> {
             let lora_key = [0x69u8; 32];
             client
                 .set_device_config(
-                    config.is_avionics,
+                    config.avionics,
                     RkyvString::from_str(&config.name),
                     lora_key,
                     config.lora_frequency,
