@@ -16,7 +16,7 @@ use crate::{
         },
     },
     device_manager_type,
-    driver::{gps::GPS, indicator::Indicator},
+    driver::indicator::Indicator,
 };
 
 #[inline(never)]

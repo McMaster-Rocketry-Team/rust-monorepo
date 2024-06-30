@@ -3,13 +3,29 @@ use lora_phy::{mod_traits::RadioKind, LoRa};
 use vlfs::{Crc, Flash, VLFS};
 
 use crate::driver::{
-    adc::{Ampere, Volt, ADC}, arming::HardwareArming, barometer::Barometer, buzzer::Buzzer, camera::Camera, can_bus::SplitableCanBus, clock::Clock, debugger::Debugger, delay::Delay, gps::{GPS, GPSPPS}, imu::IMU, indicator::Indicator, mag::Magnetometer, pyro::{Continuity, PyroCtrl}, rng::RNG, serial::SplitableSerial, sys_reset::SysReset, usb::SplitableUSB
+    adc::{Ampere, Volt, ADC},
+    arming::HardwareArming,
+    barometer::Barometer,
+    buzzer::Buzzer,
+    camera::Camera,
+    can_bus::SplitableCanBus,
+    clock::Clock,
+    debugger::Debugger,
+    delay::Delay,
+    gps::{GPSLocation, GPS, GPSPPS},
+    imu::IMU,
+    indicator::Indicator,
+    mag::Magnetometer,
+    pyro::{Continuity, PyroCtrl},
+    rng::RNG,
+    serial::SplitableSerial,
+    sys_reset::SysReset,
+    usb::SplitableUSB,
 };
-use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
+use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex, pubsub::{PubSubChannel, Subscriber}};
 
 use super::{
-    buzzer_queue::BuzzerQueue, gps_parser::GPSParser, indicator_controller::IndicatorController,
-    unix_clock::UnixClock,
+    buzzer_queue::BuzzerQueue, indicator_controller::IndicatorController, unix_clock::UnixClock,
 };
 
 #[allow(dead_code)]
@@ -319,6 +335,7 @@ pub mod prelude {
     pub use crate::driver::can_bus::SplitableCanBus;
     pub use crate::driver::clock::Clock;
     pub use crate::driver::debugger::Debugger;
+    pub use crate::driver::delay::Delay;
     pub use crate::driver::gps::{GPS, GPSPPS};
     pub use crate::driver::imu::IMU;
     pub use crate::driver::indicator::Indicator;
@@ -329,7 +346,6 @@ pub mod prelude {
     pub use crate::driver::serial::SplitableSerial;
     pub use crate::driver::sys_reset::SysReset;
     pub use crate::driver::usb::SplitableUSB;
-    pub use crate::driver::delay::Delay;
     pub use crate::system_services_type;
     pub use lora_phy::mod_traits::RadioKind;
     pub use vlfs::{Crc, Flash};
@@ -337,14 +353,16 @@ pub mod prelude {
 
 pub struct SystemServices<'f, 'a, 'b, 'c, DL: Delay, T: Clock, F: Flash, C: Crc> {
     pub(crate) fs: &'f VLFS<F, C>,
-    pub(crate) gps: &'a GPSParser,
+    pub(crate) gps: &'a PubSubChannel::<NoopRawMutex, GPSLocation, 1, 1, 1>,
     pub(crate) delay: DL,
     pub(crate) clock: T,
     pub(crate) unix_clock: UnixClock<'b, T>,
     pub(crate) buzzer_queue: BuzzerQueue<'c>,
 }
 
-impl<'f, 'a, 'b, 'c, DL: Delay, T: Clock, F: Flash, C: Crc> SystemServices<'f, 'a, 'b, 'c, DL, T, F, C>{
+impl<'f, 'a, 'b, 'c, DL: Delay, T: Clock, F: Flash, C: Crc>
+    SystemServices<'f, 'a, 'b, 'c, DL, T, F, C>
+{
     pub fn delay(&self) -> DL {
         self.delay.clone()
     }

@@ -1,4 +1,4 @@
-use core::cell::RefCell;
+use core::{borrow::Borrow, cell::RefCell};
 
 use embassy_futures::select::select;
 use embassy_sync::{
@@ -33,10 +33,7 @@ use crate::{
         },
     },
     driver::{
-        adc::ADCReading,
-        can_bus::CanBusTXFrame,
-        imu::IMUReading,
-        timestamp::{BootTimestamp, UnixTimestamp},
+        adc::ADCReading, can_bus::CanBusTXFrame, gps::GPSLocation, imu::IMUReading, timestamp::{BootTimestamp, UnixTimestamp}
     },
 };
 use crate::{
@@ -46,7 +43,7 @@ use crate::{
     },
     claim_devices,
     common::{
-        device_manager::prelude::*, gps_parser::GPSLocation,
+        device_manager::prelude::*,
         sensor_snapshot::PartialSensorSnapshot, ticker::Ticker,
     },
     device_manager_type,
@@ -372,8 +369,7 @@ pub async fn avionics_main(
                         .fs
                         .remove_files(|file_entry| {
                             let typ = file_entry.typ;
-                            return typ == BEACON_SENDER_LOG_FILE_TYPE
-                                || typ == BENCHMARK_FILE_TYPE
+                            return typ == BENCHMARK_FILE_TYPE
                                 || typ == AVIONICS_SENSORS_FILE_TYPE
                                 || typ == AVIONICS_LOG_FILE_TYPE
                                 || typ == GROUND_TEST_LOG_FILE_TYPE
@@ -515,14 +511,10 @@ pub async fn avionics_main(
         }
     };
 
-    let mut gps_ticker = Ticker::every(services.clock(), services.delay(), 500.0);
+    let mut gps_sub = services.gps.subscriber().unwrap();
     let gps_fut = async {
         loop {
-            gps_ticker.next().await;
-            if is_low_power_mode() {
-                continue;
-            }
-            let gps_location = services.gps.get_nmea();
+            let gps_location = gps_sub.next_message_pure().await;
             gps_logger.log(gps_location.clone());
             telemetry_packet_builder.update(|b| {
                 b.gps_location = Some(gps_location);

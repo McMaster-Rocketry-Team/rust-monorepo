@@ -1,7 +1,6 @@
 pub mod console;
 pub mod device_manager;
 pub mod file_types;
-pub mod gps_parser;
 pub mod imu_calibration_file;
 pub mod moving_average;
 mod multi_waker;

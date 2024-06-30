@@ -6,7 +6,7 @@ use crate::{
     claim_devices,
     common::{device_manager::prelude::*, file_types::GROUND_TEST_LOG_FILE_TYPE, ticker::Ticker},
     create_serialized_enum, device_manager_type,
-    driver::{gps::GPS, indicator::Indicator, timestamp::UnixTimestamp},
+    driver::{indicator::Indicator, timestamp::UnixTimestamp},
 };
 use core::fmt::Write;
 use embassy_sync::channel::Channel;

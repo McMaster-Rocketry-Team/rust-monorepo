@@ -18,3 +18,4 @@ pub mod usb;
 pub mod timestamp;
 pub mod can_bus;
 pub mod delay;
+pub mod uart_gps;

@@ -1,10 +1,17 @@
 use core::{cell::RefCell, future::poll_fn, task::Poll};
 
-use embassy_sync::blocking_mutex::{raw::NoopRawMutex, Mutex as BlockingMutex};
+use embassy_sync::{
+    blocking_mutex::{
+        raw::{NoopRawMutex, RawMutex},
+        Mutex as BlockingMutex,
+    },
+    pubsub::Subscriber,
+};
+use futures::join;
 
 use crate::{driver::gps::GPSPPS, Clock};
 
-use super::{gps_parser::GPSParser, moving_average::NoSumSMA, multi_waker::MultiWakerRegistration};
+use super::{moving_average::NoSumSMA, multi_waker::MultiWakerRegistration};
 
 #[derive(Default)]
 struct UnixClockState {
@@ -29,24 +36,47 @@ impl<K: Clock> UnixClockTask<K> {
         UnixClock::new(self)
     }
 
-    pub async fn run(&self, mut pps: impl GPSPPS, gps_parser: &GPSParser, clock: impl Clock) -> ! {
+    pub async fn run<const CAP: usize, const SUBS: usize, const PUBS: usize>(
+        &self,
+        mut pps: impl GPSPPS,
+        mut gps_timestamp_sub: Subscriber<'_, impl RawMutex, i64, CAP, SUBS, PUBS>,
+        clock: impl Clock,
+    ) -> ! {
         let mut offset_running_avg = NoSumSMA::<f64, f64, 30>::new(0.0);
-        loop {
-            pps.wait_for_pps().await;
-            let pps_time = clock.now_ms();
-            let gps_location = gps_parser.get_nmea();
-            if let Some(gps_timestamp) = gps_location.gps_timestamp {
-                let current_unix_timestamp = ((gps_timestamp + 1) as f64) * 1000.0;
-                let new_offset = current_unix_timestamp - pps_time;
-                // log_info!("New offset: {}", new_offset);
-                offset_running_avg.add_sample(new_offset);
-                self.state.lock(|state| {
-                    let mut state = state.borrow_mut();
-                    state.offset.replace(offset_running_avg.get_average());
-                    state.waker.wake();
+        let latest_gps_timestamp =
+            BlockingMutex::<NoopRawMutex, _>::new(RefCell::new((0f64, 0i64)));
+
+        let receive_gps_timestamp_fut = async {
+            loop {
+                let gps_timestamp = gps_timestamp_sub.next_message_pure().await;
+                latest_gps_timestamp.lock(|latest_gps_timestamp| {
+                    *latest_gps_timestamp.borrow_mut() = (clock.now_ms(), gps_timestamp);
                 });
             }
-        }
+        };
+
+        let wait_for_pps_fut = async {
+            loop {
+                pps.wait_for_pps().await;
+                let pps_time = clock.now_ms();
+                latest_gps_timestamp.lock(|latest_gps_timestamp| {
+                    let latest_gps_timestamp = latest_gps_timestamp.borrow();
+                    if pps_time - latest_gps_timestamp.0 < 800.0 {
+                        let current_unix_timestamp = ((latest_gps_timestamp.1 + 1) as f64) * 1000.0;
+                        let new_offset = current_unix_timestamp - pps_time;
+                        offset_running_avg.add_sample(new_offset);
+                        self.state.lock(|state| {
+                            let mut state = state.borrow_mut();
+                            state.offset.replace(offset_running_avg.get_average());
+                            state.waker.wake();
+                        });
+                    }
+                });
+            }
+        };
+
+        join!(receive_gps_timestamp_fut, wait_for_pps_fut);
+        log_unreachable!()
     }
 }
 
@@ -61,12 +91,14 @@ impl<'a, K: Clock> UnixClock<'a, K> {
     }
 
     pub fn ready(&self) -> bool {
-        self.task.state.lock(|state| state.borrow().offset.is_some())
+        self.task
+            .state
+            .lock(|state| state.borrow().offset.is_some())
     }
 
     pub async fn wait_until_ready(&self) {
         poll_fn(|cx| {
-            self.task.state.lock(|state|{
+            self.task.state.lock(|state| {
                 let mut state = state.borrow_mut();
                 if state.offset.is_some() {
                     return Poll::Ready(());
@@ -75,7 +107,8 @@ impl<'a, K: Clock> UnixClock<'a, K> {
                     return Poll::Pending;
                 }
             })
-        }).await;
+        })
+        .await;
     }
 
     pub fn convert_to_unix(&self, boot_timstamp: f64) -> f64 {

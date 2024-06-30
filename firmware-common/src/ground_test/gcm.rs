@@ -2,7 +2,7 @@ use crate::{
     claim_devices,
     common::device_manager::prelude::*,
     device_manager_type,
-    driver::{gps::GPS, indicator::Indicator},
+    driver::indicator::Indicator,
 };
 use lora_phy::{
     mod_params::{Bandwidth, CodingRate, SpreadingFactor},

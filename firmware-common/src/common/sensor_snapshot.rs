@@ -1,7 +1,6 @@
-use crate::driver::{barometer::BaroReading, imu::IMUReading, mag::MagReading, timestamp::BootTimestamp};
+use crate::driver::{barometer::BaroReading, gps::GPSLocation, imu::IMUReading, mag::MagReading, timestamp::BootTimestamp};
 use rkyv::{Archive, Deserialize, Serialize};
 
-use super::gps_parser::GPSLocation;
 
 #[derive(Archive, Deserialize, Serialize, Debug, Clone)]
 pub enum SensorReading {

@@ -16,8 +16,11 @@ use common::file_types::DEVICE_CONFIG_FILE_TYPE;
 use common::rpc_channel::RpcChannel;
 use common::{buzzer_queue::BuzzerQueueRunner, unix_clock::UnixClockTask};
 use driver::clock::VLFSTimerWrapper;
-use driver::gps::{GPSParser, GPSPPS};
+use driver::gps::GPSLocation;
+use embassy_futures::yield_now;
+use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::channel::Channel;
+use embassy_sync::pubsub::{PubSubBehavior, PubSubChannel};
 use futures::join;
 
 use crate::{
@@ -27,7 +30,6 @@ use vlfs::{StatFlash, VLFS};
 
 use futures::{future::select, pin_mut};
 
-use crate::beacon::{beacon_receiver::beacon_receiver, beacon_sender::beacon_sender};
 use crate::gcm::gcm_main;
 use crate::ground_test::avionics::ground_test_avionics;
 pub use common::device_manager::DeviceManager;
@@ -35,7 +37,6 @@ pub use common::device_manager::DeviceManager;
 pub use common::console::rpc::RpcClient;
 mod allocator;
 mod avionics;
-mod beacon;
 pub mod common;
 pub mod driver;
 mod gcm;
@@ -68,11 +69,26 @@ pub async fn init(
     fs.init().await.unwrap();
 
     // Start GPS (provides unix time)
-    gps.reset().await;
-    let parser = GPSParser::new();
-    let gps_parser_fut = parser.run(&mut gps);
+    let gps_timestamp_pubsub = PubSubChannel::<NoopRawMutex, i64, 1, 1, 1>::new();
+    let gps_location_pubsub = PubSubChannel::<NoopRawMutex, GPSLocation, 1, 1, 1>::new();
+    let gps_distribution_fut = async {
+        loop {
+            match gps.next_location().await {
+                Ok(gps_location) => {
+                    if let Some(gps_timestamp) = gps_location.gps_timestamp{
+                        gps_timestamp_pubsub.publish_immediate(gps_timestamp);
+                    }
+                    gps_location_pubsub.publish_immediate(gps_location);
+                },
+                Err(e) => {
+                    log_error!("Error reading GPS: {:?}", e);
+                    yield_now().await;
+                },
+            }
+        }
+    };
     let unix_clock_task = UnixClockTask::new(device_manager.clock());
-    let unix_clock_task_fut = unix_clock_task.run(gps_pps, &parser, device_manager.clock());
+    let unix_clock_task_fut = unix_clock_task.run(gps_pps, gps_timestamp_pubsub.subscriber().unwrap(), device_manager.clock());
     let unix_clock = unix_clock_task.get_clock();
 
     // Buzzer Queue
@@ -82,7 +98,7 @@ pub async fn init(
 
     let services = SystemServices {
         fs: &fs,
-        gps: &parser,
+        gps: &gps_location_pubsub,
         delay: device_manager.delay(),
         clock:device_manager.clock(),
         unix_clock,
@@ -178,10 +194,6 @@ pub async fn init(
                 )
                 .await
             }
-            DeviceModeConfig::BeaconSender => {
-                beacon_sender(&services.fs, device_manager, false).await
-            }
-            DeviceModeConfig::BeaconReceiver => beacon_receiver(&services.fs, device_manager).await,
             DeviceModeConfig::GroundTestAvionics => {
                 ground_test_avionics(device_manager, &services).await
             }
@@ -193,7 +205,7 @@ pub async fn init(
     {
         join!(
             buzzer_queue_runner_fut,
-            gps_parser_fut,
+            gps_distribution_fut,
             unix_clock_task_fut,
             main_fut,
             serial_console_fut,
