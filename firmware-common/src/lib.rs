@@ -59,12 +59,10 @@ pub async fn init(
     );
     let mut serial = serial.take().unwrap();
     let mut usb = usb.take().unwrap();
-    let clock = device_manager.clock;
-    let delay = device_manager.delay;
 
     // Start VLFS
     let stat_flash = StatFlash::new();
-    let mut flash = stat_flash.get_flash(flash, VLFSTimerWrapper(clock));
+    let mut flash = stat_flash.get_flash(flash, VLFSTimerWrapper(device_manager.clock()));
     flash.reset().await.ok();
     let mut fs = VLFS::new(flash, crc);
     fs.init().await.unwrap();
@@ -73,24 +71,25 @@ pub async fn init(
     gps.reset().await;
     let parser = GPSParser::new();
     let gps_parser_fut = parser.run(&mut gps);
-    let unix_clock_task = UnixClockTask::new(clock);
-    let unix_clock_task_fut = unix_clock_task.run(gps_pps, &parser, clock);
+    let unix_clock_task = UnixClockTask::new(device_manager.clock());
+    let unix_clock_task_fut = unix_clock_task.run(gps_pps, &parser, device_manager.clock());
     let unix_clock = unix_clock_task.get_clock();
 
     // Buzzer Queue
     let buzzer_queue_runner = BuzzerQueueRunner::new();
-    let buzzer_queue_runner_fut = buzzer_queue_runner.run(buzzer, delay);
+    let buzzer_queue_runner_fut = buzzer_queue_runner.run(buzzer, device_manager.delay());
     let buzzer_queue = buzzer_queue_runner.get_queue();
 
     let services = SystemServices {
         fs: &fs,
         gps: &parser,
-        delay,
-        clock,
+        delay: device_manager.delay(),
+        clock:device_manager.clock(),
         unix_clock,
         buzzer_queue,
     };
 
+    let delay = device_manager.delay();
     let usb_connected = {
         let timeout_fut = delay.delay_ms(500);
         let usb_wait_connection_fut = usb.wait_connection();

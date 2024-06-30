@@ -58,12 +58,12 @@ async fn fire_pyro(
         }
     };
 
-    let mut baro_ticker = Ticker::every(services.unix_clock, services.delay, 5.0);
+    let mut baro_ticker = Ticker::every(services.unix_clock(), services.delay(), 5.0);
     let log_baro_fut = async {
         while !finished.lock(|s| *s.borrow()) {
             baro_ticker.next().await;
             if let Ok(reading) = baro.read().await {
-                let reading = reading.to_unix_timestamp(services.unix_clock);
+                let reading = reading.to_unix_timestamp(services.unix_clock());
                 logs_channel
                     .try_send(GroundTestLog::BaroReadingUnix(reading))
                     .unwrap();

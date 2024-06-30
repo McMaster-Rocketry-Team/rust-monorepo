@@ -196,8 +196,8 @@ impl<
                 red_indicator,
                 green_indicator,
                 blue_indicator,
-                clock,
-                delay,
+                clock.clone(),
+                delay.clone(),
             )),
             barometer: Mutex::new(barometer),
             gps: Mutex::new(gps),
@@ -208,6 +208,14 @@ impl<
             clock,
             delay,
         }
+    }
+
+    pub fn delay(&self) -> DL {
+        self.delay.clone()
+    }
+
+    pub fn clock(&self) -> T {
+        self.clock.clone()
     }
 }
 
@@ -323,7 +331,6 @@ pub mod prelude {
     pub use crate::driver::usb::SplitableUSB;
     pub use crate::driver::delay::Delay;
     pub use crate::system_services_type;
-    pub use embedded_hal_async::delay::DelayNs;
     pub use lora_phy::mod_traits::RadioKind;
     pub use vlfs::{Crc, Flash};
 }
@@ -335,6 +342,20 @@ pub struct SystemServices<'f, 'a, 'b, 'c, DL: Delay, T: Clock, F: Flash, C: Crc>
     pub(crate) clock: T,
     pub(crate) unix_clock: UnixClock<'b, T>,
     pub(crate) buzzer_queue: BuzzerQueue<'c>,
+}
+
+impl<'f, 'a, 'b, 'c, DL: Delay, T: Clock, F: Flash, C: Crc> SystemServices<'f, 'a, 'b, 'c, DL, T, F, C>{
+    pub fn delay(&self) -> DL {
+        self.delay.clone()
+    }
+
+    pub fn clock(&self) -> T {
+        self.clock.clone()
+    }
+
+    pub fn unix_clock(&self) -> UnixClock<'b, T> {
+        self.unix_clock.clone()
+    }
 }
 
 #[macro_export]

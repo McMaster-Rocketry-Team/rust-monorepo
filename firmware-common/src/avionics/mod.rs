@@ -270,7 +270,7 @@ pub async fn avionics_main(
 
     let can_tx_avionics_status_fut = async {
         services.unix_clock.wait_until_ready().await;
-        let mut ticker = Ticker::every(services.clock, services.delay, 1000.0);
+        let mut ticker = Ticker::every(services.clock(), services.delay(), 1000.0);
         loop {
             let packet = AvionicsStatus {
                 timestamp: services.unix_clock.now_ms(),
@@ -300,13 +300,13 @@ pub async fn avionics_main(
         indicators.run([], [50, 950], []).await;
     };
 
-    let telemetry_packet_builder = TelemetryPacketBuilder::new(services.unix_clock);
-    let vlp = VLPUplinkClient::new(&config.lora, services.unix_clock, services.delay, lora_key);
+    let telemetry_packet_builder = TelemetryPacketBuilder::new(services.unix_clock());
+    let vlp = VLPUplinkClient::new(&config.lora, services.unix_clock(), services.delay(), lora_key);
     let vlp_tx_fut = async {
         // Wait 1 sec for all the fields to be populated
         services.delay.delay_ms(1000).await;
 
-        let mut update_ticker = Ticker::every(services.clock, services.delay, 1000.0);
+        let mut update_ticker = Ticker::every(services.clock(), services.delay(), 1000.0);
         loop {
             let free = services.fs.free().await;
             // log_info!("Free space: {}MB", free / 1024 / 1024);
@@ -469,7 +469,7 @@ pub async fn avionics_main(
         }
     };
 
-    let mut low_g_imu_ticker = Ticker::every(services.clock, services.delay, 5.0);
+    let mut low_g_imu_ticker = Ticker::every(services.clock(), services.delay(), 5.0);
     let low_g_imu_fut = async {
         services.unix_clock.wait_until_ready().await;
         loop {
@@ -479,11 +479,11 @@ pub async fn avionics_main(
             }
             let imu_reading = low_g_imu.read().await.unwrap();
             low_g_imu_signal.signal(imu_reading.clone());
-            low_g_imu_logger.log(imu_reading.to_unix_timestamp(services.unix_clock));
+            low_g_imu_logger.log(imu_reading.to_unix_timestamp(services.unix_clock()));
         }
     };
 
-    let mut high_g_imu_ticker = Ticker::every(services.clock, services.delay, 5.0);
+    let mut high_g_imu_ticker = Ticker::every(services.clock(), services.delay(), 5.0);
     let high_g_imu_fut = async {
         services.unix_clock.wait_until_ready().await;
         loop {
@@ -493,11 +493,11 @@ pub async fn avionics_main(
             }
             let imu_reading = high_g_imu.read().await.unwrap();
             high_g_imu_signal.signal(imu_reading.clone());
-            high_g_imu_logger.log(imu_reading.to_unix_timestamp(services.unix_clock));
+            high_g_imu_logger.log(imu_reading.to_unix_timestamp(services.unix_clock()));
         }
     };
 
-    let mut baro_ticker = Ticker::every(services.clock, services.delay, 5.0);
+    let mut baro_ticker = Ticker::every(services.clock(), services.delay(), 5.0);
     let baro_fut = async {
         services.unix_clock.wait_until_ready().await;
         loop {
@@ -511,11 +511,11 @@ pub async fn avionics_main(
             telemetry_packet_builder.update(|b| {
                 b.temperature = baro_reading.temperature;
             });
-            baro_logger.log(baro_reading.to_unix_timestamp(services.unix_clock));
+            baro_logger.log(baro_reading.to_unix_timestamp(services.unix_clock()));
         }
     };
 
-    let mut gps_ticker = Ticker::every(services.clock, services.delay, 500.0);
+    let mut gps_ticker = Ticker::every(services.clock(), services.delay(), 500.0);
     let gps_fut = async {
         loop {
             gps_ticker.next().await;
@@ -530,7 +530,7 @@ pub async fn avionics_main(
         }
     };
 
-    let mut meg_ticker = Ticker::every(services.clock, services.delay, 50.0);
+    let mut meg_ticker = Ticker::every(services.clock(), services.delay(), 50.0);
     let meg_fut = async {
         services.unix_clock.wait_until_ready().await;
         loop {
@@ -539,16 +539,16 @@ pub async fn avionics_main(
                 continue;
             }
             let meg_reading = meg.read().await.unwrap();
-            meg_logger.log(meg_reading.to_unix_timestamp(services.unix_clock));
+            meg_logger.log(meg_reading.to_unix_timestamp(services.unix_clock()));
         }
     };
 
-    let mut batt_volt_ticker = Ticker::every(services.clock, services.delay, 500.0);
+    let mut batt_volt_ticker = Ticker::every(services.clock(), services.delay(), 500.0);
     let bat_fut = async {
         loop {
             let battery_v = batt_voltmeter.read().await.unwrap();
             if services.unix_clock.ready() {
-                battery_logger.log(battery_v.clone().to_unix_timestamp(services.unix_clock));
+                battery_logger.log(battery_v.clone().to_unix_timestamp(services.unix_clock()));
             }
             telemetry_packet_builder.update(|b| {
                 b.battery_v = battery_v.value;
@@ -694,7 +694,7 @@ pub async fn avionics_main(
         }
     };
 
-    let mut camera_ctrl_ticker = Ticker::every(services.clock, services.delay, 1000.0);
+    let mut camera_ctrl_ticker = Ticker::every(services.clock(), services.delay(), 1000.0);
     let camera_ctrl_fut = async {
         loop {
             camera_ctrl_ticker.next().await;
@@ -703,7 +703,7 @@ pub async fn avionics_main(
         }
     };
 
-    let mut storage_full_detection_ticker = Ticker::every(services.clock, services.delay, 1000.0);
+    let mut storage_full_detection_ticker = Ticker::every(services.clock(), services.delay(), 1000.0);
     let storage_full_detection_fut = async {
         loop {
             storage_full_detection_ticker.next().await;

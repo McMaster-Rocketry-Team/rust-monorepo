@@ -1,5 +1,4 @@
-use crate::{Clock, Indicator};
-use embedded_hal_async::delay::DelayNs;
+use crate::{Clock, Delay, Indicator};
 use futures::join;
 
 pub struct IndicatorController<
@@ -7,7 +6,7 @@ pub struct IndicatorController<
     G: Indicator,
     B: Indicator,
     T: Clock,
-    DL: DelayNs + Copy,
+    DL: Delay,
 > {
     red: R,
     green: G,
@@ -16,7 +15,7 @@ pub struct IndicatorController<
     delay: DL,
 }
 
-impl<R: Indicator, G: Indicator, B: Indicator, T: Clock, DL: DelayNs + Copy>
+impl<R: Indicator, G: Indicator, B: Indicator, T: Clock, DL: Delay>
     IndicatorController<R, G, B, T, DL>
 {
     pub fn new(red: R, green: G, blue: B, clock: T, delay: DL) -> Self {
@@ -33,7 +32,7 @@ impl<R: Indicator, G: Indicator, B: Indicator, T: Clock, DL: DelayNs + Copy>
         indicator: &mut impl Indicator,
         pattern: [u16; N],
         clock: T,
-        mut delay: DL,
+        delay: DL,
     ) {
         if pattern.len() == 0 {
             return;
@@ -68,9 +67,9 @@ impl<R: Indicator, G: Indicator, B: Indicator, T: Clock, DL: DelayNs + Copy>
         blue_pattern: [u16; BN],
     ) -> ! {
         self.reset().await;
-        let red_fut = Self::run_single(&mut self.red, red_pattern, self.clock, self.delay);
-        let green_fut = Self::run_single(&mut self.green, green_pattern, self.clock, self.delay);
-        let blue_fut = Self::run_single(&mut self.blue, blue_pattern, self.clock, self.delay);
+        let red_fut = Self::run_single(&mut self.red, red_pattern, self.clock.clone(), self.delay.clone());
+        let green_fut = Self::run_single(&mut self.green, green_pattern, self.clock.clone(), self.delay.clone());
+        let blue_fut = Self::run_single(&mut self.blue, blue_pattern, self.clock.clone(), self.delay.clone());
         join!(red_fut, green_fut, blue_fut);
         log_unreachable!()
     }

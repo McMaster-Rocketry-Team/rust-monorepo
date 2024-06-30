@@ -1,6 +1,6 @@
 use vlfs::Timer as VLFSTimer;
 
-pub trait Clock: Copy {
+pub trait Clock: Clone {
     fn now_ms(&self) -> f64;
 }
 

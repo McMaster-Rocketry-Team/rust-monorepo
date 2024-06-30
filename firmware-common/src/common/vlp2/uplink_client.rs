@@ -1,5 +1,4 @@
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
-use embedded_hal_async::delay::DelayNs;
 use lora_phy::{
     mod_params::{DutyCycleParams, PacketStatus, RadioError},
     mod_traits::RadioKind,
@@ -8,7 +7,7 @@ use lora_phy::{
 
 use crate::{
     common::{device_config::LoraConfig, unix_clock::UnixClock},
-    Clock,
+    Clock, Delay,
 };
 
 use super::{
@@ -20,7 +19,7 @@ use super::{
 };
 
 // VLP client running on the rocket
-pub struct VLPUplinkClient<'a, 'b, 'c, CL: Clock, DL: DelayNs + Copy>
+pub struct VLPUplinkClient<'a, 'b, 'c, CL: Clock, DL: Delay>
 where
     'a: 'b,
 {
@@ -32,7 +31,7 @@ where
     delay: DL,
 }
 
-impl<'a, 'b, 'c, CL: Clock, DL: DelayNs + Copy> VLPUplinkClient<'a, 'b, 'c, CL, DL>
+impl<'a, 'b, 'c, CL: Clock, DL: Delay> VLPUplinkClient<'a, 'b, 'c, CL, DL>
 where
     'a: 'b,
 {
@@ -43,7 +42,7 @@ where
         key: &'c [u8; 32],
     ) -> Self {
         VLPUplinkClient {
-            packet_builder: VLPPacketBuilder::new(unix_clock, lora_config.into(), key),
+            packet_builder: VLPPacketBuilder::new(unix_clock.clone(), lora_config.into(), key),
             unix_clock,
             lora_config,
             tx_signal: Signal::new(),
@@ -60,8 +59,8 @@ where
         self.rx_signal.wait().await
     }
 
-    pub async fn run(&self, lora: &mut LoRa<impl RadioKind, impl DelayNs>) {
-        let mut delay = self.delay;
+    pub async fn run(&self, lora: &mut LoRa<impl RadioKind, impl Delay>) {
+        let mut delay = self.delay.clone();
         let mut lora = LoraPhy::new(lora, self.lora_config);
         let mut buffer = [0; MAX_VLP_PACKET_SIZE];
         let mut low_power_mode = false;

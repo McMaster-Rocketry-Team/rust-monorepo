@@ -50,7 +50,7 @@ impl<K: Clock> UnixClockTask<K> {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct UnixClock<'a, K: Clock> {
     task: &'a UnixClockTask<K>,
 }

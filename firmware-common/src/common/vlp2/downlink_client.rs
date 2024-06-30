@@ -1,9 +1,8 @@
 use crate::{
     common::{device_config::LoraConfig, unix_clock::UnixClock},
-    Clock,
+    Clock, Delay,
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
-use embedded_hal_async::delay::DelayNs;
 use lora_phy::{
     mod_params::{PacketStatus, RadioError},
     mod_traits::RadioKind,
@@ -17,7 +16,7 @@ use super::{
 };
 
 // VLP client running on the GCM
-pub struct VLPDownlinkClient<'a, 'b, 'c, CL: Clock, DL: DelayNs + Copy>
+pub struct VLPDownlinkClient<'a, 'b, 'c, CL: Clock, DL: Delay>
 where
     'a: 'b,
 {
@@ -29,7 +28,7 @@ where
     delay: DL,
 }
 
-impl<'a, 'b, 'c, CL: Clock, DL: DelayNs + Copy> VLPDownlinkClient<'a, 'b, 'c, CL, DL>
+impl<'a, 'b, 'c, CL: Clock, DL: Delay> VLPDownlinkClient<'a, 'b, 'c, CL, DL>
 where
     'a: 'b,
 {
@@ -60,8 +59,8 @@ where
         self.rx_signal.wait().await
     }
 
-    pub async fn run(&self, lora: &mut LoRa<impl RadioKind, impl DelayNs>) {
-        let mut delay = self.delay;
+    pub async fn run(&self, lora: &mut LoRa<impl RadioKind, impl Delay>) {
+        let delay = self.delay.clone();
         let mut lora = LoraPhy::new(lora, self.lora_config);
         let mut buffer = [0; MAX_VLP_PACKET_SIZE];
 

@@ -1,0 +1,12 @@
+[package]
+name = "vl-simulink-bridge"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rocket = "0.5.1"
+firmware-common = { path = "../firmware-common", default-features = false, features = [
+    "log",
+] }
+embedded-hal-async = "1.0.0"
+rand = "0.8.5"

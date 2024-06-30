@@ -46,7 +46,7 @@ pub async fn gcm_main(
     let indictors_fut =  indicators.run([], [50, 950], []);
 
     let vlp_client =
-        VLPDownlinkClient::new(&config.lora, services.unix_clock, services.delay, lora_key);
+        VLPDownlinkClient::new(&config.lora, services.unix_clock(), services.delay(), lora_key);
     let vlp_client_fut = vlp_client.run(&mut lora);
 
     let vlp_send_fut = async {

@@ -27,7 +27,7 @@ pub async fn beacon_sender(
     use_lora: bool,
 ) -> ! {
     claim_devices!(device_manager, gps, lora);
-    let clock = device_manager.clock;
+    let clock = device_manager.clock();
     let mut lora = if use_lora { Some(lora) } else { None };
 
     let file = fs.create_file(BEACON_SENDER_LOG_FILE_TYPE).await.unwrap();
@@ -45,7 +45,7 @@ pub async fn beacon_sender(
 
     let gps_fut = gps_parser.run(&mut gps);
 
-    let mut delay = device_manager.delay;
+    let delay = device_manager.delay.clone();
     let beacon_fut = async {
         loop {
             let nmea = gps_parser.get_nmea();
@@ -99,7 +99,7 @@ pub async fn beacon_sender(
         }
     };
 
-    let mut delay = device_manager.delay;
+    let delay = device_manager.delay.clone();
     let indicator_fut = async {
         // loop {
         //     let satellites_count: u32 = satellites_count.lock(|v| *v.borrow());

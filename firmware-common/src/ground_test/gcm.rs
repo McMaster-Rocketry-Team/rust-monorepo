@@ -11,7 +11,7 @@ use lora_phy::{
 
 #[inline(never)]
 pub async fn ground_test_gcm(device_manager: device_manager_type!()) -> ! {
-    let mut delay = device_manager.delay;
+    let delay = device_manager.delay();
     claim_devices!(device_manager, lora);
 
     let mut count = 0u8;
