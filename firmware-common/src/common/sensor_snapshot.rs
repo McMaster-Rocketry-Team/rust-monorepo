@@ -1,4 +1,4 @@
-use crate::driver::{barometer::BaroReading, imu::IMUReading, meg::MegReading, timestamp::BootTimestamp};
+use crate::driver::{barometer::BaroReading, imu::IMUReading, mag::MagReading, timestamp::BootTimestamp};
 use rkyv::{Archive, Deserialize, Serialize};
 
 use super::gps_parser::GPSLocation;
@@ -8,7 +8,7 @@ pub enum SensorReading {
     GPS(GPSLocation),
     IMU(IMUReading<BootTimestamp>),
     Baro(BaroReading<BootTimestamp>),
-    Meg(MegReading<BootTimestamp>),
+    Mag(MagReading<BootTimestamp>),
     BatteryVoltage(BatteryVoltage),
 }
 
@@ -24,7 +24,7 @@ impl SensorReading {
             SensorReading::GPS(gps) => gps.timestamp,
             SensorReading::IMU(imu) => imu.timestamp,
             SensorReading::Baro(baro) => baro.timestamp,
-            SensorReading::Meg(meg) => meg.timestamp,
+            SensorReading::Mag(mag) => mag.timestamp,
             SensorReading::BatteryVoltage(batt) => batt.timestamp,
         }
     }

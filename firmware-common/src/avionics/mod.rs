@@ -52,7 +52,7 @@ use crate::{
     device_manager_type,
     driver::{
         barometer::BaroReading, debugger::DebuggerTargetEvent, gps::GPS, indicator::Indicator,
-        meg::MegReading,
+        mag::MagReading,
     },
 };
 use crate::{common::can_bus::message::IGNITION_MESSAGE_ID, driver::can_bus::CanBusTX};
@@ -188,14 +188,14 @@ pub async fn avionics_main(
     .await
     .unwrap();
     let baro_logger_fut = baro_logger.run();
-    log_info!("Creating MEG logger");
-    let meg_logger = BufferedDeltaLogger::<MegReading<UnixTimestamp>, _, _, 10>::new(
+    log_info!("Creating MAG logger");
+    let mag_logger = BufferedDeltaLogger::<MagReading<UnixTimestamp>, _, _, 10>::new(
         services.fs,
-        AVIONICS_MEG_LOGGER_TIER_1,
+        AVIONICS_MAG_LOGGER_TIER_1,
     )
     .await
     .unwrap();
-    let meg_logger_fut = meg_logger.run();
+    let mag_logger_fut = mag_logger.run();
     log_info!("Creating battery logger");
     let battery_logger = BufferedDeltaLogger::<ADCReading<Volt, UnixTimestamp>, _, _, 10>::new(
         services.fs,
@@ -251,7 +251,7 @@ pub async fn avionics_main(
         low_g_imu,
         high_g_imu,
         barometer,
-        meg,
+        mag,
         batt_voltmeter,
         lora,
         camera,
@@ -385,8 +385,8 @@ pub async fn avionics_main(
                                 || typ == AVIONICS_HIGH_G_IMU_LOGGER_TIER_2
                                 || typ == AVIONICS_BARO_LOGGER_TIER_1
                                 || typ == AVIONICS_BARO_LOGGER_TIER_2
-                                || typ == AVIONICS_MEG_LOGGER_TIER_1
-                                || typ == AVIONICS_MEG_LOGGER_TIER_2
+                                || typ == AVIONICS_MAG_LOGGER_TIER_1
+                                || typ == AVIONICS_MAG_LOGGER_TIER_2
                                 || typ == AVIONICS_BATTERY_LOGGER_TIER_1
                                 || typ == AVIONICS_BATTERY_LOGGER_TIER_2;
                         })
@@ -530,16 +530,16 @@ pub async fn avionics_main(
         }
     };
 
-    let mut meg_ticker = Ticker::every(services.clock(), services.delay(), 50.0);
-    let meg_fut = async {
+    let mut mag_ticker = Ticker::every(services.clock(), services.delay(), 50.0);
+    let mag_fut = async {
         services.unix_clock.wait_until_ready().await;
         loop {
-            meg_ticker.next().await;
+            mag_ticker.next().await;
             if is_low_power_mode() {
                 continue;
             }
-            let meg_reading = meg.read().await.unwrap();
-            meg_logger.log(meg_reading.to_unix_timestamp(services.unix_clock()));
+            let mag_reading = mag.read().await.unwrap();
+            mag_logger.log(mag_reading.to_unix_timestamp(services.unix_clock()));
         }
     };
 
@@ -717,7 +717,7 @@ pub async fn avionics_main(
         low_g_imu_logger_fut,
         high_g_imu_logger_fut,
         baro_logger_fut,
-        meg_logger_fut,
+        mag_logger_fut,
         battery_logger_fut,
         vlp_tx_fut,
         vlp_rx_fut,
@@ -730,7 +730,7 @@ pub async fn avionics_main(
         high_g_imu_fut,
         baro_fut,
         gps_fut,
-        meg_fut,
+        mag_fut,
         bat_fut,
         flight_core_tick_fut,
         pyro_main_ctrl_fut,

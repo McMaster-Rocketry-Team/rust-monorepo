@@ -8,7 +8,7 @@ pub mod debugger;
 pub mod gps;
 pub mod imu;
 pub mod indicator;
-pub mod meg;
+pub mod mag;
 pub mod pyro;
 pub mod radio;
 pub mod rng;

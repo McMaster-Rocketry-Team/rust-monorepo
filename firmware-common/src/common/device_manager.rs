@@ -3,7 +3,7 @@ use lora_phy::{mod_traits::RadioKind, LoRa};
 use vlfs::{Crc, Flash, VLFS};
 
 use crate::driver::{
-    adc::{Ampere, Volt, ADC}, arming::HardwareArming, barometer::Barometer, buzzer::Buzzer, camera::Camera, can_bus::SplitableCanBus, clock::Clock, debugger::Debugger, delay::Delay, gps::{GPS, GPSPPS}, imu::IMU, indicator::Indicator, meg::Megnetometer, pyro::{Continuity, PyroCtrl}, rng::RNG, serial::SplitableSerial, sys_reset::SysReset, usb::SplitableUSB
+    adc::{Ampere, Volt, ADC}, arming::HardwareArming, barometer::Barometer, buzzer::Buzzer, camera::Camera, can_bus::SplitableCanBus, clock::Clock, debugger::Debugger, delay::Delay, gps::{GPS, GPSPPS}, imu::IMU, indicator::Indicator, mag::Magnetometer, pyro::{Continuity, PyroCtrl}, rng::RNG, serial::SplitableSerial, sys_reset::SysReset, usb::SplitableUSB
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
 
@@ -30,7 +30,7 @@ pub struct DeviceManager<
     S: SplitableSerial,
     U: SplitableUSB,
     B: Buzzer,
-    M: Megnetometer,
+    M: Magnetometer,
     RK: RadioKind,
     R: RNG,
     IR: Indicator,
@@ -59,7 +59,7 @@ pub struct DeviceManager<
     pub(crate) serial: Mutex<NoopRawMutex, Option<S>>,
     pub(crate) usb: Mutex<NoopRawMutex, Option<U>>,
     pub(crate) buzzer: Mutex<NoopRawMutex, B>,
-    pub(crate) meg: Mutex<NoopRawMutex, M>,
+    pub(crate) mag: Mutex<NoopRawMutex, M>,
     pub(crate) lora: Mutex<NoopRawMutex, LoRa<RK, DL>>,
     pub(crate) rng: Mutex<NoopRawMutex, R>,
     pub(crate) indicators: Mutex<NoopRawMutex, IndicatorController<IR, IG, IB, T, DL>>,
@@ -91,7 +91,7 @@ impl<
         S: SplitableSerial,
         U: SplitableUSB,
         B: Buzzer,
-        M: Megnetometer,
+        M: Magnetometer,
         RK: RadioKind,
         R: RNG,
         IR: Indicator,
@@ -150,7 +150,7 @@ impl<
         serial: S,
         usb: U,
         buzzer: B,
-        meg: M,
+        mag: M,
         lora: LoRa<RK, DL>,
         rng: R,
         red_indicator: IR,
@@ -189,7 +189,7 @@ impl<
             serial: Mutex::new(Some(serial)),
             usb: Mutex::new(Some(usb)),
             buzzer: Mutex::new(buzzer),
-            meg: Mutex::new(meg),
+            mag: Mutex::new(mag),
             lora: Mutex::new(lora),
             rng: Mutex::new(rng),
             indicators: Mutex::new(IndicatorController::new(
@@ -263,7 +263,7 @@ macro_rules! device_manager_type {
     impl SplitableSerial,
     impl SplitableUSB,
     impl Buzzer,
-    impl Megnetometer,
+    impl Magnetometer,
     impl RadioKind,
     impl RNG,
     impl Indicator,
@@ -293,7 +293,7 @@ macro_rules! device_manager_type {
     impl SplitableSerial,
     impl SplitableUSB,
     impl Buzzer,
-    impl Megnetometer,
+    impl Magnetometer,
     impl RadioKind,
     impl RNG,
     impl Indicator,
@@ -322,7 +322,7 @@ pub mod prelude {
     pub use crate::driver::gps::{GPS, GPSPPS};
     pub use crate::driver::imu::IMU;
     pub use crate::driver::indicator::Indicator;
-    pub use crate::driver::meg::Megnetometer;
+    pub use crate::driver::mag::Magnetometer;
     pub use crate::driver::pyro::{Continuity, PyroCtrl};
     pub use crate::driver::radio::RadioPhy;
     pub use crate::driver::rng::RNG;

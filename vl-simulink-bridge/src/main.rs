@@ -11,6 +11,7 @@ use rocket::State;
 extern crate rocket;
 
 mod clock;
+mod virtual_sensors;
 
 fn generate_random_string(length: usize) -> String {
     let mut rng = thread_rng();

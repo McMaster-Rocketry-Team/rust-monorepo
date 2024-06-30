@@ -10,3 +10,5 @@ firmware-common = { path = "../firmware-common", default-features = false, featu
 ] }
 embedded-hal-async = "1.0.0"
 rand = "0.8.5"
+embassy-sync = { version = "0.6.0", features = ["std"] }
+critical-section = { version = "1.1", features = ["std"] }
