@@ -48,7 +48,7 @@ impl<R: Indicator, G: Indicator, B: Indicator, T: Clock, DL: Delay>
                 indicator.set_enable(is_enabled).await;
                 is_enabled = !is_enabled;
                 let end_time = start_time + *duration as f64;
-                delay.delay_ms((end_time - clock.now_ms()) as u32).await;
+                delay.delay_ms(end_time - clock.now_ms()).await;
                 start_time = end_time;
             }
         }

@@ -99,13 +99,13 @@ impl DelayNs for Delay {
 }
 
 impl DelayDriver for Delay {
-    async fn delay_ms(&self, ms: u32) {
-        if ms == 0 {
+    async fn delay_ms(&self, ms: f64) {
+        if ms <= 0.0 {
             return;
         }
         let wake_time = {
             let clock = self.clock.lock().unwrap();
-            clock.time + ms as f64 * 1e-3
+            clock.time + ms * 1e-3
         };
         poll_fn(|cx| {
             let mut clock = self.clock.lock().unwrap();

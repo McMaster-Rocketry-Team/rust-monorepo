@@ -301,7 +301,7 @@ pub async fn avionics_main(
     let vlp = VLPUplinkClient::new(&config.lora, services.unix_clock(), services.delay(), lora_key);
     let vlp_tx_fut = async {
         // Wait 1 sec for all the fields to be populated
-        services.delay.delay_ms(1000).await;
+        services.delay.delay_ms(1000.0).await;
 
         let mut update_ticker = Ticker::every(services.clock(), services.delay(), 1000.0);
         loop {
@@ -552,7 +552,7 @@ pub async fn avionics_main(
     let flight_core_tick_fut = async {
         loop {
             if vertical_calibration_in_progress.lock(|s| *s.borrow()) {
-                services.delay.delay_ms(100).await;
+                services.delay.delay_ms(100.0).await;
                 continue;
             }
             let low_g_imu_reading = low_g_imu_signal.wait().await;
@@ -672,7 +672,7 @@ pub async fn avionics_main(
         loop {
             pyro_main_fire_signal.wait().await;
             pyro_main_ctrl.set_enable(true).await.ok();
-            services.delay.delay_ms(2000).await;
+            services.delay.delay_ms(3000.0).await;
             pyro_main_ctrl.set_enable(false).await.ok();
         }
     };
@@ -681,7 +681,7 @@ pub async fn avionics_main(
         loop {
             pyro_drouge_fire_signal.wait().await;
             pyro_drouge_ctrl.set_enable(true).await.ok();
-            services.delay.delay_ms(3000).await;
+            services.delay.delay_ms(3000.0).await;
             pyro_drouge_ctrl.set_enable(false).await.ok();
         }
     };

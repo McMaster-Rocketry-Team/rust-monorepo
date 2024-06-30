@@ -1,4 +1,7 @@
-use crate::{common::delta_factory::Deltable, Delay};
+use crate::{
+    common::{delta_factory::Deltable, ticker::Ticker},
+    Clock, Delay,
+};
 use chrono::{TimeZone as _, Utc};
 use core::fmt::Debug;
 use core::future::Future;
@@ -129,20 +132,21 @@ where
     }
 }
 
-pub struct DummyGPSPPS<D: Delay> {
-    delay: D,
+pub struct DummyGPSPPS<D: Delay, C: Clock> {
+    ticker: Ticker<C, D>,
 }
 
-impl<D: Delay> DummyGPSPPS<D> {
-    pub fn new(delay: D) -> Self {
-        Self { delay }
+impl<D: Delay, C: Clock> DummyGPSPPS<D, C> {
+    pub fn new(delay: D, clock: C) -> Self {
+        let now = clock.now_ms();
+        Self {
+            ticker: Ticker::every_starts_at(clock, delay, 1000.0, (now / 1000.0).floor() * 1000.0),
+        }
     }
 }
 
-impl<D: Delay> GPSPPS for DummyGPSPPS<D> {
+impl<D: Delay, C: Clock> GPSPPS for DummyGPSPPS<D, C> {
     async fn wait_for_pps(&mut self) {
-        loop {
-            self.delay.delay_ms(1_000).await;
-        }
+        self.ticker.next_skip_missed().await;
     }
 }

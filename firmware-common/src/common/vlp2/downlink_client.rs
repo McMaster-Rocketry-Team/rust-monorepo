@@ -128,7 +128,7 @@ where
             };
             if let Err(e) = result {
                 log_error!("Error in VLP downlink client: {:?}", e);
-                delay.delay_ms(1000).await;
+                delay.delay_ms(1000.0).await;
             }
         }
     }

@@ -1,36 +1,48 @@
-use embedded_hal_async::delay::DelayNs;
+use crate::{Clock, Delay};
 
-use crate::Clock;
-
-pub struct Ticker<C: Clock, D: DelayNs> {
-    expires_at_ms: f64,
-    pub interval_ms: f64,
+pub struct Ticker<C: Clock, D: Delay> {
+    start_timestamp: f64,
+    interval_ms: f64,
+    i: f64,
     clock: C,
     delay: D,
 }
 
-impl<C: Clock, D: DelayNs> Ticker<C, D> {
+impl<C: Clock, D: Delay> Ticker<C, D> {
     pub fn every(clock: C, delay: D, interval_ms: f64) -> Self {
-        let expires_at_ms = clock.now_ms() + interval_ms;
         Self {
-            expires_at_ms,
+            start_timestamp: clock.now_ms(),
             interval_ms,
+            i: 0.0,
             clock,
             delay,
         }
     }
 
-    pub async fn next(&mut self) -> f64 {
-        let now = self.clock.now_ms();
-        let elapsed = now - self.expires_at_ms + self.interval_ms;
-        if now > self.expires_at_ms {
-            self.expires_at_ms = now + self.interval_ms;
-        } else {
-            self.delay
-                .delay_us(((self.expires_at_ms - now) * 1000.0) as u32)
-                .await;
-            self.expires_at_ms += self.interval_ms;
+    pub fn every_starts_at(clock: C, delay: D, interval_ms: f64, start_timestamp: f64) -> Self {
+        Self {
+            start_timestamp,
+            interval_ms,
+            i: 0.0,
+            clock,
+            delay,
         }
-        elapsed
+    }
+
+    pub async fn next(&mut self) {
+        let now = self.clock.now_ms();
+        self.i += 1.0;
+        let wait_until_timestamp = self.start_timestamp + self.i * self.interval_ms;
+        if now >= wait_until_timestamp {
+            return;
+        } else {
+            self.delay.delay_ms(wait_until_timestamp - now).await;
+        }
+    }
+
+    pub async fn next_skip_missed(&mut self) {
+        let now = self.clock.now_ms();
+        let wait_until_timestamp = (now / self.interval_ms).ceil() * self.interval_ms;
+        self.delay.delay_ms(wait_until_timestamp - now).await;
     }
 }

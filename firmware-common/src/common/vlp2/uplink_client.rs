@@ -114,7 +114,7 @@ where
             };
             if let Err(e) = result {
                 log_error!("Error in VLP uplink client: {:?}", e);
-                delay.delay_ms(1000).await;
+                delay.delay_ms(1000.0).await;
             }
         }
     }

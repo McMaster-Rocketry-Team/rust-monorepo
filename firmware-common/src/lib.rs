@@ -107,7 +107,7 @@ pub async fn init(
 
     let delay = device_manager.delay();
     let usb_connected = {
-        let timeout_fut = delay.delay_ms(500);
+        let timeout_fut = delay.delay_ms(500.0);
         let usb_wait_connection_fut = usb.wait_connection();
         pin_mut!(timeout_fut);
         pin_mut!(usb_wait_connection_fut);

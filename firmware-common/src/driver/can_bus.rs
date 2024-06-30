@@ -79,7 +79,7 @@ impl<D: Delay> CanBusRX for DummyCanBus<D> {
 
     async fn receive(&mut self) -> Result<impl CanBusMessage, Self::Error> {
         loop {
-            self.delay.delay_ms(1000).await;
+            self.delay.delay_ms(1000.0).await;
         }
         Ok(DummyCanBusMessage)
     }

@@ -1,6 +1,6 @@
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
 use firmware_common::driver::{
-    barometer::{BaroReading, Barometer}, imu::{IMUReading, IMU}, mag::{MagReading, Magnetometer}, timestamp::BootTimestamp
+    barometer::{BaroReading, Barometer}, gps::{GPSLocation, GPS}, imu::{IMUReading, IMU}, mag::{MagReading, Magnetometer}, timestamp::BootTimestamp
 };
 
 pub struct VirtualBaro {
@@ -84,5 +84,29 @@ impl Magnetometer for &VirtualMag {
 
     async fn read(&mut self) -> Result<MagReading<BootTimestamp>, Self::Error> {
         Ok(self.signal.try_take().expect("Mag reading not set"))
+    }
+}
+
+pub struct VirtualGPS {
+    signal: Signal<CriticalSectionRawMutex, GPSLocation>,
+}
+
+impl VirtualGPS {
+    pub fn new() -> Self {
+        Self {
+            signal: Signal::new(),
+        }
+    }
+
+    pub fn set_reading(&self, reading: GPSLocation) {
+        self.signal.signal(reading);
+    }
+}
+
+impl GPS for &VirtualGPS {
+    type Error = ();
+
+    async fn next_location(&mut self) -> Result<GPSLocation, Self::Error> {
+        Ok(self.signal.try_take().expect("GPS reading not set"))
     }
 }

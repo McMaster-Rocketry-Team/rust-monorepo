@@ -78,16 +78,16 @@ async fn fire_pyro(
         buzzer_queue.publish(3000, 50, 100);
         buzzer_queue.publish(3000, 50, 100);
         buzzer_queue.publish(3000, 50, 100);
-        services.delay.delay_ms(1000).await;
+        services.delay.delay_ms(1000.0).await;
 
         log_info!("2");
         buzzer_queue.publish(3000, 50, 100);
         buzzer_queue.publish(3000, 50, 100);
-        services.delay.delay_ms(1000).await;
+        services.delay.delay_ms(1000.0).await;
 
         log_info!("1");
         buzzer_queue.publish(3000, 50, 100);
-        services.delay.delay_ms(1000).await;
+        services.delay.delay_ms(1000.0).await;
 
         log_info!("fire");
         logs_channel
@@ -96,9 +96,9 @@ async fn fire_pyro(
             }))
             .unwrap();
         ctrl.set_enable(true).await.unwrap();
-        services.delay.delay_ms(2000).await;
+        services.delay.delay_ms(2000.0).await;
         ctrl.set_enable(false).await.unwrap();
-        services.delay.delay_ms(10000).await;
+        services.delay.delay_ms(10000.0).await;
         finished.lock(|s| *s.borrow_mut() = true);
     };
 

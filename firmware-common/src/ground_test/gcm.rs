@@ -57,7 +57,7 @@ pub async fn ground_test_gcm(device_manager: device_manager_type!()) -> ! {
 
                         log_info!("Sent fire message");
                         loop {
-                            delay.delay_ms(1000).await;
+                            delay.delay_ms(1000.0).await;
                         }
                     }
                 }
