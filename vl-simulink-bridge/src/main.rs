@@ -12,6 +12,7 @@ extern crate rocket;
 
 mod clock;
 mod virtual_sensors;
+mod virtual_serial;
 
 fn generate_random_string(length: usize) -> String {
     let mut rng = thread_rng();

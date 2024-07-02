@@ -2961,9 +2961,11 @@ dependencies = [
  "critical-section",
  "embassy-sync 0.6.0",
  "embedded-hal-async",
+ "embedded-io-async",
  "firmware-common",
  "rand",
  "rocket",
+ "tokio",
 ]
 
 [[package]]
