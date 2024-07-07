@@ -5,8 +5,9 @@ members = [
     "nyoom",
     "vlfs",
     "ferraris-calibration",
-    "vl8-ctrl-protocol", 
-    "vl-cli", "vl-simulink-bridge",
+    # "vl8-ctrl-protocol", 
+    "vl-cli",
+    "vl-simulink-bridge",
     # "launch-simulator",
 ]
 resolver = "2"
