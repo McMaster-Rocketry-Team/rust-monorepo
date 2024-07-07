@@ -1,27 +1,26 @@
-use core::{borrow::Borrow, cell::RefCell};
-
+use core::cell::RefCell;
+use crc::CRC_16_GSM;
 use embassy_futures::select::select;
 use embassy_sync::{
     blocking_mutex::{raw::NoopRawMutex, Mutex as BlockingMutex},
     channel::{Channel, Sender},
+    mutex::Mutex,
     pubsub::{PubSubBehavior, PubSubChannel},
     signal::Signal,
 };
 use flight_profile::{FlightProfile, PyroSelection};
 use futures::join;
-use heapless::Vec;
 use imu_calibration_info::IMUCalibrationInfo;
 use nalgebra::Vector3;
-use rkyv::{
-    ser::{serializers::BufferSerializer, Serializer},
-    Archive, Deserialize, Serialize,
-};
+use rkyv::{Archive, Deserialize, Serialize};
 use vlfs::{Crc, Flash};
 
 use crate::{
     allocator::HEAP,
     common::{
-        can_bus::message::{AvionicsStatus, APOGEE_MESSAGE_ID, LANDED_MESSAGE_ID},
+        can_bus::messages::{
+            AvionicsStatusMessage, FlightEvent, FlightEventMessage, UnixTimeMessage,
+        },
         config_file::ConfigFile,
         delta_logger::BufferedDeltaLogger,
         device_config::{DeviceConfig, DeviceModeConfig},
@@ -33,7 +32,10 @@ use crate::{
         },
     },
     driver::{
-        adc::ADCReading, can_bus::CanBusTXFrame, gps::GPSLocation, imu::IMUReading, timestamp::{BootTimestamp, UnixTimestamp}
+        adc::ADCReading,
+        gps::GPSLocation,
+        imu::IMUReading,
+        timestamp::{BootTimestamp, UnixTimestamp},
     },
 };
 use crate::{
@@ -42,17 +44,14 @@ use crate::{
         flight_core_event::FlightCoreEvent,
     },
     claim_devices,
-    common::{
-        device_manager::prelude::*,
-        sensor_snapshot::PartialSensorSnapshot, ticker::Ticker,
-    },
+    common::{device_manager::prelude::*, sensor_snapshot::PartialSensorSnapshot, ticker::Ticker},
     device_manager_type,
     driver::{
         barometer::BaroReading, debugger::DebuggerTargetEvent, gps::GPS, indicator::Indicator,
         mag::MagReading,
     },
 };
-use crate::{common::can_bus::message::IGNITION_MESSAGE_ID, driver::can_bus::CanBusTX};
+use crate::{common::can_bus::node_types::VOID_LAKE_NODE_TYPE, driver::can_bus::CanBusTX};
 use self_test::{self_test, SelfTestResult};
 
 pub mod avionics_state;
@@ -68,6 +67,7 @@ pub async fn avionics_main(
     device_manager: device_manager_type!(),
     services: system_services_type!(),
     config: &DeviceConfig,
+    device_serial_number: &[u8; 12],
 ) -> ! {
     let lora_key = if let DeviceModeConfig::Avionics { lora_key } = &config.mode {
         lora_key
@@ -239,8 +239,6 @@ pub async fn avionics_main(
     let imu_config =
         BlockingMutex::<NoopRawMutex, _>::new(RefCell::new(imu_config_file.read().await));
 
-    let can_tx_channel = Channel::<NoopRawMutex, CanBusTXFrame, 2>::new();
-
     log_info!("Claiming devices");
     claim_devices!(
         device_manager,
@@ -256,36 +254,39 @@ pub async fn avionics_main(
         sys_reset
     );
     log_info!("Devices claimed");
-    let (mut can_tx, _) = can_bus.split();
 
-    let can_tx_fut = async {
+    let crc = crc::Crc::<u16>::new(&CRC_16_GSM);
+    can_bus.configure_self_node(VOID_LAKE_NODE_TYPE, crc.checksum(device_serial_number));
+    drop(crc);
+    let (can_tx, _) = can_bus.split();
+
+    let can_tx = Mutex::<NoopRawMutex, _>::new(can_tx);
+
+    let can_tx_avionics_status_fut = async {
+        let mut ticker = Ticker::every(services.clock(), services.delay(), 2000.0);
         loop {
-            let frame = can_tx_channel.receive().await;
-            can_tx.send(frame).await.ok();
+            let message = AvionicsStatusMessage {
+                low_power: is_low_power_mode(),
+                armed: arming_state.lock(|s| (*s.borrow()).is_armed()),
+            };
+            let mut can_tx = can_tx.lock().await;
+            can_tx.send(&message, 3).await.ok();
+            drop(can_tx);
+
+            ticker.next().await;
         }
     };
 
-    let can_tx_avionics_status_fut = async {
-        services.unix_clock.wait_until_ready().await;
+    let can_tx_unix_time_fut = async {
         let mut ticker = Ticker::every(services.clock(), services.delay(), 1000.0);
+        services.unix_clock.wait_until_ready().await;
         loop {
-            let packet = AvionicsStatus {
-                timestamp: services.unix_clock.now_ms(),
-                low_power: false,
-                armed: arming_state.lock(|s| (*s.borrow()).is_armed()),
-            };
-            let mut buffer = Vec::<u8, 64>::new();
-            buffer
-                .resize(size_of::<<AvionicsStatus as Archive>::Archived>(), 0)
-                .unwrap();
-            let mut serializer = BufferSerializer::new(buffer.as_mut_slice());
-            serializer.serialize_value(&packet).unwrap();
-            drop(serializer);
-            let frame = CanBusTXFrame::Data {
-                id: AvionicsStatus::message_id(),
-                data: buffer,
-            };
-            can_tx_channel.send(frame).await;
+            let mut can_tx = can_tx.lock().await;
+            let timestamp = services.unix_clock.now_ms() as u64;
+            let message = UnixTimeMessage { timestamp };
+            can_tx.send(&message, 2).await.ok();
+            drop(can_tx);
+
             ticker.next().await;
         }
     };
@@ -298,7 +299,12 @@ pub async fn avionics_main(
     };
 
     let telemetry_packet_builder = TelemetryPacketBuilder::new(services.unix_clock());
-    let vlp = VLPUplinkClient::new(&config.lora, services.unix_clock(), services.delay(), lora_key);
+    let vlp = VLPUplinkClient::new(
+        &config.lora,
+        services.unix_clock(),
+        services.delay(),
+        lora_key,
+    );
     let vlp_tx_fut = async {
         // Wait 1 sec for all the fields to be populated
         services.delay.delay_ms(1000.0).await;
@@ -634,35 +640,33 @@ pub async fn avionics_main(
 
     let flight_core_state_sub_fut = async {
         let mut sub = flight_core_state_pub_sub.subscriber().unwrap();
+
+        let can_send_flight_event = async |event: FlightEvent| {
+            let message = FlightEventMessage {
+                timestamp: services.unix_clock.now_ms() as u64,
+                event,
+            };
+            let mut can_tx = can_tx.lock().await;
+            can_tx.send(&message, 7).await.ok();
+            drop(can_tx);
+        };
+
         loop {
             let state = sub.next_message_pure().await;
             match state {
                 FlightCoreStateTelemetry::DisArmed => {}
                 FlightCoreStateTelemetry::Armed => {}
                 FlightCoreStateTelemetry::PowerAscend => {
-                    can_tx_channel
-                        .send(CanBusTXFrame::Data {
-                            id: IGNITION_MESSAGE_ID,
-                            data: Vec::new(),
-                        })
-                        .await;
+                    can_send_flight_event(FlightEvent::Ignition).await;
                 }
-                FlightCoreStateTelemetry::Coast => {}
+                FlightCoreStateTelemetry::Coast => {
+                    can_send_flight_event(FlightEvent::Coast).await;
+                }
                 FlightCoreStateTelemetry::Descent => {
-                    can_tx_channel
-                        .send(CanBusTXFrame::Data {
-                            id: APOGEE_MESSAGE_ID,
-                            data: Vec::new(),
-                        })
-                        .await;
+                    can_send_flight_event(FlightEvent::Apogee).await;
                 }
                 FlightCoreStateTelemetry::Landed => {
-                    can_tx_channel
-                        .send(CanBusTXFrame::Data {
-                            id: LANDED_MESSAGE_ID,
-                            data: Vec::new(),
-                        })
-                        .await;
+                    can_send_flight_event(FlightEvent::Landed).await;
                 }
             }
         }
@@ -695,7 +699,8 @@ pub async fn avionics_main(
         }
     };
 
-    let mut storage_full_detection_ticker = Ticker::every(services.clock(), services.delay(), 1000.0);
+    let mut storage_full_detection_ticker =
+        Ticker::every(services.clock(), services.delay(), 1000.0);
     let storage_full_detection_fut = async {
         loop {
             storage_full_detection_ticker.next().await;
@@ -730,8 +735,8 @@ pub async fn avionics_main(
         flight_core_event_consumer,
         flight_core_state_sub_fut,
         camera_ctrl_fut,
-        can_tx_fut,
         can_tx_avionics_status_fut,
+        can_tx_unix_time_fut,
         indicators_fut,
         storage_full_detection_fut
     );

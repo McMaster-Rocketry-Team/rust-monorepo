@@ -1,24 +1,27 @@
-use rkyv::{Archive, Deserialize, Serialize};
+use core::fmt::Debug;
+use heapless::Vec;
+use packed_bits::ByteArray;
+use packed_struct::prelude::*;
 
-#[derive(defmt::Format, Debug, Clone, Archive, Deserialize, Serialize)]
-pub struct AvionicsStatus {
-    pub timestamp: f64,
-    pub low_power: bool,
-    pub armed: bool,
-}
+use super::id::CanBusExtendedId;
 
-impl AvionicsStatus {
-    pub fn message_id() -> u32 {
-        0xA0
+pub trait CanBusMessage: PackedStruct + Clone + Debug {
+    fn message_type() -> u8;
+
+    fn create_id(priority: u8, node_type: u8, node_id: u16) -> CanBusExtendedId {
+        CanBusExtendedId::new(priority, Self::message_type(), node_type, node_id)
+    }
+
+    fn to_data(&self) -> Vec<u8, 64> {
+        let packed = self.pack().unwrap();
+        Vec::from_slice(packed.as_bytes_slice()).unwrap()
+    }
+
+    fn from_data(data: &Self::ByteArray) -> Self {
+        Self::unpack(data).unwrap()
+    }
+
+    fn len() -> usize {
+        Self::ByteArray::len()
     }
 }
-
-pub const IGNITION_MESSAGE_ID: u32 = 0xF0;
-
-pub const APOGEE_MESSAGE_ID: u32 = 0xF1;
-
-pub const LANDED_MESSAGE_ID: u32 = 0xF2;
-
-pub const SOLAR_CAR_DAQ_HEALTH_MESSAGE_ID: u32 = 0xB0;
-
-pub const STRAIN_GAUGES_HEALTH_MESSAGE_ID: u32 = 0xB1;

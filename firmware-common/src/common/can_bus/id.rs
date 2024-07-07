@@ -1,12 +1,31 @@
-use bilge::prelude::*;
+use core::fmt::Debug;
+use packed_struct::prelude::*;
 
-#[bitsize(29)]
-#[derive(FromBits)]
+#[derive(PackedStruct, Default, Clone, Copy, Debug, PartialEq, Eq)]
+#[packed_struct(endian = "msb", size_bytes = "4")]
 pub struct CanBusExtendedId {
-    priority: u3,
-    message_type: u6,
-    node_id: u8,
-    message_id: u12,
+    _reserved: ReservedZero<packed_bits::Bits<3>>,
+    pub priority: Integer<u8, packed_bits::Bits<3>>,
+    pub message_type: u8,
+    pub node_type: Integer<u8, packed_bits::Bits<6>>,
+    pub node_id: Integer<u16, packed_bits::Bits<12>>,
 }
 
-pub const VL_NODE_ID: u8 = 0x69;
+impl CanBusExtendedId {
+    pub fn new(priority: u8, message_type: u8, node_type: u8, node_id: u16) -> Self {
+        Self {
+            _reserved: ReservedZero::default(),
+            priority: priority.into(),
+            message_type: message_type.into(),
+            node_type: node_type.into(),
+            node_id: node_id.into(),
+        }
+    }
+}
+
+impl Into<u32> for CanBusExtendedId {
+    fn into(self) -> u32 {
+        let packed = self.pack().unwrap();
+        u32::from_be_bytes(packed)
+    }
+}

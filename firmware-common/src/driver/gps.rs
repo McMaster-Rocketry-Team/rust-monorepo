@@ -9,6 +9,7 @@ use core::ops::DerefMut;
 use embassy_sync::{blocking_mutex::raw::RawMutex, mutex::MutexGuard};
 use nmea::Nmea;
 use rkyv::{Archive, Deserialize, Serialize};
+use libm::floor;
 
 #[derive(Archive, Deserialize, Serialize, Debug, Clone, defmt::Format)]
 pub struct GPSLocation {
@@ -140,7 +141,7 @@ impl<D: Delay, C: Clock> DummyGPSPPS<D, C> {
     pub fn new(delay: D, clock: C) -> Self {
         let now = clock.now_ms();
         Self {
-            ticker: Ticker::every_starts_at(clock, delay, 1000.0, (now / 1000.0).floor() * 1000.0),
+            ticker: Ticker::every_starts_at(clock, delay, 1000.0, floor(now / 1000.0) * 1000.0),
         }
     }
 }

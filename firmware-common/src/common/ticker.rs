@@ -1,5 +1,5 @@
 use crate::{Clock, Delay};
-
+use libm::ceil;
 pub struct Ticker<C: Clock, D: Delay> {
     start_timestamp: f64,
     interval_ms: f64,
@@ -42,7 +42,7 @@ impl<C: Clock, D: Delay> Ticker<C, D> {
 
     pub async fn next_skip_missed(&mut self) {
         let now = self.clock.now_ms();
-        let wait_until_timestamp = (now / self.interval_ms).ceil() * self.interval_ms;
+        let wait_until_timestamp = ceil(now / self.interval_ms) * self.interval_ms;
         self.delay.delay_ms(wait_until_timestamp - now).await;
     }
 }

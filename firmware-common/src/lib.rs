@@ -182,7 +182,7 @@ pub async fn init(
         log_info!("Starting in mode {:?}", device_config);
         match device_config.mode {
             DeviceModeConfig::Avionics { .. } => {
-                avionics_main(device_manager, &services, &device_config).await
+                avionics_main(device_manager, &services, &device_config, device_serial_number).await
             }
             DeviceModeConfig::GCM { .. } => {
                 gcm_main(

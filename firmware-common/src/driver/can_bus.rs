@@ -1,8 +1,8 @@
 use heapless::Vec;
 
-use crate::Delay;
+use crate::{common::can_bus::message::CanBusMessage, Delay};
 
-pub trait CanBusMessage {
+pub trait CanBusRawMessage {
     fn id(&self) -> u32;
     fn rtr(&self) -> Option<usize>;
     fn data(&self) -> &[u8];
@@ -12,6 +12,7 @@ pub trait SplitableCanBus {
     type Error: defmt::Format + core::fmt::Debug;
 
     async fn reset(&mut self) -> Result<(), Self::Error>;
+    fn configure_self_node(&mut self, node_type: u8, node_id: u16);
 
     fn split(
         &mut self,
@@ -29,13 +30,17 @@ pub enum CanBusTXFrame {
 pub trait CanBusTX {
     type Error: defmt::Format + core::fmt::Debug;
 
-    async fn send(&mut self, frame: CanBusTXFrame) -> Result<(), Self::Error>;
+    /// priority can be 0 - 7, 7 being the highest priority
+    async fn send<T: CanBusMessage>(&mut self, message: &T, priority: u8) -> Result<(), Self::Error>;
+    
+    /// priority can be 0 - 7, 7 being the highest priority
+    async fn send_remote<T: CanBusMessage>(&mut self, priority: u8) -> Result<(), Self::Error>;
 }
 
 pub trait CanBusRX {
     type Error: defmt::Format + core::fmt::Debug;
 
-    async fn receive(&mut self) -> Result<impl CanBusMessage, Self::Error>;
+    async fn receive(&mut self) -> Result<impl CanBusRawMessage, Self::Error>;
 }
 
 #[derive(Clone)]
@@ -56,6 +61,9 @@ impl<D: Delay> SplitableCanBus for DummyCanBus<D> {
         Ok(())
     }
 
+    fn configure_self_node(&mut self, _node_type: u8, _node_id: u16) {
+    }
+
     fn split(
         &mut self,
     ) -> (
@@ -69,7 +77,11 @@ impl<D: Delay> SplitableCanBus for DummyCanBus<D> {
 impl<D: Delay> CanBusTX for DummyCanBus<D> {
     type Error = ();
 
-    async fn send(&mut self, _frame: CanBusTXFrame) -> Result<(), Self::Error> {
+    async fn send<T: CanBusMessage>(&mut self, _message: &T, _priority: u8) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    async fn send_remote<T: CanBusMessage>(&mut self, _priority: u8) -> Result<(), Self::Error> {
         Ok(())
     }
 }
@@ -77,17 +89,18 @@ impl<D: Delay> CanBusTX for DummyCanBus<D> {
 impl<D: Delay> CanBusRX for DummyCanBus<D> {
     type Error = ();
 
-    async fn receive(&mut self) -> Result<impl CanBusMessage, Self::Error> {
+    async fn receive(&mut self) -> Result<impl CanBusRawMessage, Self::Error> {
         loop {
             self.delay.delay_ms(1000.0).await;
         }
+        log_unreachable!();
         Ok(DummyCanBusMessage)
     }
 }
 
 pub struct DummyCanBusMessage;
 
-impl CanBusMessage for DummyCanBusMessage {
+impl CanBusRawMessage for DummyCanBusMessage {
     fn id(&self) -> u32 {
         todo!()
     }

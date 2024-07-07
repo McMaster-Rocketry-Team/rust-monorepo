@@ -63,7 +63,7 @@ crc = "3.2.1"
 embedded-io-async = { version = "0.6.1", features = ["defmt-03"] }
 cryptoxide = { version = "0.4.4", default-features = false, features = ["chacha"] }
 lora-modulation = "0.1.4"
-bilge = { version = "0.2.0", default-features = false }
+packed_struct = { version = "0.10.1", default-features = false }
 
 [dev-dependencies]
 futures-executor = { version = "0.3.17", features = ["thread-pool"] }
