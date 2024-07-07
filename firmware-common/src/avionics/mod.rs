@@ -256,7 +256,7 @@ pub async fn avionics_main(
     log_info!("Devices claimed");
 
     let crc = crc::Crc::<u16>::new(&CRC_16_GSM);
-    can_bus.configure_self_node(VOID_LAKE_NODE_TYPE, crc.checksum(device_serial_number));
+    can_bus.configure_self_node(VOID_LAKE_NODE_TYPE, crc.checksum(device_serial_number) & 0xFFF);
     drop(crc);
     let (can_tx, _) = can_bus.split();
 
@@ -283,7 +283,7 @@ pub async fn avionics_main(
         loop {
             let mut can_tx = can_tx.lock().await;
             let timestamp = services.unix_clock.now_ms() as u64;
-            let message = UnixTimeMessage { timestamp };
+            let message = UnixTimeMessage { timestamp:timestamp.into() };
             can_tx.send(&message, 2).await.ok();
             drop(can_tx);
 
@@ -643,7 +643,7 @@ pub async fn avionics_main(
 
         let can_send_flight_event = async |event: FlightEvent| {
             let message = FlightEventMessage {
-                timestamp: services.unix_clock.now_ms() as u64,
+                timestamp: (services.unix_clock.now_ms() as u64).into(),
                 event,
             };
             let mut can_tx = can_tx.lock().await;

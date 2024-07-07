@@ -2,12 +2,11 @@ use packed_struct::prelude::*;
 
 use super::message::CanBusMessage;
 
-
 #[derive(PackedStruct, Clone, Copy, Debug, PartialEq, Eq)]
-#[packed_struct(bit_numbering = "msb0", endian = "msb", size_bytes = "8")]
+#[packed_struct(bit_numbering = "msb0", endian = "msb", size_bytes = "6")]
 pub struct UnixTimeMessage {
     /// Current milliseconds since Unix epoch, floored to the nearest ms
-    pub timestamp: u64,
+    pub timestamp: Integer<u64, packed_bits::Bits<48>>,
 }
 
 impl CanBusMessage for UnixTimeMessage {
@@ -40,11 +39,13 @@ pub enum FlightEvent {
 }
 
 #[derive(PackedStruct, Clone, Copy, Debug, PartialEq, Eq)]
-#[packed_struct(bit_numbering = "msb0", endian = "msb", size_bytes = "9")]
+#[packed_struct(bit_numbering = "msb0", endian = "msb", size_bytes = "7")]
 pub struct FlightEventMessage {
     /// Current milliseconds since Unix epoch, floored to the nearest ms
-    pub timestamp: u64,
-    #[packed_field(bits = "64..=66", ty = "enum")]
+    #[packed_field(bits = "0..48")]
+    pub timestamp: Integer<u64, packed_bits::Bits<48>>,
+
+    #[packed_field(bits = "48..=50", ty = "enum")]
     pub event: FlightEvent,
 }
 
