@@ -21,6 +21,13 @@ impl CanBusExtendedId {
             node_id: node_id.into(),
         }
     }
+
+    pub fn from_raw(raw: u32) -> Self {
+        let unpacked = raw.to_be_bytes();
+        let mut packed = [0; 4];
+        packed.copy_from_slice(&unpacked);
+        Self::unpack(&packed).unwrap()
+    }
 }
 
 impl Into<u32> for CanBusExtendedId {
