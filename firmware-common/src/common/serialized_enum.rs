@@ -38,7 +38,7 @@ macro_rules! create_serialized_enum {
                 use rkyv::{archived_root, AlignedBytes};
                 use core::mem::size_of;
                 use paste::paste;
-                
+
                 match buffer[0] {
                     $(
                         $log_type_i => {
@@ -127,119 +127,55 @@ macro_rules! create_serialized_enum {
     };
 }
 
-// #[cfg(test)]
-// mod file_logger_test {
+#[cfg(test)]
+mod file_logger_test {
+    use crate::common::test_utils::BufferWriter;
+    use core::assert_matches::assert_matches;
+    use rkyv::{Archive, Deserialize, Serialize};
 
-//     #[inline(never)]
-//     #[no_mangle]
-//     fn _defmt_acquire() {}
-//     #[inline(never)]
-//     #[no_mangle]
-//     fn _defmt_release() {}
-//     #[inline(never)]
-//     #[no_mangle]
-//     fn _defmt_flush() {}
-//     #[inline(never)]
-//     #[no_mangle]
-//     fn _defmt_write(_: &[u8]) {}
-//     #[inline(never)]
-//     #[no_mangle]
-//     fn _defmt_timestamp(_: defmt::Formatter<'_>) {}
-//     #[inline(never)]
-//     #[no_mangle]
-//     fn _defmt_panic() -> ! {
-//         loop {}
-//     }
+    #[derive(Archive, Deserialize, Serialize, Debug, Clone, defmt::Format)]
+    struct LogType1 {
+        pub fielda: u32,
+    }
 
-//     struct BufferWriter<'a> {
-//         pub buffer: &'a mut [u8; 4096],
-//         pub offset: usize,
-//     }
+    #[derive(Archive, Deserialize, Serialize, Debug, Clone, defmt::Format)]
+    struct LogType2 {
+        pub fieldb: f32,
+    }
 
-//     impl<'a> vlfs::AsyncWriter for BufferWriter<'a> {
-//         type Error = ();
-//         async fn extend_from_slice(&mut self, slice: &[u8]) -> Result<(), Self::Error> {
-//             self.buffer[self.offset..self.offset + slice.len()].copy_from_slice(slice);
-//             self.offset += slice.len();
-//             Ok(())
-//         }
-//     }
+    create_serialized_enum!(
+        FileLogger, // this is the name of the struct
+        FileLoggerReader,
+        Log,
+        (0, LogType1),
+        (1, LogType2)
+    );
 
-//     struct BufferReader<'b> {
-//         pub buffer: &'b mut [u8; 4096],
-//         pub offset: usize,
-//     }
+    #[futures_test::test]
+    async fn serialize_deserialize() {
+        let mut buffer = [0u8; 4096];
+        let writer = BufferWriter::new(&mut buffer);
 
-//     impl<'b> vlfs::AsyncReader for BufferReader<'b> {
-//         type Error = ();
-//         type ReadStatus = ();
-//         async fn read_slice<'a>(
-//             &mut self,
-//             buffer: &'a mut [u8],
-//             len: usize,
-//         ) -> Result<(&'a [u8], Self::ReadStatus), Self::Error> {
-//             (&mut buffer[0..len]).copy_from_slice(&self.buffer[self.offset..self.offset + len]);
-//             self.offset += len;
-//             Ok((&buffer[0..len], ()))
-//         }
-//     }
+        let mut logger = FileLogger::new(writer);
+        logger
+            .write(&Log::LogType1(LogType1 { fielda: 10 }))
+            .await
+            .unwrap();
+        logger
+            .write(&Log::LogType2(LogType2 { fieldb: 1234.0 }))
+            .await
+            .unwrap();
 
-//     use core::assert_matches::assert_matches;
+        let reader = logger.into_writer().into_reader();
 
-//     use rkyv::{Archive, Deserialize, Serialize};
-
-//     #[derive(Archive, Deserialize, Serialize, Debug, Clone, defmt::Format)]
-//     struct LogType1 {
-//         pub fielda: u32,
-//     }
-
-//     #[derive(Archive, Deserialize, Serialize, Debug, Clone, defmt::Format)]
-//     struct LogType2 {
-//         pub fieldb: f32,
-//     }
-
-//     create_serialized_enum!(
-//         FileLogger, // this is the name of the struct
-//         FileLoggerReader,
-//         Log,
-//         (0, LogType1),
-//         (1, LogType2)
-//     );
-
-//     #[futures_test::test]
-//     async fn serialize_deserialize() {
-//         let mut buffer = [0u8; 4096];
-//         let writer = BufferWriter {
-//             buffer: &mut buffer,
-//             offset: 0,
-//         };
-
-//         let mut logger = FileLogger::new(writer);
-//         logger
-//             .log(Log::LogType1(LogType1 { fielda: 10 }))
-//             .await
-//             .unwrap();
-//         logger
-//             .log(Log::LogType2(LogType2 { fieldb: 1234.0 }))
-//             .await
-//             .unwrap();
-
-//         let offset = logger.into_writer().offset;
-//         println!("{:?}", &mut buffer[0..offset]);
-
-//         let reader = BufferReader {
-//             buffer: &mut buffer,
-//             offset: 0,
-//         };
-
-//         let mut logger_reader = FileLoggerReader::new(reader);
-//         assert_matches!(
-//             logger_reader.next().await,
-//             Ok(Some(Log::LogType1(LogType1 { fielda: 10 })))
-//         );
-//         assert_matches!(
-//             logger_reader.next().await,
-//             Ok(Some(Log::LogType2(LogType2 { fieldb: 1234.0 })))
-//         );
-//     }
-// }
+        let mut logger_reader = FileLoggerReader::new(reader);
+        assert_matches!(
+            logger_reader.read_next().await,
+            Ok(Some(Log::LogType1(LogType1 { fielda: 10 })))
+        );
+        assert_matches!(
+            logger_reader.read_next().await,
+            Ok(Some(Log::LogType2(LogType2 { fieldb: 1234.0 })))
+        );
+    }
+}

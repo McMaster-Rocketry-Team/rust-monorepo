@@ -778,6 +778,7 @@ dependencies = [
  "embedded-io-async",
  "eskf",
  "ferraris-calibration",
+ "firmware-common",
  "futures",
  "futures-executor",
  "futures-test",

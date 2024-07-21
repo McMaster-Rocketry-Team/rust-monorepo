@@ -5,10 +5,11 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-default = ["global-allocator", "defmt"]
+# default = ["global-allocator", "defmt"]
 global-allocator = []
-log = ["dep:log", "vlfs/log"]
 defmt = []
+log = ["dep:log", "vlfs/log"]
+std = []
 
 [dependencies]
 embassy-sync = { version = "0.5.0", default-features = false }
@@ -66,6 +67,10 @@ lora-modulation = "0.1.4"
 packed_struct = { version = "0.10.1", default-features = false }
 
 [dev-dependencies]
+firmware-common = { version = "*", path = ".", default-features = false, features = [
+    "std",
+    "log",
+] }
 futures-executor = { version = "0.3.17", features = ["thread-pool"] }
 futures-test = "0.3.17"
 futures-timer = "3.0.2"

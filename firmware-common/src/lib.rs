@@ -1,4 +1,5 @@
-#![cfg_attr(not(any(test, feature = "clap")), no_std)]
+// only use std when feature = "std" is enabled or during testing
+#![cfg_attr(not(any(test, feature = "std")), no_std)]
 #![feature(generic_const_exprs)]
 #![feature(let_chains)]
 #![feature(try_blocks)]
@@ -48,6 +49,13 @@ pub async fn init(
     device_serial_number: &[u8; 12],
     device_config: Option<DeviceConfig>,
 ) -> ! {
+    #[cfg(all(feature = "defmt", feature = "log"))]
+    compile_error!("Feature defmt and log are mutually exclusive and cannot be enabled together");
+
+    #[cfg(all(feature = "std", feature = "global-allocator"))]
+    compile_error!("Feature std and global-allocator are mutually exclusive and cannot be enabled together");
+
+
     claim_devices!(
         device_manager,
         flash,

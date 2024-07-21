@@ -2,7 +2,6 @@
 #![cfg_attr(not(any(test, feature = "std")), no_std)]
 #![feature(let_chains)]
 #![feature(try_blocks)]
-#![feature(exclusive_range_pattern)]
 #![feature(assert_matches)]
 #![feature(is_sorted)]
 

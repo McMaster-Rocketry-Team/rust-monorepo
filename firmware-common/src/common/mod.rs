@@ -19,3 +19,5 @@ pub mod device_config;
 pub mod vlp2;
 pub mod rpc_channel;
 pub mod can_bus;
+#[cfg(test)]
+pub(crate) mod test_utils;
