@@ -1,7 +1,6 @@
 // only use std when feature = "std" is enabled or during testing
 #![cfg_attr(not(any(test, feature = "std")), no_std)]
 #![feature(const_trait_impl)]
-#![feature(inherent_associated_types)]
 #![feature(generic_const_exprs)]
 #![feature(let_chains)]
 #![feature(try_blocks)]

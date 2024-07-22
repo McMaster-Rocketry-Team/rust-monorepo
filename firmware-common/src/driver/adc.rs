@@ -2,6 +2,7 @@ use core::marker::PhantomData;
 
 use embedded_hal_async::delay::DelayNs;
 use rkyv::{Archive, Deserialize, Serialize};
+use core::future::Future;
 
 use crate::{
     common::{delta_factory::Deltable, unix_clock::UnixClock}, fixed_point_factory2, fixed_point_factory_slope, Clock
@@ -92,7 +93,7 @@ impl<U: UnitType, T: TimestampType> Deltable for ADCReading<U, T> {
 pub trait ADC<U: UnitType> {
     type Error: defmt::Format + core::fmt::Debug;
 
-    async fn read(&mut self) -> Result<ADCReading<U, BootTimestamp>, Self::Error>;
+    fn read(&mut self) -> impl Future<Output = Result<ADCReading<U, BootTimestamp>, Self::Error>>;
 }
 
 pub struct DummyADC<D: DelayNs, U: UnitType> {
