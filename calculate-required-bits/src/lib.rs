@@ -105,9 +105,10 @@ pub fn calculate_required_bits_docstr(input: TokenStream) -> TokenStream {
     let expanded = if mode == "minmax" {
         let range = max - min;
         let bits = (range / max_error).log2().ceil() as usize;
+        let actual_max_error = range / 2.0f32.powi(bits as i32);
         let docstr = format!(
             "Bits: {}, Range: {} ~ {}, Max Error: {}",
-            bits, min, max, max_error
+            bits, min, max, actual_max_error
         );
         let docstr = docstr.as_str();
 
@@ -123,9 +124,10 @@ pub fn calculate_required_bits_docstr(input: TokenStream) -> TokenStream {
         let max = threshold_slope * sample_time_ms / 1000.0;
         let range = threshold_slope * sample_time_ms / 1000.0 * 2.0;
         let bits = (range / max_error).log2().ceil() as usize;
+        let actual_max_error = range / 2.0f32.powi(bits as i32);
         let docstr = format!(
             "Threshold Slope: {} units / second, Sample Time: {}ms;\nBits: {}, Range: {} ~ {}, Max Error: {}",
-            threshold_slope, sample_time_ms, bits, min, max, max_error
+            threshold_slope, sample_time_ms, bits, min, max, actual_max_error
         );
         let docstr = docstr.as_str();
 
