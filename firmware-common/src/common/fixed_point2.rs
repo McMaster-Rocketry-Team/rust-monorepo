@@ -58,25 +58,25 @@ impl Test {
 #[macro_export]
 macro_rules! fixed_point_factory2 {
     ($name:ident, f32, $min:literal, $max:literal, $max_error:literal) => {
-        fixed_point_factory2!($name, f32, libm::roundf, $min, $max, $max_error);
+        fixed_point_factory2!($name, minmax, f32, libm::roundf, $min, $max, $max_error);
     };
     ($name:ident, f64, $min:literal, $max:literal, $max_error:literal) => {
-        fixed_point_factory2!($name, f64, libm::round, $min, $max, $max_error);
+        fixed_point_factory2!($name, minmax, f64, libm::round, $min, $max, $max_error);
     };
-    ($name:ident, $source: ty, $round_fn: path, $min:literal, $max:literal, $max_error:literal) => {
-        calculate_required_bits::calculate_required_bits_docstr!($min, $max, $max_error, $name);
-        
+    ($name:ident, $mode: ident, $source: ty, $round_fn: path, $min:literal, $max:literal, $max_error:literal) => {
+        calculate_required_bits::calculate_required_bits_docstr!($mode, $min, $max, $max_error, $name);
+
         impl $name {
             pub type Packed = <VariableInt<
                 {
-                    calculate_required_bits::calculate_required_bits!($min, $max, $max_error)
+                    calculate_required_bits::calculate_required_bits!($mode, $min, $max, $max_error)
                         as usize
                 },
             > as VariableIntTrait>::Packed;
 
             type _Base = <VariableInt<
                 {
-                    calculate_required_bits::calculate_required_bits!($min, $max, $max_error)
+                    calculate_required_bits::calculate_required_bits!($mode, $min, $max, $max_error)
                         as usize
                 },
             > as VariableIntTrait>::Base;
@@ -85,7 +85,7 @@ macro_rules! fixed_point_factory2 {
                 num_traits::cast::<u8, Self::_Base>(1)
                     .unwrap()
                     .checked_shl(calculate_required_bits::calculate_required_bits!(
-                        $min, $max, $max_error
+                        $mode, $min, $max, $max_error
                     ) as u32)
                     .unwrap_or(0)
                     .wrapping_sub(1)
@@ -127,4 +127,21 @@ macro_rules! fixed_point_factory2 {
     };
 }
 
+#[macro_export]
+/// threshold_slope is in unit / second
+macro_rules! fixed_point_factory_slope {
+    ($name:ident, $threshold_slope:literal, $sample_time_ms:literal, $max_error:literal) => {
+        fixed_point_factory2!(
+            $name,
+            slope,
+            f32,
+            libm::roundf,
+            $threshold_slope,
+            $sample_time_ms,
+            $max_error
+        );
+    };
+}
+
 fixed_point_factory2!(Test2, f32, -0.2, 2.2, 0.01);
+fixed_point_factory_slope!(Test3, 0.2, 1000.0, 0.01);
