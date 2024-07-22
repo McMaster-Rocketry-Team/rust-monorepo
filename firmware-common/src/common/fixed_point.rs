@@ -168,8 +168,6 @@ mod test {
 
     use crate::common::fixed_point::FixedPointFactory;
 
-    fixed_point_factory!(FixedPointFactoryf64u16, 0.0, 1.0, f64, u16);
-
     #[test]
     fn test_fixed_point_factory() {
         let factory = FixedPointFactory::<f64, 16>::new(0.0, 1.0);
@@ -179,14 +177,14 @@ mod test {
         assert_eq!(factory.to_fixed_point(-1.0), None);
         assert_eq!(factory.to_fixed_point(2.0), None);
 
-        assert_relative_eq!(FixedPointFactoryf64u16::to_float(0), 0.0, epsilon = 0.0001);
+        assert_relative_eq!(factory.to_float(0.into()), 0.0, epsilon = 0.0001);
         assert_relative_eq!(
-            FixedPointFactoryf64u16::to_float(32767),
+            factory.to_float(32767.into()),
             0.5,
             epsilon = 0.0001
         );
         assert_relative_eq!(
-            FixedPointFactoryf64u16::to_float(65535),
+            factory.to_float(65535.into()),
             1.0,
             epsilon = 0.0001
         );
