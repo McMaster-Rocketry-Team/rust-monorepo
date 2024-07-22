@@ -65,6 +65,7 @@ embedded-io-async = { version = "0.6.1", features = ["defmt-03"] }
 cryptoxide = { version = "0.4.4", default-features = false, features = ["chacha"] }
 lora-modulation = "0.1.4"
 packed_struct = { version = "0.10.1", default-features = false }
+calculate-required-bits = { path = "../calculate-required-bits" }
 
 [dev-dependencies]
 firmware-common = { version = "*", path = ".", default-features = false, features = [

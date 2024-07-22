@@ -1,4 +1,6 @@
 #![allow(dead_code)]
+use libm::round;
+use libm::roundf;
 use packed_struct::prelude::*;
 
 #[macro_export]
@@ -44,7 +46,7 @@ pub struct FixedPointFactory<Source, const TARGET_BITS: usize> {
 }
 
 macro_rules! fixed_point_factory_impl {
-    ($source:ty, $target_base: ty, $target_bits: expr) => {
+    ($source:ty, $target_base: ty, $target_bits: expr, $round_fn: ident) => {
         impl FixedPointFactory<$source, $target_bits> {
             pub fn new(min: $source, max: $source) -> Self {
                 Self { min, max }
@@ -67,7 +69,7 @@ macro_rules! fixed_point_factory_impl {
                 let value = value - self.min;
                 let value = value / (self.max - self.min);
                 let value = value * Self::target_max() as $source;
-                Some((value as $target_base).into())
+                Some(($round_fn(value) as $target_base).into())
             }
 
             pub fn to_fixed_point_capped(
@@ -98,95 +100,120 @@ macro_rules! fixed_point_factory_impl {
     };
 }
 
-fixed_point_factory_impl!(f64, u8, 2);
-fixed_point_factory_impl!(f64, u8, 3);
-fixed_point_factory_impl!(f64, u8, 4);
-fixed_point_factory_impl!(f64, u8, 5);
-fixed_point_factory_impl!(f64, u8, 6);
-fixed_point_factory_impl!(f64, u8, 7);
-fixed_point_factory_impl!(f64, u8, 8);
-fixed_point_factory_impl!(f64, u16, 9);
-fixed_point_factory_impl!(f64, u16, 10);
-fixed_point_factory_impl!(f64, u16, 11);
-fixed_point_factory_impl!(f64, u16, 12);
-fixed_point_factory_impl!(f64, u16, 13);
-fixed_point_factory_impl!(f64, u16, 14);
-fixed_point_factory_impl!(f64, u16, 15);
-fixed_point_factory_impl!(f64, u16, 16);
-fixed_point_factory_impl!(f64, u32, 17);
-fixed_point_factory_impl!(f64, u32, 18);
-fixed_point_factory_impl!(f64, u32, 19);
-fixed_point_factory_impl!(f64, u32, 20);
-fixed_point_factory_impl!(f64, u32, 21);
-fixed_point_factory_impl!(f64, u32, 22);
-fixed_point_factory_impl!(f64, u32, 23);
-fixed_point_factory_impl!(f64, u32, 24);
-fixed_point_factory_impl!(f64, u32, 25);
-fixed_point_factory_impl!(f64, u32, 26);
-fixed_point_factory_impl!(f64, u32, 27);
-fixed_point_factory_impl!(f64, u32, 28);
-fixed_point_factory_impl!(f64, u32, 29);
-fixed_point_factory_impl!(f64, u32, 30);
-fixed_point_factory_impl!(f64, u32, 31);
-fixed_point_factory_impl!(f64, u32, 32);
+fixed_point_factory_impl!(f64, u8, 1, round);
+fixed_point_factory_impl!(f64, u8, 2, round);
+fixed_point_factory_impl!(f64, u8, 3, round);
+fixed_point_factory_impl!(f64, u8, 4, round);
+fixed_point_factory_impl!(f64, u8, 5, round);
+fixed_point_factory_impl!(f64, u8, 6, round);
+fixed_point_factory_impl!(f64, u8, 7, round);
+fixed_point_factory_impl!(f64, u8, 8, round);
+fixed_point_factory_impl!(f64, u16, 9, round);
+fixed_point_factory_impl!(f64, u16, 10, round);
+fixed_point_factory_impl!(f64, u16, 11, round);
+fixed_point_factory_impl!(f64, u16, 12, round);
+fixed_point_factory_impl!(f64, u16, 13, round);
+fixed_point_factory_impl!(f64, u16, 14, round);
+fixed_point_factory_impl!(f64, u16, 15, round);
+fixed_point_factory_impl!(f64, u16, 16, round);
+fixed_point_factory_impl!(f64, u32, 17, round);
+fixed_point_factory_impl!(f64, u32, 18, round);
+fixed_point_factory_impl!(f64, u32, 19, round);
+fixed_point_factory_impl!(f64, u32, 20, round);
+fixed_point_factory_impl!(f64, u32, 21, round);
+fixed_point_factory_impl!(f64, u32, 22, round);
+fixed_point_factory_impl!(f64, u32, 23, round);
+fixed_point_factory_impl!(f64, u32, 24, round);
+fixed_point_factory_impl!(f64, u32, 25, round);
+fixed_point_factory_impl!(f64, u32, 26, round);
+fixed_point_factory_impl!(f64, u32, 27, round);
+fixed_point_factory_impl!(f64, u32, 28, round);
+fixed_point_factory_impl!(f64, u32, 29, round);
+fixed_point_factory_impl!(f64, u32, 30, round);
+fixed_point_factory_impl!(f64, u32, 31, round);
+fixed_point_factory_impl!(f64, u32, 32, round);
 
-fixed_point_factory_impl!(f32, u8, 2);
-fixed_point_factory_impl!(f32, u8, 3);
-fixed_point_factory_impl!(f32, u8, 4);
-fixed_point_factory_impl!(f32, u8, 5);
-fixed_point_factory_impl!(f32, u8, 6);
-fixed_point_factory_impl!(f32, u8, 7);
-fixed_point_factory_impl!(f32, u8, 8);
-fixed_point_factory_impl!(f32, u16, 9);
-fixed_point_factory_impl!(f32, u16, 10);
-fixed_point_factory_impl!(f32, u16, 11);
-fixed_point_factory_impl!(f32, u16, 12);
-fixed_point_factory_impl!(f32, u16, 13);
-fixed_point_factory_impl!(f32, u16, 14);
-fixed_point_factory_impl!(f32, u16, 15);
-fixed_point_factory_impl!(f32, u16, 16);
-fixed_point_factory_impl!(f32, u32, 17);
-fixed_point_factory_impl!(f32, u32, 18);
-fixed_point_factory_impl!(f32, u32, 19);
-fixed_point_factory_impl!(f32, u32, 20);
-fixed_point_factory_impl!(f32, u32, 21);
-fixed_point_factory_impl!(f32, u32, 22);
-fixed_point_factory_impl!(f32, u32, 23);
-fixed_point_factory_impl!(f32, u32, 24);
-fixed_point_factory_impl!(f32, u32, 25);
-fixed_point_factory_impl!(f32, u32, 26);
-fixed_point_factory_impl!(f32, u32, 27);
-fixed_point_factory_impl!(f32, u32, 28);
-fixed_point_factory_impl!(f32, u32, 29);
-fixed_point_factory_impl!(f32, u32, 30);
-fixed_point_factory_impl!(f32, u32, 31);
-fixed_point_factory_impl!(f32, u32, 32);
+fixed_point_factory_impl!(f32, u8, 1, roundf);
+fixed_point_factory_impl!(f32, u8, 2, roundf);
+fixed_point_factory_impl!(f32, u8, 3, roundf);
+fixed_point_factory_impl!(f32, u8, 4, roundf);
+fixed_point_factory_impl!(f32, u8, 5, roundf);
+fixed_point_factory_impl!(f32, u8, 6, roundf);
+fixed_point_factory_impl!(f32, u8, 7, roundf);
+fixed_point_factory_impl!(f32, u8, 8, roundf);
+fixed_point_factory_impl!(f32, u16, 9, roundf);
+fixed_point_factory_impl!(f32, u16, 10, roundf);
+fixed_point_factory_impl!(f32, u16, 11, roundf);
+fixed_point_factory_impl!(f32, u16, 12, roundf);
+fixed_point_factory_impl!(f32, u16, 13, roundf);
+fixed_point_factory_impl!(f32, u16, 14, roundf);
+fixed_point_factory_impl!(f32, u16, 15, roundf);
+fixed_point_factory_impl!(f32, u16, 16, roundf);
+fixed_point_factory_impl!(f32, u32, 17, roundf);
+fixed_point_factory_impl!(f32, u32, 18, roundf);
+fixed_point_factory_impl!(f32, u32, 19, roundf);
+fixed_point_factory_impl!(f32, u32, 20, roundf);
+fixed_point_factory_impl!(f32, u32, 21, roundf);
+fixed_point_factory_impl!(f32, u32, 22, roundf);
+fixed_point_factory_impl!(f32, u32, 23, roundf);
+fixed_point_factory_impl!(f32, u32, 24, roundf);
+fixed_point_factory_impl!(f32, u32, 25, roundf);
+fixed_point_factory_impl!(f32, u32, 26, roundf);
+fixed_point_factory_impl!(f32, u32, 27, roundf);
+fixed_point_factory_impl!(f32, u32, 28, roundf);
+fixed_point_factory_impl!(f32, u32, 29, roundf);
+fixed_point_factory_impl!(f32, u32, 30, roundf);
+fixed_point_factory_impl!(f32, u32, 31, roundf);
+fixed_point_factory_impl!(f32, u32, 32, roundf);
+
+#[macro_export]
+macro_rules! get_fixed_point_factory {
+    ($source:ty, $min:literal, $max:literal, $max_error:literal) => {{
+        const BITS: usize = calculate_required_bits!($min, $max, $max_error);
+        FixedPointFactory::<$source, BITS>::new($min, $max)
+    }};
+}
 
 #[cfg(test)]
 mod test {
+    use super::*;
     use approx::assert_relative_eq;
-
-    use crate::common::fixed_point::FixedPointFactory;
+    use calculate_required_bits::calculate_required_bits;
 
     #[test]
     fn test_fixed_point_factory() {
         let factory = FixedPointFactory::<f64, 16>::new(0.0, 1.0);
         assert_eq!(factory.to_fixed_point(0.0), Some(0.into()));
-        assert_eq!(factory.to_fixed_point(0.5), Some(32767.into()));
+        assert_eq!(factory.to_fixed_point(0.5), Some(32768.into()));
         assert_eq!(factory.to_fixed_point(1.0), Some(65535.into()));
         assert_eq!(factory.to_fixed_point(-1.0), None);
         assert_eq!(factory.to_fixed_point(2.0), None);
 
         assert_relative_eq!(factory.to_float(0.into()), 0.0, epsilon = 0.0001);
-        assert_relative_eq!(
-            factory.to_float(32767.into()),
-            0.5,
-            epsilon = 0.0001
-        );
-        assert_relative_eq!(
-            factory.to_float(65535.into()),
-            1.0,
-            epsilon = 0.0001
-        );
+        assert_relative_eq!(factory.to_float(32768.into()), 0.5, epsilon = 0.0001);
+        assert_relative_eq!(factory.to_float(65535.into()), 1.0, epsilon = 0.0001);
+    }
+
+    #[test]
+    fn test_fixed_point_factory_one_bit() {
+        let factory = get_fixed_point_factory!(f32, 0.0, 1.0, 0.5);
+        assert_eq!(factory.to_fixed_point(0.0), Some(0.into()));
+        assert_eq!(factory.to_fixed_point(0.25), Some(0.into()));
+        assert_eq!(factory.to_fixed_point(0.5), Some(1.into()));
+        assert_eq!(factory.to_fixed_point(0.75), Some(1.into()));
+        assert_eq!(factory.to_fixed_point(1.0), Some(1.into()));
+        assert_eq!(factory.to_fixed_point(-1.0), None);
+        assert_eq!(factory.to_fixed_point(2.0), None);
+
+        assert_relative_eq!(factory.to_float(0.into()), 0.0, epsilon = 0.0001);
+        assert_relative_eq!(factory.to_float(1.into()), 1.0, epsilon = 0.0001);
+    }
+
+    #[test]
+    fn test_calculate_required_bits() {
+        assert_eq!(calculate_required_bits!(0.0, 1.0, 0.5), 1);
+        assert_eq!(calculate_required_bits!(0.0, 1.0, 0.3), 2);
+        assert_eq!(calculate_required_bits!(0.0, 1.0, 0.25), 2);
+        assert_eq!(calculate_required_bits!(0.0, 1.0, 0.2), 3);
     }
 }

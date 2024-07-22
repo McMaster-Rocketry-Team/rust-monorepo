@@ -66,3 +66,22 @@ where
         None
     }
 }
+
+#[cfg(test)]
+mod test {
+    use crate::{driver::{adc::ADCReading, timestamp::BootTimestamp}, Volt};
+
+    use super::*;
+
+    #[test]
+    fn test_delta_factory() {
+        let a = ADCReading::<Volt, BootTimestamp>::new(10.0, 20.0);
+        let b = ADCReading::<Volt, BootTimestamp>::new(11.0, 23.0);
+
+        let mut factory = DeltaFactory::<ADCReading::<Volt, BootTimestamp>>::new();
+        let a_out = factory.push(a);
+        let b_out = factory.push(b);
+        println!("{:?}", a_out);
+        println!("{:?}", b_out);
+    }
+}

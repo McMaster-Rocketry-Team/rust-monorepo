@@ -7,7 +7,7 @@ members = [
     "ferraris-calibration",
     # "vl8-ctrl-protocol", 
     "vl-cli",
-    "vl-simulink-bridge",
+    "vl-simulink-bridge", "calculate-required-bits",
     # "launch-simulator",
 ]
 resolver = "2"
