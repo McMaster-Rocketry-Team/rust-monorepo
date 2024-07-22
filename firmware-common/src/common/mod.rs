@@ -10,6 +10,7 @@ pub mod unix_clock;
 pub mod serialized_enum;
 pub mod buzzer_queue;
 pub mod fixed_point;
+pub mod fixed_point2;
 pub mod delta_factory;
 pub mod delta_logger;
 pub mod indicator_controller;

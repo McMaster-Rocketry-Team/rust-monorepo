@@ -5,7 +5,7 @@ use rkyv::{Archive, Deserialize, Serialize};
 
 use crate::{
     common::{delta_factory::Deltable, unix_clock::UnixClock},
-    Clock,
+    define_const_fixed_point_factory, Clock,
 };
 
 use super::timestamp::{BootTimestamp, TimestampType, UnixTimestamp};
@@ -55,19 +55,19 @@ impl<U: UnitType, T: TimestampType> ADCReading<U, T> {
     }
 }
 
-#[derive(defmt::Format, Debug, Clone, Archive, Deserialize, Serialize)]
+define_const_fixed_point_factory!(timestampFac, TimestampDelta, f64, 450.0, 550.0, 1.0);
+define_const_fixed_point_factory!(valueFac, ValueDelta, f32, -0.2, 0.2, 0.002);
+
+
+
+#[derive(defmt::Format, Debug, Clone)]
 pub struct ADCReadingDelta<U: UnitType, T: TimestampType> {
     _phantom_unit: PhantomData<U>,
     _phantom_timestamp: PhantomData<T>,
-    pub timestamp: u16,
-    pub value: u16,
-}
-
-mod factories {
-    use crate::fixed_point_factory;
-
-    fixed_point_factory!(Timestamp, 0.0, 1200.0, f64, u16);
-    fixed_point_factory!(Value, -200.0, 200.0, f32, u16);
+    #[defmt(Debug2Format)]
+    pub timestamp: TimestampDelta,
+    #[defmt(Debug2Format)]
+    pub value: ValueDelta,
 }
 
 impl<U: UnitType, T: TimestampType> Deltable for ADCReading<U, T> {
@@ -77,8 +77,8 @@ impl<U: UnitType, T: TimestampType> Deltable for ADCReading<U, T> {
         Some(Self {
             _phantom_unit: PhantomData,
             _phantom_timestamp: PhantomData,
-            timestamp: self.timestamp + factories::Timestamp::to_float(delta.timestamp),
-            value: self.value + factories::Value::to_float(delta.value),
+            timestamp: self.timestamp + timestampFac.to_float(delta.timestamp),
+            value: self.value + valueFac.to_float(delta.value),
         })
     }
 
@@ -86,8 +86,8 @@ impl<U: UnitType, T: TimestampType> Deltable for ADCReading<U, T> {
         Some(ADCReadingDelta {
             _phantom_unit: PhantomData,
             _phantom_timestamp: PhantomData,
-            timestamp: factories::Timestamp::to_fixed_point(self.timestamp - other.timestamp)?,
-            value: factories::Value::to_fixed_point(self.value - other.value)?,
+            timestamp: timestampFac.to_fixed_point(self.timestamp - other.timestamp)?,
+            value: valueFac.to_fixed_point(self.value - other.value)?,
         })
     }
 }

@@ -3,6 +3,7 @@ use libm::round;
 use libm::roundf;
 use packed_struct::prelude::*;
 
+// FIXME remove
 #[macro_export]
 macro_rules! fixed_point_factory {
     ($name:ident, $min:expr, $max:expr, $float:ident, $fixed:ident) => {
@@ -41,6 +42,8 @@ macro_rules! fixed_point_factory {
 }
 
 pub struct FixedPointFactory<Source, const TARGET_BITS: usize> {
+    // not used in code, but needed to show the number of bits when you hover over the type
+    pub bits: u8,
     pub min: Source,
     pub max: Source,
 }
@@ -48,8 +51,10 @@ pub struct FixedPointFactory<Source, const TARGET_BITS: usize> {
 macro_rules! fixed_point_factory_impl {
     ($source:ty, $target_base: ty, $target_bits: expr, $round_fn: ident) => {
         impl FixedPointFactory<$source, $target_bits> {
-            pub fn new(min: $source, max: $source) -> Self {
-                Self { min, max }
+            pub type PackedInt = Integer<$target_base, packed_bits::Bits<$target_bits>>;
+
+            pub const fn new(min: $source, max: $source, bits: u8) -> Self {
+                Self { min, max, bits }
             }
 
             fn target_max() -> $target_base {
@@ -62,7 +67,7 @@ macro_rules! fixed_point_factory_impl {
             pub fn to_fixed_point(
                 &self,
                 value: $source,
-            ) -> Option<Integer<$target_base, packed_bits::Bits<$target_bits>>> {
+            ) -> Option<Self::PackedInt> {
                 if value < self.min || value > self.max {
                     return None;
                 }
@@ -75,7 +80,7 @@ macro_rules! fixed_point_factory_impl {
             pub fn to_fixed_point_capped(
                 &self,
                 value: $source,
-            ) -> Integer<$target_base, packed_bits::Bits<$target_bits>> {
+            ) -> Self::PackedInt {
                 let value = if value < self.min {
                     self.min
                 } else if value > self.max {
@@ -88,7 +93,7 @@ macro_rules! fixed_point_factory_impl {
 
             pub fn to_float(
                 &self,
-                value: Integer<$target_base, packed_bits::Bits<$target_bits>>,
+                value: Self::PackedInt,
             ) -> $source {
                 let value: $target_base = value.into();
                 let value = value as $source;
@@ -167,11 +172,12 @@ fixed_point_factory_impl!(f32, u32, 31, roundf);
 fixed_point_factory_impl!(f32, u32, 32, roundf);
 
 #[macro_export]
-macro_rules! get_fixed_point_factory {
-    ($source:ty, $min:literal, $max:literal, $max_error:literal) => {{
-        const BITS: usize = calculate_required_bits!($min, $max, $max_error);
-        FixedPointFactory::<$source, BITS>::new($min, $max)
-    }};
+macro_rules! define_const_fixed_point_factory {
+    ($name:ident, $packed_int_name:ident, $source:ty, $min:literal, $max:literal, $max_error:literal) => {
+        #[allow(non_upper_case_globals)]
+        const $name: crate::common::fixed_point::FixedPointFactory::<$source, {calculate_required_bits::calculate_required_bits!($min, $max, $max_error) as usize}> = crate::common::fixed_point::FixedPointFactory::<$source, {calculate_required_bits::calculate_required_bits!($min, $max, $max_error) as usize}>::new($min, $max, calculate_required_bits::calculate_required_bits!($min, $max, $max_error) as u8);
+        type $packed_int_name = crate::common::fixed_point::FixedPointFactory::<$source, {calculate_required_bits::calculate_required_bits!($min, $max, $max_error) as usize}>::PackedInt;
+    };
 }
 
 #[cfg(test)]
@@ -182,7 +188,7 @@ mod test {
 
     #[test]
     fn test_fixed_point_factory() {
-        let factory = FixedPointFactory::<f64, 16>::new(0.0, 1.0);
+        let factory = FixedPointFactory::<f64, 16>::new(0.0, 1.0, 16);
         assert_eq!(factory.to_fixed_point(0.0), Some(0.into()));
         assert_eq!(factory.to_fixed_point(0.5), Some(32768.into()));
         assert_eq!(factory.to_fixed_point(1.0), Some(65535.into()));
@@ -196,7 +202,7 @@ mod test {
 
     #[test]
     fn test_fixed_point_factory_one_bit() {
-        let factory = get_fixed_point_factory!(f32, 0.0, 1.0, 0.5);
+        define_const_fixed_point_factory!(factory, Ty, f32, 0.0, 1.0, 0.5);
         assert_eq!(factory.to_fixed_point(0.0), Some(0.into()));
         assert_eq!(factory.to_fixed_point(0.25), Some(0.into()));
         assert_eq!(factory.to_fixed_point(0.5), Some(1.into()));
