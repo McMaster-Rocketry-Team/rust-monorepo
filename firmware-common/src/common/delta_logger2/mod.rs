@@ -1,4 +1,4 @@
-use std::marker::PhantomData;
+use std::{marker::PhantomData, mem::transmute};
 
 use bitvec::prelude::*;
 use either::Either;
@@ -46,6 +46,84 @@ impl BitSliceWritable for f64 {
         let data = self.to_be_bytes();
         let data: &BitSlice<u8, O> = data.view_bits();
         (&mut slice[..64]).copy_from_bitslice(data);
+        64
+    }
+}
+
+trait FromBitSlice<O: BitOrder>: Sized {
+    fn from_bit_slice(slice: &BitSlice<u8, O>) -> Self;
+
+    fn bit_size() -> usize;
+}
+
+impl<O: BitOrder> FromBitSlice<O> for bool {
+    fn from_bit_slice(slice: &BitSlice<u8, O>) -> Self {
+        slice[0]
+    }
+
+    fn bit_size() -> usize {
+        1
+    }
+}
+
+impl FromBitSlice<Msb0> for u8 {
+    fn from_bit_slice(slice: &BitSlice<u8, Msb0>) -> Self {
+        let slice = &slice[..8];
+        slice.load_be::<u8>()
+    }
+    fn bit_size() -> usize {
+        8
+    }
+}
+
+impl FromBitSlice<Lsb0> for u8 {
+    fn from_bit_slice(slice: &BitSlice<u8, Lsb0>) -> Self {
+        let slice = &slice[..8];
+        slice.load_be::<u8>()
+    }
+    fn bit_size() -> usize {
+        8
+    }
+}
+
+impl FromBitSlice<Lsb0> for f32 {
+    fn from_bit_slice(slice: &BitSlice<u8, Lsb0>) -> Self {
+        let slice = &slice[..32];
+        unsafe { transmute(slice.load_be::<u32>()) }
+    }
+    fn bit_size() -> usize {
+        32
+    }
+}
+
+impl FromBitSlice<Msb0> for f32 {
+    fn from_bit_slice(slice: &BitSlice<u8, Msb0>) -> Self {
+        let slice = &slice[..32];
+        unsafe { transmute(slice.load_be::<u32>()) }
+    }
+    fn bit_size() -> usize {
+        32
+    }
+}
+
+impl FromBitSlice<Lsb0> for f64 {
+    fn from_bit_slice(slice: &BitSlice<u8, Lsb0>) -> Self {
+        let slice = &slice[..64];
+        unsafe { transmute(slice.load_be::<u64>()) }
+    }
+
+    fn bit_size() -> usize {
+        64
+    }
+}
+
+impl FromBitSlice<Msb0> for f64 {
+    fn from_bit_slice(slice: &BitSlice<u8, Msb0>) -> Self {
+        let slice = &slice[..64];
+        unsafe { transmute(slice.load_be::<u64>()) }
+    }
+
+    fn bit_size() -> usize {
         64
     }
 }
@@ -101,6 +179,55 @@ impl<O: BitOrder, const N: usize> Default for BitSliceWriter<O, N> {
 
 pub trait BitArraySerializable {
     fn serialize<O: BitOrder, const N: usize>(&self, writer: &mut BitSliceWriter<O, N>);
+}
+
+pub struct BitSliceReader<O: BitOrder, const N: usize> {
+    buffer: BitArray<[u8; N], O>,
+    start: usize,
+    end: usize,
+}
+
+impl<O: BitOrder, const N: usize> Default for BitSliceReader<O, N> {
+    fn default() -> Self {
+        Self {
+            buffer: Default::default(),
+            start: 0,
+            end: 0,
+        }
+    }
+}
+
+impl<O: BitOrder, const N: usize> BitSliceReader<O, N> {
+    fn len_bits(&self) -> usize {
+        self.end - self.start
+    }
+
+    fn free_bytes(&self) -> usize {
+        (self.buffer.len() - self.len_bits()) / 8
+    }
+
+    /// move existing data to the beginning of the buffer and append new data
+    fn replenish_bytes(&mut self, data: &[u8]) {
+        let len_bits = self.len_bits();
+        let dest = (8 - len_bits % 8) % 8;
+        self.buffer.copy_within(self.start..self.end, dest);
+        self.start = dest;
+        self.end = dest + len_bits;
+
+        let new_start_byte_i = self.end / 8;
+        (&mut self.buffer.as_raw_mut_slice()[new_start_byte_i..(new_start_byte_i + data.len())])
+            .copy_from_slice(data);
+        self.end += data.len() * 8;
+    }
+
+    fn read<T: FromBitSlice<O>>(&mut self) -> Option<T> {
+        if self.len_bits() < T::bit_size() {
+            return None;
+        }
+        let data = T::from_bit_slice(&self.buffer[self.start..self.end]);
+        self.start += T::bit_size();
+        Some(data)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -205,5 +332,45 @@ where
         self.writer.flush().await?;
         self.bit_writer.clear();
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_bit_slice_reader() {
+        let mut reader: BitSliceReader<Msb0, 4> = Default::default();
+        assert_eq!(reader.len_bits(), 0);
+        assert_eq!(reader.free_bytes(), 4);
+
+        reader.replenish_bytes(&[0xFF, 0b01111111]);
+        assert_eq!(reader.len_bits(), 16);
+        assert_eq!(reader.free_bytes(), 2);
+
+        assert_eq!(reader.read::<bool>(), Some(true));
+        assert_eq!(reader.len_bits(), 15);
+        assert_eq!(reader.free_bytes(), 2);
+
+        assert_eq!(reader.read::<u8>(), Some(0b11111110));
+        assert_eq!(reader.read::<u8>(), None);
+        assert_eq!(reader.len_bits(), 7);
+        assert_eq!(reader.free_bytes(), 3);
+
+        reader.replenish_bytes(&[0xFF; 3]);
+        assert_eq!(reader.len_bits(), 7 + 3 * 8);
+        assert_eq!(reader.free_bytes(), 0);
+        assert_eq!(reader.start, 1);
+
+        for _ in 0..7 {
+            reader.read::<bool>();
+        }
+
+        assert_eq!(reader.len_bits(), 3 * 8);
+        assert_eq!(reader.free_bytes(), 1);
+        reader.replenish_bytes(&[0xFF]);
+        assert_eq!(reader.len_bits(), 4 * 8);
+        assert_eq!(reader.free_bytes(), 0);
     }
 }

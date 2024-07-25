@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use super::variable_int::{VariableIntTrait};
+use super::variable_int::VariableIntTrait;
 
 // FIXME remove
 #[macro_export]
@@ -43,7 +43,7 @@ macro_rules! fixed_point_factory {
 pub trait F32FixedPointFactory: Clone {
     type VI: VariableIntTrait;
     fn to_fixed_point(value: f32) -> Option<<Self::VI as VariableIntTrait>::Packed>;
-    fn to_fixed_point_capped(value: f32) -><Self::VI as VariableIntTrait>::Packed;
+    fn to_fixed_point_capped(value: f32) -> <Self::VI as VariableIntTrait>::Packed;
     fn to_float(value: <Self::VI as VariableIntTrait>::Packed) -> f32;
 }
 
@@ -155,8 +155,8 @@ macro_rules! fixed_point_factory_slope {
 
 #[cfg(test)]
 mod test {
+    use super::*;
     use approx::assert_relative_eq;
-use super::*;
 
     #[test]
     fn test_fixed_point_factory_one_bit() {
