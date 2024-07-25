@@ -8,17 +8,13 @@ pub trait Deltable: Sized + Clone {
     fn subtract(&self, other: &Self) -> Option<Self::DeltaType>;
 }
 
-pub struct DeltaFactory<T: Deltable>
-{
+pub struct DeltaFactory<T: Deltable> {
     last_value: Option<T>,
 }
 
-impl<T: Deltable> DeltaFactory<T>
-{
+impl<T: Deltable> DeltaFactory<T> {
     pub fn new() -> Self {
-        Self {
-            last_value: None,
-        }
+        Self { last_value: None }
     }
 
     pub fn push(&mut self, value: T) -> Either<T, T::DeltaType> {
@@ -46,9 +42,7 @@ where
     T: Deltable,
 {
     pub fn new() -> Self {
-        Self {
-            last_value: None,
-        }
+        Self { last_value: None }
     }
 
     pub fn push(&mut self, value: T) -> T {
@@ -69,19 +63,26 @@ where
 
 #[cfg(test)]
 mod test {
+    use approx::assert_relative_eq;
+
     use crate::{driver::adc::ADCData, Volt};
 
     use super::*;
 
+
     #[test]
     fn test_delta_factory() {
         let a = ADCData::<Volt>::new(20.0);
-        let b = ADCData::<Volt>::new(23.0);
+        let b = ADCData::<Volt>::new(20.05);
 
-        let mut factory = DeltaFactory::<ADCData::<Volt>>::new();
-        let a_out = factory.push(a);
-        let b_out = factory.push(b);
+        let mut factory = DeltaFactory::<ADCData<Volt>>::new();
+        let a_out = factory.push(a.clone()).unwrap_left();
+        let b_out = factory.push(b.clone()).unwrap_right();
         println!("{:?}", a_out);
         println!("{:?}", b_out);
+
+        let mut undelta_factory = UnDeltaFactory::<ADCData<Volt>>::new();
+        assert_eq!(undelta_factory.push(a_out), a);
+        assert_relative_eq!(undelta_factory.push_delta(b_out).unwrap().value, b.value, epsilon = 0.002);
     }
 }

@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+use super::variable_int::{VariableIntTrait};
+
 // FIXME remove
 #[macro_export]
 macro_rules! fixed_point_factory {
@@ -38,6 +40,20 @@ macro_rules! fixed_point_factory {
     };
 }
 
+pub trait F32FixedPointFactory: Clone {
+    type VI: VariableIntTrait;
+    fn to_fixed_point(value: f32) -> Option<<Self::VI as VariableIntTrait>::Packed>;
+    fn to_fixed_point_capped(value: f32) -><Self::VI as VariableIntTrait>::Packed;
+    fn to_float(value: <Self::VI as VariableIntTrait>::Packed) -> f32;
+}
+
+pub trait F64FixedPointFactory: Clone {
+    type VI: VariableIntTrait;
+    fn to_fixed_point(value: f64) -> Option<<Self::VI as VariableIntTrait>::Packed>;
+    fn to_fixed_point_capped(value: f64) -> <Self::VI as VariableIntTrait>::Packed;
+    fn to_float(value: <Self::VI as VariableIntTrait>::Packed) -> f64;
+}
+
 #[macro_export]
 macro_rules! fixed_point_factory2 {
     ($name:ident, f32, $min:literal, $max:literal, $max_error:literal) => {
@@ -66,6 +82,46 @@ macro_rules! fixed_point_factory2 {
                 },
             > as crate::common::variable_int::VariableIntTrait>::Base;
 
+            impl crate::common::fixed_point::[< $source:upper FixedPointFactory >] for $name {
+                type VI = crate::common::variable_int::VariableInt<
+                    {
+                        calculate_required_bits::calculate_required_bits!($mode, $min, $max, $max_error)
+                            as usize
+                    },
+                >;
+
+                fn to_fixed_point(value: $source) -> Option<[<$name Packed>]> {
+                    if value < calculate_required_bits::calculate_min!($mode, $min, $max, $max_error) || value > calculate_required_bits::calculate_max!($mode, $min, $max, $max_error) {
+                        return None;
+                    }
+                    let value = value - calculate_required_bits::calculate_min!($mode, $min, $max, $max_error);
+                    let value = value / (calculate_required_bits::calculate_max!($mode, $min, $max, $max_error) - calculate_required_bits::calculate_min!($mode, $min, $max, $max_error));
+                    let value = value * Self::_target_max() as $source;
+                    Some(
+                        num_traits::cast::<$source, [<$name Base>]>($round_fn(value))
+                            .unwrap()
+                            .into(),
+                    )
+                }
+                fn to_fixed_point_capped(value: $source) -> [<$name Packed>] {
+                    let value = if value < calculate_required_bits::calculate_min!($mode, $min, $max, $max_error) {
+                        calculate_required_bits::calculate_min!($mode, $min, $max, $max_error)
+                    } else if value > calculate_required_bits::calculate_max!($mode, $min, $max, $max_error) {
+                        calculate_required_bits::calculate_max!($mode, $min, $max, $max_error)
+                    } else {
+                        value
+                    };
+                    return Self::to_fixed_point(value).unwrap();
+                }
+                fn to_float(value: [<$name Packed>]) -> $source {
+                    let value: [<$name Base>] = value.into();
+                    let value = value as $source;
+                    let value = value / Self::_target_max() as $source;
+                    let value = value * (calculate_required_bits::calculate_max!($mode, $min, $max, $max_error) - calculate_required_bits::calculate_min!($mode, $min, $max, $max_error));
+                    value + calculate_required_bits::calculate_min!($mode, $min, $max, $max_error)
+                }
+            }
+
             impl $name {
                 fn _target_max() -> [<$name Base>] {
                     num_traits::cast::<u8, [<$name Base>]>(1)
@@ -76,39 +132,6 @@ macro_rules! fixed_point_factory2 {
                         .unwrap_or(0)
                         .wrapping_sub(1)
                 }
-    
-                pub fn to_fixed_point(value: $source) -> Option<[<$name Packed>]> {
-                    if value < $min || value > $max {
-                        return None;
-                    }
-                    let value = value - $min;
-                    let value = value / ($max - $min);
-                    let value = value * Self::_target_max() as $source;
-                    Some(
-                        num_traits::cast::<$source, [<$name Base>]>($round_fn(value))
-                            .unwrap()
-                            .into(),
-                    )
-                }
-    
-                pub fn to_fixed_point_capped(value: $source) -> [<$name Packed>] {
-                    let value = if value < $min {
-                        $min
-                    } else if value > $max {
-                        $max
-                    } else {
-                        value
-                    };
-                    return Self::to_fixed_point(value).unwrap();
-                }
-    
-                pub fn to_float(value: [<$name Packed>]) -> $source {
-                    let value: [<$name Base>] = value.into();
-                    let value = value as $source;
-                    let value = value / Self::_target_max() as $source;
-                    let value = value * ($max - $min);
-                    value + $min
-                }
             }
         }
     };
@@ -118,7 +141,7 @@ macro_rules! fixed_point_factory2 {
 /// threshold_slope is in unit / second
 macro_rules! fixed_point_factory_slope {
     ($name:ident, $threshold_slope:literal, $sample_time_ms:literal, $max_error:literal) => {
-        fixed_point_factory2!(
+        crate::fixed_point_factory2!(
             $name,
             slope,
             f32,
@@ -133,6 +156,7 @@ macro_rules! fixed_point_factory_slope {
 #[cfg(test)]
 mod test {
     use approx::assert_relative_eq;
+use super::*;
 
     #[test]
     fn test_fixed_point_factory_one_bit() {
@@ -146,6 +170,17 @@ mod test {
         assert_eq!(Factory::to_fixed_point(2.0), None);
 
         assert_relative_eq!(Factory::to_float(0.into()), 0.0, epsilon = 0.0001);
+        assert_relative_eq!(Factory::to_float(1.into()), 1.0, epsilon = 0.0001);
+    }
+
+    #[test]
+    fn test_fixed_point_factory_slope() {
+        fixed_point_factory_slope!(Factory, 1.0, 1000.0, 1.0);
+        assert_eq!(Factory::to_fixed_point(-1.0), Some(0.into()));
+        assert_eq!(Factory::to_fixed_point(0.0), Some(1.into()));
+        assert_eq!(Factory::to_fixed_point(1.0), Some(1.into()));
+
+        assert_relative_eq!(Factory::to_float(0.into()), -1.0, epsilon = 0.0001);
         assert_relative_eq!(Factory::to_float(1.into()), 1.0, epsilon = 0.0001);
     }
 }

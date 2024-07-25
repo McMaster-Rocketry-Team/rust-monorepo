@@ -62,6 +62,63 @@ pub fn calculate_required_bits(input: TokenStream) -> TokenStream {
     TokenStream::from(expanded)
 }
 
+#[proc_macro]
+pub fn calculate_min(input: TokenStream) -> TokenStream {
+    let Args {
+        mode,
+        min,
+        max,
+        ..
+    } = parse_macro_input!(input as Args);
+
+    let expanded = if mode == "minmax" {
+        quote! {
+            #min
+        }
+    } else if mode == "slope" {
+        let threshold_slope = min;
+        let sample_time_ms = max;
+
+        let min = -threshold_slope * sample_time_ms / 1000.0;
+        quote! {
+            #min
+        }
+    } else {
+        panic!("Invalid mode, expected 'minmax' or 'slope'");
+    };
+
+    TokenStream::from(expanded)
+}
+
+#[proc_macro]
+pub fn calculate_max(input: TokenStream) -> TokenStream {
+    let Args {
+        mode,
+        min,
+        max,
+        ..
+    } = parse_macro_input!(input as Args);
+
+    let expanded = if mode == "minmax" {
+        quote! {
+            #max
+        }
+    } else if mode == "slope" {
+        let threshold_slope = min;
+        let sample_time_ms = max;
+
+        let max = threshold_slope * sample_time_ms / 1000.0;
+        quote! {
+            #max
+        }
+    } else {
+        panic!("Invalid mode, expected 'minmax' or 'slope'");
+    };
+
+    TokenStream::from(expanded)
+}
+
+
 struct DocStrArgs {
     mode: String,
     min: f32,
@@ -114,6 +171,7 @@ pub fn calculate_required_bits_docstr(input: TokenStream) -> TokenStream {
 
         quote! {
             #[doc = #docstr]
+            #[derive(Debug, Clone)]
             pub struct #name;
         }
     } else if mode == "slope" {
@@ -133,6 +191,7 @@ pub fn calculate_required_bits_docstr(input: TokenStream) -> TokenStream {
 
         quote! {
             #[doc = #docstr]
+            #[derive(Debug, Clone)]
             pub struct #name;
         }
     } else {

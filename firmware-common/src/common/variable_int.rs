@@ -1,10 +1,12 @@
+use core::fmt::Debug;
+
 use packed_struct::prelude::*;
 use bitvec::prelude::*;
 use super::delta_logger2::BitSliceWritable;
 
 pub trait VariableIntTrait {
     type Base;
-    type Packed;
+    type Packed: BitSliceWritable + Debug + Clone;
 }
 
 pub struct VariableInt<const BITS: usize>;

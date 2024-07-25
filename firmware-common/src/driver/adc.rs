@@ -6,7 +6,7 @@ use embedded_hal_async::delay::DelayNs;
 
 use crate::{
     common::{
-        delta_factory::Deltable, delta_logger2::{BitArraySerializable, BitSliceWriter}, sensor_reading::SensorReading
+        delta_factory::Deltable, delta_logger2::{BitArraySerializable, BitSliceWriter}, fixed_point::F32FixedPointFactory, sensor_reading::SensorReading
     },
     fixed_point_factory2, fixed_point_factory_slope,
 };
@@ -15,12 +15,12 @@ use super::timestamp::{BootTimestamp, TimestampType};
 
 pub trait UnitType: Clone {}
 
-#[derive(defmt::Format, Debug, Clone)]
+#[derive(defmt::Format, Debug, Clone, PartialEq)]
 pub struct Volt;
 
 impl UnitType for Volt {}
 
-#[derive(defmt::Format, Debug, Clone)]
+#[derive(defmt::Format, Debug, Clone, PartialEq)]
 pub struct Ampere;
 
 impl UnitType for Ampere {}
@@ -32,7 +32,7 @@ pub struct ADCReading<U: UnitType, T: TimestampType> {
     pub data: ADCData<U>,
 }
 
-#[derive(defmt::Format, Debug, Clone)]
+#[derive(defmt::Format, Debug, Clone, PartialEq)]
 pub struct ADCData<U: UnitType> {
     _phantom_unit: PhantomData<U>,
     pub value: f32,
