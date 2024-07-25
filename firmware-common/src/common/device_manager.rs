@@ -22,7 +22,7 @@ use crate::driver::{
     sys_reset::SysReset,
     usb::SplitableUSB,
 };
-use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex, pubsub::{PubSubChannel, Subscriber}};
+use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex, pubsub::PubSubChannel};
 
 use super::{
     buzzer_queue::BuzzerQueue, indicator_controller::IndicatorController, unix_clock::UnixClock,

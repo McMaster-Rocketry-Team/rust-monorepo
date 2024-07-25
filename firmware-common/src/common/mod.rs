@@ -20,5 +20,7 @@ pub mod vlp2;
 pub mod rpc_channel;
 pub mod can_bus;
 pub mod variable_int;
+pub mod delta_logger2;
+pub mod sensor_reading;
 #[cfg(test)]
 pub(crate) mod test_utils;

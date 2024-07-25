@@ -1,4 +1,6 @@
 use packed_struct::prelude::*;
+use bitvec::prelude::*;
+use super::delta_logger2::BitSliceWritable;
 
 pub trait VariableIntTrait {
     type Base;
@@ -12,6 +14,15 @@ macro_rules! impl_variable_int {
         impl VariableIntTrait for VariableInt<$bits> {
             type Base = $base_type;
             type Packed = Integer<$base_type, packed_bits::Bits<$bits>>;
+        }
+
+        impl BitSliceWritable for Integer<$base_type, packed_bits::Bits<$bits>>{
+            fn write<O: BitOrder>(self, slice: &mut BitSlice<u8, O>) -> usize {
+                let bits = self.view_bits::<O>();
+                let bits = unsafe { bits.align_to::<u8>().1 };
+                (&mut slice[..$bits]).copy_from_bitslice(bits);
+                $bits
+            }
         }
     };
 }

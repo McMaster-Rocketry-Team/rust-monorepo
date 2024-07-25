@@ -1,14 +1,17 @@
 use core::marker::PhantomData;
 
-use embedded_hal_async::delay::DelayNs;
-use rkyv::{Archive, Deserialize, Serialize};
+use bitvec::prelude::*;
 use core::future::Future;
+use embedded_hal_async::delay::DelayNs;
 
 use crate::{
-    common::{delta_factory::Deltable, unix_clock::UnixClock}, fixed_point_factory2, fixed_point_factory_slope, Clock
+    common::{
+        delta_factory::Deltable, delta_logger2::{BitArraySerializable, BitSliceWriter}, sensor_reading::SensorReading
+    },
+    fixed_point_factory2, fixed_point_factory_slope,
 };
 
-use super::timestamp::{BootTimestamp, TimestampType, UnixTimestamp};
+use super::timestamp::{BootTimestamp, TimestampType};
 
 pub trait UnitType: Clone {}
 
@@ -22,71 +25,90 @@ pub struct Ampere;
 
 impl UnitType for Ampere {}
 
-#[derive(defmt::Format, Debug, Clone, Archive, Deserialize, Serialize)]
+#[derive(defmt::Format, Debug, Clone)]
 pub struct ADCReading<U: UnitType, T: TimestampType> {
-    _phantom_unit: PhantomData<U>,
     _phantom_timestamp: PhantomData<T>,
     pub timestamp: f64,
+    pub data: ADCData<U>,
+}
+
+#[derive(defmt::Format, Debug, Clone)]
+pub struct ADCData<U: UnitType> {
+    _phantom_unit: PhantomData<U>,
     pub value: f32,
 }
 
-impl<U: UnitType> ADCReading<U, BootTimestamp> {
-    pub fn to_unix_timestamp(
-        self,
-        unix_clock: UnixClock<impl Clock>,
-    ) -> ADCReading<U, UnixTimestamp> {
-        ADCReading {
-            _phantom_unit: PhantomData,
-            _phantom_timestamp: PhantomData,
-            timestamp: unix_clock.convert_to_unix(self.timestamp),
-            value: self.value,
-        }
-    }
-}
-
-impl<U: UnitType, T: TimestampType> ADCReading<U, T> {
-    pub fn new(timestamp: f64, value: f32) -> Self {
+impl<U: UnitType> ADCData<U> {
+    pub fn new(value: f32) -> Self {
         Self {
             _phantom_unit: PhantomData,
-            _phantom_timestamp: PhantomData,
-            timestamp,
             value,
         }
     }
 }
 
-fixed_point_factory2!(TimestampFac, f64, 450.0, 550.0, 1.0);
+impl<U: UnitType> BitArraySerializable for ADCData<U> {
+    fn serialize<O: BitOrder,const N:usize>(&self, writer: &mut BitSliceWriter<O,N>) {
+        writer.write(self.value);
+    }
+}
+
 fixed_point_factory_slope!(ValueFac, 0.2, 500.0, 0.002);
 
 #[derive(defmt::Format, Debug, Clone)]
-pub struct ADCReadingDelta<U: UnitType, T: TimestampType> {
+pub struct ADCDataDelta<U: UnitType> {
     _phantom_unit: PhantomData<U>,
-    _phantom_timestamp: PhantomData<T>,
-    #[defmt(Debug2Format)]
-    pub timestamp: TimestampFacPacked,
     #[defmt(Debug2Format)]
     pub value: ValueFacPacked,
 }
 
-impl<U: UnitType, T: TimestampType> Deltable for ADCReading<U, T> {
-    type DeltaType = ADCReadingDelta<U, T>;
+impl<U: UnitType> BitArraySerializable for ADCDataDelta<U> {
+    fn serialize<O: BitOrder,const N:usize>(&self, writer: &mut BitSliceWriter<O,N>) {
+        writer.write(self.value);
+    }
+}
+
+impl<U: UnitType> Deltable for ADCData<U> {
+    type DeltaType = ADCDataDelta<U>;
 
     fn add_delta(&self, delta: &Self::DeltaType) -> Option<Self> {
         Some(Self {
             _phantom_unit: PhantomData,
-            _phantom_timestamp: PhantomData,
-            timestamp: self.timestamp + TimestampFac::to_float(delta.timestamp),
             value: self.value + ValueFac::to_float(delta.value),
         })
     }
 
     fn subtract(&self, other: &Self) -> Option<Self::DeltaType> {
-        Some(ADCReadingDelta {
+        Some(ADCDataDelta {
             _phantom_unit: PhantomData,
-            _phantom_timestamp: PhantomData,
-            timestamp: TimestampFac::to_fixed_point(self.timestamp - other.timestamp)?,
             value: ValueFac::to_fixed_point(self.value - other.value)?,
         })
+    }
+}
+
+impl<U: UnitType, T: TimestampType> SensorReading<T> for ADCReading<U, T> {
+    type Data = ADCData<U>;
+
+    type NewType<NT: TimestampType> = ADCReading<U, NT>;
+
+    fn new<NT: TimestampType>(timestamp: f64, data: Self::Data) -> Self::NewType<NT> {
+        ADCReading {
+            _phantom_timestamp: PhantomData,
+            timestamp,
+            data,
+        }
+    }
+
+    fn get_timestamp(&self) -> f64 {
+        self.timestamp
+    }
+
+    fn get_data(&self) -> &Self::Data {
+        &self.data
+    }
+
+    fn into_data(self) -> Self::Data {
+        self.data
     }
 }
 
@@ -115,6 +137,6 @@ impl<D: DelayNs, U: UnitType> ADC<U> for DummyADC<D, U> {
 
     async fn read(&mut self) -> Result<ADCReading<U, BootTimestamp>, ()> {
         self.delay.delay_ms(1).await;
-        Ok(ADCReading::new(0.0, 0.0))
+        Ok(ADCReading::<U,BootTimestamp>::new(0.0, ADCData::new(0.0)))
     }
 }
