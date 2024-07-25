@@ -4,9 +4,15 @@ use bitvec::prelude::*;
 use core::future::Future;
 use embedded_hal_async::delay::DelayNs;
 
+use crate::common::delta_logger2::FromBitSlice;
 use crate::{
     common::{
-        delta_factory::Deltable, delta_logger2::{BitArraySerializable, BitSliceWriter}, fixed_point::F32FixedPointFactory, sensor_reading::SensorReading
+        delta_factory::Deltable,
+        delta_logger2::{
+            BitArrayDeserializable, BitArraySerializable, BitSliceReader, BitSliceWriter,
+        },
+        fixed_point::F32FixedPointFactory,
+        sensor_reading::SensorReading,
     },
     fixed_point_factory2, fixed_point_factory_slope,
 };
@@ -48,8 +54,18 @@ impl<U: UnitType> ADCData<U> {
 }
 
 impl<U: UnitType> BitArraySerializable for ADCData<U> {
-    fn serialize<O: BitOrder,const N:usize>(&self, writer: &mut BitSliceWriter<O,N>) {
+    fn serialize<const N: usize>(&self, writer: &mut BitSliceWriter<N>) {
         writer.write(self.value);
+    }
+}
+
+impl<U: UnitType> BitArrayDeserializable for ADCData<U> {
+    fn deserialize<const N: usize>(&self, reader: &mut BitSliceReader<N>) -> Self {
+        Self::new(reader.read().unwrap())
+    }
+
+    fn len_bits() -> usize {
+        32
     }
 }
 
@@ -63,8 +79,21 @@ pub struct ADCDataDelta<U: UnitType> {
 }
 
 impl<U: UnitType> BitArraySerializable for ADCDataDelta<U> {
-    fn serialize<O: BitOrder,const N:usize>(&self, writer: &mut BitSliceWriter<O,N>) {
+    fn serialize<const N: usize>(&self, writer: &mut BitSliceWriter<N>) {
         writer.write(self.value);
+    }
+}
+
+impl<U: UnitType> BitArrayDeserializable for ADCDataDelta<U> {
+    fn deserialize<const N: usize>(&self, reader: &mut BitSliceReader<N>) -> Self {
+        Self {
+            _phantom_unit: PhantomData,
+            value: reader.read().unwrap(),
+        }
+    }
+
+    fn len_bits() -> usize {
+        ValueFacPacked::len_bits()
     }
 }
 
@@ -137,6 +166,6 @@ impl<D: DelayNs, U: UnitType> ADC<U> for DummyADC<D, U> {
 
     async fn read(&mut self) -> Result<ADCReading<U, BootTimestamp>, ()> {
         self.delay.delay_ms(1).await;
-        Ok(ADCReading::<U,BootTimestamp>::new(0.0, ADCData::new(0.0)))
+        Ok(ADCReading::<U, BootTimestamp>::new(0.0, ADCData::new(0.0)))
     }
 }

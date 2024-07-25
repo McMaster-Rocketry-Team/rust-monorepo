@@ -3,10 +3,10 @@ use crate::{
     Clock,
 };
 
-use super::{delta_factory::Deltable, delta_logger2::BitArraySerializable, unix_clock::UnixClock};
+use super::{delta_factory::Deltable, delta_logger2::{BitArrayDeserializable, BitArraySerializable}, unix_clock::UnixClock};
 
 pub trait SensorReading<T: TimestampType>: Sized + Clone {
-    type Data: BitArraySerializable + Deltable<DeltaType: BitArraySerializable>;
+    type Data: BitArraySerializable + BitArrayDeserializable + Deltable<DeltaType: BitArraySerializable + BitArrayDeserializable>;
     type NewType<NT: TimestampType>: SensorReading<NT>;
 
     fn new<NT: TimestampType>(timestamp: f64, data: Self::Data) -> Self::NewType<NT>;

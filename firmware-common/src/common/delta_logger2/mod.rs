@@ -12,128 +12,99 @@ use super::{
     variable_int::VariableIntTrait,
 };
 
+pub type SerializeBitOrder = Lsb0;
+
 pub trait BitSliceWritable {
-    fn write<O: BitOrder>(self, slice: &mut BitSlice<u8, O>) -> usize;
+    fn write(self, slice: &mut BitSlice<u8, SerializeBitOrder>) -> usize;
 }
 
 impl BitSliceWritable for bool {
-    fn write<O: BitOrder>(self, slice: &mut BitSlice<u8, O>) -> usize {
+    fn write(self, slice: &mut BitSlice<u8, SerializeBitOrder>) -> usize {
         slice.set(0, self);
         1
     }
 }
 
 impl BitSliceWritable for u8 {
-    fn write<O: BitOrder>(self, slice: &mut BitSlice<u8, O>) -> usize {
+    fn write(self, slice: &mut BitSlice<u8, SerializeBitOrder>) -> usize {
         let data = [self];
-        let data: &BitSlice<u8, O> = data.view_bits();
+        let data: &BitSlice<u8, SerializeBitOrder> = data.view_bits();
         (&mut slice[..8]).copy_from_bitslice(data);
         8
     }
 }
 
 impl BitSliceWritable for f32 {
-    fn write<O: BitOrder>(self, slice: &mut BitSlice<u8, O>) -> usize {
-        let data = self.to_be_bytes();
-        let data: &BitSlice<u8, O> = data.view_bits();
+    fn write(self, slice: &mut BitSlice<u8, SerializeBitOrder>) -> usize {
+        let data = self.to_le_bytes();
+        let data: &BitSlice<u8, SerializeBitOrder> = data.view_bits();
         (&mut slice[..32]).copy_from_bitslice(data);
         32
     }
 }
 
 impl BitSliceWritable for f64 {
-    fn write<O: BitOrder>(self, slice: &mut BitSlice<u8, O>) -> usize {
-        let data = self.to_be_bytes();
-        let data: &BitSlice<u8, O> = data.view_bits();
+    fn write(self, slice: &mut BitSlice<u8, SerializeBitOrder>) -> usize {
+        let data = self.to_le_bytes();
+        let data: &BitSlice<u8, SerializeBitOrder> = data.view_bits();
         (&mut slice[..64]).copy_from_bitslice(data);
         64
     }
 }
 
-trait FromBitSlice<O: BitOrder>: Sized {
-    fn from_bit_slice(slice: &BitSlice<u8, O>) -> Self;
+pub trait FromBitSlice: Sized {
+    fn from_bit_slice(slice: &BitSlice<u8, SerializeBitOrder>) -> Self;
 
-    fn bit_size() -> usize;
+    fn len_bits() -> usize;
 }
 
-impl<O: BitOrder> FromBitSlice<O> for bool {
-    fn from_bit_slice(slice: &BitSlice<u8, O>) -> Self {
+impl FromBitSlice for bool {
+    fn from_bit_slice(slice: &BitSlice<u8, SerializeBitOrder>) -> Self {
         slice[0]
     }
 
-    fn bit_size() -> usize {
+    fn len_bits() -> usize {
         1
     }
 }
 
-impl FromBitSlice<Msb0> for u8 {
-    fn from_bit_slice(slice: &BitSlice<u8, Msb0>) -> Self {
+impl FromBitSlice for u8 {
+    fn from_bit_slice(slice: &BitSlice<u8, SerializeBitOrder>) -> Self {
         let slice = &slice[..8];
-        slice.load_be::<u8>()
+        slice.load_le::<u8>()
     }
-    fn bit_size() -> usize {
+    fn len_bits() -> usize {
         8
     }
 }
 
-impl FromBitSlice<Lsb0> for u8 {
-    fn from_bit_slice(slice: &BitSlice<u8, Lsb0>) -> Self {
-        let slice = &slice[..8];
-        slice.load_be::<u8>()
-    }
-    fn bit_size() -> usize {
-        8
-    }
-}
-
-impl FromBitSlice<Lsb0> for f32 {
-    fn from_bit_slice(slice: &BitSlice<u8, Lsb0>) -> Self {
+impl FromBitSlice for f32 {
+    fn from_bit_slice(slice: &BitSlice<u8, SerializeBitOrder>) -> Self {
         let slice = &slice[..32];
-        unsafe { transmute(slice.load_be::<u32>()) }
+        unsafe { transmute(slice.load_le::<u32>()) }
     }
-    fn bit_size() -> usize {
+    fn len_bits() -> usize {
         32
     }
 }
 
-impl FromBitSlice<Msb0> for f32 {
-    fn from_bit_slice(slice: &BitSlice<u8, Msb0>) -> Self {
-        let slice = &slice[..32];
-        unsafe { transmute(slice.load_be::<u32>()) }
-    }
-    fn bit_size() -> usize {
-        32
-    }
-}
-
-impl FromBitSlice<Lsb0> for f64 {
-    fn from_bit_slice(slice: &BitSlice<u8, Lsb0>) -> Self {
+impl FromBitSlice for f64 {
+    fn from_bit_slice(slice: &BitSlice<u8, SerializeBitOrder>) -> Self {
         let slice = &slice[..64];
-        unsafe { transmute(slice.load_be::<u64>()) }
+        unsafe { transmute(slice.load_le::<u64>()) }
     }
 
-    fn bit_size() -> usize {
+    fn len_bits() -> usize {
         64
     }
 }
 
-impl FromBitSlice<Msb0> for f64 {
-    fn from_bit_slice(slice: &BitSlice<u8, Msb0>) -> Self {
-        let slice = &slice[..64];
-        unsafe { transmute(slice.load_be::<u64>()) }
-    }
-
-    fn bit_size() -> usize {
-        64
-    }
-}
-
-pub struct BitSliceWriter<O: BitOrder, const N: usize> {
+pub struct BitSliceWriter< const N: usize> {
     len: usize,
-    data: BitArray<[u8; N], O>,
+    data: BitArray<[u8; N], SerializeBitOrder>,
 }
 
-impl<O: BitOrder, const N: usize> BitSliceWriter<O, N> {
+impl< const N: usize> BitSliceWriter<N> {
     pub fn write(&mut self, value: impl BitSliceWritable) {
         let len = value.write(&mut self.data[self.len..]);
         self.len += len;
@@ -168,7 +139,7 @@ impl<O: BitOrder, const N: usize> BitSliceWriter<O, N> {
     }
 }
 
-impl<O: BitOrder, const N: usize> Default for BitSliceWriter<O, N> {
+impl<const N: usize> Default for BitSliceWriter<N> {
     fn default() -> Self {
         Self {
             len: 0,
@@ -178,16 +149,16 @@ impl<O: BitOrder, const N: usize> Default for BitSliceWriter<O, N> {
 }
 
 pub trait BitArraySerializable {
-    fn serialize<O: BitOrder, const N: usize>(&self, writer: &mut BitSliceWriter<O, N>);
+    fn serialize<const N: usize>(&self, writer: &mut BitSliceWriter<N>);
 }
 
-pub struct BitSliceReader<O: BitOrder, const N: usize> {
-    buffer: BitArray<[u8; N], O>,
+pub struct BitSliceReader<const N: usize> {
+    buffer: BitArray<[u8; N], SerializeBitOrder>,
     start: usize,
     end: usize,
 }
 
-impl<O: BitOrder, const N: usize> Default for BitSliceReader<O, N> {
+impl<const N: usize> Default for BitSliceReader<N> {
     fn default() -> Self {
         Self {
             buffer: Default::default(),
@@ -197,7 +168,7 @@ impl<O: BitOrder, const N: usize> Default for BitSliceReader<O, N> {
     }
 }
 
-impl<O: BitOrder, const N: usize> BitSliceReader<O, N> {
+impl<const N: usize> BitSliceReader<N> {
     fn len_bits(&self) -> usize {
         self.end - self.start
     }
@@ -220,14 +191,20 @@ impl<O: BitOrder, const N: usize> BitSliceReader<O, N> {
         self.end += data.len() * 8;
     }
 
-    fn read<T: FromBitSlice<O>>(&mut self) -> Option<T> {
-        if self.len_bits() < T::bit_size() {
+    pub fn read<T: FromBitSlice>(&mut self) -> Option<T> {
+        if self.len_bits() < T::len_bits() {
             return None;
         }
         let data = T::from_bit_slice(&self.buffer[self.start..self.end]);
-        self.start += T::bit_size();
+        self.start += T::len_bits();
         Some(data)
     }
+}
+
+pub trait BitArrayDeserializable {
+    fn deserialize<const N: usize>(&self, reader: &mut BitSliceReader<N>) -> Self;
+    
+    fn len_bits() -> usize;
 }
 
 #[derive(Debug, Clone)]
@@ -265,7 +242,7 @@ where
     factory: DeltaFactory<T::Data>,
     timestamp_factory: DeltaFactory<Timestamp<F>>,
     writer: W,
-    bit_writer: BitSliceWriter<Msb0, { size_of::<T::Data>() + 8 }>,
+    bit_writer: BitSliceWriter<{ size_of::<T::Data>() + 8 }>,
 }
 
 impl<TM, T, W, F> DeltaLogger<TM, T, W, F>
@@ -341,11 +318,11 @@ mod test {
 
     #[test]
     fn test_bit_slice_reader() {
-        let mut reader: BitSliceReader<Msb0, 4> = Default::default();
+        let mut reader: BitSliceReader<4> = Default::default();
         assert_eq!(reader.len_bits(), 0);
         assert_eq!(reader.free_bytes(), 4);
 
-        reader.replenish_bytes(&[0xFF, 0b01111111]);
+        reader.replenish_bytes(&[0xFF, 0b11111110]);
         assert_eq!(reader.len_bits(), 16);
         assert_eq!(reader.free_bytes(), 2);
 
@@ -353,7 +330,7 @@ mod test {
         assert_eq!(reader.len_bits(), 15);
         assert_eq!(reader.free_bytes(), 2);
 
-        assert_eq!(reader.read::<u8>(), Some(0b11111110));
+        assert_eq!(reader.read::<u8>(), Some(0b01111111));
         assert_eq!(reader.read::<u8>(), None);
         assert_eq!(reader.len_bits(), 7);
         assert_eq!(reader.free_bytes(), 3);
