@@ -91,11 +91,11 @@ macro_rules! fixed_point_factory2 {
                 >;
 
                 fn to_fixed_point(value: $source) -> Option<[<$name Packed>]> {
-                    if value < calculate_required_bits::calculate_min!($mode, $min, $max, $max_error) || value > calculate_required_bits::calculate_max!($mode, $min, $max, $max_error) {
+                    if value < calculate_required_bits::calculate_min!($mode, $min, $max, $max_error) as $source || value > calculate_required_bits::calculate_max!($mode, $min, $max, $max_error) as $source{
                         return None;
                     }
-                    let value = value - calculate_required_bits::calculate_min!($mode, $min, $max, $max_error);
-                    let value = value / (calculate_required_bits::calculate_max!($mode, $min, $max, $max_error) - calculate_required_bits::calculate_min!($mode, $min, $max, $max_error));
+                    let value = value - calculate_required_bits::calculate_min!($mode, $min, $max, $max_error)as $source;
+                    let value = value / (calculate_required_bits::calculate_max!($mode, $min, $max, $max_error)as $source - calculate_required_bits::calculate_min!($mode, $min, $max, $max_error)as $source);
                     let value = value * Self::_target_max() as $source;
                     Some(
                         num_traits::cast::<$source, [<$name Base>]>($round_fn(value))
@@ -104,10 +104,10 @@ macro_rules! fixed_point_factory2 {
                     )
                 }
                 fn to_fixed_point_capped(value: $source) -> [<$name Packed>] {
-                    let value = if value < calculate_required_bits::calculate_min!($mode, $min, $max, $max_error) {
-                        calculate_required_bits::calculate_min!($mode, $min, $max, $max_error)
-                    } else if value > calculate_required_bits::calculate_max!($mode, $min, $max, $max_error) {
-                        calculate_required_bits::calculate_max!($mode, $min, $max, $max_error)
+                    let value = if value < calculate_required_bits::calculate_min!($mode, $min, $max, $max_error) as $source{
+                        calculate_required_bits::calculate_min!($mode, $min, $max, $max_error)as $source
+                    } else if value > calculate_required_bits::calculate_max!($mode, $min, $max, $max_error)as $source {
+                        calculate_required_bits::calculate_max!($mode, $min, $max, $max_error)as $source
                     } else {
                         value
                     };
@@ -117,8 +117,8 @@ macro_rules! fixed_point_factory2 {
                     let value: [<$name Base>] = value.into();
                     let value = value as $source;
                     let value = value / Self::_target_max() as $source;
-                    let value = value * (calculate_required_bits::calculate_max!($mode, $min, $max, $max_error) - calculate_required_bits::calculate_min!($mode, $min, $max, $max_error));
-                    value + calculate_required_bits::calculate_min!($mode, $min, $max, $max_error)
+                    let value = value * (calculate_required_bits::calculate_max!($mode, $min, $max, $max_error) as $source- calculate_required_bits::calculate_min!($mode, $min, $max, $max_error)as $source);
+                    value + calculate_required_bits::calculate_min!($mode, $min, $max, $max_error)as $source
                 }
             }
 

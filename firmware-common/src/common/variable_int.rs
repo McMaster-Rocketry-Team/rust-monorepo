@@ -1,9 +1,9 @@
 use core::fmt::Debug;
 
-use packed_struct::prelude::*;
-use bitvec::prelude::*;
 use super::delta_logger2::{BitSliceWritable, FromBitSlice};
 use crate::common::delta_logger2::SerializeBitOrder;
+use bitvec::prelude::*;
+use packed_struct::prelude::*;
 
 pub trait VariableIntTrait {
     type Base;
@@ -19,11 +19,11 @@ macro_rules! impl_variable_int {
             type Packed = Integer<$base_type, packed_bits::Bits<$bits>>;
         }
 
-        impl BitSliceWritable for Integer<$base_type, packed_bits::Bits<$bits>>{
+        impl BitSliceWritable for Integer<$base_type, packed_bits::Bits<$bits>> {
             fn write(self, slice: &mut BitSlice<u8, SerializeBitOrder>) -> usize {
                 let bits = self.view_bits::<SerializeBitOrder>();
                 let bits = unsafe { bits.align_to::<u8>().1 };
-                (&mut slice[..$bits]).copy_from_bitslice(bits);
+                (&mut slice[..$bits]).copy_from_bitslice(&bits[..$bits]); // FIXME resize bits
                 $bits
             }
         }
@@ -32,15 +32,13 @@ macro_rules! impl_variable_int {
             fn from_bit_slice(slice: &BitSlice<u8, SerializeBitOrder>) -> Self {
                 slice[0..$bits].load_le::<$base_type>().into()
             }
-        
+
             fn len_bits() -> usize {
                 $bits
             }
         }
     };
 }
-
-
 
 impl_variable_int!(u8, 1);
 impl_variable_int!(u8, 2);
@@ -74,3 +72,22 @@ impl_variable_int!(u32, 29);
 impl_variable_int!(u32, 30);
 impl_variable_int!(u32, 31);
 impl_variable_int!(u32, 32);
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_serialize() {
+        let mut arr = bitarr![u8, Lsb0; 0; 16];
+        let num: <VariableInt<10> as VariableIntTrait>::Packed = 0b1011111111.into();
+        num.write(arr.as_mut_bitslice());
+        for i in 0..16 {
+            print!("{}", if arr[i] {1}else{0});
+        }
+        println!("");
+
+        let num = <VariableInt<10> as VariableIntTrait>::Packed::from_bit_slice(arr.as_bitslice());
+        assert_eq!(num, 0b1011111111.into());
+    }
+}

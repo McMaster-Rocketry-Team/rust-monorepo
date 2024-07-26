@@ -28,14 +28,22 @@ impl<'a, const N: usize> embedded_io_async::Write for BufferWriter<'a, N> {
 }
 
 pub(crate) struct BufferReader<'b, const N: usize> {
-    pub buffer: &'b mut [u8; N],
+    pub buffer: &'b [u8; N],
     pub offset: usize,
     pub len: usize,
 }
 
 impl<'b, const N: usize> BufferReader<'b, N> {
-    pub(crate) fn new(buffer: &'b mut [u8; N], len:usize) -> Self {
-        Self { buffer, offset: 0, len }
+    pub(crate) fn new(buffer: &'b [u8; N], len: usize) -> Self {
+        Self {
+            buffer,
+            offset: 0,
+            len,
+        }
+    }
+
+    pub(crate) fn len(&self) -> usize {
+        self.len - self.offset
     }
 }
 
@@ -45,11 +53,17 @@ impl<'b, const N: usize> embedded_io_async::ErrorType for BufferReader<'b, N> {
 
 impl<'b, const N: usize> embedded_io_async::Read for BufferReader<'b, N> {
     async fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
-        buf.copy_from_slice(&self.buffer[self.offset..self.offset + buf.len()]);
-        self.offset += buf.len();
-        if self.offset > self.len {
-            panic!("BufferReader read past end of buffer");
+        if self.len() == 0 {
+            Ok(0)
+        } else if buf.len() > self.len() {
+            let len = self.len();
+            (&mut buf[..len]).copy_from_slice(&self.buffer[self.offset..self.len]);
+            self.offset = self.len;
+            Ok(len)
+        } else {
+            buf.copy_from_slice(&self.buffer[self.offset..self.offset + buf.len()]);
+            self.offset += buf.len();
+            Ok(buf.len())
         }
-        Ok(buf.len())
     }
 }
