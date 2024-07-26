@@ -285,6 +285,22 @@ async fn remove_file_a() {
 
 #[named]
 #[tokio::test]
+async fn remove_file_a2() {
+    let path = get_test_image_path!();
+
+    let mut harness = VLFSTestingHarness::new(path).await;
+    let file_id = harness.create_file(FileType(0)).await;
+    harness.open_file_for_write(file_id).await;
+    harness.append_file(file_id, 1).await.unwrap();
+    harness.close_write_file(file_id).await;
+
+    harness.remove_file(file_id).await;
+    harness.reinit().await;
+    harness.verify_invariants().await;
+}
+
+#[named]
+#[tokio::test]
 async fn remove_file_b() {
     let path = get_test_image_path!();
 

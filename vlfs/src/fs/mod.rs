@@ -64,6 +64,7 @@ impl std::hash::Hash for FileID {
     }
 }
 
+/// File type of 0xFFFF is reserved
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, defmt::Format)]
 pub struct FileType(pub u16);
 

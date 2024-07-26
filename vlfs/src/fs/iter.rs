@@ -109,7 +109,7 @@ where
 
     pub async fn next(&mut self) -> Result<Option<FileEntry>, VLFSError<F::Error>> {
         loop {
-            if self.i >= self.at.header.file_count {
+            if self.i >= self.at.footer.file_count {
                 return Ok(None);
             }
 
@@ -164,7 +164,7 @@ where
             let mut curr_plus_one_file_entry: Option<FileEntry> = None;
 
             // Try to read the next file entry first
-            if last_file_entry_i + 1 < at.header.file_count {
+            if last_file_entry_i + 1 < at.footer.file_count {
                 let file_entry = read_file_entry(last_file_entry_i + 1, at, flash).await?;
                 if file_entry.id.0 == last_file_id.0 + 1 {
                     // file_entry is the immediate next file entry of the last file
@@ -182,11 +182,11 @@ where
             //     the past file ids
 
             // The following code handles case 1.
-            if at.header.file_count == 0 {
+            if at.footer.file_count == 0 {
                 self.last_file = None;
                 return Ok(None);
             }
-            let mut curr_file_entry_i = min(last_file_entry_i, at.header.file_count - 1);
+            let mut curr_file_entry_i = min(last_file_entry_i, at.footer.file_count - 1);
             // Find the first file with file id <= last file id, from curr_file_entry_i to 0
             // The file following the found file is the next file returned by the iterator
             loop {
@@ -212,7 +212,7 @@ where
                 curr_file_entry_i -= 1;
             }
         } else {
-            if at.header.file_count > 0 {
+            if at.footer.file_count > 0 {
                 let file_entry = read_file_entry(0, at, flash).await?;
                 self.last_file = Some((file_entry.id, 0));
                 return Ok(Some(file_entry));
@@ -240,7 +240,7 @@ where
                         return Ok(Some(file_entry));
                     }
 
-                    if *last_file_entry_i >= at.header.file_count - 1 {
+                    if *last_file_entry_i >= at.footer.file_count - 1 {
                         return Ok(None);
                     }
 

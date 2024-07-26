@@ -1,3 +1,5 @@
+use core::future::Future;
+
 use crate::{
     utils::flash_io::{FlashReader, FlashWriter},
     AsyncReader, AsyncWriter, DummyCrc,
@@ -8,7 +10,7 @@ use super::{
     *,
 };
 
-const ALLOC_TABLE_HEADER_SIZE: usize = 26;
+const ALLOC_TABLE_HEADER_SIZE: usize = 13;
 pub const FILE_ENTRY_SIZE: usize = 13;
 
 // only repersent the state of the file when the struct is created
@@ -68,50 +70,30 @@ pub(crate) struct CorruptedAllocationTableHeader;
 
 pub(super) struct AllocationTableHeader {
     pub(super) sequence_number: u64,
-    pub(super) file_count: u16,
-    pub(super) max_file_id: FileID,
 }
 
 impl Default for AllocationTableHeader {
     fn default() -> Self {
-        Self {
-            sequence_number: 1,
-            file_count: 0,
-            max_file_id: FileID(0),
-        }
+        Self { sequence_number: 1 }
     }
 }
 
 impl AllocationTableHeader {
     pub(crate) fn serialize(&self) -> [u8; ALLOC_TABLE_HEADER_SIZE] {
-        let mut buffer1 = [0u8; 13];
-        (&mut buffer1[0..4]).copy_from_slice(&VLFS_VERSION.to_be_bytes());
-        (&mut buffer1[4..12]).copy_from_slice(&self.sequence_number.to_be_bytes());
-        let buffer1 = hamming_encode(buffer1);
+        let mut buffer = [0u8; 13];
+        (&mut buffer[0..4]).copy_from_slice(&VLFS_VERSION.to_be_bytes());
+        (&mut buffer[4..12]).copy_from_slice(&self.sequence_number.to_be_bytes());
 
-        let mut buffer2 = [0u8; 13];
-        (&mut buffer2[0..2]).copy_from_slice(&self.file_count.to_be_bytes());
-        (&mut buffer2[2..10]).copy_from_slice(&self.max_file_id.0.to_be_bytes());
-        let buffer2 = hamming_encode(buffer2);
-
-        let mut result = [0u8; 26];
-        (&mut result[..13]).copy_from_slice(&buffer1);
-        (&mut result[13..]).copy_from_slice(&buffer2);
-
-        result
+        hamming_encode(buffer)
     }
 
     // expect a ALLOC_TABLE_HEADER_SIZE byte buffer
     pub(crate) fn deserialize(buffer: &[u8]) -> Result<Self, CorruptedAllocationTableHeader> {
         let buffer1 = hamming_decode(buffer[0..13].try_into().unwrap())
             .map_err(|_| CorruptedAllocationTableHeader)?;
-        let buffer2 = hamming_decode(buffer[13..26].try_into().unwrap())
-            .map_err(|_| CorruptedAllocationTableHeader)?;
 
         let version = u32::from_be_bytes((&buffer1[0..4]).try_into().unwrap());
         let sequence_number = u64::from_be_bytes((&buffer1[4..12]).try_into().unwrap());
-        let file_count = u16::from_be_bytes((&buffer2[0..2]).try_into().unwrap());
-        let max_file_id = FileID(u64::from_be_bytes((&buffer2[2..10]).try_into().unwrap()));
 
         if version != VLFS_VERSION {
             log_warn!(
@@ -121,22 +103,52 @@ impl AllocationTableHeader {
             );
             return Err(CorruptedAllocationTableHeader);
         }
-        if file_count > MAX_FILES as u16 {
-            log_warn!("file_count > MAX_FILES");
-            return Err(CorruptedAllocationTableHeader);
-        }
 
-        Ok(Self {
-            sequence_number,
+        Ok(Self { sequence_number })
+    }
+}
+
+pub(super) struct AllocationTableFooter {
+    pub(super) file_count: u16,
+    pub(super) max_file_id: FileID,
+}
+
+impl Default for AllocationTableFooter {
+    fn default() -> Self {
+        Self {
+            file_count: 0,
+            max_file_id: FileID(0),
+        }
+    }
+}
+
+/// allocation table footer stores data as a file entry with reserved type (0xFFFF)
+impl AllocationTableFooter {
+    pub(crate) fn serialize(&self) -> [u8; FILE_ENTRY_SIZE] {
+        FileEntry {
+            id: self.max_file_id,
+            typ: FileType(0xFFFF),
+            first_sector_index: None,
+        }
+        .serialize()
+    }
+
+    pub(crate) fn is_footer_file_entry(file_entry: &FileEntry) -> bool {
+        file_entry.typ == FileType(0xFFFF)
+    }
+
+    pub(crate) fn deserialize(file_count: u16, file_entry: &FileEntry) -> Self {
+        Self {
             file_count,
-            max_file_id,
-        })
+            max_file_id: file_entry.id,
+        }
     }
 }
 
 // serialized size must fit in half a block (32kib)
 pub(super) struct AllocationTable {
     pub(super) header: AllocationTableHeader,
+    pub(super) footer: AllocationTableFooter,
     pub(super) allocation_table_position: usize, // which half block is the allocation table in
     pub(super) opened_files: Vec<FileID, 32>,
 }
@@ -145,6 +157,7 @@ impl Default for AllocationTable {
     fn default() -> Self {
         Self {
             header: AllocationTableHeader::default(),
+            footer: AllocationTableFooter::default(),
             allocation_table_position: 0,
             opened_files: Vec::new(),
         }
@@ -205,7 +218,7 @@ where
     ) -> Result<Option<(FileEntry, u16)>, VLFSError<F::Error>> {
         let flash = self.flash.read().await;
         let at = self.allocation_table.read().await;
-        let file_count = at.header.file_count;
+        let file_count = at.footer.file_count;
         if file_count == 0 {
             return Ok(None);
         }
@@ -244,6 +257,7 @@ where
         }
     }
 
+    // FIXME
     pub(super) async fn delete_file_entry(
         &self,
         file_id: FileID,
@@ -296,7 +310,7 @@ where
 
             // copy entries after the deleted entry
             // TODO optimize this, we can read multiple file entries at once at the expense of more memory
-            for _ in file_entry_i + 1..at.header.file_count {
+            for _ in file_entry_i + 1..at.footer.file_count {
                 let (result, _) = reader
                     .read_slice(&mut buffer, FILE_ENTRY_SIZE)
                     .await
@@ -315,13 +329,14 @@ where
 
             writer.flush().await.map_err(VLFSError::FlashError)?;
 
-            at.header.file_count -= 1;
+            at.footer.file_count -= 1;
             return Ok(());
         } else {
             return Err(VLFSError::FileDoesNotExist);
         }
     }
 
+    // FIXME
     pub(super) async fn set_file_first_sector_index(
         &self,
         file_id: FileID,
@@ -381,7 +396,7 @@ where
 
             // copy entries after the updated entry
             // TODO optimize this, we can read multiple file entries at once at the expense of more memory
-            for _ in file_entry_i + 1..at.header.file_count {
+            for _ in file_entry_i + 1..at.footer.file_count {
                 let (result, _) = reader
                     .read_slice(&mut buffer, FILE_ENTRY_SIZE)
                     .await
@@ -406,16 +421,17 @@ where
         }
     }
 
+    // FIXME
     pub async fn create_file(&self, file_type: FileType) -> Result<FileEntry, VLFSError<F::Error>> {
         log_trace!("Creating file with type: {:?}", file_type);
         let mut at = self.allocation_table.write().await;
         log_trace!("Aquired allocation table write lock");
-        at.header.max_file_id.increment();
+        at.footer.max_file_id.increment();
         let old_at_address = at.address();
         at.increment_position();
-        at.header.file_count += 1;
+        at.footer.file_count += 1;
         let at_address = at.address();
-        let file_id = at.header.max_file_id;
+        let file_id = at.footer.max_file_id;
 
         let mut flash = self.flash.write().await;
         flash
@@ -444,7 +460,7 @@ where
         // copy existing file entries
         // TODO optimize this, we can read multiple file entries at once at the expense of more memory
         let mut buffer = [0u8; 5 + FILE_ENTRY_SIZE];
-        for _ in 0..at.header.file_count - 1 {
+        for _ in 0..at.footer.file_count - 1 {
             let (result, _) = reader
                 .read_slice(&mut buffer, FILE_ENTRY_SIZE)
                 .await
@@ -478,9 +494,9 @@ where
     pub(super) async fn read_latest_allocation_table(&self) -> Result<bool, VLFSError<F::Error>> {
         let mut found_valid_table = false;
         let mut flash = self.flash.write().await;
-        let mut crc = self.crc.lock().await;
+        let mut crc = DummyCrc {};
 
-        for i in 0..TABLE_COUNT {
+        'outer: for i in 0..TABLE_COUNT {
             log_info!("Reading allocation table #{}", i + 1);
 
             let mut read_buffer = [0u8; 5 + ALLOC_TABLE_HEADER_SIZE];
@@ -496,38 +512,34 @@ where
             let header = if let Ok(header) = AllocationTableHeader::deserialize(&read_result) {
                 header
             } else {
-                continue;
+                log_info!("Invalid header, skipping to next allocation table");
+                continue 'outer;
             };
 
             // TODO optimize this, we can read multiple file entries at once at the expense of more memory
-            for _ in 0..header.file_count {
-                reader
+            let mut file_count = 0u16;
+            let footer = loop {
+                let (read_result, _) = reader
                     .read_slice(&mut read_buffer, FILE_ENTRY_SIZE)
                     .await
                     .map_err(VLFSError::FlashError)?;
-            }
-
-            let calculated_crc = reader.get_crc();
-            let expected_crc = reader
-                .read_u32(&mut read_buffer)
-                .await
-                .map_err(VLFSError::FlashError)?
-                .0
-                .expect("Reading from flash should always return the desired length");
-            if calculated_crc == expected_crc {
-                log_info!("CRC match!");
-            } else {
-                log_warn!(
-                    "CRC mismatch! expected: {}, calculated: {}",
-                    expected_crc,
-                    calculated_crc
-                );
-                continue;
-            }
+                if let Ok(file_entry) = FileEntry::deserialize(read_result) {
+                    if AllocationTableFooter::is_footer_file_entry(&file_entry) {
+                        break AllocationTableFooter::deserialize(file_count, &file_entry);
+                    } else {
+                        file_count += 1;
+                    }
+                } else {
+                    log_info!("Corrupted file entry, skipping to next allocation table");
+                    continue 'outer;
+                }
+            };
+            log_info!("Found {} files", file_count);
 
             let mut at = self.allocation_table.write().await;
             if header.sequence_number >= at.header.sequence_number {
                 at.header = header;
+                at.footer = footer;
                 at.allocation_table_position = i;
                 found_valid_table = true;
             }
@@ -542,11 +554,11 @@ where
 
         let mut flash = self.flash.write().await;
         flash
-            .erase_block_32kib(at_address)
+            .erase_sector_4kib(at_address)
             .await
             .map_err(VLFSError::FlashError)?;
 
-        let mut crc = self.crc.lock().await;
+        let mut crc = DummyCrc {};
         let mut writer = FlashWriter::new(at_address, &mut flash, &mut crc);
 
         writer
@@ -555,12 +567,94 @@ where
             .map_err(VLFSError::FlashError)?;
 
         writer
-            .extend_from_u32(writer.get_crc())
+            .extend_from_slice(&at.footer.serialize())
             .await
             .map_err(VLFSError::FlashError)?;
 
         writer.flush().await.map_err(VLFSError::FlashError)?;
 
         Ok(())
+    }
+
+    pub async fn dangerously_modify_allocation_table<'a, FN, R, T>(
+        &'a self,
+        op: FN,
+    ) -> Result<T, VLFSError<F::Error>>
+    where
+        FN: for<'b> FnOnce(
+            &'b mut FileEntriesReader<'a, F, C>,
+            &'b mut FileEntriesWriter<'a, F, C>,
+        ) -> R,
+        R: Future<Output = Result<T, VLFSError<F::Error>>>,
+    {
+        let mut at = self.allocation_table.write().await;
+        let old_at_address = at.address();
+        at.increment_position();
+        let at_address = at.address();
+
+        let mut flash = self.flash.write().await;
+        flash
+            .erase_block_32kib(at_address)
+            .await
+            .map_err(VLFSError::FlashError)?;
+        drop(flash);
+
+        let mut reader_flash = &self.flash;
+        let mut writer_flash = &self.flash;
+
+        let mut crc = self.crc.lock().await;
+        let mut dummy_crc = DummyCrc {};
+
+        let mut reader = FlashReader::new(
+            old_at_address + ALLOC_TABLE_HEADER_SIZE as u32,
+            &mut reader_flash,
+            &mut dummy_crc,
+        );
+        let mut writer = FlashWriter::new(at_address, &mut writer_flash, &mut crc);
+
+        let mut reader = FileEntriesReader { fs: self };
+        let mut writer = FileEntriesWriter { fs: self };
+
+        op(&mut reader, &mut writer).await?;
+
+        todo!()
+    }
+}
+pub struct FileEntriesReader<'a, F, C>
+where
+    F: Flash,
+    C: Crc,
+{
+    fs: &'a VLFS<F, C>,
+}
+
+impl<'a, F, C> FileEntriesReader<'a, F, C>
+where
+    F: Flash,
+    C: Crc,
+{
+    pub async fn next(&mut self) -> Result<Option<FileEntry>, VLFSError<F::Error>> {
+        todo!()
+    }
+}
+
+pub struct FileEntriesWriter<'a, F, C>
+where
+    F: Flash,
+    C: Crc,
+{
+    fs: &'a VLFS<F, C>,
+}
+
+impl<'a, F, C> FileEntriesWriter<'a, F, C>
+where
+    F: Flash,
+    C: Crc,
+{
+    pub async fn write(
+        &mut self,
+        file_entry: &FileEntry,
+    ) -> Result<Option<FileEntry>, VLFSError<F::Error>> {
+        todo!()
     }
 }

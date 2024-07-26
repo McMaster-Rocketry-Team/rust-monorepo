@@ -27,7 +27,7 @@ where
             let at = self.allocation_table.read().await;
             log_info!(
                 "Found valid allocation table, file count: {}",
-                at.header.file_count
+                at.footer.file_count
             );
             drop(at);
 
