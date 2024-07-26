@@ -1,9 +1,10 @@
 use core::fmt::Debug;
 
-use super::delta_logger2::{BitSliceWritable, FromBitSlice};
 use crate::common::delta_logger2::SerializeBitOrder;
 use bitvec::prelude::*;
 use packed_struct::prelude::*;
+
+use super::delta_logger2::bitvec_serialize_traits::{BitSliceWritable, FromBitSlice};
 
 pub trait VariableIntTrait {
     type Base;
@@ -23,7 +24,7 @@ macro_rules! impl_variable_int {
             fn write(self, slice: &mut BitSlice<u8, SerializeBitOrder>) -> usize {
                 let bits = self.view_bits::<SerializeBitOrder>();
                 let bits = unsafe { bits.align_to::<u8>().1 };
-                (&mut slice[..$bits]).copy_from_bitslice(&bits[..$bits]); // FIXME resize bits
+                (&mut slice[..$bits]).copy_from_bitslice(&bits[..$bits]);
                 $bits
             }
         }
@@ -83,7 +84,7 @@ mod test {
         let num: <VariableInt<10> as VariableIntTrait>::Packed = 0b1011111111.into();
         num.write(arr.as_mut_bitslice());
         for i in 0..16 {
-            print!("{}", if arr[i] {1}else{0});
+            print!("{}", if arr[i] { 1 } else { 0 });
         }
         println!("");
 

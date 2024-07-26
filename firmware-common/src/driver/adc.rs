@@ -4,18 +4,13 @@ use bitvec::prelude::*;
 use core::future::Future;
 use embedded_hal_async::delay::DelayNs;
 
-use crate::common::delta_logger2::FromBitSlice;
 use crate::{
     common::{
-        delta_factory::Deltable,
-        delta_logger2::{
-            BitArrayDeserializable, BitArraySerializable, BitSliceReader, BitSliceWriter,
-        },
-        fixed_point::F32FixedPointFactory,
-        sensor_reading::SensorReading,
+        delta_factory::Deltable, delta_logger2::bitslice_io::{BitArrayDeserializable, BitArraySerializable, BitSliceReader, BitSliceWriter}, fixed_point::F32FixedPointFactory, sensor_reading::SensorReading
     },
     fixed_point_factory2, fixed_point_factory_slope,
 };
+use crate::common::delta_logger2::bitvec_serialize_traits::FromBitSlice;
 
 use super::timestamp::{BootTimestamp, TimestampType};
 
