@@ -1,12 +1,13 @@
-use std::{marker::PhantomData, mem::transmute};
+use core::{future::Future, marker::PhantomData, mem::transmute};
 
 use bitvec::prelude::*;
 use either::Either;
+use embedded_io_async::ReadExactError;
 
-use crate::driver::timestamp::TimestampType;
+use crate::driver::timestamp::{self, TimestampType};
 
 use super::{
-    delta_factory::{DeltaFactory, Deltable},
+    delta_factory::{DeltaFactory, Deltable, UnDeltaFactory},
     fixed_point::F64FixedPointFactory,
     sensor_reading::SensorReading,
     variable_int::VariableIntTrait,
@@ -99,12 +100,12 @@ impl FromBitSlice for f64 {
     }
 }
 
-pub struct BitSliceWriter< const N: usize> {
+pub struct BitSliceWriter<const N: usize> {
     len: usize,
     data: BitArray<[u8; N], SerializeBitOrder>,
 }
 
-impl< const N: usize> BitSliceWriter<N> {
+impl<const N: usize> BitSliceWriter<N> {
     pub fn write(&mut self, value: impl BitSliceWritable) {
         let len = value.write(&mut self.data[self.len..]);
         self.len += len;
@@ -191,6 +192,25 @@ impl<const N: usize> BitSliceReader<N> {
         self.end += data.len() * 8;
     }
 
+    async fn replenish_bytes_async_mut<'a, 'b, FN, F, E>(&'a mut self, f: FN) -> Result<usize, E>
+    where
+        FN: FnOnce(&'b mut [u8]) -> F,
+        F: Future<Output = Result<usize, E>>,
+        'a: 'b,
+    {
+        let len_bits = self.len_bits();
+        let dest = (8 - len_bits % 8) % 8;
+        self.buffer.copy_within(self.start..self.end, dest);
+        self.start = dest;
+        self.end = dest + len_bits;
+
+        let new_start_byte_i = self.end / 8;
+        let buffer = &mut self.buffer.as_raw_mut_slice()[new_start_byte_i..];
+        let read_len_bytes = f(buffer).await?;
+        self.end += read_len_bytes * 8;
+        Ok(read_len_bytes)
+    }
+
     pub fn read<T: FromBitSlice>(&mut self) -> Option<T> {
         if self.len_bits() < T::len_bits() {
             return None;
@@ -202,8 +222,8 @@ impl<const N: usize> BitSliceReader<N> {
 }
 
 pub trait BitArrayDeserializable {
-    fn deserialize<const N: usize>(&self, reader: &mut BitSliceReader<N>) -> Self;
-    
+    fn deserialize<const N: usize>(reader: &mut BitSliceReader<N>) -> Self;
+
     fn len_bits() -> usize;
 }
 
@@ -312,8 +332,124 @@ where
     }
 }
 
+pub struct DeltaLoggerReader<TM, T, R, F>
+where
+    TM: TimestampType,
+    T: SensorReading<TM>,
+    R: embedded_io_async::Read,
+    F: F64FixedPointFactory,
+    [(); size_of::<T::Data>() + 8]:,
+{
+    factory: UnDeltaFactory<T::Data>,
+    timestamp_factory: UnDeltaFactory<Timestamp<F>>,
+    reader: R,
+    bit_reader: BitSliceReader<{ size_of::<T::Data>() + 8 }>,
+}
+
+impl<TM, T, R, F> DeltaLoggerReader<TM, T, R, F>
+where
+    TM: TimestampType,
+    T: SensorReading<TM>,
+    R: embedded_io_async::Read,
+    F: F64FixedPointFactory,
+    [(); size_of::<T::Data>() + 8]:,
+{
+    pub fn new(reader: R) -> Self {
+        Self {
+            factory: UnDeltaFactory::new(),
+            timestamp_factory: UnDeltaFactory::new(),
+            reader,
+            bit_reader: Default::default(),
+        }
+    }
+
+    pub async fn read(&mut self) -> Result<Option<T::NewType<TM>>, R::Error> {
+        if !self.ensure_at_least_bits(2).await? {
+            return Ok(None);
+        }
+
+        let is_full_timestamp: bool = self.bit_reader.read().unwrap();
+        let is_full_data: bool = self.bit_reader.read().unwrap();
+
+        if is_full_timestamp && !is_full_data {
+            // end of byte
+            // TODO
+        }
+
+        let timestamp = if is_full_timestamp {
+            if !self.ensure_at_least_bits(64).await? {
+                return Ok(None);
+            }
+            let timestamp: f64 = self.bit_reader.read().unwrap();
+            Some(
+                self.timestamp_factory
+                    .push(Timestamp(timestamp, PhantomData)),
+            )
+        } else {
+            if !self
+                .ensure_at_least_bits(
+                    <<F as F64FixedPointFactory>::VI as VariableIntTrait>::Packed::len_bits(),
+                )
+                .await?
+            {
+                return Ok(None);
+            }
+            let timestamp_delta_packed: <<F as F64FixedPointFactory>::VI as VariableIntTrait>::Packed  = self.bit_reader.read().unwrap();
+            self.timestamp_factory
+                .push_delta(TimestampDelta(timestamp_delta_packed))
+        };
+
+        let data = if is_full_data {
+            if !self.ensure_at_least_bits(T::Data::len_bits()).await? {
+                return Ok(None);
+            }
+            let data = self
+                .factory
+                .push(T::Data::deserialize(&mut self.bit_reader));
+            Some(data)
+        } else {
+            if !self
+                .ensure_at_least_bits(<T::Data as Deltable>::DeltaType::len_bits())
+                .await?
+            {
+                return Ok(None);
+            }
+            self.factory
+                .push_delta(<T::Data as Deltable>::DeltaType::deserialize(
+                    &mut self.bit_reader,
+                ))
+        };
+
+        if timestamp.is_none() || data.is_none() {
+            // try next
+            // TODO
+        }
+
+        let timestamp = timestamp.unwrap();
+        let data = data.unwrap();
+
+        Ok(Some(T::new(timestamp.0, data)))
+    }
+
+    async fn ensure_at_least_bits(&mut self, min_bits: usize) -> Result<bool, R::Error> {
+        while self.bit_reader.len_bits() < min_bits {
+            let read_bytes = self
+                .bit_reader
+                .replenish_bytes_async_mut(async |buffer| self.reader.read(buffer).await)
+                .await?;
+            if read_bytes == 0 {
+                return Ok(false);
+            }
+        }
+
+        Ok(true)
+    }
+}
+
 #[cfg(test)]
 mod test {
+    use core::convert::Infallible;
+
     use super::*;
 
     #[test]
@@ -347,6 +483,63 @@ mod test {
         assert_eq!(reader.len_bits(), 3 * 8);
         assert_eq!(reader.free_bytes(), 1);
         reader.replenish_bytes(&[0xFF]);
+        assert_eq!(reader.len_bits(), 4 * 8);
+        assert_eq!(reader.free_bytes(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_bit_slice_reader_async_replenish() {
+        let mut reader: BitSliceReader<4> = Default::default();
+        assert_eq!(reader.len_bits(), 0);
+        assert_eq!(reader.free_bytes(), 4);
+
+        reader
+            .replenish_bytes_async_mut::<_, _, Infallible>(async |buffer: &mut [u8]| {
+                assert_eq!(buffer.len(), 4);
+                buffer[0] = 0xFF;
+                buffer[1] = 0b11111110;
+                Ok(2)
+            })
+            .await
+            .unwrap();
+        assert_eq!(reader.len_bits(), 16);
+        assert_eq!(reader.free_bytes(), 2);
+
+        assert_eq!(reader.read::<bool>(), Some(true));
+        assert_eq!(reader.len_bits(), 15);
+        assert_eq!(reader.free_bytes(), 2);
+
+        assert_eq!(reader.read::<u8>(), Some(0b01111111));
+        assert_eq!(reader.read::<u8>(), None);
+        assert_eq!(reader.len_bits(), 7);
+        assert_eq!(reader.free_bytes(), 3);
+
+        reader
+            .replenish_bytes_async_mut::<_, _, Infallible>(async |buffer: &mut [u8]| {
+                buffer[0] = 0xFF;
+                buffer[1] = 0xFF;
+                buffer[2] = 0xFF;
+                Ok(3)
+            })
+            .await
+            .unwrap();
+        assert_eq!(reader.len_bits(), 7 + 3 * 8);
+        assert_eq!(reader.free_bytes(), 0);
+        assert_eq!(reader.start, 1);
+
+        for _ in 0..7 {
+            reader.read::<bool>();
+        }
+
+        assert_eq!(reader.len_bits(), 3 * 8);
+        assert_eq!(reader.free_bytes(), 1);
+        reader
+            .replenish_bytes_async_mut::<_, _, Infallible>(async |buffer: &mut [u8]| {
+                buffer[0] = 0xFF;
+                Ok(1)
+            })
+            .await
+            .unwrap();
         assert_eq!(reader.len_bits(), 4 * 8);
         assert_eq!(reader.free_bytes(), 0);
     }

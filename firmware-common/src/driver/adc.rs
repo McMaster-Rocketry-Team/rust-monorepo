@@ -60,7 +60,7 @@ impl<U: UnitType> BitArraySerializable for ADCData<U> {
 }
 
 impl<U: UnitType> BitArrayDeserializable for ADCData<U> {
-    fn deserialize<const N: usize>(&self, reader: &mut BitSliceReader<N>) -> Self {
+    fn deserialize<const N: usize>(reader: &mut BitSliceReader<N>) -> Self {
         Self::new(reader.read().unwrap())
     }
 
@@ -85,7 +85,7 @@ impl<U: UnitType> BitArraySerializable for ADCDataDelta<U> {
 }
 
 impl<U: UnitType> BitArrayDeserializable for ADCDataDelta<U> {
-    fn deserialize<const N: usize>(&self, reader: &mut BitSliceReader<N>) -> Self {
+    fn deserialize<const N: usize>(reader: &mut BitSliceReader<N>) -> Self {
         Self {
             _phantom_unit: PhantomData,
             value: reader.read().unwrap(),
