@@ -276,6 +276,10 @@ where
 
         Ok(true)
     }
+
+    pub fn into_reader(self) -> R {
+        self.reader
+    }
 }
 
 #[cfg(test)]
