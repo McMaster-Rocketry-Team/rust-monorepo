@@ -15,6 +15,7 @@ pub enum VLFSError<FlashError: defmt::Format + Debug + embedded_io_async::Error>
     DeviceFull,
     CorruptedPage { address: u32 },
     CorruptedFileEntry,
+    CorruptedFileSystem,
 }
 
 impl<FlashError: defmt::Format + Debug + embedded_io_async::Error> From<CorruptedFileEntry> for VLFSError<FlashError> {
@@ -35,6 +36,7 @@ impl<FlashError: defmt::Format + Debug + embedded_io_async::Error> embedded_io_a
             VLFSError::DeviceFull => ErrorKind::OutOfMemory,
             VLFSError::CorruptedPage { .. } => ErrorKind::Other,
             VLFSError::CorruptedFileEntry => ErrorKind::Other,
+            VLFSError::CorruptedFileSystem => ErrorKind::Other,
         }
     }
 }

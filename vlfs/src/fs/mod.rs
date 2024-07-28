@@ -16,6 +16,7 @@ use heapless::Vec;
 
 use crate::utils::rwlock::RwLock;
 
+pub mod at_builder;
 pub mod allocation_table;
 pub mod error;
 pub mod hamming;

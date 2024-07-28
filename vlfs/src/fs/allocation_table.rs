@@ -1,4 +1,4 @@
-use core::future::Future;
+use at_builder::ATBuilder;
 
 use crate::{
     utils::flash_io::{FlashReader, FlashWriter},
@@ -10,7 +10,7 @@ use super::{
     *,
 };
 
-const ALLOC_TABLE_HEADER_SIZE: usize = 13;
+pub const ALLOC_TABLE_HEADER_SIZE: usize = 13;
 pub const FILE_ENTRY_SIZE: usize = 13;
 
 // only repersent the state of the file when the struct is created
@@ -257,163 +257,68 @@ where
         }
     }
 
-    // FIXME
     pub(super) async fn delete_file_entry(
         &self,
         file_id: FileID,
     ) -> Result<(), VLFSError<F::Error>> {
         if let Some((_, file_entry_i)) = self.find_file_entry(file_id).await? {
-            let mut at = self.allocation_table.write().await;
-            let old_at_address = at.address();
-            at.increment_position();
-            let at_address = at.address();
-
-            let mut flash = self.flash.write().await;
-            flash
-                .erase_block_32kib(at_address)
-                .await
-                .map_err(VLFSError::FlashError)?;
-            drop(flash);
-
-            let mut crc = self.crc.lock().await;
-            let mut dummy_crc = DummyCrc {};
-            let mut reader_flash = &self.flash;
-            let mut writer_flash = &self.flash;
-            let mut reader = FlashReader::new(
-                old_at_address + ALLOC_TABLE_HEADER_SIZE as u32,
-                &mut reader_flash,
-                &mut dummy_crc,
-            );
-            let mut writer = FlashWriter::new(at_address, &mut writer_flash, &mut crc);
-
-            // write header to the new allocation table
-            writer
-                .extend_from_slice(&at.header.serialize())
-                .await
-                .map_err(VLFSError::FlashError)?;
+            let mut builder = self.new_at_builder().await?;
 
             // copy entries before the deleted entry
-            // TODO optimize this, we can read multiple file entries at once at the expense of more memory
-            let mut buffer = [0u8; 5 + FILE_ENTRY_SIZE];
             for _ in 0..file_entry_i {
-                let (result, _) = reader
-                    .read_slice(&mut buffer, FILE_ENTRY_SIZE)
-                    .await
-                    .map_err(VLFSError::FlashError)?;
-                writer
-                    .extend_from_slice(result)
-                    .await
-                    .map_err(VLFSError::FlashError)?;
+                let file_entry = builder
+                    .read_next()
+                    .await?
+                    .ok_or(VLFSError::CorruptedFileSystem)?;
+                builder.write(&file_entry).await?;
             }
 
-            reader.set_address(reader.get_address() + FILE_ENTRY_SIZE as u32);
+            // skip the entry to be deleted
+            builder.read_next().await?;
 
             // copy entries after the deleted entry
-            // TODO optimize this, we can read multiple file entries at once at the expense of more memory
-            for _ in file_entry_i + 1..at.footer.file_count {
-                let (result, _) = reader
-                    .read_slice(&mut buffer, FILE_ENTRY_SIZE)
-                    .await
-                    .map_err(VLFSError::FlashError)?;
-                writer
-                    .extend_from_slice(result)
-                    .await
-                    .map_err(VLFSError::FlashError)?;
+            while let Some(file_entry) = builder.read_next().await? {
+                builder.write(&file_entry).await?;
             }
 
-            // write crc
-            writer
-                .extend_from_u32(writer.get_crc())
-                .await
-                .map_err(VLFSError::FlashError)?;
-
-            writer.flush().await.map_err(VLFSError::FlashError)?;
-
-            at.footer.file_count -= 1;
+            builder.commit().await?;
             return Ok(());
         } else {
             return Err(VLFSError::FileDoesNotExist);
         }
     }
 
-    // FIXME
     pub(super) async fn set_file_first_sector_index(
         &self,
         file_id: FileID,
         first_sector_index: Option<u16>,
     ) -> Result<(), VLFSError<F::Error>> {
-        if let Some((mut file_entry, file_entry_i)) = self.find_file_entry(file_id).await? {
-            let mut at = self.allocation_table.write().await;
-            let old_at_address = at.address();
-            at.increment_position();
-            let at_address = at.address();
-
-            let mut flash = self.flash.write().await;
-            flash
-                .erase_block_32kib(at_address)
-                .await
-                .map_err(VLFSError::FlashError)?;
-            drop(flash);
-
-            let mut crc = self.crc.lock().await;
-            let mut dummy_crc = DummyCrc {};
-            let mut reader_flash = &self.flash;
-            let mut writer_flash = &self.flash;
-            let mut reader = FlashReader::new(
-                old_at_address + ALLOC_TABLE_HEADER_SIZE as u32,
-                &mut reader_flash,
-                &mut dummy_crc,
-            );
-            let mut writer = FlashWriter::new(at_address, &mut writer_flash, &mut crc);
-
-            // write header to the new allocation table
-            writer
-                .extend_from_slice(&at.header.serialize())
-                .await
-                .map_err(VLFSError::FlashError)?;
+        if let Some((_, file_entry_i)) = self.find_file_entry(file_id).await? {
+            let mut builder = self.new_at_builder().await?;
 
             // copy entries before the updated entry
-            // TODO optimize this, we can read multiple file entries at once at the expense of more memory
-            let mut buffer = [0u8; 5 + FILE_ENTRY_SIZE];
             for _ in 0..file_entry_i {
-                let (result, _) = reader
-                    .read_slice(&mut buffer, FILE_ENTRY_SIZE)
-                    .await
-                    .map_err(VLFSError::FlashError)?;
-                writer
-                    .extend_from_slice(result)
-                    .await
-                    .map_err(VLFSError::FlashError)?;
+                let file_entry = builder
+                    .read_next()
+                    .await?
+                    .ok_or(VLFSError::CorruptedFileSystem)?;
+                builder.write(&file_entry).await?;
             }
 
             // write updated file entry
+            let mut file_entry = builder
+                .read_next()
+                .await?
+                .ok_or(VLFSError::CorruptedFileSystem)?;
             file_entry.first_sector_index = first_sector_index;
-            writer
-                .extend_from_slice(&file_entry.serialize())
-                .await
-                .map_err(VLFSError::FlashError)?;
-            reader.set_address(reader.get_address() + FILE_ENTRY_SIZE as u32);
+            builder.write(&file_entry).await?;
 
-            // copy entries after the updated entry
-            // TODO optimize this, we can read multiple file entries at once at the expense of more memory
-            for _ in file_entry_i + 1..at.footer.file_count {
-                let (result, _) = reader
-                    .read_slice(&mut buffer, FILE_ENTRY_SIZE)
-                    .await
-                    .map_err(VLFSError::FlashError)?;
-                writer
-                    .extend_from_slice(result)
-                    .await
-                    .map_err(VLFSError::FlashError)?;
+            // copy entries after the deleted entry
+            while let Some(file_entry) = builder.read_next().await? {
+                builder.write(&file_entry).await?;
             }
 
-            // write crc
-            writer
-                .extend_from_u32(writer.get_crc())
-                .await
-                .map_err(VLFSError::FlashError)?;
-
-            writer.flush().await.map_err(VLFSError::FlashError)?;
+            builder.commit().await?;
 
             return Ok(());
         } else {
@@ -421,72 +326,18 @@ where
         }
     }
 
-    // FIXME
     pub async fn create_file(&self, file_type: FileType) -> Result<FileEntry, VLFSError<F::Error>> {
         log_trace!("Creating file with type: {:?}", file_type);
-        let mut at = self.allocation_table.write().await;
-        log_trace!("Aquired allocation table write lock");
-        at.footer.max_file_id.increment();
-        let old_at_address = at.address();
-        at.increment_position();
-        at.footer.file_count += 1;
-        let at_address = at.address();
-        let file_id = at.footer.max_file_id;
+        let mut builder = self.new_at_builder().await?;
 
-        let mut flash = self.flash.write().await;
-        flash
-            .erase_block_32kib(at_address)
-            .await
-            .map_err(VLFSError::FlashError)?;
-        drop(flash);
-
-        let mut crc = self.crc.lock().await;
-        let mut dummy_crc = DummyCrc {};
-        let mut reader_flash = &self.flash;
-        let mut writer_flash = &self.flash;
-        let mut reader = FlashReader::new(
-            old_at_address + ALLOC_TABLE_HEADER_SIZE as u32,
-            &mut reader_flash,
-            &mut dummy_crc,
-        );
-        let mut writer = FlashWriter::new(at_address, &mut writer_flash, &mut crc);
-
-        // write header to the new allocation table
-        writer
-            .extend_from_slice(&at.header.serialize())
-            .await
-            .map_err(VLFSError::FlashError)?;
-
-        // copy existing file entries
-        // TODO optimize this, we can read multiple file entries at once at the expense of more memory
-        let mut buffer = [0u8; 5 + FILE_ENTRY_SIZE];
-        for _ in 0..at.footer.file_count - 1 {
-            let (result, _) = reader
-                .read_slice(&mut buffer, FILE_ENTRY_SIZE)
-                .await
-                .map_err(VLFSError::FlashError)?;
-            writer
-                .extend_from_slice(result)
-                .await
-                .map_err(VLFSError::FlashError)?;
+        while let Some(file_entry) = builder.read_next().await? {
+            builder.write(&file_entry).await?;
         }
 
-        // write new file entry
-        let file_entry = FileEntry::new(file_id, file_type);
-        writer
-            .extend_from_slice(&file_entry.serialize())
-            .await
-            .map_err(VLFSError::FlashError)?;
+        let file_entry = builder.write_new_file(file_type).await?;
+        builder.commit().await?;
 
-        // write crc
-        writer
-            .extend_from_u32(writer.get_crc())
-            .await
-            .map_err(VLFSError::FlashError)?;
-
-        writer.flush().await.map_err(VLFSError::FlashError)?;
-
-        log_info!("{:?} created, {:?}", &file_entry, file_entry.serialize());
+        log_info!("{:?} created", &file_entry);
         Ok(file_entry)
     }
 
@@ -576,85 +427,7 @@ where
         Ok(())
     }
 
-    pub async fn dangerously_modify_allocation_table<'a, FN, R, T>(
-        &'a self,
-        op: FN,
-    ) -> Result<T, VLFSError<F::Error>>
-    where
-        FN: for<'b> FnOnce(
-            &'b mut FileEntriesReader<'a, F, C>,
-            &'b mut FileEntriesWriter<'a, F, C>,
-        ) -> R,
-        R: Future<Output = Result<T, VLFSError<F::Error>>>,
-    {
-        let mut at = self.allocation_table.write().await;
-        let old_at_address = at.address();
-        at.increment_position();
-        let at_address = at.address();
-
-        let mut flash = self.flash.write().await;
-        flash
-            .erase_block_32kib(at_address)
-            .await
-            .map_err(VLFSError::FlashError)?;
-        drop(flash);
-
-        let mut reader_flash = &self.flash;
-        let mut writer_flash = &self.flash;
-
-        let mut crc = self.crc.lock().await;
-        let mut dummy_crc = DummyCrc {};
-
-        let mut reader = FlashReader::new(
-            old_at_address + ALLOC_TABLE_HEADER_SIZE as u32,
-            &mut reader_flash,
-            &mut dummy_crc,
-        );
-        let mut writer = FlashWriter::new(at_address, &mut writer_flash, &mut crc);
-
-        let mut reader = FileEntriesReader { fs: self };
-        let mut writer = FileEntriesWriter { fs: self };
-
-        op(&mut reader, &mut writer).await?;
-
-        todo!()
-    }
-}
-pub struct FileEntriesReader<'a, F, C>
-where
-    F: Flash,
-    C: Crc,
-{
-    fs: &'a VLFS<F, C>,
-}
-
-impl<'a, F, C> FileEntriesReader<'a, F, C>
-where
-    F: Flash,
-    C: Crc,
-{
-    pub async fn next(&mut self) -> Result<Option<FileEntry>, VLFSError<F::Error>> {
-        todo!()
-    }
-}
-
-pub struct FileEntriesWriter<'a, F, C>
-where
-    F: Flash,
-    C: Crc,
-{
-    fs: &'a VLFS<F, C>,
-}
-
-impl<'a, F, C> FileEntriesWriter<'a, F, C>
-where
-    F: Flash,
-    C: Crc,
-{
-    pub async fn write(
-        &mut self,
-        file_entry: &FileEntry,
-    ) -> Result<Option<FileEntry>, VLFSError<F::Error>> {
-        todo!()
+    pub async fn new_at_builder(&self) -> Result<ATBuilder<F>, VLFSError<F::Error>> {
+        ATBuilder::new(self).await
     }
 }

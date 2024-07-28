@@ -4,6 +4,7 @@
 #![feature(try_blocks)]
 #![feature(assert_matches)]
 #![feature(is_sorted)]
+#![feature(async_closure)]
 
 mod fmt;
 
