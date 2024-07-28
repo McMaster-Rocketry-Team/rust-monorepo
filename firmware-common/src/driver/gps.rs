@@ -67,9 +67,7 @@ impl BitArraySerializable for GPSData {
         writer.write(self.vdop);
         writer.write(self.pdop);
     }
-}
 
-impl BitArrayDeserializable for GPSData {
     fn deserialize<const N: usize>(reader: &mut BitSliceReader<N>) -> Self {
         GPSData {
             timestamp: reader.read().unwrap(),
@@ -83,13 +81,13 @@ impl BitArrayDeserializable for GPSData {
     }
 
     fn len_bits() -> usize {
-        <Option<i64> as BitSliceRWable>::len_bits()
-            + <Option<(f64, f64)> as BitSliceRWable>::len_bits()
-            + <Option<f32> as BitSliceRWable>::len_bits()
+        <Option<i64> as BitSlicePrimitive>::len_bits()
+            + <Option<(f64, f64)> as BitSlicePrimitive>::len_bits()
+            + <Option<f32> as BitSlicePrimitive>::len_bits()
             + u8::len_bits()
-            + <Option<f32> as BitSliceRWable>::len_bits()
-            + <Option<f32> as BitSliceRWable>::len_bits()
-            + <Option<f32> as BitSliceRWable>::len_bits()
+            + <Option<f32> as BitSlicePrimitive>::len_bits()
+            + <Option<f32> as BitSlicePrimitive>::len_bits()
+            + <Option<f32> as BitSlicePrimitive>::len_bits()
     }
 }
 
@@ -124,9 +122,7 @@ impl BitArraySerializable for GPSDataDelta {
         writer.write(self.vdop);
         writer.write(self.pdop);
     }
-}
 
-impl BitArrayDeserializable for GPSDataDelta {
     fn deserialize<const N: usize>(reader: &mut BitSliceReader<N>) -> Self {
         Self {
             timestamp: reader.read().unwrap(),

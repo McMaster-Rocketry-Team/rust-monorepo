@@ -1,7 +1,4 @@
-use super::{
-    bitvec_serialize_traits::BitSliceRWable,
-    SerializeBitOrder,
-};
+use super::{bitslice_primitive::BitSlicePrimitive, SerializeBitOrder};
 use bitvec::prelude::*;
 use core::future::Future;
 
@@ -11,7 +8,7 @@ pub struct BitSliceWriter<const N: usize> {
 }
 
 impl<const N: usize> BitSliceWriter<N> {
-    pub fn write<T: BitSliceRWable>(&mut self, value: T) {
+    pub fn write<T: BitSlicePrimitive>(&mut self, value: T) {
         value.write(&mut self.data[self.len..]);
         self.len += T::len_bits();
     }
@@ -52,10 +49,6 @@ impl<const N: usize> Default for BitSliceWriter<N> {
             data: Default::default(),
         }
     }
-}
-
-pub trait BitArraySerializable {
-    fn serialize<const N: usize>(&self, writer: &mut BitSliceWriter<N>);
 }
 
 pub struct BitSliceReader<const N: usize> {
@@ -124,7 +117,7 @@ impl<const N: usize> BitSliceReader<N> {
         Ok(read_len_bytes)
     }
 
-    pub fn read<T: BitSliceRWable>(&mut self) -> Option<T> {
+    pub fn read<T: BitSlicePrimitive>(&mut self) -> Option<T> {
         if self.len_bits() < T::len_bits() {
             return None;
         }
@@ -138,7 +131,9 @@ impl<const N: usize> BitSliceReader<N> {
     }
 }
 
-pub trait BitArrayDeserializable {
+pub trait BitArraySerializable {
+    fn serialize<const N: usize>(&self, writer: &mut BitSliceWriter<N>);
+
     fn deserialize<const N: usize>(reader: &mut BitSliceReader<N>) -> Self;
 
     fn len_bits() -> usize;

@@ -6,14 +6,13 @@ use crate::{
 };
 
 use super::{
-    delta_logger::{bitslice_io::{BitArrayDeserializable, BitArraySerializable}, delta_factory::Deltable},
+    delta_logger::{bitslice_serialize::BitArraySerializable, delta_factory::Deltable},
     unix_clock::UnixClock,
 };
 
 pub trait SensorData:
     BitArraySerializable
-    + BitArrayDeserializable
-    + Deltable<DeltaType: BitArraySerializable + BitArrayDeserializable>
+    + Deltable<DeltaType: BitArraySerializable>
     + defmt::Format
     + core::fmt::Debug
     + Clone

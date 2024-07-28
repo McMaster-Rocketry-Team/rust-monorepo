@@ -22,9 +22,7 @@ impl BitArraySerializable for BaroData {
         writer.write(self.temperature);
         writer.write(self.pressure);
     }
-}
 
-impl BitArrayDeserializable for BaroData {
     fn deserialize<const N: usize>(reader: &mut BitSliceReader<N>) -> Self {
         Self {
             temperature: reader.read().unwrap(),
@@ -53,9 +51,7 @@ impl BitArraySerializable for BaroDataDelta {
         writer.write(self.temperature);
         writer.write(self.pressure);
     }
-}
 
-impl BitArrayDeserializable for BaroDataDelta {
     fn deserialize<const N: usize>(reader: &mut BitSliceReader<N>) -> Self {
         Self {
             temperature: reader.read().unwrap(),

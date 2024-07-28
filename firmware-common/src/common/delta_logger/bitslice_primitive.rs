@@ -4,7 +4,7 @@ use bitvec::prelude::*;
 
 use super::SerializeBitOrder;
 
-pub trait BitSliceRWable {
+pub trait BitSlicePrimitive {
     fn write(self, slice: &mut BitSlice<u8, SerializeBitOrder>);
 
     fn read(slice: &BitSlice<u8, SerializeBitOrder>) -> Self;
@@ -12,7 +12,7 @@ pub trait BitSliceRWable {
     fn len_bits() -> usize;
 }
 
-impl BitSliceRWable for bool {
+impl BitSlicePrimitive for bool {
     fn write(self, slice: &mut BitSlice<u8, SerializeBitOrder>) {
         slice.set(0, self);
     }
@@ -26,7 +26,7 @@ impl BitSliceRWable for bool {
     }
 }
 
-impl BitSliceRWable for u8 {
+impl BitSlicePrimitive for u8 {
     fn write(self, slice: &mut BitSlice<u8, SerializeBitOrder>) {
         let data = [self];
         let data: &BitSlice<u8, SerializeBitOrder> = data.view_bits();
@@ -43,7 +43,7 @@ impl BitSliceRWable for u8 {
     }
 }
 
-impl BitSliceRWable for i64 {
+impl BitSlicePrimitive for i64 {
     fn write(self, slice: &mut BitSlice<u8, SerializeBitOrder>) {
         let data = self.to_le_bytes();
         let data: &BitSlice<u8, SerializeBitOrder> = data.view_bits();
@@ -60,7 +60,7 @@ impl BitSliceRWable for i64 {
     }
 }
 
-impl BitSliceRWable for f32 {
+impl BitSlicePrimitive for f32 {
     fn write(self, slice: &mut BitSlice<u8, SerializeBitOrder>) {
         let data = self.to_le_bytes();
         let data: &BitSlice<u8, SerializeBitOrder> = data.view_bits();
@@ -77,7 +77,7 @@ impl BitSliceRWable for f32 {
     }
 }
 
-impl BitSliceRWable for f64 {
+impl BitSlicePrimitive for f64 {
     fn write(self, slice: &mut BitSlice<u8, SerializeBitOrder>) {
         let data = self.to_le_bytes();
         let data: &BitSlice<u8, SerializeBitOrder> = data.view_bits();
@@ -94,7 +94,7 @@ impl BitSliceRWable for f64 {
     }
 }
 
-impl<T:BitSliceRWable> BitSliceRWable for (T, T) {
+impl<T:BitSlicePrimitive> BitSlicePrimitive for (T, T) {
     fn write(self, slice: &mut BitSlice<u8, SerializeBitOrder>) {
         self.0.write(&mut slice[..T::len_bits()]);
         self.1.write(&mut slice[T::len_bits()..]);
@@ -112,7 +112,7 @@ impl<T:BitSliceRWable> BitSliceRWable for (T, T) {
     }
 }
 
-impl<T: BitSliceRWable> BitSliceRWable for Option<T> {
+impl<T: BitSlicePrimitive> BitSlicePrimitive for Option<T> {
     fn write(self, slice: &mut BitSlice<u8, SerializeBitOrder>) {
         if let Some(value) = self {
             slice.set(0, true);

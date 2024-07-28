@@ -4,11 +4,11 @@ use crate::common::delta_logger::SerializeBitOrder;
 use bitvec::prelude::*;
 use packed_struct::prelude::*;
 
-use super::delta_logger::bitvec_serialize_traits::BitSliceRWable;
+use super::delta_logger::bitslice_primitive::BitSlicePrimitive;
 
 pub trait VariableIntTrait {
     type Base;
-    type Packed: BitSliceRWable + Debug + Clone;
+    type Packed: BitSlicePrimitive + Debug + Clone;
 }
 
 pub struct VariableInt<const BITS: usize>;
@@ -20,7 +20,7 @@ macro_rules! impl_variable_int {
             type Packed = Integer<$base_type, packed_bits::Bits<$bits>>;
         }
 
-        impl BitSliceRWable for Integer<$base_type, packed_bits::Bits<$bits>> {
+        impl BitSlicePrimitive for Integer<$base_type, packed_bits::Bits<$bits>> {
             fn write(self, slice: &mut BitSlice<u8, SerializeBitOrder>) {
                 let bits = self.view_bits::<SerializeBitOrder>();
                 let bits = unsafe { bits.align_to::<u8>().1 };
