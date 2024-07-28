@@ -1,19 +1,28 @@
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 
 use crate::{
-    flash::flash_wrapper::FlashWrapper, utils::rwlock::RwLockWriteGuard, Crc, FileEntry, Flash,
-    VLFSError,
+    flash::flash_wrapper::FlashWrapper, utils::rwlock::RwLockWriteGuard, Crc, FileEntry,
+    FileWriter, Flash, VLFSError,
 };
 
 use super::{
     allocation_table::{
         AllocationTable, AllocationTableFooter, ALLOC_TABLE_HEADER_SIZE, FILE_ENTRY_SIZE,
-    }, FileID, FileType, VLFS
+    },
+    FileID, FileType, VLFS,
 };
 
-pub struct ATBuilder<'a, F: Flash> {
+/// This struct does not check if the new allocation table is valid.
+/// All the files entries should have increasing file ids.
+/// It is possible to create more file entries than fit in the allocation table.
+/// TODO: buffer reads
+pub struct ATBuilder<'a, 'b, F: Flash, C: Crc>
+where
+    'b: 'a,
+{
     at: RwLockWriteGuard<'a, NoopRawMutex, AllocationTable, 10>,
     flash: RwLockWriteGuard<'a, NoopRawMutex, FlashWrapper<F>, 10>,
+    fs: &'b VLFS<F, C>,
 
     read_address: u32,
     read_buffer: [u8; 5 + FILE_ENTRY_SIZE],
@@ -29,8 +38,11 @@ pub struct ATBuilder<'a, F: Flash> {
     finished: bool,
 }
 
-impl<'a, F: Flash> ATBuilder<'a, F> {
-    pub(crate) async fn new(fs: &'a VLFS<F, impl Crc>) -> Result<Self, VLFSError<F::Error>> {
+impl<'a, 'b, F: Flash, C: Crc> ATBuilder<'a, 'b, F, C>
+where
+    'b: 'a,
+{
+    pub(crate) async fn new(fs: &'b VLFS<F, C>) -> Result<Self, VLFSError<F::Error>> {
         let mut at = fs.allocation_table.write().await;
         let max_file_id = at.footer.max_file_id;
         let curr_at_address = at.address();
@@ -42,6 +54,8 @@ impl<'a, F: Flash> ATBuilder<'a, F> {
         let mut builder = Self {
             at,
             flash,
+            fs,
+
             read_address: curr_at_address + ALLOC_TABLE_HEADER_SIZE as u32,
             read_buffer: [0u8; 5 + FILE_ENTRY_SIZE],
             read_finished: false,
@@ -137,14 +151,29 @@ impl<'a, F: Flash> ATBuilder<'a, F> {
         Ok(())
     }
 
-    pub async fn write_new_file(&mut self, file_type: FileType) -> Result<FileEntry, VLFSError<F::Error>> {
+    pub async fn write_new_file(
+        &mut self,
+        file_type: FileType,
+    ) -> Result<FileEntry, VLFSError<F::Error>> {
         let file_entry = FileEntry::new(self.get_new_file_id(), file_type);
         self.write(&file_entry).await?;
         Ok(file_entry)
     }
 
+    pub async fn write_new_file_and_open_for_write(
+        &mut self,
+        file_type: FileType,
+    ) -> Result<FileWriter<'b, F, C>, VLFSError<F::Error>> {
+        let mut file_entry = FileEntry::new(self.get_new_file_id(), file_type);
+        let new_sector_index = self.fs.claim_avaliable_sector_and_erase().await?;
+        file_entry.first_sector_index = Some(new_sector_index);
+        self.write(&file_entry).await?;
+
+        Ok(FileWriter::new(self.fs, new_sector_index, file_entry.id))
+    }
+
     pub fn get_new_file_id(&mut self) -> FileID {
-        self.max_file_id.0 +=1;
+        self.max_file_id.0 += 1;
         self.max_file_id
     }
 
@@ -171,7 +200,10 @@ impl<'a, F: Flash> ATBuilder<'a, F> {
     }
 }
 
-impl<'a, F: Flash> Drop for ATBuilder<'a, F> {
+impl<'a, 'b, F: Flash, C: Crc> Drop for ATBuilder<'a, 'b, F, C>
+where
+    'b: 'a,
+{
     fn drop(&mut self) {
         if !self.finished {
             log_panic!("FATBuilder dropped without calling commit()");

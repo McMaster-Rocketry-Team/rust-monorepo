@@ -2,7 +2,7 @@ use at_builder::ATBuilder;
 
 use crate::{
     utils::flash_io::{FlashReader, FlashWriter},
-    AsyncReader, AsyncWriter, DummyCrc,
+    AsyncReader, AsyncWriter, DummyCrc, FileWriter,
 };
 
 use super::{
@@ -341,6 +341,21 @@ where
         Ok(file_entry)
     }
 
+    pub async fn create_file_and_open_for_write(&self, file_type: FileType) -> Result<FileWriter<F, C>, VLFSError<F::Error>> {
+        log_trace!("Creating file with type: {:?}", file_type);
+        let mut builder = self.new_at_builder().await?;
+
+        while let Some(file_entry) = builder.read_next().await? {
+            builder.write(&file_entry).await?;
+        }
+
+        let file_writer = builder.write_new_file_and_open_for_write(file_type).await?;
+        builder.commit().await?;
+
+        log_info!("file with type {:?} created", file_type);
+        Ok(file_writer)
+    }
+
     // return true: found a valid allocation table
     pub(super) async fn read_latest_allocation_table(&self) -> Result<bool, VLFSError<F::Error>> {
         let mut found_valid_table = false;
@@ -427,7 +442,7 @@ where
         Ok(())
     }
 
-    pub async fn new_at_builder(&self) -> Result<ATBuilder<F>, VLFSError<F::Error>> {
+    pub async fn new_at_builder(&self) -> Result<ATBuilder<F, C>, VLFSError<F::Error>> {
         ATBuilder::new(self).await
     }
 }

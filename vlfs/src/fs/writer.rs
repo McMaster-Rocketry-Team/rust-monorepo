@@ -139,7 +139,7 @@ where
     F: Flash,
     C: Crc,
 {
-    fn new(vlfs: &'a VLFS<F, C>, initial_sector_index: u16, file_id: FileID) -> Self {
+    pub(crate) fn new(vlfs: &'a VLFS<F, C>, initial_sector_index: u16, file_id: FileID) -> Self {
         FileWriter {
             vlfs,
             buffer: [0xFFu8; 5 + PAGE_SIZE],
