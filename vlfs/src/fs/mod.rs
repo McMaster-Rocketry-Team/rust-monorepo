@@ -16,8 +16,8 @@ use heapless::Vec;
 
 use crate::utils::rwlock::RwLock;
 
-pub mod at_builder;
 pub mod allocation_table;
+pub mod at_builder;
 pub mod error;
 pub mod hamming;
 pub mod init;
@@ -27,7 +27,7 @@ pub mod sector_management;
 pub mod utils;
 pub mod writer;
 
-const VLFS_VERSION: u32 = 18;
+const VLFS_VERSION: u32 = 19;
 const SECTORS_COUNT: usize = 16384; // for 512M-bit flash (W25Q512JV)
 const SECTOR_SIZE: usize = 4096;
 const PAGE_SIZE: usize = 256;
@@ -45,12 +45,6 @@ const DATA_REGION_SECTORS: usize = SECTORS_COUNT - ALLOC_TABLES_SECTORS_USED; //
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, defmt::Format)]
 pub struct FileID(pub u64);
-
-impl FileID {
-    pub(crate) fn increment(&mut self) {
-        self.0 += 1;
-    }
-}
 
 impl From<u64> for FileID {
     fn from(v: u64) -> Self {
@@ -132,22 +126,24 @@ where
         Ok(())
     }
 
-    // TODO optimization
-    // Right now VLFS writes the entire allocation table for every file deleted,
-    // This is not necessary, we can remove all the files in one pass.
     pub async fn remove_files(
         &self,
-        predicate: impl FnMut(&FileEntry) -> bool,
+        mut predicate: impl FnMut(&FileEntry) -> bool,
     ) -> Result<u16, VLFSError<F::Error>> {
-        let mut iter = self.concurrent_files_iter_filter(predicate).await;
+        let mut builder = self.new_at_builder().await?;
+
         let mut unremoved_open_files = 0u16;
-        while let Some(file_entry) = iter.next().await? {
-            if self.is_file_opened(file_entry.id).await {
-                unremoved_open_files += 1;
+        while let Some(file_entry) = builder.read_next().await? {
+            if predicate(&file_entry) {
+                if builder.is_file_opened(file_entry.id) {
+                    unremoved_open_files += 1;
+                    builder.write(&file_entry).await?;
+                }
             } else {
-                self.remove_file(file_entry.id).await?;
+                builder.write(&file_entry).await?;
             }
         }
+
         Ok(unremoved_open_files)
     }
 

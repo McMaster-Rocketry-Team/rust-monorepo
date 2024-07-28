@@ -9,7 +9,7 @@ pub trait Deltable: Sized + Clone {
 }
 
 pub struct DeltaFactory<T: Deltable> {
-    last_value: Option<T>,
+    pub last_value: Option<T>,
 }
 
 impl<T: Deltable> DeltaFactory<T> {

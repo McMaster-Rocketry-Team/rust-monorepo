@@ -15,6 +15,7 @@ use super::{
 /// This struct does not check if the new allocation table is valid.
 /// All the files entries should have increasing file ids.
 /// It is possible to create more file entries than fit in the allocation table.
+/// It is possible to delete opened files.
 /// TODO: buffer reads
 pub struct ATBuilder<'a, 'b, F: Flash, C: Crc>
 where
@@ -186,6 +187,10 @@ where
             .await
             .map_err(VLFSError::FlashError)?;
         Ok(())
+    }
+
+    pub fn is_file_opened(&self, file_id: FileID) -> bool {
+        self.at.opened_files.iter().any(|&id| id == file_id)
     }
 
     pub async fn commit(mut self) -> Result<(), VLFSError<F::Error>> {

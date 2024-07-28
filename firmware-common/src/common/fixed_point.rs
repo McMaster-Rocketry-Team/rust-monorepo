@@ -45,6 +45,8 @@ pub trait F32FixedPointFactory: Clone {
     fn to_fixed_point(value: f32) -> Option<<Self::VI as VariableIntTrait>::Packed>;
     fn to_fixed_point_capped(value: f32) -> <Self::VI as VariableIntTrait>::Packed;
     fn to_float(value: <Self::VI as VariableIntTrait>::Packed) -> f32;
+    fn min() -> f32;
+    fn max() -> f32;
 }
 
 pub trait F64FixedPointFactory: Clone {
@@ -52,6 +54,8 @@ pub trait F64FixedPointFactory: Clone {
     fn to_fixed_point(value: f64) -> Option<<Self::VI as VariableIntTrait>::Packed>;
     fn to_fixed_point_capped(value: f64) -> <Self::VI as VariableIntTrait>::Packed;
     fn to_float(value: <Self::VI as VariableIntTrait>::Packed) -> f64;
+    fn min() -> f64;
+    fn max() -> f64;
 }
 
 #[macro_export]
@@ -103,6 +107,7 @@ macro_rules! fixed_point_factory2 {
                             .into(),
                     )
                 }
+
                 fn to_fixed_point_capped(value: $source) -> [<$name Packed>] {
                     let value = if value < calculate_required_bits::calculate_min!($mode, $min, $max, $max_error) as $source{
                         calculate_required_bits::calculate_min!($mode, $min, $max, $max_error)as $source
@@ -113,12 +118,21 @@ macro_rules! fixed_point_factory2 {
                     };
                     return Self::to_fixed_point(value).unwrap();
                 }
+
                 fn to_float(value: [<$name Packed>]) -> $source {
                     let value: [<$name Base>] = value.into();
                     let value = value as $source;
                     let value = value / Self::_target_max() as $source;
                     let value = value * (calculate_required_bits::calculate_max!($mode, $min, $max, $max_error) as $source- calculate_required_bits::calculate_min!($mode, $min, $max, $max_error)as $source);
                     value + calculate_required_bits::calculate_min!($mode, $min, $max, $max_error)as $source
+                }
+
+                fn max() -> $source {
+                    calculate_required_bits::calculate_max!($mode, $min, $max, $max_error) as $source
+                }
+
+                fn min() -> $source {
+                    calculate_required_bits::calculate_min!($mode, $min, $max, $max_error) as $source
                 }
             }
 

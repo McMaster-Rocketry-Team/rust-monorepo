@@ -40,29 +40,33 @@ impl<F: F64FixedPointFactory> Deltable for Timestamp<F> {
 #[derive(Debug, Clone)]
 struct TimestampDelta<F: F64FixedPointFactory>(<F::VI as VariableIntTrait>::Packed);
 
-pub struct DeltaLogger<TM, T, W, F>
+/// If the readings are closer than the minimum value supported by the
+/// fixed point factory, they will be ignored
+pub struct DeltaLogger<TM, T, W, FF>
 where
     TM: TimestampType,
     T: SensorReading<TM>,
     W: embedded_io_async::Write,
-    F: F64FixedPointFactory,
+    FF: F64FixedPointFactory,
     [(); size_of::<T::Data>() + 10]:,
 {
     factory: DeltaFactory<T::Data>,
-    timestamp_factory: DeltaFactory<Timestamp<F>>,
+    timestamp_factory: DeltaFactory<Timestamp<FF>>,
     writer: W,
     bit_writer: BitSliceWriter<{ size_of::<T::Data>() + 10 }>,
 }
 
-impl<TM, T, W, F> DeltaLogger<TM, T, W, F>
+impl<TM, T, W, FF> DeltaLogger<TM, T, W, FF>
 where
     TM: TimestampType,
     T: SensorReading<TM>,
     W: embedded_io_async::Write,
-    F: F64FixedPointFactory,
+    FF: F64FixedPointFactory,
     [(); size_of::<T::Data>() + 10]:,
 {
-    pub fn new(writer: W) -> Self {
+    pub fn new(
+        writer: W,
+    ) -> Self {
         Self {
             factory: DeltaFactory::new(),
             timestamp_factory: DeltaFactory::new(),
@@ -76,7 +80,15 @@ where
     // 01 -> delta timestamp, full data
     // 10 -> end of byte
     // 11 -> full timestamp, full data
-    pub async fn log(&mut self, reading: T) -> Result<(), W::Error> {
+    /// returns true if the reading was logged
+    pub async fn log(&mut self, reading: T) -> Result<bool, W::Error> {
+        if let Some(last_timestamp) = &self.timestamp_factory.last_value{
+            let interval = reading.get_timestamp() - last_timestamp.0;
+            if interval < FF::min(){
+                return Ok(false);
+            }
+        }
+
         match self.timestamp_factory.push(reading.get_timestamp().into()) {
             Either::Left(full_timestamp) => {
                 self.bit_writer.write(true);
@@ -106,7 +118,7 @@ where
             .await?;
         self.bit_writer.clear_full_byte_slice();
 
-        Ok(())
+        Ok(true)
     }
 
     pub async fn flush(&mut self) -> Result<(), W::Error> {
@@ -120,21 +132,22 @@ where
         Ok(())
     }
 
+    /// You need to call flush before calling this method
     pub fn into_writer(self) -> W {
         self.writer
     }
 }
 
-pub struct DeltaLoggerReader<TM, T, R, F>
+pub struct DeltaLoggerReader<TM, T, R, FF>
 where
     TM: TimestampType,
     T: SensorReading<TM>,
     R: embedded_io_async::Read,
-    F: F64FixedPointFactory,
+    FF: F64FixedPointFactory,
     [(); size_of::<T::Data>() + 10]:,
 {
     factory: UnDeltaFactory<T::Data>,
-    timestamp_factory: UnDeltaFactory<Timestamp<F>>,
+    timestamp_factory: UnDeltaFactory<Timestamp<FF>>,
     reader: R,
     bit_reader: BitSliceReader<{ size_of::<T::Data>() + 10 }>,
 }

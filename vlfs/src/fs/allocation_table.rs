@@ -257,6 +257,8 @@ where
         }
     }
 
+    // FIXME when one of the builder methods throw an error and delete_file_entry returns,
+    // builder will be dropped without calling commit(), which panics.
     pub(super) async fn delete_file_entry(
         &self,
         file_id: FileID,
