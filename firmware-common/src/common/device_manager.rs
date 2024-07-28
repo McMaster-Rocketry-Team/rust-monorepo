@@ -3,29 +3,12 @@ use lora_phy::{mod_traits::RadioKind, LoRa};
 use vlfs::{Crc, Flash, VLFS};
 
 use crate::driver::{
-    adc::{Ampere, Volt, ADC},
-    arming::HardwareArming,
-    barometer::Barometer,
-    buzzer::Buzzer,
-    camera::Camera,
-    can_bus::SplitableCanBus,
-    clock::Clock,
-    debugger::Debugger,
-    delay::Delay,
-    gps::{GPSLocation, GPS, GPSPPS},
-    imu::IMU,
-    indicator::Indicator,
-    mag::Magnetometer,
-    pyro::{Continuity, PyroCtrl},
-    rng::RNG,
-    serial::SplitableSerial,
-    sys_reset::SysReset,
-    usb::SplitableUSB,
+    adc::{Ampere, Volt, ADC}, arming::HardwareArming, barometer::Barometer, buzzer::Buzzer, camera::Camera, can_bus::SplitableCanBus, clock::Clock, debugger::Debugger, delay::Delay, gps::{GPSData, GPS, GPSPPS}, imu::IMU, indicator::Indicator, mag::Magnetometer, pyro::{Continuity, PyroCtrl}, rng::RNG, serial::SplitableSerial, sys_reset::SysReset, timestamp::BootTimestamp, usb::SplitableUSB
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex, pubsub::PubSubChannel};
 
 use super::{
-    buzzer_queue::BuzzerQueue, indicator_controller::IndicatorController, unix_clock::UnixClock,
+    buzzer_queue::BuzzerQueue, indicator_controller::IndicatorController, sensor_reading::SensorReading, unix_clock::UnixClock
 };
 
 #[allow(dead_code)]
@@ -353,7 +336,7 @@ pub mod prelude {
 
 pub struct SystemServices<'f, 'a, 'b, 'c, DL: Delay, T: Clock, F: Flash, C: Crc> {
     pub(crate) fs: &'f VLFS<F, C>,
-    pub(crate) gps: &'a PubSubChannel::<NoopRawMutex, GPSLocation, 1, 1, 1>,
+    pub(crate) gps: &'a PubSubChannel::<NoopRawMutex, SensorReading<BootTimestamp, GPSData>, 1, 1, 1>,
     pub(crate) delay: DL,
     pub(crate) clock: T,
     pub(crate) unix_clock: UnixClock<'b, T>,

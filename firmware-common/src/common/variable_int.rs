@@ -4,11 +4,11 @@ use crate::common::delta_logger::SerializeBitOrder;
 use bitvec::prelude::*;
 use packed_struct::prelude::*;
 
-use super::delta_logger::bitvec_serialize_traits::{BitSliceWritable, FromBitSlice};
+use super::delta_logger::bitvec_serialize_traits::BitSliceRWable;
 
 pub trait VariableIntTrait {
     type Base;
-    type Packed: BitSliceWritable + FromBitSlice + Debug + Clone;
+    type Packed: BitSliceRWable + Debug + Clone;
 }
 
 pub struct VariableInt<const BITS: usize>;
@@ -20,17 +20,14 @@ macro_rules! impl_variable_int {
             type Packed = Integer<$base_type, packed_bits::Bits<$bits>>;
         }
 
-        impl BitSliceWritable for Integer<$base_type, packed_bits::Bits<$bits>> {
-            fn write(self, slice: &mut BitSlice<u8, SerializeBitOrder>) -> usize {
+        impl BitSliceRWable for Integer<$base_type, packed_bits::Bits<$bits>> {
+            fn write(self, slice: &mut BitSlice<u8, SerializeBitOrder>) {
                 let bits = self.view_bits::<SerializeBitOrder>();
                 let bits = unsafe { bits.align_to::<u8>().1 };
                 (&mut slice[..$bits]).copy_from_bitslice(&bits[..$bits]);
-                $bits
             }
-        }
 
-        impl FromBitSlice for Integer<$base_type, packed_bits::Bits<$bits>> {
-            fn from_bit_slice(slice: &BitSlice<u8, SerializeBitOrder>) -> Self {
+            fn read(slice: &BitSlice<u8, SerializeBitOrder>) -> Self {
                 slice[0..$bits].load_le::<$base_type>().into()
             }
 
@@ -88,7 +85,7 @@ mod test {
         }
         println!("");
 
-        let num = <VariableInt<10> as VariableIntTrait>::Packed::from_bit_slice(arr.as_bitslice());
+        let num = <VariableInt<10> as VariableIntTrait>::Packed::read(arr.as_bitslice());
         assert_eq!(num, 0b1011111111.into());
     }
 }

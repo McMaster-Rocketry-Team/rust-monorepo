@@ -4,7 +4,7 @@ use rkyv::{Archive, Deserialize, Serialize};
 
 use embedded_hal_async::delay::DelayNs;
 
-use crate::{common::{delta_factory::Deltable, unix_clock::UnixClock}, Clock};
+use crate::{common::{delta_logger::delta_factory::Deltable, unix_clock::UnixClock}, Clock};
 
 use super::timestamp::{BootTimestamp, TimestampType, UnixTimestamp};
 

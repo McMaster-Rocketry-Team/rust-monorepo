@@ -5,7 +5,7 @@ use ferraris_calibration::IMUReadingTrait;
 use rkyv::{Archive, Deserialize, Serialize};
 
 use crate::{
-    common::{delta_factory::Deltable, unix_clock::UnixClock},
+    common::{delta_logger::delta_factory::Deltable, unix_clock::UnixClock},
     Clock,
 };
 

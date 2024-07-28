@@ -6,8 +6,7 @@ use crate::{
 };
 
 use super::{
-    delta_factory::Deltable,
-    delta_logger::bitslice_io::{BitArrayDeserializable, BitArraySerializable},
+    delta_logger::{bitslice_io::{BitArrayDeserializable, BitArraySerializable}, delta_factory::Deltable},
     unix_clock::UnixClock,
 };
 

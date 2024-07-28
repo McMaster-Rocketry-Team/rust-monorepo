@@ -1,5 +1,5 @@
 use super::{
-    bitvec_serialize_traits::{BitSliceWritable, FromBitSlice},
+    bitvec_serialize_traits::BitSliceRWable,
     SerializeBitOrder,
 };
 use bitvec::prelude::*;
@@ -11,9 +11,9 @@ pub struct BitSliceWriter<const N: usize> {
 }
 
 impl<const N: usize> BitSliceWriter<N> {
-    pub fn write(&mut self, value: impl BitSliceWritable) {
-        let len = value.write(&mut self.data[self.len..]);
-        self.len += len;
+    pub fn write<T: BitSliceRWable>(&mut self, value: T) {
+        value.write(&mut self.data[self.len..]);
+        self.len += T::len_bits();
     }
 
     /// returns a slice of the full bytes
@@ -124,11 +124,11 @@ impl<const N: usize> BitSliceReader<N> {
         Ok(read_len_bytes)
     }
 
-    pub fn read<T: FromBitSlice>(&mut self) -> Option<T> {
+    pub fn read<T: BitSliceRWable>(&mut self) -> Option<T> {
         if self.len_bits() < T::len_bits() {
             return None;
         }
-        let data = T::from_bit_slice(&self.buffer[self.start..self.end]);
+        let data = T::read(&self.buffer[self.start..self.end]);
         self.start += T::len_bits();
         Some(data)
     }

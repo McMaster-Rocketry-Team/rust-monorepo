@@ -2,7 +2,7 @@ use core::cell::{RefCell, RefMut};
 
 use rkyv::{Archive, Deserialize, Serialize};
 
-use crate::{common::unix_clock::UnixClock, driver::gps::GPSLocation, Clock};
+use crate::{common::unix_clock::UnixClock, driver::gps::GPSData, Clock};
 use embassy_sync::blocking_mutex::{raw::NoopRawMutex, Mutex as BlockingMutex};
 
 use super::packet::VLPDownlinkPacket;
@@ -234,7 +234,7 @@ impl InFlightTelemetryPacket {
 }
 
 pub struct TelemetryPacketBuilderState {
-    pub gps_location: Option<GPSLocation>,
+    pub gps_location: Option<GPSData>,
     pub battery_v: f32,
     pub temperature: f32,
     pub altitude: f32,

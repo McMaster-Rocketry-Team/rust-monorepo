@@ -1,13 +1,16 @@
-use crate::Clock;
+use crate::{common::sensor_reading::SensorReading, Clock};
 
-use super::gps::{GPSLocation, GPS};
+use super::{
+    gps::{GPSData, GPS},
+    timestamp::BootTimestamp,
+};
 use embassy_futures::yield_now;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use embedded_io_async::{Error, Read};
 use heapless::String;
 use nmea::Nmea;
 pub struct UARTGPS {
-    last_location: Signal<NoopRawMutex, GPSLocation>,
+    last_location: Signal<NoopRawMutex, SensorReading<BootTimestamp, GPSData>>,
 }
 
 impl UARTGPS {
@@ -33,8 +36,9 @@ impl UARTGPS {
                             }
 
                             nmea.parse(sentence.as_str()).ok();
+
                             self.last_location
-                                .signal(GPSLocation::from_nmea(&nmea, clock.now_ms()));
+                                .signal(SensorReading::new(clock.now_ms(), (&nmea).into()));
 
                             sentence.clear();
                             for j in (i + 1)..length {
@@ -54,7 +58,9 @@ impl UARTGPS {
 
 impl GPS for &UARTGPS {
     type Error = ();
-    async fn next_location(&mut self) -> Result<GPSLocation, Self::Error> {
+    async fn next_location(
+        &mut self,
+    ) -> Result<SensorReading<BootTimestamp, GPSData>, Self::Error> {
         Ok(self.last_location.wait().await)
     }
 }

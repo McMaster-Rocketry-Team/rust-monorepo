@@ -3,13 +3,10 @@ use core::marker::PhantomData;
 use core::future::Future;
 use embedded_hal_async::delay::DelayNs;
 
-use crate::{
-    common::{
-        delta_factory::Deltable, delta_logger::bitslice_io::{BitArrayDeserializable, BitArraySerializable, BitSliceReader, BitSliceWriter}, fixed_point::F32FixedPointFactory, sensor_reading::{SensorData, SensorReading}
-    },
-    fixed_point_factory_slope,
-};
-use crate::common::delta_logger::bitvec_serialize_traits::FromBitSlice;
+use crate::common::delta_logger::prelude::*;
+use crate::common::fixed_point::F32FixedPointFactory;
+use crate::common::sensor_reading::{SensorData, SensorReading};
+use crate::fixed_point_factory_slope;
 
 use super::timestamp::BootTimestamp;
 
@@ -24,7 +21,6 @@ impl UnitType for Volt {}
 pub struct Ampere;
 
 impl UnitType for Ampere {}
-
 
 #[derive(defmt::Format, Debug, Clone, PartialEq)]
 pub struct ADCData<U: UnitType> {
@@ -103,12 +99,14 @@ impl<U: UnitType> Deltable for ADCData<U> {
     }
 }
 
-impl<U: UnitType> SensorData for ADCData<U>{}
+impl<U: UnitType> SensorData for ADCData<U> {}
 
 pub trait ADC<U: UnitType> {
     type Error: defmt::Format + core::fmt::Debug;
 
-    fn read(&mut self) -> impl Future<Output = Result<SensorReading<BootTimestamp, ADCData<U>>, Self::Error>>;
+    fn read(
+        &mut self,
+    ) -> impl Future<Output = Result<SensorReading<BootTimestamp, ADCData<U>>, Self::Error>>;
 }
 
 pub struct DummyADC<D: DelayNs, U: UnitType> {

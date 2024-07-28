@@ -4,7 +4,6 @@ use either::Either;
 
 use crate::{
     common::{
-        delta_factory::{DeltaFactory, Deltable, UnDeltaFactory},
         fixed_point::F64FixedPointFactory,
         sensor_reading::{SensorData, SensorReading},
         variable_int::VariableIntTrait,
@@ -12,9 +11,10 @@ use crate::{
     driver::timestamp::TimestampType,
 };
 
+use super::delta_factory::{DeltaFactory, Deltable, UnDeltaFactory};
 use super::bitslice_io::{BitArraySerializable, BitSliceReader, BitSliceWriter};
 use crate::common::delta_logger::bitslice_io::BitArrayDeserializable;
-use crate::common::delta_logger::bitvec_serialize_traits::FromBitSlice;
+use crate::common::delta_logger::bitvec_serialize_traits::BitSliceRWable;
 
 #[derive(Debug, Clone)]
 struct Timestamp<F: F64FixedPointFactory>(f64, PhantomData<F>);

@@ -1,6 +1,7 @@
 use rkyv::{Archive, Deserialize, Serialize};
 
-use crate::common::delta_factory::Deltable;
+use crate::common::delta_logger::delta_factory::Deltable;
+
 
 #[derive(defmt::Format, Debug, Clone, Archive, Deserialize, Serialize)]
 pub struct AvionicsState {

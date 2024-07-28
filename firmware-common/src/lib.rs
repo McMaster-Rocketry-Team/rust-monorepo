@@ -11,14 +11,16 @@
 mod fmt;
 
 use common::config_file::ConfigFile;
-use common::device_config::{DeviceConfig, DeviceModeConfig};
 use common::console::rpc::run_rpc_server;
+use common::device_config::{DeviceConfig, DeviceModeConfig};
 use common::device_manager::SystemServices;
 use common::file_types::DEVICE_CONFIG_FILE_TYPE;
 use common::rpc_channel::RpcChannel;
+use common::sensor_reading::SensorReading;
 use common::{buzzer_queue::BuzzerQueueRunner, unix_clock::UnixClockTask};
 use driver::clock::VLFSTimerWrapper;
-use driver::gps::GPSLocation;
+use driver::gps::GPSData;
+use driver::timestamp::BootTimestamp;
 use embassy_futures::yield_now;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::channel::Channel;
@@ -54,8 +56,9 @@ pub async fn init(
     compile_error!("Feature defmt and log are mutually exclusive and cannot be enabled together");
 
     #[cfg(all(feature = "std", feature = "global-allocator"))]
-    compile_error!("Feature std and global-allocator are mutually exclusive and cannot be enabled together");
-
+    compile_error!(
+        "Feature std and global-allocator are mutually exclusive and cannot be enabled together"
+    );
 
     claim_devices!(
         device_manager,
@@ -79,25 +82,30 @@ pub async fn init(
 
     // Start GPS (provides unix time)
     let gps_timestamp_pubsub = PubSubChannel::<NoopRawMutex, i64, 1, 1, 1>::new();
-    let gps_location_pubsub = PubSubChannel::<NoopRawMutex, GPSLocation, 1, 1, 1>::new();
+    let gps_location_pubsub =
+        PubSubChannel::<NoopRawMutex, SensorReading<BootTimestamp, GPSData>, 1, 1, 1>::new();
     let gps_distribution_fut = async {
         loop {
             match gps.next_location().await {
-                Ok(gps_location) => {
-                    if let Some(gps_timestamp) = gps_location.gps_timestamp{
+                Ok(gps_reading) => {
+                    if let Some(gps_timestamp) = gps_reading.data.timestamp {
                         gps_timestamp_pubsub.publish_immediate(gps_timestamp);
                     }
-                    gps_location_pubsub.publish_immediate(gps_location);
-                },
+                    gps_location_pubsub.publish_immediate(gps_reading);
+                }
                 Err(e) => {
                     log_error!("Error reading GPS: {:?}", e);
                     yield_now().await;
-                },
+                }
             }
         }
     };
     let unix_clock_task = UnixClockTask::new(device_manager.clock());
-    let unix_clock_task_fut = unix_clock_task.run(gps_pps, gps_timestamp_pubsub.subscriber().unwrap(), device_manager.clock());
+    let unix_clock_task_fut = unix_clock_task.run(
+        gps_pps,
+        gps_timestamp_pubsub.subscriber().unwrap(),
+        device_manager.clock(),
+    );
     let unix_clock = unix_clock_task.get_clock();
 
     // Buzzer Queue
@@ -109,7 +117,7 @@ pub async fn init(
         fs: &fs,
         gps: &gps_location_pubsub,
         delay: device_manager.delay(),
-        clock:device_manager.clock(),
+        clock: device_manager.clock(),
         unix_clock,
         buzzer_queue,
     };
@@ -191,7 +199,13 @@ pub async fn init(
         log_info!("Starting in mode {:?}", device_config);
         match device_config.mode {
             DeviceModeConfig::Avionics { .. } => {
-                avionics_main(device_manager, &services, &device_config, device_serial_number).await
+                avionics_main(
+                    device_manager,
+                    &services,
+                    &device_config,
+                    device_serial_number,
+                )
+                .await
             }
             DeviceModeConfig::GCM { .. } => {
                 gcm_main(
