@@ -1,105 +1,93 @@
-use core::{fmt::{Debug, Write}, marker::PhantomData};
-use heapless::String;
-use rkyv::{Archive, Deserialize, Serialize};
+use core::fmt::Debug;
 
 use embedded_hal_async::delay::DelayNs;
 
-use crate::{common::{delta_logger::delta_factory::Deltable, unix_clock::UnixClock}, Clock};
+use super::timestamp::BootTimestamp;
+use crate::common::delta_logger::prelude::*;
+use crate::{
+    common::{
+        delta_logger::delta_factory::Deltable,
+        fixed_point::F32FixedPointFactory,
+        sensor_reading::{SensorData, SensorReading},
+    },
+    fixed_point_factory_slope,
+};
 
-use super::timestamp::{BootTimestamp, TimestampType, UnixTimestamp};
-
-#[derive(Archive, Deserialize, Serialize, Debug, Clone)]
-pub struct MagReading<T: TimestampType> {
-    _phantom: PhantomData<T>,
-    pub timestamp: f64, // ms
-    pub mag: [f32; 3],  // gauss
+#[derive(defmt::Format, Debug, Clone)]
+pub struct MagData {
+    pub mag: [f32; 3], // gauss
 }
 
-impl MagReading<BootTimestamp> {
-    pub fn to_unix_timestamp(
-        self,
-        unix_clock: UnixClock<impl Clock>,
-    ) -> MagReading<UnixTimestamp> {
-        MagReading {
-            _phantom: PhantomData,
-            timestamp: unix_clock.convert_to_unix(self.timestamp),
-            mag: self.mag,
-        }
+impl BitArraySerializable for MagData {
+    fn serialize<const N: usize>(&self, writer: &mut BitSliceWriter<N>) {
+        writer.write(self.mag);
     }
-}
 
-impl<T: TimestampType> MagReading<T> {
-    pub fn new(timestamp: f64, mag: [f32; 3]) -> Self {
+    fn deserialize<const N: usize>(reader: &mut BitSliceReader<N>) -> Self {
         Self {
-            _phantom: PhantomData,
-            timestamp,
-            mag,
+            mag: reader.read().unwrap(),
         }
     }
-}
 
-impl<T: TimestampType> defmt::Format for MagReading<T> {
-    fn format(&self, f: defmt::Formatter) {
-        let mut message = String::<128>::new();
-        core::write!(
-            &mut message,
-            "MagReading {{ {:.5} {:.5} {:.5} }}",
-            self.mag[0],
-            self.mag[1],
-            self.mag[2],
-        )
-        .unwrap();
-        defmt::write!(f, "{}", message.as_str())
+    fn len_bits() -> usize {
+        <[f32; 3]>::len_bits()
     }
 }
 
-#[derive(defmt::Format, Debug, Clone, Archive, Deserialize, Serialize)]
-pub struct MagReadingDelta<T: TimestampType> {
-    _phantom: PhantomData<T>,
-    pub timestamp: u8,
-    pub mag: [u8; 3],
+fixed_point_factory_slope!(MagFac, 0.5, 5.0, 0.0001);
+
+#[derive(defmt::Format, Debug, Clone)]
+pub struct MagDataDelta {
+    #[defmt(Debug2Format)]
+    pub mag: [MagFacPacked; 3],
 }
 
-mod factories {
-    use crate::fixed_point_factory;
+impl BitArraySerializable for MagDataDelta {
+    fn serialize<const N: usize>(&self, writer: &mut BitSliceWriter<N>) {
+        writer.write(self.mag);
+    }
 
-    fixed_point_factory!(Timestamp, 0.0, 10.0, f64, u8);
-    fixed_point_factory!(Mag, -0.1, 0.1, f32, u8);
+    fn deserialize<const N: usize>(reader: &mut BitSliceReader<N>) -> Self {
+        Self {
+            mag: reader.read().unwrap(),
+        }
+    }
+
+    fn len_bits() -> usize {
+        <[MagFacPacked; 3]>::len_bits()
+    }
 }
 
-impl<T: TimestampType> Deltable for MagReading<T> {
-    type DeltaType = MagReadingDelta<T>;
+impl Deltable for MagData {
+    type DeltaType = MagDataDelta;
 
     fn add_delta(&self, delta: &Self::DeltaType) -> Option<Self> {
         Some(Self {
-            _phantom: PhantomData,
-            timestamp: self.timestamp + factories::Timestamp::to_float(delta.timestamp),
             mag: [
-                self.mag[0] + factories::Mag::to_float(delta.mag[0]),
-                self.mag[1] + factories::Mag::to_float(delta.mag[1]),
-                self.mag[2] + factories::Mag::to_float(delta.mag[2]),
+                self.mag[0] + MagFac::to_float(delta.mag[0]),
+                self.mag[1] + MagFac::to_float(delta.mag[1]),
+                self.mag[2] + MagFac::to_float(delta.mag[2]),
             ],
         })
     }
 
     fn subtract(&self, other: &Self) -> Option<Self::DeltaType> {
-        Some(MagReadingDelta {
-            _phantom: PhantomData,
-            timestamp: factories::Timestamp::to_fixed_point(self.timestamp - other.timestamp)?,
+        Some(Self::DeltaType {
             mag: [
-                factories::Mag::to_fixed_point(self.mag[0] - other.mag[0])?,
-                factories::Mag::to_fixed_point(self.mag[1] - other.mag[1])?,
-                factories::Mag::to_fixed_point(self.mag[2] - other.mag[2])?,
+                MagFac::to_fixed_point(self.mag[0] - other.mag[0])?,
+                MagFac::to_fixed_point(self.mag[1] - other.mag[1])?,
+                MagFac::to_fixed_point(self.mag[2] - other.mag[2])?,
             ],
         })
     }
 }
 
+impl SensorData for MagData {}
 
 pub trait Magnetometer {
     type Error: defmt::Format + Debug;
     async fn reset(&mut self) -> Result<(), Self::Error>;
-    async fn read(&mut self) -> Result<MagReading<BootTimestamp>, Self::Error>;
+    async fn read(&mut self) -> Result<SensorReading<BootTimestamp, MagData>, Self::Error>;
 }
 
 pub struct DummyMagnetometer<D: DelayNs> {
@@ -119,12 +107,13 @@ impl<D: DelayNs> Magnetometer for DummyMagnetometer<D> {
         Ok(())
     }
 
-    async fn read(&mut self) -> Result<MagReading<BootTimestamp>, ()> {
+    async fn read(&mut self) -> Result<SensorReading<BootTimestamp, MagData>, ()> {
         self.delay.delay_ms(1).await;
-        Ok(MagReading {
-            _phantom: PhantomData,
-            timestamp: 0.0,
-            mag: [0.0, 0.0, 0.0],
-        })
+        Ok(SensorReading::new(
+            0.0,
+            MagData {
+                mag: [0.0, 0.0, 0.0],
+            },
+        ))
     }
 }

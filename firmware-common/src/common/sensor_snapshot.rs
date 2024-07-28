@@ -1,4 +1,4 @@
-use crate::driver::{barometer::BaroData, gps::GPSData, imu::IMUData, mag::MagReading, timestamp::BootTimestamp};
+use crate::driver::{barometer::BaroData, gps::GPSData, imu::IMUData, mag::MagData, timestamp::BootTimestamp};
 use rkyv::{Archive, Deserialize, Serialize};
 
 use super::sensor_reading::SensorReading;
@@ -9,7 +9,7 @@ pub enum SensorReadingEnum {
     GPS(SensorReading<BootTimestamp, GPSData>),
     IMU(SensorReading<BootTimestamp, IMUData>),
     Baro(SensorReading<BootTimestamp, BaroData>),
-    Mag(MagReading<BootTimestamp>),
+    Mag(SensorReading<BootTimestamp, MagData>),
     BatteryVoltage(BatteryVoltage),
 }
 

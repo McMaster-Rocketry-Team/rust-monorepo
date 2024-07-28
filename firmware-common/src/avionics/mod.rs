@@ -44,7 +44,6 @@ use crate::{
     device_manager_type,
     driver::{
         debugger::DebuggerTargetEvent, gps::GPS, indicator::Indicator,
-        mag::MagReading,
     },
 };
 use crate::{common::can_bus::node_types::VOID_LAKE_NODE_TYPE, driver::can_bus::CanBusTX};
