@@ -31,7 +31,6 @@ use crate::{
         },
     },
     driver::{
-        adc::ADCReading,
         gps::GPSLocation,
         imu::IMUReading,
         timestamp::{BootTimestamp, UnixTimestamp},

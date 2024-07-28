@@ -3,40 +3,40 @@ use core::mem::replace;
 use vlfs::{ConcurrentFilesIterator, Crc, FileEntry, FileType, Flash, VLFSError, VLFS};
 
 use crate::{
-    common::{fixed_point::F64FixedPointFactory, sensor_reading::SensorReading},
+    common::{fixed_point::F64FixedPointFactory, sensor_reading::{SensorData, SensorReading}},
     driver::timestamp::TimestampType,
 };
 
 use super::delta_logger::{DeltaLogger, DeltaLoggerReader};
 
-pub struct RingDeltaLogger<'a, TM, T, C, F, FF>
+pub struct RingDeltaLogger<'a, TM, D, C, F, FF>
 where
     TM: TimestampType,
     C: Crc,
     F: Flash,
     F::Error: defmt::Format,
-    T: SensorReading<TM>,
+    D: SensorData,
     FF: F64FixedPointFactory,
-    [(); size_of::<T::Data>() + 10]:,
+    [(); size_of::<D>() + 10]:,
 {
     fs: &'a VLFS<F, C>,
     file_type: FileType,
-    delta_logger: DeltaLogger<TM, T, vlfs::FileWriter<'a, F, C>, FF>,
+    delta_logger: DeltaLogger<TM, D, vlfs::FileWriter<'a, F, C>, FF>,
     logs_per_segment: u32,
     current_segment_logs: u32,
     segments_per_ring: u32,
     current_ring_segments: u32,
 }
 
-impl<'a, TM, T, C, F, FF> RingDeltaLogger<'a, TM, T, C, F, FF>
+impl<'a, TM, D, C, F, FF> RingDeltaLogger<'a, TM, D, C, F, FF>
 where
     TM: TimestampType,
     C: Crc,
     F: Flash,
     F::Error: defmt::Format,
-    T: SensorReading<TM>,
+    D: SensorData,
     FF: F64FixedPointFactory,
-    [(); size_of::<T::Data>() + 10]:,
+    [(); size_of::<D>() + 10]:,
 {
     pub async fn new(
         fs: &'a VLFS<F, C>,
@@ -91,7 +91,7 @@ where
         })
     }
 
-    pub async fn log(&mut self, value: T) -> Result<bool, VLFSError<F::Error>> {
+    pub async fn log(&mut self, value: SensorReading<TM, D>) -> Result<bool, VLFSError<F::Error>> {
         if self.current_segment_logs >= self.logs_per_segment {
             log_info!("Creating new ring segment");
             let mut builder = self.fs.new_at_builder().await?;
@@ -143,48 +143,48 @@ where
     }
 }
 
-pub struct RingDeltaLoggerReader<'a, TM, T, C, F, FF, P>
+pub struct RingDeltaLoggerReader<'a, TM, D, C, F, FF, P>
 where
     TM: TimestampType,
     C: Crc,
     F: Flash,
     F::Error: defmt::Format,
-    T: SensorReading<TM>,
+    D: SensorData,
     FF: F64FixedPointFactory,
     P: FnMut(&FileEntry) -> bool,
-    [(); size_of::<T::Data>() + 10]:,
+    [(); size_of::<D>() + 10]:,
 {
     fs: &'a VLFS<F, C>,
     file_iter: ConcurrentFilesIterator<'a, F, C, P>,
-    delta_logger_reader: Option<DeltaLoggerReader<TM, T, vlfs::FileReader<'a, F, C>, FF>>,
+    delta_logger_reader: Option<DeltaLoggerReader<TM, D, vlfs::FileReader<'a, F, C>, FF>>,
 }
 
-enum DeltaLoggerReaderResult<TM, T>
+enum DeltaLoggerReaderResult<TM, D>
 where
     TM: TimestampType,
-    T: SensorReading<TM>,
+    D: SensorData,
 {
     EOF,
-    Data(T::NewType<TM>),
+    Data(SensorReading<TM, D>),
     TryAgain,
 }
 
-impl<'a, TM, T, C, F, FF, P> RingDeltaLoggerReader<'a, TM, T, C, F, FF, P>
+impl<'a, TM,D, C, F, FF, P> RingDeltaLoggerReader<'a, TM, D, C, F, FF, P>
 where
     TM: TimestampType,
     C: Crc,
     F: Flash,
     F::Error: defmt::Format,
-    T: SensorReading<TM>,
+    D: SensorData,
     FF: F64FixedPointFactory,
     P: FnMut(&FileEntry) -> bool,
-    [(); size_of::<T::Data>() + 10]:,
+    [(); size_of::<D>() + 10]:,
 {
     pub async fn new(
         fs: &'a VLFS<F, C>,
         file_type: FileType,
     ) -> Result<
-        RingDeltaLoggerReader<'a, TM, T, C, F, FF, impl FnMut(&FileEntry) -> bool>,
+        RingDeltaLoggerReader<'a, TM, D, C, F, FF, impl FnMut(&FileEntry) -> bool>,
         VLFSError<F::Error>,
     > {
         let mut file_iter = fs
@@ -208,7 +208,7 @@ where
         }
     }
 
-    async fn inner_read(&mut self) -> Result<DeltaLoggerReaderResult<TM, T>, VLFSError<F::Error>> {
+    async fn inner_read(&mut self) -> Result<DeltaLoggerReaderResult<TM, D>, VLFSError<F::Error>> {
         if self.delta_logger_reader.is_none() {
             if let Some(file) = self.file_iter.next().await? {
                 let file_reader = self.fs.open_file_for_read(file.id).await?;
@@ -231,7 +231,7 @@ where
         }
     }
 
-    pub async fn read(&mut self) -> Result<Option<T::NewType<TM>>, VLFSError<F::Error>> {
+    pub async fn read(&mut self) -> Result<Option<SensorReading<TM, D>>, VLFSError<F::Error>> {
         loop {
             match self.inner_read().await? {
                 DeltaLoggerReaderResult::EOF => {

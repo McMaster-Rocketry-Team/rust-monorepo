@@ -794,6 +794,7 @@ dependencies = [
  "futures-timer",
  "futures-util",
  "heapless 0.8.0",
+ "heatshrink",
  "libm",
  "log",
  "lora-modulation 0.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1088,6 +1089,12 @@ dependencies = [
  "hash32 0.3.1",
  "stable_deref_trait",
 ]
+
+[[package]]
+name = "heatshrink"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8b94defcbbb6dc44a18c52fb872edc27fff6dad1c093e7b88ea3bc8f732e19f5"
 
 [[package]]
 name = "heck"

@@ -1,5 +1,7 @@
+use core::marker::PhantomData;
+
 use crate::{
-    driver::timestamp::{BootTimestamp, TimestampType, UnixTimestamp},
+    driver::timestamp::{TimestampType, UnixTimestamp},
     Clock,
 };
 
@@ -9,25 +11,40 @@ use super::{
     unix_clock::UnixClock,
 };
 
-pub trait SensorReading<T: TimestampType>: Sized + Clone {
-    type Data: BitArraySerializable
-        + BitArrayDeserializable
-        + Deltable<DeltaType: BitArraySerializable + BitArrayDeserializable>;
-    type NewType<NT: TimestampType>: SensorReading<NT>;
-
-    fn new<NT: TimestampType>(timestamp: f64, data: Self::Data) -> Self::NewType<NT>;
-
-    fn get_timestamp(&self) -> f64;
-    fn get_data(&self) -> &Self::Data;
-    fn into_data(self) -> Self::Data;
+pub trait SensorData:
+    BitArraySerializable
+    + BitArrayDeserializable
+    + Deltable<DeltaType: BitArraySerializable + BitArrayDeserializable>
+    + defmt::Format
+    + core::fmt::Debug
+    + Clone
+{
 }
 
-pub fn sensor_reading_to_unix_timestamp<T: SensorReading<BootTimestamp>>(
-    unix_clock: &UnixClock<impl Clock>,
-    reading: T,
-) -> T::NewType<UnixTimestamp> {
-    T::new(
-        unix_clock.convert_to_unix(reading.get_timestamp()),
-        reading.into_data(),
-    )
+#[derive(defmt::Format, Debug, Clone)]
+pub struct SensorReading<T: TimestampType, D: SensorData> {
+    _phantom_timestamp: PhantomData<T>,
+    pub timestamp: f64,
+    pub data: D,
+}
+
+impl<T: TimestampType, D: SensorData> SensorReading<T, D> {
+    pub fn new(timestamp: f64, data: D) -> Self {
+        SensorReading {
+            _phantom_timestamp: PhantomData,
+            timestamp,
+            data,
+        }
+    }
+
+    pub fn to_unix_timestamp(
+        &self,
+        unix_clock: &UnixClock<impl Clock>,
+    ) -> SensorReading<UnixTimestamp, D> {
+        SensorReading {
+            _phantom_timestamp: PhantomData,
+            timestamp: unix_clock.convert_to_unix(self.timestamp),
+            data: self.data.clone(),
+        }
+    }
 }

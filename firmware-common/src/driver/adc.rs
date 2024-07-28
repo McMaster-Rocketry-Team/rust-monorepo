@@ -5,15 +5,15 @@ use embedded_hal_async::delay::DelayNs;
 
 use crate::{
     common::{
-        delta_factory::Deltable, delta_logger::bitslice_io::{BitArrayDeserializable, BitArraySerializable, BitSliceReader, BitSliceWriter}, fixed_point::F32FixedPointFactory, sensor_reading::SensorReading
+        delta_factory::Deltable, delta_logger::bitslice_io::{BitArrayDeserializable, BitArraySerializable, BitSliceReader, BitSliceWriter}, fixed_point::F32FixedPointFactory, sensor_reading::{SensorData, SensorReading}
     },
     fixed_point_factory_slope,
 };
 use crate::common::delta_logger::bitvec_serialize_traits::FromBitSlice;
 
-use super::timestamp::{BootTimestamp, TimestampType};
+use super::timestamp::BootTimestamp;
 
-pub trait UnitType: Clone {}
+pub trait UnitType: Clone + defmt::Format + core::fmt::Debug {}
 
 #[derive(defmt::Format, Debug, Clone, PartialEq)]
 pub struct Volt;
@@ -25,12 +25,6 @@ pub struct Ampere;
 
 impl UnitType for Ampere {}
 
-#[derive(defmt::Format, Debug, Clone)]
-pub struct ADCReading<U: UnitType, T: TimestampType> {
-    _phantom_timestamp: PhantomData<T>,
-    pub timestamp: f64,
-    pub data: ADCData<U>,
-}
 
 #[derive(defmt::Format, Debug, Clone, PartialEq)]
 pub struct ADCData<U: UnitType> {
@@ -109,36 +103,12 @@ impl<U: UnitType> Deltable for ADCData<U> {
     }
 }
 
-impl<U: UnitType, T: TimestampType> SensorReading<T> for ADCReading<U, T> {
-    type Data = ADCData<U>;
-
-    type NewType<NT: TimestampType> = ADCReading<U, NT>;
-
-    fn new<NT: TimestampType>(timestamp: f64, data: Self::Data) -> Self::NewType<NT> {
-        ADCReading {
-            _phantom_timestamp: PhantomData,
-            timestamp,
-            data,
-        }
-    }
-
-    fn get_timestamp(&self) -> f64 {
-        self.timestamp
-    }
-
-    fn get_data(&self) -> &Self::Data {
-        &self.data
-    }
-
-    fn into_data(self) -> Self::Data {
-        self.data
-    }
-}
+impl<U: UnitType> SensorData for ADCData<U>{}
 
 pub trait ADC<U: UnitType> {
     type Error: defmt::Format + core::fmt::Debug;
 
-    fn read(&mut self) -> impl Future<Output = Result<ADCReading<U, BootTimestamp>, Self::Error>>;
+    fn read(&mut self) -> impl Future<Output = Result<SensorReading<BootTimestamp, ADCData<U>>, Self::Error>>;
 }
 
 pub struct DummyADC<D: DelayNs, U: UnitType> {
@@ -158,8 +128,8 @@ impl<D: DelayNs, U: UnitType> DummyADC<D, U> {
 impl<D: DelayNs, U: UnitType> ADC<U> for DummyADC<D, U> {
     type Error = ();
 
-    async fn read(&mut self) -> Result<ADCReading<U, BootTimestamp>, ()> {
+    async fn read(&mut self) -> Result<SensorReading<BootTimestamp, ADCData<U>>, ()> {
         self.delay.delay_ms(1).await;
-        Ok(ADCReading::<U, BootTimestamp>::new(0.0, ADCData::new(0.0)))
+        Ok(SensorReading::new(0.0, ADCData::new(0.0)))
     }
 }

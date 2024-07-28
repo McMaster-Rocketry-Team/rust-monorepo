@@ -1,4 +1,5 @@
 use core::{fmt::Debug, marker::PhantomData, ops::DerefMut as _,};
+use core::future::Future;
 use embassy_sync::{blocking_mutex::raw::RawMutex, mutex::MutexGuard};
 use embedded_hal_async::delay::DelayNs;
 use libm::powf;
@@ -8,13 +9,25 @@ use crate::{common::{delta_factory::Deltable, unix_clock::UnixClock}, Clock};
 
 use super::timestamp::{BootTimestamp, TimestampType, UnixTimestamp};
 
-#[derive(defmt::Format, Debug, Clone, Archive, Deserialize, Serialize)]
+#[derive(Archive, Deserialize, Serialize,defmt::Format, Debug, Clone)]
 pub struct BaroReading<T: TimestampType> {
     _phantom: PhantomData<T>,
     pub timestamp: f64,   // ms
     pub temperature: f32, // C
     pub pressure: f32,    // Pa
 }
+
+#[derive(defmt::Format, Debug, Clone)]
+pub struct BaroData {
+    pub timestamp: f64,   // ms
+    pub temperature: f32, // C
+    pub pressure: f32,    // Pa
+}
+
+
+
+
+
 
 #[derive(defmt::Format, Debug, Clone, Archive, Deserialize, Serialize)]
 pub struct BaroReadingDelta<T: TimestampType> {
@@ -90,8 +103,8 @@ impl BaroReading<BootTimestamp> {
 pub trait Barometer {
     type Error: defmt::Format + Debug;
 
-    async fn reset(&mut self) -> Result<(), Self::Error>;
-    async fn read(&mut self) -> Result<BaroReading<BootTimestamp>, Self::Error>;
+    fn reset(&mut self) -> impl Future<Output = Result<(), Self::Error>>;
+    fn read(&mut self) -> impl Future<Output = Result<BaroReading<BootTimestamp>, Self::Error>>;
 }
 
 pub struct DummyBarometer<D: DelayNs> {

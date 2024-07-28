@@ -6,7 +6,7 @@ use crate::{
     common::{
         delta_factory::{DeltaFactory, Deltable, UnDeltaFactory},
         fixed_point::F64FixedPointFactory,
-        sensor_reading::SensorReading,
+        sensor_reading::{SensorData, SensorReading},
         variable_int::VariableIntTrait,
     },
     driver::timestamp::TimestampType,
@@ -42,31 +42,29 @@ struct TimestampDelta<F: F64FixedPointFactory>(<F::VI as VariableIntTrait>::Pack
 
 /// If the readings are closer than the minimum value supported by the
 /// fixed point factory, they will be ignored
-pub struct DeltaLogger<TM, T, W, FF>
+pub struct DeltaLogger<TM, D, W, FF>
 where
     TM: TimestampType,
-    T: SensorReading<TM>,
+    D: SensorData,
     W: embedded_io_async::Write,
     FF: F64FixedPointFactory,
-    [(); size_of::<T::Data>() + 10]:,
+    [(); size_of::<D>() + 10]:,
 {
-    factory: DeltaFactory<T::Data>,
+    factory: DeltaFactory<D>,
     timestamp_factory: DeltaFactory<Timestamp<FF>>,
     writer: W,
-    bit_writer: BitSliceWriter<{ size_of::<T::Data>() + 10 }>,
+    bit_writer: BitSliceWriter<{ size_of::<D>() + 10 }>,
 }
 
-impl<TM, T, W, FF> DeltaLogger<TM, T, W, FF>
+impl<TM, D, W, FF> DeltaLogger<TM, D, W, FF>
 where
     TM: TimestampType,
-    T: SensorReading<TM>,
+    D: SensorData,
     W: embedded_io_async::Write,
     FF: F64FixedPointFactory,
-    [(); size_of::<T::Data>() + 10]:,
+    [(); size_of::<D>() + 10]:,
 {
-    pub fn new(
-        writer: W,
-    ) -> Self {
+    pub fn new(writer: W) -> Self {
         Self {
             factory: DeltaFactory::new(),
             timestamp_factory: DeltaFactory::new(),
@@ -81,24 +79,24 @@ where
     // 10 -> end of byte
     // 11 -> full timestamp, full data
     /// returns true if the reading was logged
-    pub async fn log(&mut self, reading: T) -> Result<bool, W::Error> {
-        if let Some(last_timestamp) = &self.timestamp_factory.last_value{
-            let interval = reading.get_timestamp() - last_timestamp.0;
-            if interval < FF::min(){
+    pub async fn log(&mut self, reading: SensorReading<TM, D>) -> Result<bool, W::Error> {
+        if let Some(last_timestamp) = &self.timestamp_factory.last_value {
+            let interval = reading.timestamp - last_timestamp.0;
+            if interval < FF::min() {
                 return Ok(false);
             }
         }
 
-        match self.timestamp_factory.push(reading.get_timestamp().into()) {
+        match self.timestamp_factory.push(reading.timestamp.into()) {
             Either::Left(full_timestamp) => {
                 self.bit_writer.write(true);
                 self.bit_writer.write(true);
                 self.bit_writer.write(full_timestamp.0);
-                reading.into_data().serialize(&mut self.bit_writer);
+                reading.data.serialize(&mut self.bit_writer);
             }
             Either::Right(delta_timestamp) => {
                 self.bit_writer.write(false);
-                match self.factory.push(reading.into_data()) {
+                match self.factory.push(reading.data) {
                     Either::Left(data) => {
                         self.bit_writer.write(true);
                         self.bit_writer.write(delta_timestamp.0);
@@ -138,37 +136,37 @@ where
     }
 }
 
-pub struct DeltaLoggerReader<TM, T, R, FF>
+pub struct DeltaLoggerReader<TM, D, R, FF>
 where
     TM: TimestampType,
-    T: SensorReading<TM>,
+    D: SensorData,
     R: embedded_io_async::Read,
     FF: F64FixedPointFactory,
-    [(); size_of::<T::Data>() + 10]:,
+    [(); size_of::<D>() + 10]:,
 {
-    factory: UnDeltaFactory<T::Data>,
+    factory: UnDeltaFactory<D>,
     timestamp_factory: UnDeltaFactory<Timestamp<FF>>,
     reader: R,
-    bit_reader: BitSliceReader<{ size_of::<T::Data>() + 10 }>,
+    bit_reader: BitSliceReader<{ size_of::<D>() + 10 }>,
 }
 
-enum DeltaLoggerReaderResult<TM, T>
+enum DeltaLoggerReaderResult<TM, D>
 where
     TM: TimestampType,
-    T: SensorReading<TM>,
+    D: SensorData,
 {
     EOF,
-    Data(T::NewType<TM>),
+    Data(SensorReading<TM, D>),
     TryAgain,
 }
 
-impl<TM, T, R, F> DeltaLoggerReader<TM, T, R, F>
+impl<TM, D, R, F> DeltaLoggerReader<TM, D, R, F>
 where
     TM: TimestampType,
-    T: SensorReading<TM>,
+    D: SensorData,
     R: embedded_io_async::Read,
     F: F64FixedPointFactory,
-    [(); size_of::<T::Data>() + 10]:,
+    [(); size_of::<D>() + 10]:,
 {
     pub fn new(reader: R) -> Self {
         Self {
@@ -179,7 +177,7 @@ where
         }
     }
 
-    pub async fn read(&mut self) -> Result<Option<T::NewType<TM>>, R::Error> {
+    pub async fn read(&mut self) -> Result<Option<SensorReading<TM, D>>, R::Error> {
         loop {
             match self.inner_read().await? {
                 DeltaLoggerReaderResult::EOF => {
@@ -195,7 +193,7 @@ where
         }
     }
 
-    async fn inner_read(&mut self) -> Result<DeltaLoggerReaderResult<TM, T>, R::Error> {
+    async fn inner_read(&mut self) -> Result<DeltaLoggerReaderResult<TM, D>, R::Error> {
         if !self.ensure_at_least_bits(2).await? {
             return Ok(DeltaLoggerReaderResult::EOF);
         }
@@ -233,24 +231,17 @@ where
         };
 
         let data = if is_full_data {
-            if !self.ensure_at_least_bits(T::Data::len_bits()).await? {
+            if !self.ensure_at_least_bits(D::len_bits()).await? {
                 return Ok(DeltaLoggerReaderResult::EOF);
             }
-            let data = self
-                .factory
-                .push(T::Data::deserialize(&mut self.bit_reader));
+            let data = self.factory.push(D::deserialize(&mut self.bit_reader));
             Some(data)
         } else {
-            if !self
-                .ensure_at_least_bits(<T::Data as Deltable>::DeltaType::len_bits())
-                .await?
-            {
+            if !self.ensure_at_least_bits(D::DeltaType::len_bits()).await? {
                 return Ok(DeltaLoggerReaderResult::EOF);
             }
             self.factory
-                .push_delta(<T::Data as Deltable>::DeltaType::deserialize(
-                    &mut self.bit_reader,
-                ))
+                .push_delta(D::DeltaType::deserialize(&mut self.bit_reader))
         };
 
         if timestamp.is_none() || data.is_none() {
@@ -260,7 +251,10 @@ where
         let timestamp = timestamp.unwrap();
         let data = data.unwrap();
 
-        Ok(DeltaLoggerReaderResult::Data(T::new(timestamp.0, data)))
+        Ok(DeltaLoggerReaderResult::Data(SensorReading::new(
+            timestamp.0,
+            data,
+        )))
     }
 
     async fn ensure_at_least_bits(&mut self, min_bits: usize) -> Result<bool, R::Error> {
@@ -285,82 +279,70 @@ where
 #[cfg(test)]
 mod test {
 
+    use super::*;
     use crate::{
-        common::test_utils::BufferWriter,
-        driver::{
-            adc::{ADCData, ADCReading},
-            timestamp::BootTimestamp,
-        },
+        common::{sensor_reading::SensorReading, test_utils::BufferWriter},
+        driver::{adc::ADCData, timestamp::BootTimestamp},
         fixed_point_factory2, Volt,
     };
-
-    use super::*;
+    use approx::assert_relative_eq;
+    use rand::Rng;
 
     #[tokio::test]
     async fn test_delta_logger_write_read() {
         fixed_point_factory2!(TimestampFac, f64, 0.0, 510.0, 0.5);
-        let readings = vec![
-            ADCReading::<Volt, BootTimestamp>::new::<BootTimestamp>(0.0, ADCData::new(0.0)),
-            ADCReading::<Volt, BootTimestamp>::new::<BootTimestamp>(501.0, ADCData::new(0.05)), // inside delta range
-            ADCReading::<Volt, BootTimestamp>::new::<BootTimestamp>(1000.0, ADCData::new(-0.05)), // inside delta range
-            ADCReading::<Volt, BootTimestamp>::new::<BootTimestamp>(1501.0, ADCData::new(-0.02)), // inside delta range
-            ADCReading::<Volt, BootTimestamp>::new::<BootTimestamp>(2000.0, ADCData::new(1.0)), // outside delta range
-            ADCReading::<Volt, BootTimestamp>::new::<BootTimestamp>(2501.0, ADCData::new(1.07)), // inside delta range
-            ADCReading::<Volt, BootTimestamp>::new::<BootTimestamp>(5000.0, ADCData::new(1.1)), // timestamp outside delta range
-            ADCReading::<Volt, BootTimestamp>::new::<BootTimestamp>(5501.0, ADCData::new(0.92)), // inside delta range
-            ADCReading::<Volt, BootTimestamp>::new::<BootTimestamp>(5501.0, ADCData::new(0.92)), // inside delta range
-            ADCReading::<Volt, BootTimestamp>::new::<BootTimestamp>(5501.0, ADCData::new(0.92)), // inside delta range
-            ADCReading::<Volt, BootTimestamp>::new::<BootTimestamp>(5501.0, ADCData::new(0.92)), // inside delta range
-            ADCReading::<Volt, BootTimestamp>::new::<BootTimestamp>(5501.0, ADCData::new(0.92)), // inside delta range
-            ADCReading::<Volt, BootTimestamp>::new::<BootTimestamp>(5501.0, ADCData::new(0.92)), // inside delta range
-            ADCReading::<Volt, BootTimestamp>::new::<BootTimestamp>(5501.0, ADCData::new(0.92)), // inside delta range
-            ADCReading::<Volt, BootTimestamp>::new::<BootTimestamp>(5501.0, ADCData::new(0.92)), // inside delta range
-            ADCReading::<Volt, BootTimestamp>::new::<BootTimestamp>(5501.0, ADCData::new(0.92)), // inside delta range
-            ADCReading::<Volt, BootTimestamp>::new::<BootTimestamp>(5501.0, ADCData::new(0.92)), // inside delta range
-            ADCReading::<Volt, BootTimestamp>::new::<BootTimestamp>(5501.0, ADCData::new(0.92)), // inside delta range
-            ADCReading::<Volt, BootTimestamp>::new::<BootTimestamp>(5501.0, ADCData::new(0.92)), // inside delta range
-            ADCReading::<Volt, BootTimestamp>::new::<BootTimestamp>(5501.0, ADCData::new(0.92)), // inside delta range
-            ADCReading::<Volt, BootTimestamp>::new::<BootTimestamp>(5501.0, ADCData::new(0.92)), // inside delta range
-            ADCReading::<Volt, BootTimestamp>::new::<BootTimestamp>(5501.0, ADCData::new(0.92)), // inside delta range
-            ADCReading::<Volt, BootTimestamp>::new::<BootTimestamp>(5501.0, ADCData::new(0.92)), // inside delta range
-            ADCReading::<Volt, BootTimestamp>::new::<BootTimestamp>(5501.0, ADCData::new(0.92)), // inside delta range
-            ADCReading::<Volt, BootTimestamp>::new::<BootTimestamp>(5501.0, ADCData::new(0.92)), // inside delta range
-            ADCReading::<Volt, BootTimestamp>::new::<BootTimestamp>(5501.0, ADCData::new(0.92)), // inside delta range
-            ADCReading::<Volt, BootTimestamp>::new::<BootTimestamp>(5501.0, ADCData::new(0.92)), // inside delta range
-            ADCReading::<Volt, BootTimestamp>::new::<BootTimestamp>(5501.0, ADCData::new(0.92)), // inside delta range
+        let mut readings = vec![
+            SensorReading::<BootTimestamp, ADCData<Volt>>::new(0.0, ADCData::new(0.0)),
+            SensorReading::<BootTimestamp, ADCData<Volt>>::new(501.0, ADCData::new(0.05)), // inside delta range
+            SensorReading::<BootTimestamp, ADCData<Volt>>::new(1000.0, ADCData::new(-0.05)), // inside delta range
+            SensorReading::<BootTimestamp, ADCData<Volt>>::new(1501.0, ADCData::new(-0.02)), // inside delta range
+            SensorReading::<BootTimestamp, ADCData<Volt>>::new(2000.0, ADCData::new(1.0)), // outside delta range
+            SensorReading::<BootTimestamp, ADCData<Volt>>::new(2501.0, ADCData::new(1.07)), // inside delta range
+            SensorReading::<BootTimestamp, ADCData<Volt>>::new(5000.0, ADCData::new(1.1)), // timestamp outside delta range
         ];
+
+        let mut rng = rand::thread_rng();
+        let mut timestamp = 5000.0f64;
+        let mut data = 1.1f32;
+        for _ in 0..150 {
+            timestamp += rng.gen_range(1.0..500.0);
+            data += rng.gen_range(-0.1..0.1);
+            readings.push(SensorReading::<BootTimestamp, ADCData<Volt>>::new(
+                timestamp,
+                ADCData::new(data),
+            ))
+        }
 
         let mut buffer = [0u8; 512];
         let writer = BufferWriter::new(&mut buffer);
-        let mut logger =
-            DeltaLogger::<BootTimestamp, ADCReading<Volt, BootTimestamp>, _, TimestampFac>::new(
-                writer,
-            );
+        let mut logger = DeltaLogger::<_, _, _, TimestampFac>::new(writer);
         for reading in readings.iter() {
             logger.log(reading.clone()).await.unwrap();
         }
         logger.flush().await.unwrap();
 
-        let reader = logger.into_writer().into_reader();
+        let writer = logger.into_writer();
+        let reader = writer.into_reader();
         println!(
             "reader len: {}, avg bits per reading: {}",
             reader.len(),
             (reader.len() * 8) as f32 / readings.len() as f32
         );
 
-        let mut log_reader = DeltaLoggerReader::<
-            BootTimestamp,
-            ADCReading<Volt, BootTimestamp>,
-            _,
-            TimestampFac,
-        >::new(reader);
+        let mut log_reader =
+            DeltaLoggerReader::<BootTimestamp, ADCData<Volt>, _, TimestampFac>::new(reader);
+        let mut i = 0usize;
         loop {
             match log_reader.read().await.unwrap() {
                 Some(reading) => {
                     println!("{:?}", reading);
+                    assert_relative_eq!(reading.timestamp, readings[i].timestamp, epsilon = 0.5);
+                    assert_relative_eq!(reading.data.value, readings[i].data.value, epsilon = 0.1);
                 }
                 None => break,
             }
+            i += 1;
         }
+        assert_eq!(i, readings.len());
     }
 }

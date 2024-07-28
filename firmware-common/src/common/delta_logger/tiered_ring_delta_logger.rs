@@ -1,7 +1,7 @@
 use vlfs::{Crc, FileType, Flash, VLFSError, VLFS};
 
 use crate::{
-    common::{fixed_point::F64FixedPointFactory, sensor_reading::SensorReading},
+    common::{fixed_point::F64FixedPointFactory, sensor_reading::{SensorData, SensorReading}},
     driver::timestamp::TimestampType,
 };
 
@@ -14,31 +14,31 @@ pub struct TieredRingDeltaLoggerConfig {
     tier_2_keep_seconds: u32,
 }
 
-pub struct TieredRingDeltaLogger<'a, TM, T, C, F, FF1, FF2>
+pub struct TieredRingDeltaLogger<'a, TM, D, C, F, FF1, FF2>
 where
     TM: TimestampType,
     C: Crc,
     F: Flash,
     F::Error: defmt::Format,
-    T: SensorReading<TM>,
+    D: SensorData,
     FF1: F64FixedPointFactory,
     FF2: F64FixedPointFactory,
-    [(); size_of::<T::Data>() + 10]:,
+    [(); size_of::<D>() + 10]:,
 {
-    delta_logger_1: RingDeltaLogger<'a, TM, T, C, F, FF1>,
-    delta_logger_2: RingDeltaLogger<'a, TM, T, C, F, FF2>,
+    delta_logger_1: RingDeltaLogger<'a, TM, D, C, F, FF1>,
+    delta_logger_2: RingDeltaLogger<'a, TM, D, C, F, FF2>,
 }
 
-impl<'a, TM, T, C, F, FF1, FF2> TieredRingDeltaLogger<'a, TM, T, C, F, FF1, FF2>
+impl<'a, TM, D, C, F, FF1, FF2> TieredRingDeltaLogger<'a, TM, D, C, F, FF1, FF2>
 where
     TM: TimestampType,
     C: Crc,
     F: Flash,
     F::Error: defmt::Format,
-    T: SensorReading<TM>,
+    D: SensorData,
     FF1: F64FixedPointFactory,
     FF2: F64FixedPointFactory,
-    [(); size_of::<T::Data>() + 10]:,
+    [(); size_of::<D>() + 10]:,
 {
     pub async fn new(
         fs: &'a VLFS<F, C>,
@@ -64,7 +64,7 @@ where
         })
     }
 
-    pub async fn log(&mut self, value: T) -> Result<(), VLFSError<F::Error>> {
+    pub async fn log(&mut self, value: SensorReading<TM, D>) -> Result<(), VLFSError<F::Error>> {
         let result_1 = self.delta_logger_1.log(value.clone()).await;
         let result_2 = self.delta_logger_2.log(value).await;
         result_1?;
