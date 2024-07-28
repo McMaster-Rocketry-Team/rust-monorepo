@@ -1,4 +1,4 @@
-use crate::driver::{barometer::BaroData, gps::GPSData, imu::IMUReading, mag::MagReading, timestamp::BootTimestamp};
+use crate::driver::{barometer::BaroData, gps::GPSData, imu::IMUData, mag::MagReading, timestamp::BootTimestamp};
 use rkyv::{Archive, Deserialize, Serialize};
 
 use super::sensor_reading::SensorReading;
@@ -7,7 +7,7 @@ use super::sensor_reading::SensorReading;
 #[derive(Debug, Clone)]
 pub enum SensorReadingEnum {
     GPS(SensorReading<BootTimestamp, GPSData>),
-    IMU(IMUReading<BootTimestamp>),
+    IMU(SensorReading<BootTimestamp, IMUData>),
     Baro(SensorReading<BootTimestamp, BaroData>),
     Mag(MagReading<BootTimestamp>),
     BatteryVoltage(BatteryVoltage),
@@ -34,6 +34,6 @@ impl SensorReadingEnum {
 #[derive(Debug, Clone)]
 pub struct PartialSensorSnapshot {
     pub timestamp: f64, // ms
-    pub imu_reading: IMUReading<BootTimestamp>,
+    pub imu_reading: SensorReading<BootTimestamp, IMUData>,
     pub baro_reading: Option<SensorReading<BootTimestamp, BaroData>>,
 }

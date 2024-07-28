@@ -1,11 +1,14 @@
+use core::mem::transmute_copy;
 use core::mem::transmute;
+use core::mem::MaybeUninit;
+use core::mem::ManuallyDrop;
 
 use bitvec::prelude::*;
 
 use super::SerializeBitOrder;
 
 pub trait BitSlicePrimitive {
-    fn write(self, slice: &mut BitSlice<u8, SerializeBitOrder>);
+    fn write(&self, slice: &mut BitSlice<u8, SerializeBitOrder>);
 
     fn read(slice: &BitSlice<u8, SerializeBitOrder>) -> Self;
 
@@ -13,8 +16,8 @@ pub trait BitSlicePrimitive {
 }
 
 impl BitSlicePrimitive for bool {
-    fn write(self, slice: &mut BitSlice<u8, SerializeBitOrder>) {
-        slice.set(0, self);
+    fn write(&self, slice: &mut BitSlice<u8, SerializeBitOrder>) {
+        slice.set(0, *self);
     }
 
     fn read(slice: &BitSlice<u8, SerializeBitOrder>) -> Self {
@@ -27,8 +30,8 @@ impl BitSlicePrimitive for bool {
 }
 
 impl BitSlicePrimitive for u8 {
-    fn write(self, slice: &mut BitSlice<u8, SerializeBitOrder>) {
-        let data = [self];
+    fn write(&self, slice: &mut BitSlice<u8, SerializeBitOrder>) {
+        let data = [*self];
         let data: &BitSlice<u8, SerializeBitOrder> = data.view_bits();
         (&mut slice[..8]).copy_from_bitslice(data);
     }
@@ -44,7 +47,7 @@ impl BitSlicePrimitive for u8 {
 }
 
 impl BitSlicePrimitive for i64 {
-    fn write(self, slice: &mut BitSlice<u8, SerializeBitOrder>) {
+    fn write(&self, slice: &mut BitSlice<u8, SerializeBitOrder>) {
         let data = self.to_le_bytes();
         let data: &BitSlice<u8, SerializeBitOrder> = data.view_bits();
         (&mut slice[..8]).copy_from_bitslice(data);
@@ -61,7 +64,7 @@ impl BitSlicePrimitive for i64 {
 }
 
 impl BitSlicePrimitive for f32 {
-    fn write(self, slice: &mut BitSlice<u8, SerializeBitOrder>) {
+    fn write(&self, slice: &mut BitSlice<u8, SerializeBitOrder>) {
         let data = self.to_le_bytes();
         let data: &BitSlice<u8, SerializeBitOrder> = data.view_bits();
         (&mut slice[..32]).copy_from_bitslice(data);
@@ -78,7 +81,7 @@ impl BitSlicePrimitive for f32 {
 }
 
 impl BitSlicePrimitive for f64 {
-    fn write(self, slice: &mut BitSlice<u8, SerializeBitOrder>) {
+    fn write(&self, slice: &mut BitSlice<u8, SerializeBitOrder>) {
         let data = self.to_le_bytes();
         let data: &BitSlice<u8, SerializeBitOrder> = data.view_bits();
         (&mut slice[..64]).copy_from_bitslice(data);
@@ -94,8 +97,8 @@ impl BitSlicePrimitive for f64 {
     }
 }
 
-impl<T:BitSlicePrimitive> BitSlicePrimitive for (T, T) {
-    fn write(self, slice: &mut BitSlice<u8, SerializeBitOrder>) {
+impl<T: BitSlicePrimitive> BitSlicePrimitive for (T, T) {
+    fn write(&self, slice: &mut BitSlice<u8, SerializeBitOrder>) {
         self.0.write(&mut slice[..T::len_bits()]);
         self.1.write(&mut slice[T::len_bits()..]);
     }
@@ -112,8 +115,28 @@ impl<T:BitSlicePrimitive> BitSlicePrimitive for (T, T) {
     }
 }
 
+impl<T: BitSlicePrimitive, const N: usize> BitSlicePrimitive for [T; N] {
+    fn write(&self, slice: &mut BitSlice<u8, SerializeBitOrder>) {
+        for i in 0..N {
+            self[i].write(&mut slice[i * T::len_bits()..(i + 1) * T::len_bits()]);
+        }
+    }
+
+    fn read(slice: &BitSlice<u8, SerializeBitOrder>) -> Self {
+        let mut result: [MaybeUninit<T>; N] = unsafe { MaybeUninit::uninit().assume_init() };
+        for i in 0..N {
+            result[i] = MaybeUninit::new(T::read(&slice[i * T::len_bits()..(i + 1) * T::len_bits()]));
+        }
+        unsafe { transmute_copy(&ManuallyDrop::new(result)) }
+    }
+
+    fn len_bits() -> usize {
+        N * T::len_bits()
+    }
+}
+
 impl<T: BitSlicePrimitive> BitSlicePrimitive for Option<T> {
-    fn write(self, slice: &mut BitSlice<u8, SerializeBitOrder>) {
+    fn write(&self, slice: &mut BitSlice<u8, SerializeBitOrder>) {
         if let Some(value) = self {
             slice.set(0, true);
             value.write(&mut slice[1..]);

@@ -31,7 +31,6 @@ use crate::{
         },
     },
     driver::{
-        imu::IMUReading,
         timestamp::{BootTimestamp, UnixTimestamp},
     },
 };

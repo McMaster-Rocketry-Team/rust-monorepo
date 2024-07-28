@@ -21,7 +21,7 @@ macro_rules! impl_variable_int {
         }
 
         impl BitSlicePrimitive for Integer<$base_type, packed_bits::Bits<$bits>> {
-            fn write(self, slice: &mut BitSlice<u8, SerializeBitOrder>) {
+            fn write(&self, slice: &mut BitSlice<u8, SerializeBitOrder>) {
                 let bits = self.view_bits::<SerializeBitOrder>();
                 let bits = unsafe { bits.align_to::<u8>().1 };
                 (&mut slice[..$bits]).copy_from_bitslice(&bits[..$bits]);

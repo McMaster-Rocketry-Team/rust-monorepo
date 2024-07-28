@@ -157,13 +157,13 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
         // apply mounting angle compensation
         let acc = self
             .mounting_angle_compensation_quat
-            .mul(&Vector3::from(snapshot.imu_reading.acc));
-        snapshot.imu_reading.acc = acc.clone().into();
+            .mul(&Vector3::from(snapshot.imu_reading.data.acc));
+        snapshot.imu_reading.data.acc = acc.clone().into();
 
         let gyro = self
             .mounting_angle_compensation_quat
-            .mul(&Vector3::from(snapshot.imu_reading.gyro));
-        snapshot.imu_reading.gyro = gyro.clone().into();
+            .mul(&Vector3::from(snapshot.imu_reading.data.gyro));
+        snapshot.imu_reading.data.gyro = gyro.clone().into();
 
         if self.state.is_in_air() {
             self.eskf.predict(
@@ -200,7 +200,7 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
                 acc_y_moving_average,
             } => {
                 // update state
-                acc_y_moving_average.add_sample(snapshot.imu_reading.acc[2]);
+                acc_y_moving_average.add_sample(snapshot.imu_reading.data.acc[2]);
 
                 if snapshot_history.is_full() {
                     snapshot_history.pop_front();
@@ -227,7 +227,7 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
 
                     // TODO sample more
                     let launch_vector =
-                        -Vector3::from(snapshot_before_launch.imu_reading.acc).normalize();
+                        -Vector3::from(snapshot_before_launch.imu_reading.data.acc).normalize();
                     let sky_vector = Vector3::<f32>::new(0.0, 0.0, -1.0);
                     // panics when sky_vector and plus_y_vector are pointing in the opposite direction,
                     // which means the rocket is nose down, if thats the case we got bigger problems
@@ -279,8 +279,8 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
                         snapshot_history.iter().zip(snapshot_history.iter().skip(1))
                     {
                         self.eskf.predict(
-                            Vector3::from(snapshot.imu_reading.acc),
-                            degree_to_rad(Vector3::from(snapshot.imu_reading.gyro)),
+                            Vector3::from(snapshot.imu_reading.data.acc),
+                            degree_to_rad(Vector3::from(snapshot.imu_reading.data.gyro)),
                             ((snapshot.timestamp - prev_snapshot.timestamp) / 1000.0) as f32,
                         );
                     }
@@ -302,7 +302,7 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
                 launch_altitude,
             } => {
                 acc_mag_moving_average
-                    .add_sample(Vector3::from(snapshot.imu_reading.acc).magnitude());
+                    .add_sample(Vector3::from(snapshot.imu_reading.data.acc).magnitude());
 
                 // coast detection
                 if acc_mag_moving_average.is_full() && acc_mag_moving_average.get_average() < 10.0 {
