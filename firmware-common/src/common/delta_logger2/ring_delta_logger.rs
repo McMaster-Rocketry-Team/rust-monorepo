@@ -41,9 +41,12 @@ where
     pub async fn new(
         fs: &'a VLFS<F, C>,
         file_type: FileType,
-        logs_per_segment: u32,
-        segments_per_ring: u32,
+        seconds_per_segment: u32,
+        keep_seconds: u32,
     ) -> Result<Self, VLFSError<F::Error>> {
+        let logs_per_segment = (seconds_per_segment as f64 * 1000.0 / FF::min()) as u32;
+        let segments_per_ring = keep_seconds / seconds_per_segment;
+
         let mut files_iter = fs
             .files_iter_filter(|file_entry| file_entry.typ == file_type)
             .await;
@@ -88,7 +91,7 @@ where
         })
     }
 
-    pub async fn log(&mut self, value: T) -> Result<(), VLFSError<F::Error>> {
+    pub async fn log(&mut self, value: T) -> Result<bool, VLFSError<F::Error>> {
         if self.current_segment_logs >= self.logs_per_segment {
             log_info!("Creating new ring segment");
             let mut builder = self.fs.new_at_builder().await?;
@@ -129,7 +132,7 @@ where
         let logged = self.delta_logger.log(value).await?;
         self.current_segment_logs += logged as u32;
 
-        Ok(())
+        Ok(logged)
     }
 
     pub async fn close(mut self) -> Result<(), VLFSError<F::Error>> {

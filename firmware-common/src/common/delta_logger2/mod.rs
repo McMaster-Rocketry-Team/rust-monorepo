@@ -6,3 +6,4 @@ pub mod bitslice_io;
 pub mod bitvec_serialize_traits;
 pub mod delta_logger;
 pub mod ring_delta_logger;
+pub mod tiered_ring_delta_logger;
