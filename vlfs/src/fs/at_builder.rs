@@ -32,6 +32,7 @@ pub struct ATBuilder<'a, F: Flash> {
 impl<'a, F: Flash> ATBuilder<'a, F> {
     pub(crate) async fn new(fs: &'a VLFS<F, impl Crc>) -> Result<Self, VLFSError<F::Error>> {
         let mut at = fs.allocation_table.write().await;
+        let max_file_id = at.footer.max_file_id;
         let curr_at_address = at.address();
         at.increment_position();
         let new_at_address = at.address();
@@ -50,7 +51,7 @@ impl<'a, F: Flash> ATBuilder<'a, F> {
             write_buffer_offset: 5,
 
             file_count: 0,
-            max_file_id: FileID(0),
+            max_file_id,
 
             finished: false,
         };
