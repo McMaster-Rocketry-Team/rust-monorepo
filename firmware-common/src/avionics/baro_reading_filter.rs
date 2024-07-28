@@ -1,17 +1,17 @@
 use heapless::Deque;
 
-use crate::driver::{barometer::BaroReading, timestamp::BootTimestamp};
+use crate::{common::sensor_reading::SensorReading, driver::{barometer::BaroData, timestamp::BootTimestamp}};
 
 pub struct BaroFilterOutput {
     pub should_ignore: bool,
-    pub baro_reading: BaroReading<BootTimestamp>,
+    pub baro_reading: SensorReading<BootTimestamp, BaroData>,
 }
 
 #[derive(Clone)]
 pub struct BaroReadingFilter {
-    history: Deque<BaroReading<BootTimestamp>, 2>,
+    history: Deque<SensorReading<BootTimestamp, BaroData>, 2>,
     ignore_pressure_end_time: f64,
-    baro_reading_hold: Option<BaroReading<BootTimestamp>>,
+    baro_reading_hold: Option<SensorReading<BootTimestamp, BaroData>>,
 }
 
 impl BaroReadingFilter {
@@ -23,7 +23,7 @@ impl BaroReadingFilter {
         }
     }
 
-    pub fn feed(&mut self, baro_reading: &BaroReading<BootTimestamp>) -> BaroFilterOutput {
+    pub fn feed(&mut self, baro_reading: &SensorReading<BootTimestamp, BaroData>) -> BaroFilterOutput {
         if self.history.is_full() {
             self.history.pop_front();
         }
@@ -37,7 +37,7 @@ impl BaroReadingFilter {
         }
 
         let prev_reading = self.history.front().unwrap();
-        let pressure_slope = (baro_reading.pressure - prev_reading.pressure)
+        let pressure_slope = (baro_reading.data.pressure - prev_reading.data.pressure)
             / ((baro_reading.timestamp - prev_reading.timestamp) / 1000.0) as f32;
         if pressure_slope > 3000.0 {
             log_info!("BaroFilter: ignoring pressure reading");
@@ -58,7 +58,7 @@ impl BaroReadingFilter {
         }
     }
 
-    pub fn last_reading(&self) -> Option<BaroReading<BootTimestamp>> {
+    pub fn last_reading(&self) -> Option<SensorReading<BootTimestamp, BaroData>> {
         self.history.back().map(|r| r.clone())
     }
 }

@@ -178,7 +178,7 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
                     baro_reading,
                 } = self.baro_filter.feed(baro_reading)
             {
-                let mut altitude = baro_reading.altitude();
+                let mut altitude = baro_reading.data.altitude();
                 if let Some(baro_altimeter_offset) = self.baro_altimeter_offset {
                     altitude += baro_altimeter_offset;
                 }
@@ -259,7 +259,7 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
                     let baro_before_launch = snapshot_history
                         .iter()
                         .find(|s| s.baro_reading.is_some())
-                        .map(|s| s.baro_reading.as_ref().unwrap().altitude());
+                        .map(|s| s.baro_reading.as_ref().unwrap().data.altitude());
 
                     let launch_altitude = if let Some(baro_altitude) = baro_before_launch {
                         baro_altitude

@@ -45,7 +45,7 @@ use crate::{
     common::{device_manager::prelude::*, sensor_snapshot::PartialSensorSnapshot, ticker::Ticker},
     device_manager_type,
     driver::{
-        barometer::BaroReading, debugger::DebuggerTargetEvent, gps::GPS, indicator::Indicator,
+        debugger::DebuggerTargetEvent, gps::GPS, indicator::Indicator,
         mag::MagReading,
     },
 };

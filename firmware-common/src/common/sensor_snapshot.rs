@@ -1,12 +1,14 @@
-use crate::driver::{barometer::BaroReading, gps::GPSLocation, imu::IMUReading, mag::MagReading, timestamp::BootTimestamp};
+use crate::driver::{barometer::BaroData, gps::GPSLocation, imu::IMUReading, mag::MagReading, timestamp::BootTimestamp};
 use rkyv::{Archive, Deserialize, Serialize};
 
+use super::sensor_reading::SensorReading;
 
-#[derive(Archive, Deserialize, Serialize, Debug, Clone)]
-pub enum SensorReading {
+
+#[derive(Debug, Clone)]
+pub enum SensorReadingEnum {
     GPS(GPSLocation),
     IMU(IMUReading<BootTimestamp>),
-    Baro(BaroReading<BootTimestamp>),
+    Baro(SensorReading<BootTimestamp, BaroData>),
     Mag(MagReading<BootTimestamp>),
     BatteryVoltage(BatteryVoltage),
 }
@@ -17,14 +19,14 @@ pub struct BatteryVoltage {
     pub voltage: f32,
 }
 
-impl SensorReading {
+impl SensorReadingEnum {
     pub fn timestamp(&self) -> f64 {
         match self {
-            SensorReading::GPS(gps) => gps.timestamp,
-            SensorReading::IMU(imu) => imu.timestamp,
-            SensorReading::Baro(baro) => baro.timestamp,
-            SensorReading::Mag(mag) => mag.timestamp,
-            SensorReading::BatteryVoltage(batt) => batt.timestamp,
+            SensorReadingEnum::GPS(gps) => gps.timestamp,
+            SensorReadingEnum::IMU(imu) => imu.timestamp,
+            SensorReadingEnum::Baro(baro) => baro.timestamp,
+            SensorReadingEnum::Mag(mag) => mag.timestamp,
+            SensorReadingEnum::BatteryVoltage(batt) => batt.timestamp,
         }
     }
 }
@@ -33,5 +35,5 @@ impl SensorReading {
 pub struct PartialSensorSnapshot {
     pub timestamp: f64, // ms
     pub imu_reading: IMUReading<BootTimestamp>,
-    pub baro_reading: Option<BaroReading<BootTimestamp>>,
+    pub baro_reading: Option<SensorReading<BootTimestamp, BaroData>>,
 }

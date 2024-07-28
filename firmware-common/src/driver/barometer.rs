@@ -1,82 +1,97 @@
-use core::{fmt::Debug, marker::PhantomData, ops::DerefMut as _,};
+use crate::common::delta_logger::bitslice_io::{
+    BitArrayDeserializable, BitArraySerializable, BitSliceReader, BitSliceWriter,
+};
+use crate::common::delta_logger::bitvec_serialize_traits::FromBitSlice;
+use crate::common::fixed_point::F32FixedPointFactory;
+use crate::common::sensor_reading::{SensorData, SensorReading};
+use crate::fixed_point_factory_slope;
+use crate::common::delta_factory::Deltable;
 use core::future::Future;
+use core::{fmt::Debug, ops::DerefMut as _};
 use embassy_sync::{blocking_mutex::raw::RawMutex, mutex::MutexGuard};
 use embedded_hal_async::delay::DelayNs;
 use libm::powf;
-use rkyv::{Archive, Deserialize, Serialize};
 
-use crate::{common::{delta_factory::Deltable, unix_clock::UnixClock}, Clock};
-
-use super::timestamp::{BootTimestamp, TimestampType, UnixTimestamp};
-
-#[derive(Archive, Deserialize, Serialize,defmt::Format, Debug, Clone)]
-pub struct BaroReading<T: TimestampType> {
-    _phantom: PhantomData<T>,
-    pub timestamp: f64,   // ms
-    pub temperature: f32, // C
-    pub pressure: f32,    // Pa
-}
+use super::timestamp::BootTimestamp;
 
 #[derive(defmt::Format, Debug, Clone)]
 pub struct BaroData {
-    pub timestamp: f64,   // ms
     pub temperature: f32, // C
     pub pressure: f32,    // Pa
 }
 
-
-
-
-
-
-#[derive(defmt::Format, Debug, Clone, Archive, Deserialize, Serialize)]
-pub struct BaroReadingDelta<T: TimestampType> {
-    _phantom: PhantomData<T>,
-    pub timestamp: u8,
-    pub temperature: u8,
-    pub pressure: u8,
+impl BitArraySerializable for BaroData {
+    fn serialize<const N: usize>(&self, writer: &mut BitSliceWriter<N>) {
+        writer.write(self.temperature);
+        writer.write(self.pressure);
+    }
 }
 
-mod factories {
-    use crate::fixed_point_factory;
+impl BitArrayDeserializable for BaroData {
+    fn deserialize<const N: usize>(reader: &mut BitSliceReader<N>) -> Self {
+        Self {
+            temperature: reader.read().unwrap(),
+            pressure: reader.read().unwrap(),
+        }
+    }
 
-    fixed_point_factory!(Timestamp, 0.0, 10.0, f64, u8);
-    fixed_point_factory!(Temperature, -1.0, 1.0, f32, u8);
-    fixed_point_factory!(Pressure, -50.0, 50.0, f32, u8);
+    fn len_bits() -> usize {
+        32 + 32
+    }
 }
 
-impl<T: TimestampType> Deltable for BaroReading<T> {
-    type DeltaType = BaroReadingDelta<T>;
+fixed_point_factory_slope!(TemperatureFac, 20.0, 5.0, 0.05);
+fixed_point_factory_slope!(PressureFac, 4000.0, 5.0, 1.0);
 
-    fn add_delta(&self, delta: &BaroReadingDelta<T>) -> Option<Self> {
+#[derive(defmt::Format, Debug, Clone)]
+pub struct BaroDataDelta {
+    #[defmt(Debug2Format)]
+    pub temperature: TemperatureFacPacked,
+    #[defmt(Debug2Format)]
+    pub pressure: PressureFacPacked,
+}
+
+impl BitArraySerializable for BaroDataDelta {
+    fn serialize<const N: usize>(&self, writer: &mut BitSliceWriter<N>) {
+        writer.write(self.temperature);
+        writer.write(self.pressure);
+    }
+}
+
+impl BitArrayDeserializable for BaroDataDelta {
+    fn deserialize<const N: usize>(reader: &mut BitSliceReader<N>) -> Self {
+        Self {
+            temperature: reader.read().unwrap(),
+            pressure: reader.read().unwrap(),
+        }
+    }
+
+    fn len_bits() -> usize {
+        TemperatureFacPacked::len_bits() + PressureFacPacked::len_bits()
+    }
+}
+
+impl Deltable for BaroData {
+    type DeltaType = BaroDataDelta;
+
+    fn add_delta(&self, delta: &Self::DeltaType) -> Option<Self> {
         Some(Self {
-            _phantom: PhantomData,
-            timestamp: self.timestamp + factories::Timestamp::to_float(delta.timestamp),
-            temperature: self.temperature + factories::Temperature::to_float(delta.temperature),
-            pressure: self.pressure + factories::Pressure::to_float(delta.pressure),
+            temperature: self.temperature + TemperatureFac::to_float(delta.temperature),
+            pressure: self.pressure + PressureFac::to_float(delta.pressure),
         })
     }
 
     fn subtract(&self, other: &Self) -> Option<Self::DeltaType> {
-        Some(BaroReadingDelta {
-            _phantom: PhantomData,
-            timestamp: factories::Timestamp::to_fixed_point(self.timestamp - other.timestamp)?,
-            temperature: factories::Temperature::to_fixed_point(self.temperature - other.temperature)?,
-            pressure: factories::Pressure::to_fixed_point(self.pressure - other.pressure)?,
+        Some(Self::DeltaType {
+            temperature: TemperatureFac::to_fixed_point(self.temperature - other.temperature)?,
+            pressure: PressureFac::to_fixed_point(self.pressure - other.pressure)?,
         })
     }
 }
 
-impl<T: TimestampType> BaroReading<T> {
-    pub fn new(timestamp: f64, temperature: f32, pressure: f32) -> Self {
-        Self {
-            _phantom: PhantomData,
-            timestamp,
-            temperature,
-            pressure,
-        }
-    }
+impl SensorData for BaroData {}
 
+impl BaroData {
     pub fn altitude(&self) -> f32 {
         // see https://github.com/pimoroni/bmp280-python/blob/master/library/bmp280/__init__.py
         let air_pressure_hpa = self.pressure / 100.0;
@@ -86,25 +101,13 @@ impl<T: TimestampType> BaroReading<T> {
     }
 }
 
-impl BaroReading<BootTimestamp> {
-    pub fn to_unix_timestamp(
-        self,
-        unix_clock: UnixClock<impl Clock>,
-    ) -> BaroReading<UnixTimestamp> {
-        BaroReading {
-            _phantom: PhantomData,
-            timestamp: unix_clock.convert_to_unix(self.timestamp),
-            temperature: self.temperature,
-            pressure: self.pressure,
-        }
-    }
-}
-
 pub trait Barometer {
     type Error: defmt::Format + Debug;
 
     fn reset(&mut self) -> impl Future<Output = Result<(), Self::Error>>;
-    fn read(&mut self) -> impl Future<Output = Result<BaroReading<BootTimestamp>, Self::Error>>;
+    fn read(
+        &mut self,
+    ) -> impl Future<Output = Result<SensorReading<BootTimestamp, BaroData>, Self::Error>>;
 }
 
 pub struct DummyBarometer<D: DelayNs> {
@@ -124,14 +127,15 @@ impl<D: DelayNs> Barometer for DummyBarometer<D> {
         Ok(())
     }
 
-    async fn read(&mut self) -> Result<BaroReading<BootTimestamp>, ()> {
+    async fn read(&mut self) -> Result<SensorReading<BootTimestamp, BaroData>, ()> {
         self.delay.delay_ms(1).await;
-        Ok(BaroReading {
-            _phantom: PhantomData,
-            timestamp: 0.0,
-            temperature: 25.0,
-            pressure: 101325.0,
-        })
+        Ok(SensorReading::new(
+            0.0,
+            BaroData {
+                temperature: 25.0,
+                pressure: 101325.0,
+            },
+        ))
     }
 }
 
@@ -146,7 +150,7 @@ where
         self.deref_mut().reset().await
     }
 
-    async fn read(&mut self) -> Result<BaroReading<BootTimestamp>, Self::Error> {
+    async fn read(&mut self) -> Result<SensorReading<BootTimestamp, BaroData>, Self::Error> {
         self.deref_mut().read().await
     }
 }
