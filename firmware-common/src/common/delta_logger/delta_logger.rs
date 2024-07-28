@@ -13,8 +13,8 @@ use crate::{
 };
 
 use super::bitslice_io::{BitArraySerializable, BitSliceReader, BitSliceWriter};
-use crate::common::delta_logger2::bitslice_io::BitArrayDeserializable;
-use crate::common::delta_logger2::bitvec_serialize_traits::FromBitSlice;
+use crate::common::delta_logger::bitslice_io::BitArrayDeserializable;
+use crate::common::delta_logger::bitvec_serialize_traits::FromBitSlice;
 
 #[derive(Debug, Clone)]
 struct Timestamp<F: F64FixedPointFactory>(f64, PhantomData<F>);

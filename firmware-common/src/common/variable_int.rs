@@ -1,10 +1,10 @@
 use core::fmt::Debug;
 
-use crate::common::delta_logger2::SerializeBitOrder;
+use crate::common::delta_logger::SerializeBitOrder;
 use bitvec::prelude::*;
 use packed_struct::prelude::*;
 
-use super::delta_logger2::bitvec_serialize_traits::{BitSliceWritable, FromBitSlice};
+use super::delta_logger::bitvec_serialize_traits::{BitSliceWritable, FromBitSlice};
 
 pub trait VariableIntTrait {
     type Base;

@@ -22,7 +22,6 @@ use crate::{
             AvionicsStatusMessage, FlightEvent, FlightEventMessage, UnixTimeMessage,
         },
         config_file::ConfigFile,
-        delta_logger::BufferedDeltaLogger,
         device_config::{DeviceConfig, DeviceModeConfig},
         file_types::*,
         vlp2::{
