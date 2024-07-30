@@ -3,49 +3,52 @@ use bitvec::prelude::*;
 use core::future::Future;
 
 pub struct BitSliceWriter<const N: usize> {
-    len: usize,
-    data: BitArray<[u8; N], SerializeBitOrder>,
+    pub len_bits: usize,
+    pub data: BitArray<[u8; N], SerializeBitOrder>,
 }
 
 impl<const N: usize> BitSliceWriter<N> {
     pub fn write<T: BitSlicePrimitive>(&mut self, value: T) {
-        value.write(&mut self.data[self.len..]);
-        self.len += T::len_bits();
+        value.write(&mut self.data[self.len_bits..]);
+        self.len_bits += T::len_bits();
     }
 
     /// returns a slice of the full bytes
     /// e.g. if the length is 20 bits, this will return the first 2 bytes
     pub fn view_full_byte_slice(&self) -> &[u8] {
-        let full_bytes = self.len / 8;
+        let full_bytes = self.len_bits / 8;
         &self.data.as_raw_slice()[..full_bytes]
     }
 
     /// returns a slice of the data, including bytes that are not fully filled
     /// e.g. if the length is 20 bits, this will return the first 3 bytes
     pub fn view_all_data_slice(&self) -> &[u8] {
-        let bytes = (self.len + 7) / 8;
-        &self.data.as_raw_slice()[..bytes]
+        &self.data.as_raw_slice()[..self.len_bytes()]
+    }
+
+    pub fn len_bytes(&self) -> usize {
+        (self.len_bits + 7) / 8
     }
 
     /// removes the full bytes from the slice
     /// e.g. if the length is 20 bits, this will remove the first 2 bytes
     /// and the new length will be 4 bits
     pub fn clear_full_byte_slice(&mut self) {
-        let full_bytes = self.len / 8;
-        self.len = self.len % 8;
+        let full_bytes = self.len_bits / 8;
+        self.len_bits = self.len_bits % 8;
         let raw_slice = self.data.as_raw_mut_slice();
         raw_slice[0] = raw_slice[full_bytes];
     }
 
     pub fn clear(&mut self) {
-        self.len = 0;
+        self.len_bits = 0;
     }
 }
 
 impl<const N: usize> Default for BitSliceWriter<N> {
     fn default() -> Self {
         Self {
-            len: 0,
+            len_bits: 0,
             data: Default::default(),
         }
     }
@@ -68,16 +71,21 @@ impl<const N: usize> Default for BitSliceReader<N> {
 }
 
 impl<const N: usize> BitSliceReader<N> {
-    pub(super) fn len_bits(&self) -> usize {
+    pub fn clear(&mut self) {
+        self.start = 0;
+        self.end = 0;
+    }
+
+    pub fn len_bits(&self) -> usize {
         self.end - self.start
     }
 
-    pub(super) fn free_bytes(&self) -> usize {
+    pub fn free_bytes(&self) -> usize {
         (self.buffer.len() - self.len_bits()) / 8
     }
 
     /// move existing data to the beginning of the buffer and append new data
-    pub(super) fn replenish_bytes(&mut self, data: &[u8]) {
+    pub fn replenish_bytes<'a,'b>(&'a mut self, data: &'b [u8]) {
         let len_bits = self.len_bits();
         let dest = (8 - len_bits % 8) % 8;
         self.buffer.copy_within(self.start..self.end, dest);
@@ -90,7 +98,7 @@ impl<const N: usize> BitSliceReader<N> {
         self.end += data.len() * 8;
     }
 
-    pub(super) async fn replenish_bytes_async_mut<'a, 'b, FN, F, E>(
+    pub async fn replenish_bytes_async_mut<'a, 'b, FN, F, E>(
         &'a mut self,
         f: FN,
     ) -> Result<usize, E>

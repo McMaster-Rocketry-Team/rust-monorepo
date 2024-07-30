@@ -67,6 +67,8 @@ lora-modulation = "0.1.4"
 packed_struct = { version = "0.10.1", default-features = false }
 calculate-required-bits = { path = "../calculate-required-bits" }
 heatshrink = "0.2.0"
+int-enum = "1.1.2"
+reed-solomon = "0.2.1"
 
 [dev-dependencies]
 firmware-common = { version = "*", path = ".", default-features = false, features = [
@@ -80,9 +82,4 @@ futures-util = { version = "0.3.17", features = ["channel"] }
 critical-section = { version = "1.1", features = ["std"] }
 tokio = { version = "1.39.1", features = ["full"] }
 rand = "0.8.5"
-
-[profile.test]
-opt-level = 0
-debug = "full"
-debug-assertions = true
-overflow-checks = true
+mockall = "0.13.0"

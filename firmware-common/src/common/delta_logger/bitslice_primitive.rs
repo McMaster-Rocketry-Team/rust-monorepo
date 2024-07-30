@@ -4,6 +4,7 @@ use core::mem::MaybeUninit;
 use core::mem::ManuallyDrop;
 
 use bitvec::prelude::*;
+use num_traits::ToBytes;
 
 use super::SerializeBitOrder;
 
@@ -46,15 +47,32 @@ impl BitSlicePrimitive for u8 {
     }
 }
 
+impl BitSlicePrimitive for u32 {
+    fn write(&self, slice: &mut BitSlice<u8, SerializeBitOrder>) {
+        let data = self.to_le_bytes();
+        let data: &BitSlice<u8, SerializeBitOrder> = data.view_bits();
+        (&mut slice[..32]).copy_from_bitslice(data);
+    }
+
+    fn read(slice: &BitSlice<u8, SerializeBitOrder>) -> Self {
+        let slice = &slice[..32];
+        slice.load_le::<u32>()
+    }
+
+    fn len_bits() -> usize {
+        32
+    }
+}
+
 impl BitSlicePrimitive for i64 {
     fn write(&self, slice: &mut BitSlice<u8, SerializeBitOrder>) {
         let data = self.to_le_bytes();
         let data: &BitSlice<u8, SerializeBitOrder> = data.view_bits();
-        (&mut slice[..8]).copy_from_bitslice(data);
+        (&mut slice[..64]).copy_from_bitslice(data);
     }
 
     fn read(slice: &BitSlice<u8, SerializeBitOrder>) -> Self {
-        let slice = &slice[..8];
+        let slice = &slice[..64];
         slice.load_le::<i64>()
     }
 
