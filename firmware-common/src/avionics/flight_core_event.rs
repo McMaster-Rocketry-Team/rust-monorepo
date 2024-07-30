@@ -1,6 +1,6 @@
 use embassy_sync::{blocking_mutex::raw::RawMutex, channel::Sender};
 
-use crate::common::vlp2::telemetry_packet::FlightCoreStateTelemetry;
+use crate::common::vlp::telemetry_packet::FlightCoreStateTelemetry;
 
 #[derive(Debug, Clone, Copy)]
 pub enum FlightCoreEvent {

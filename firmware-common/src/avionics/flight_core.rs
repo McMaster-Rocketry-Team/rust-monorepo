@@ -7,7 +7,7 @@ use super::flight_core_event::FlightCoreEventDispatcher;
 use super::flight_profile::FlightProfile;
 use crate::common::moving_average::NoSumSMA;
 use crate::common::sensor_snapshot::PartialSensorSnapshot;
-use crate::common::vlp2::telemetry_packet::FlightCoreStateTelemetry;
+use crate::common::vlp::telemetry_packet::FlightCoreStateTelemetry;
 use eskf::ESKF;
 use ferraris_calibration::CalibrationInfo;
 use heapless::Deque;

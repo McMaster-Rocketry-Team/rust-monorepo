@@ -10,7 +10,7 @@ use crate::{
         device_config::{DeviceConfig, DeviceModeConfig},
         device_manager::prelude::*,
         rpc_channel::RpcChannelServer,
-        vlp2::{
+        vlp::{
             downlink_client::VLPDownlinkClient,
             packet::{VLPDownlinkPacket, VLPUplinkPacket},
         },

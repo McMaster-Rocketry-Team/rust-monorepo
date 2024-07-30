@@ -24,7 +24,7 @@ use crate::{
         config_file::ConfigFile,
         device_config::{DeviceConfig, DeviceModeConfig},
         file_types::*,
-        vlp2::{
+        vlp::{
             packet::{LowPowerModePacket, SoftArmPacket, VLPUplinkPacket},
             telemetry_packet::{FlightCoreStateTelemetry, TelemetryPacketBuilder},
             uplink_client::VLPUplinkClient,

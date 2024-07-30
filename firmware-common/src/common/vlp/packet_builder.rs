@@ -7,7 +7,7 @@ use crate::{
     common::{
         delta_logger::prelude::{BitArraySerializable, BitSliceReader, BitSliceWriter},
         unix_clock::UnixClock,
-        vlp2::{packet::*, telemetry_packet::TelemetryPacket},
+        vlp::{packet::*, telemetry_packet::TelemetryPacket},
     },
     Clock,
 };
@@ -315,7 +315,7 @@ fn calculate_ecc_length_from_total_length(total_length: usize) -> usize {
 #[cfg(test)]
 mod test {
     use crate::common::{
-        unix_clock::UnixClockTask, vlp2::telemetry_packet::FlightCoreStateTelemetry,
+        unix_clock::UnixClockTask, vlp::telemetry_packet::FlightCoreStateTelemetry,
     };
 
     use super::*;
