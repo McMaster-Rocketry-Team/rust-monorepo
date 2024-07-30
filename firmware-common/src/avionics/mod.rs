@@ -16,7 +16,6 @@ use rkyv::{Archive, Deserialize, Serialize};
 use vlfs::{Crc, Flash};
 
 use crate::{
-    allocator::HEAP,
     common::{
         can_bus::messages::{
             AvionicsStatusMessage, FlightEvent, FlightEventMessage, UnixTimeMessage,
@@ -69,14 +68,6 @@ pub async fn avionics_main(
     } else {
         log_unreachable!()
     };
-
-    // // Init 1KiB heap
-    // {
-    //     use core::mem::MaybeUninit;
-    //     const HEAP_SIZE: usize = 1024;
-    //     static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
-    //     unsafe { HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE) }
-    // }
 
     // claim_devices!(device_manager, indicators);
 
