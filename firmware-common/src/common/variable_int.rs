@@ -3,6 +3,10 @@ use core::fmt::Debug;
 use crate::common::delta_logger::SerializeBitOrder;
 use bitvec::prelude::*;
 use packed_struct::prelude::*;
+use rkyv::{
+    with::{ArchiveWith, DeserializeWith, SerializeWith},
+    Archive, Archived, Deserialize, Fallible, Resolver, Serialize,
+};
 
 use super::delta_logger::bitslice_primitive::BitSlicePrimitive;
 
@@ -12,6 +16,8 @@ pub trait VariableIntTrait {
 }
 
 pub struct VariableInt<const BITS: usize>;
+
+pub struct VariableIntRkyvWrapper;
 
 macro_rules! impl_variable_int {
     ($base_type: ty, $bits:literal) => {
@@ -33,6 +39,50 @@ macro_rules! impl_variable_int {
 
             fn len_bits() -> usize {
                 $bits
+            }
+        }
+
+        impl<S: Fallible + ?Sized> SerializeWith<Integer<$base_type, packed_bits::Bits<$bits>>, S>
+            for VariableIntRkyvWrapper
+        {
+            fn serialize_with(
+                field: &Integer<$base_type, packed_bits::Bits<$bits>>,
+                serializer: &mut S,
+            ) -> Result<Self::Resolver, S::Error> {
+                let field: $base_type = (*field).into();
+                println!("serialize");
+                field.serialize(serializer)
+            }
+        }
+
+        impl ArchiveWith<Integer<$base_type, packed_bits::Bits<$bits>>> for VariableIntRkyvWrapper {
+            type Archived = Archived<$base_type>;
+            type Resolver = Resolver<$base_type>;
+
+            unsafe fn resolve_with(
+                field: &Integer<$base_type, packed_bits::Bits<$bits>>,
+                pos: usize,
+                _: (),
+                out: *mut Self::Archived,
+            ) {
+                let field: $base_type = (*field).into();
+                println!("archive");
+                field.resolve(pos, (), out);
+            }
+        }
+
+        impl<D: Fallible + ?Sized>
+            DeserializeWith<Archived<$base_type>, Integer<$base_type, packed_bits::Bits<$bits>>, D>
+            for VariableIntRkyvWrapper
+        where
+            Archived<$base_type>: Deserialize<$base_type, D>,
+        {
+            fn deserialize_with(
+                field: &Archived<$base_type>,
+                deserializer: &mut D,
+            ) -> Result<Integer<$base_type, packed_bits::Bits<$bits>>, D::Error> {
+                println!("deserialize");
+                Ok(field.deserialize(deserializer)?.into())
             }
         }
     };
@@ -87,5 +137,39 @@ mod test {
 
         let num = <VariableInt<10> as VariableIntTrait>::Packed::read(arr.as_bitslice());
         assert_eq!(num, 0b1011111111.into());
+    }
+
+    use rkyv::{
+        archived_root,
+        ser::{serializers::AllocSerializer, Serializer},
+        Archive, Deserialize, Infallible, Serialize,
+    };
+
+    #[derive(Archive, Deserialize, Serialize)]
+    struct Example {
+        #[with(VariableIntRkyvWrapper)]
+        a: Integer<u8, packed_bits::Bits<5>>,
+        b: i32,
+    }
+
+    #[test]
+    fn test_var_int_rkyv() {
+        let value = Example { a: 4.into(), b: 9 };
+
+        let mut serializer = AllocSerializer::<4096>::default();
+        serializer.serialize_value(&value).unwrap();
+        let buf = serializer.into_serializer().into_inner();
+
+        let archived = unsafe { archived_root::<Example>(buf.as_ref()) };
+        // The wrapped field has been incremented
+        assert_eq!(archived.a, 4u8);
+        // ... and the unwrapped field has not
+        assert_eq!(archived.b, 9);
+
+        let deserialized: Example = archived.deserialize(&mut Infallible).unwrap();
+        // The wrapped field is back to normal
+        assert_eq!(deserialized.a, 4.into());
+        // ... and the unwrapped field is unchanged
+        assert_eq!(deserialized.b, 9);
     }
 }

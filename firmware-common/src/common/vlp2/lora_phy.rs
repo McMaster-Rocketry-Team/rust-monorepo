@@ -1,11 +1,11 @@
+use crate::common::device_config::LoraConfig;
 pub use embedded_hal_async::delay::DelayNs;
+use heapless::Vec;
 use lora_phy::{
     mod_params::{PacketStatus, RadioError},
     mod_traits::RadioKind,
     LoRa, RxMode,
 };
-
-use crate::common::device_config::LoraConfig;
 
 pub struct LoraPhy<'a, 'b, LK: RadioKind, DL: DelayNs> {
     lora: &'a mut LoRa<LK, DL>,
@@ -17,7 +17,7 @@ impl<'a, 'b, LK: RadioKind, DL: DelayNs> LoraPhy<'a, 'b, LK, DL> {
         LoraPhy { lora, lora_config }
     }
 
-    pub async fn tx(&mut self, buffer: &[u8]) -> Result<(), RadioError> {
+    pub async fn tx<const N: usize>(&mut self, buffer: &Vec<u8, N>) -> Result<(), RadioError> {
         let modulation_params = self.lora.create_modulation_params(
             self.lora_config.sf_phy(),
             self.lora_config.bw_phy(),
@@ -28,25 +28,23 @@ impl<'a, 'b, LK: RadioKind, DL: DelayNs> LoraPhy<'a, 'b, LK, DL> {
             self.lora
                 .create_tx_packet_params(8, false, false, false, &modulation_params)?;
 
-        // TODO time take to prepare for tx?
         self.lora
             .prepare_for_tx(
                 &modulation_params,
                 &mut tx_params,
                 self.lora_config.power,
-                buffer,
+                buffer.as_slice(),
             )
             .await?;
         self.lora.tx().await?;
         Ok(())
     }
 
-    pub async fn rx<T>(
+    pub async fn rx<const N: usize>(
         &mut self,
         listen_mode: RxMode,
-        buffer: &mut [u8],
-        deserializer: impl Fn(&[u8]) -> Option<T>,
-    ) -> Result<Option<(T, PacketStatus)>, RadioError> {
+        buffer: &mut Vec<u8, N>,
+    ) -> Result<PacketStatus, RadioError> {
         let modulation_params = self.lora.create_modulation_params(
             self.lora_config.sf_phy(),
             self.lora_config.bw_phy(),
@@ -56,7 +54,7 @@ impl<'a, 'b, LK: RadioKind, DL: DelayNs> LoraPhy<'a, 'b, LK, DL> {
         let rx_pkt_params = self.lora.create_rx_packet_params(
             8,
             false,
-            buffer.len() as u8,
+            buffer.capacity() as u8,
             false,
             false,
             &modulation_params,
@@ -66,7 +64,13 @@ impl<'a, 'b, LK: RadioKind, DL: DelayNs> LoraPhy<'a, 'b, LK, DL> {
             .prepare_for_rx(listen_mode, &modulation_params, &rx_pkt_params)
             .await
             .unwrap();
-        let (len, status) = self.lora.rx(&rx_pkt_params, buffer).await?;
-        Ok(deserializer(&buffer[..len as usize]).map(|packet| (packet, status)))
+        unsafe {
+            buffer.set_len(buffer.capacity());
+        }
+        let (len, status) = self.lora.rx(&rx_pkt_params, buffer.as_mut_slice()).await?;
+        unsafe {
+            buffer.set_len(len as usize);
+        }
+        Ok(status)
     }
 }

@@ -1,8 +1,10 @@
 use crate::common::delta_logger::prelude::*;
 
 use super::telemetry_packet2::TelemetryPacket;
+use rkyv::{Archive, Deserialize, Serialize};
 
-#[derive(defmt::Format, Debug, Clone, PartialEq)]
+
+#[derive(defmt::Format, Debug, Clone, PartialEq, Archive, Deserialize, Serialize)]
 pub struct VerticalCalibrationPacket {
     pub timestamp: f64,
 }
@@ -23,7 +25,7 @@ impl BitArraySerializable for VerticalCalibrationPacket {
     }
 }
 
-#[derive(defmt::Format, Debug, Clone, PartialEq)]
+#[derive(defmt::Format, Debug, Clone, PartialEq, Archive, Deserialize, Serialize)]
 pub struct SoftArmPacket {
     pub timestamp: f64,
     pub armed: bool,
@@ -47,7 +49,7 @@ impl BitArraySerializable for SoftArmPacket {
     }
 }
 
-#[derive(defmt::Format, Debug, Clone, PartialEq)]
+#[derive(defmt::Format, Debug, Clone, PartialEq, Archive, Deserialize, Serialize)]
 pub struct LowPowerModePacket {
     pub timestamp: f64,
     pub enabled: bool,
@@ -71,7 +73,7 @@ impl BitArraySerializable for LowPowerModePacket {
     }
 }
 
-#[derive(defmt::Format, Debug, Clone, PartialEq)]
+#[derive(defmt::Format, Debug, Clone, PartialEq, Archive, Deserialize, Serialize)]
 pub struct ResetPacket {
     pub timestamp: f64,
 }
@@ -92,7 +94,7 @@ impl BitArraySerializable for ResetPacket {
     }
 }
 
-#[derive(defmt::Format, Debug, Clone, PartialEq)]
+#[derive(defmt::Format, Debug, Clone, PartialEq, Archive, Deserialize, Serialize)]
 pub struct DeleteLogsPacket {
     pub timestamp: f64,
 }
@@ -113,7 +115,7 @@ impl BitArraySerializable for DeleteLogsPacket {
     }
 }
 
-#[derive(defmt::Format, Debug, Clone, PartialEq)]
+#[derive(defmt::Format, Debug, Clone, PartialEq, Archive, Deserialize, Serialize)]
 pub enum VLPUplinkPacket {
     VerticalCalibrationPacket(VerticalCalibrationPacket),
     SoftArmPacket(SoftArmPacket),
@@ -122,7 +124,38 @@ pub enum VLPUplinkPacket {
     DeleteLogsPacket(DeleteLogsPacket),
 }
 
-#[derive(defmt::Format, Debug, Clone, PartialEq)]
+
+impl From<VerticalCalibrationPacket> for VLPUplinkPacket {
+    fn from(packet: VerticalCalibrationPacket) -> Self {
+        Self::VerticalCalibrationPacket(packet)
+    }
+}
+
+impl From<SoftArmPacket> for VLPUplinkPacket {
+    fn from(packet: SoftArmPacket) -> Self {
+        Self::SoftArmPacket(packet)
+    }
+}
+
+impl From<LowPowerModePacket> for VLPUplinkPacket {
+    fn from(packet: LowPowerModePacket) -> Self {
+        Self::LowPowerModePacket(packet)
+    }
+}
+
+impl From<ResetPacket> for VLPUplinkPacket {
+    fn from(packet: ResetPacket) -> Self {
+        Self::ResetPacket(packet)
+    }
+}
+
+impl From<DeleteLogsPacket> for VLPUplinkPacket {
+    fn from(packet: DeleteLogsPacket) -> Self {
+        Self::DeleteLogsPacket(packet)
+    }
+}
+
+#[derive(defmt::Format, Debug, Clone, PartialEq, Archive, Deserialize, Serialize)]
 pub struct AckPacket {
     pub timestamp: f64,
 }
@@ -143,8 +176,20 @@ impl BitArraySerializable for AckPacket {
     }
 }
 
-#[derive(defmt::Format, Debug, Clone, PartialEq)]
+#[derive(defmt::Format, Debug, Clone, PartialEq, Archive, Deserialize, Serialize)]
 pub enum VLPDownlinkPacket {
     AckPacket(AckPacket),
     TelemetryPacket(TelemetryPacket),
+}
+
+impl From<AckPacket> for VLPDownlinkPacket {
+    fn from(packet: AckPacket) -> Self {
+        Self::AckPacket(packet)
+    }
+}
+
+impl From<TelemetryPacket> for VLPDownlinkPacket {
+    fn from(packet: TelemetryPacket) -> Self {
+        Self::TelemetryPacket(packet)
+    }
 }

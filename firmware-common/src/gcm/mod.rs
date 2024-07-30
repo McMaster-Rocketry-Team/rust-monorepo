@@ -12,7 +12,7 @@ use crate::{
         rpc_channel::RpcChannelServer,
         vlp2::{
             downlink_client::VLPDownlinkClient,
-            packet::{VLPDownlinkPacket, VLPUplinkPacket},
+            packet2::{VLPDownlinkPacket, VLPUplinkPacket},
         },
     },
     device_manager_type,
@@ -43,11 +43,16 @@ pub async fn gcm_main(
     let indicators_fut = indicators.run([], [], [250, 250]);
     let wait_gps_fut = services.unix_clock.wait_until_ready();
     select(indicators_fut, wait_gps_fut).await;
-    let indictors_fut =  indicators.run([], [50, 950], []);
+    let indictors_fut = indicators.run([], [50, 950], []);
 
-    let vlp_client =
-        VLPDownlinkClient::new(&config.lora, services.unix_clock(), services.delay(), lora_key);
-    let vlp_client_fut = vlp_client.run(&mut lora);
+    let vlp_client = VLPDownlinkClient::new();
+    let vlp_client_fut = vlp_client.run(
+        services.delay(),
+        &mut lora,
+        &config.lora,
+        services.unix_clock(),
+        lora_key,
+    );
 
     let vlp_send_fut = async {
         loop {

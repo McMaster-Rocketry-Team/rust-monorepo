@@ -1,5 +1,6 @@
 use crate::common::delta_logger::prelude::*;
 use crate::common::unix_clock::UnixClock;
+use crate::common::variable_int::VariableIntRkyvWrapper;
 use crate::driver::gps::GPSData;
 use crate::Clock;
 use crate::{common::fixed_point::F32FixedPointFactory, fixed_point_factory2};
@@ -7,6 +8,7 @@ use core::cell::{RefCell, RefMut};
 use embassy_sync::blocking_mutex::{raw::NoopRawMutex, Mutex as BlockingMutex};
 use int_enum::IntEnum;
 use packed_struct::prelude::*;
+use rkyv::{Archive, Deserialize, Serialize};
 
 fixed_point_factory2!(BatteryVFac, f32, 6.0, 9.0, 0.001);
 fixed_point_factory2!(TemperatureFac, f32, -30.0, 85.0, 0.1);
@@ -25,38 +27,47 @@ pub enum FlightCoreStateTelemetry {
     Landed = 5,
 }
 
-#[derive(defmt::Format, Debug, Clone, PartialEq)]
+#[derive(defmt::Format, Debug, Clone, PartialEq, Archive, Deserialize, Serialize)]
 pub struct TelemetryPacket {
     unix_clock_ready: bool,
     timestamp: u32, // seconds since unix epoch / seconds since boot
 
     #[defmt(Debug2Format)]
+    #[with(VariableIntRkyvWrapper)]
     num_of_fix_satellites: Integer<u8, packed_bits::Bits<5>>,
     lat_lon: (f64, f64),
 
     #[defmt(Debug2Format)]
+    #[with(VariableIntRkyvWrapper)]
     battery_v: BatteryVFacPacked,
     #[defmt(Debug2Format)]
+    #[with(VariableIntRkyvWrapper)]
     temperature: TemperatureFacPacked,
     hardware_armed: bool,
     software_armed: bool,
     #[defmt(Debug2Format)]
+    #[with(VariableIntRkyvWrapper)]
     disk_free_space: FreeSpaceFacPacked,
 
     pyro_main_continuity: bool,
     pyro_drogue_continuity: bool,
 
     #[defmt(Debug2Format)]
+    #[with(VariableIntRkyvWrapper)]
     altitude: AltitudeFacPacked,
     #[defmt(Debug2Format)]
+    #[with(VariableIntRkyvWrapper)]
     max_altitude: AltitudeFacPacked,
 
     #[defmt(Debug2Format)]
+    #[with(VariableIntRkyvWrapper)]
     vertical_speed: VerticalSpeedFacPacked,
     #[defmt(Debug2Format)]
+    #[with(VariableIntRkyvWrapper)]
     max_vertical_speed: VerticalSpeedFacPacked,
 
     #[defmt(Debug2Format)]
+    #[with(VariableIntRkyvWrapper)]
     flight_core_state: Integer<u8, packed_bits::Bits<3>>,
 }
 

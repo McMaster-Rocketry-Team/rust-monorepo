@@ -15,7 +15,7 @@ use packed_struct::prelude::*;
 
 use super::packet2::{VLPDownlinkPacket, VLPUplinkPacket};
 
-pub const MAX_VLP_PACKAGE_SIZE: usize = 48;
+pub const MAX_VLP_PACKET_SIZE: usize = 48;
 
 pub struct VLPPacketBuilder<'a, 'b, CL: Clock> {
     lora_config: BaseBandModulationParams,
@@ -23,8 +23,8 @@ pub struct VLPPacketBuilder<'a, 'b, CL: Clock> {
     uplink_key: &'b [u8; 32],
     downlink_key: [u8; 32],
     unix_clock: UnixClock<'a, CL>,
-    bit_slice_writer: BitSliceWriter<MAX_VLP_PACKAGE_SIZE>,
-    bit_slice_reader: BitSliceReader<MAX_VLP_PACKAGE_SIZE>,
+    bit_slice_writer: BitSliceWriter<MAX_VLP_PACKET_SIZE>,
+    bit_slice_reader: BitSliceReader<MAX_VLP_PACKET_SIZE>,
 }
 
 impl<'a, 'b, CL: Clock> VLPPacketBuilder<'a, 'b, CL> {
@@ -60,6 +60,7 @@ impl<'a, 'b, CL: Clock> VLPPacketBuilder<'a, 'b, CL> {
             .lora_config
             .time_on_air_us(Some(4), true, packet_length as u8)
             / 1000;
+        // TODO include time take to prepare for tx (spi)?
         let sent_time = now.checked_sub(air_time as u64).unwrap_or(0);
 
         let module = sent_time % 100;
@@ -85,7 +86,7 @@ impl<'a, 'b, CL: Clock> VLPPacketBuilder<'a, 'b, CL> {
 
     pub fn serialize_uplink(
         &mut self,
-        buffer: &mut Vec<u8, MAX_VLP_PACKAGE_SIZE>,
+        buffer: &mut Vec<u8, MAX_VLP_PACKET_SIZE>,
         packet: &VLPUplinkPacket,
     ) -> Result<(), ()> {
         buffer.clear();
@@ -139,7 +140,7 @@ impl<'a, 'b, CL: Clock> VLPPacketBuilder<'a, 'b, CL> {
 
     pub fn deserialize_uplink(
         &mut self,
-        buffer: &Vec<u8, MAX_VLP_PACKAGE_SIZE>,
+        buffer: &Vec<u8, MAX_VLP_PACKET_SIZE>,
     ) -> Result<VLPUplinkPacket, ()> {
         if buffer.len() <= 8 {
             log_info!("Received Lora message too short");
@@ -205,7 +206,7 @@ impl<'a, 'b, CL: Clock> VLPPacketBuilder<'a, 'b, CL> {
 
     pub fn serialize_downlink(
         &mut self,
-        buffer: &mut Vec<u8, MAX_VLP_PACKAGE_SIZE>,
+        buffer: &mut Vec<u8, MAX_VLP_PACKET_SIZE>,
         packet: &VLPDownlinkPacket,
     ) -> Result<(), ()> {
         buffer.clear();
@@ -247,7 +248,7 @@ impl<'a, 'b, CL: Clock> VLPPacketBuilder<'a, 'b, CL> {
 
     pub fn deserialize_downlink(
         &mut self,
-        buffer: &Vec<u8, MAX_VLP_PACKAGE_SIZE>,
+        buffer: &Vec<u8, MAX_VLP_PACKET_SIZE>,
     ) -> Result<VLPDownlinkPacket, ()> {
         if buffer.len() <= 8 {
             log_info!("Received Lora message too short");
@@ -354,7 +355,7 @@ mod test {
 
         let mut packet_builder = VLPPacketBuilder::new(unix_clock, lora_config, &key);
 
-        let mut buffer = Vec::<u8, MAX_VLP_PACKAGE_SIZE>::new();
+        let mut buffer = Vec::<u8, MAX_VLP_PACKET_SIZE>::new();
         let packet = VLPUplinkPacket::SoftArmPacket(SoftArmPacket {
             timestamp: 12345.67,
             armed: true,
@@ -392,7 +393,7 @@ mod test {
 
         let mut packet_builder = VLPPacketBuilder::new(unix_clock, lora_config, &key);
 
-        let mut buffer = Vec::<u8, MAX_VLP_PACKAGE_SIZE>::new();
+        let mut buffer = Vec::<u8, MAX_VLP_PACKET_SIZE>::new();
         let packet = VLPDownlinkPacket::TelemetryPacket(TelemetryPacket::new(
             false,
             342354.4,

@@ -1,4 +1,5 @@
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
+use heapless::Vec;
 use lora_phy::{
     mod_params::{DutyCycleParams, PacketStatus, RadioError},
     mod_traits::RadioKind,
@@ -12,42 +13,21 @@ use crate::{
 
 use super::{
     lora_phy::LoraPhy,
-    packet::{
-        AckPacket, LowPowerModePacket, VLPDownlinkPacket, VLPUplinkPacket, MAX_VLP_PACKET_SIZE,
-    },
-    packet_builder::VLPPacketBuilder,
+    packet2::{AckPacket, LowPowerModePacket, VLPDownlinkPacket, VLPUplinkPacket},
+    packet_builder2::{VLPPacketBuilder, MAX_VLP_PACKET_SIZE},
 };
 
 // VLP client running on the rocket
-pub struct VLPUplinkClient<'a, 'b, 'c, CL: Clock, DL: Delay>
-where
-    'a: 'b,
-{
-    lora_config: &'a LoraConfig,
-    packet_builder: VLPPacketBuilder<'b, 'c, CL>,
-    unix_clock: UnixClock<'a, CL>,
+pub struct VLPUplinkClient {
     tx_signal: Signal<NoopRawMutex, VLPDownlinkPacket>,
     rx_signal: Signal<NoopRawMutex, (VLPUplinkPacket, PacketStatus)>,
-    delay: DL,
 }
 
-impl<'a, 'b, 'c, CL: Clock, DL: Delay> VLPUplinkClient<'a, 'b, 'c, CL, DL>
-where
-    'a: 'b,
-{
-    pub fn new(
-        lora_config: &'a LoraConfig,
-        unix_clock: UnixClock<'a, CL>,
-        delay: DL,
-        key: &'c [u8; 32],
-    ) -> Self {
+impl VLPUplinkClient {
+    pub fn new() -> Self {
         VLPUplinkClient {
-            packet_builder: VLPPacketBuilder::new(unix_clock.clone(), lora_config.into(), key),
-            unix_clock,
-            lora_config,
             tx_signal: Signal::new(),
             rx_signal: Signal::new(),
-            delay,
         }
     }
 
@@ -59,22 +39,27 @@ where
         self.rx_signal.wait().await
     }
 
-    pub async fn run(&self, lora: &mut LoRa<impl RadioKind, impl Delay>) {
-        let mut delay = self.delay.clone();
-        let mut lora = LoraPhy::new(lora, self.lora_config);
-        let mut buffer = [0; MAX_VLP_PACKET_SIZE];
+    pub async fn run<'a>(
+        &self,
+        delay: impl Delay,
+        lora: &mut LoRa<impl RadioKind, impl Delay>,
+        lora_config: &LoraConfig,
+        unix_clock: UnixClock<'a, impl Clock>,
+        key: &[u8; 32],
+    ) {
+        let mut packet_builder = VLPPacketBuilder::new(unix_clock.clone(), lora_config.into(), key);
+        let mut lora = LoraPhy::new(lora, lora_config);
+        let mut buffer = Vec::<u8, MAX_VLP_PACKET_SIZE>::new();
         let mut low_power_mode = false;
-
-        let deserializer = |buffer: &[u8]| self.packet_builder.deserialize_uplink(buffer);
 
         loop {
             let result: Result<(), RadioError> = try {
                 if !low_power_mode {
                     let tx_packet = self.tx_signal.wait().await;
-                    let tx_packet_serialized = self
-                        .packet_builder
-                        .serialize_downlink(&mut buffer, &tx_packet);
-                    lora.tx(tx_packet_serialized).await?;
+                    packet_builder
+                        .serialize_downlink(&mut buffer, &tx_packet)
+                        .unwrap();
+                    lora.tx(&buffer).await?;
                 }
 
                 let listen_mode = if low_power_mode {
@@ -85,32 +70,43 @@ where
                 } else {
                     RxMode::Single(100)
                 };
-                match lora.rx(listen_mode, &mut buffer, deserializer).await {
-                    Ok(Some((packet, packet_status))) => {
-                        if let VLPUplinkPacket::LowPowerModePacket(LowPowerModePacket {
-                            enabled,
-                            ..
-                        }) = &packet
-                        {
-                            low_power_mode = *enabled;
-                        }
-                        
-                        let ack_packet_serialized = self.packet_builder.serialize_downlink(
-                            &mut buffer,
-                            &AckPacket {
-                                timestamp: self.unix_clock.now_ms(),
-                            }
-                            .into(),
-                        );
-                        lora.tx(ack_packet_serialized).await?;
 
-                        self.rx_signal.signal((packet, packet_status));
+                match lora.rx(listen_mode, &mut buffer).await {
+                    Ok(packet_status) => {
+                        // try to deserialize the packet
+                        match packet_builder.deserialize_uplink(&buffer) {
+                            Ok(packet) => {
+                                if let VLPUplinkPacket::LowPowerModePacket(LowPowerModePacket {
+                                    enabled,
+                                    ..
+                                }) = &packet
+                                {
+                                    low_power_mode = *enabled;
+                                }
+
+                                packet_builder
+                                    .serialize_downlink(
+                                        &mut buffer,
+                                        &AckPacket {
+                                            timestamp: unix_clock.now_ms(),
+                                        }
+                                        .into(),
+                                    )
+                                    .unwrap();
+                                lora.tx(&buffer).await?;
+
+                                self.rx_signal.signal((packet, packet_status));
+                            }
+                            Err(_) => {
+                                // deserialize error
+                            }
+                        }
                     }
-                    Err(RadioError::ReceiveTimeout) | Ok(None) => {}
-                    Err(e) => {
-                        Err(e)?;
+                    Err(RadioError::ReceiveTimeout) => {
+                        continue;
                     }
-                }
+                    Err(e) => Err(e)?,
+                };
             };
             if let Err(e) = result {
                 log_error!("Error in VLP uplink client: {:?}", e);
