@@ -12,8 +12,8 @@ use lora_phy::{
 
 use super::{
     lora_phy::LoraPhy,
-    packet2::{AckPacket, VLPDownlinkPacket, VLPUplinkPacket},
-    packet_builder2::{VLPPacketBuilder, MAX_VLP_PACKET_SIZE},
+    packet::{AckPacket, VLPDownlinkPacket, VLPUplinkPacket},
+    packet_builder::{VLPPacketBuilder, MAX_VLP_PACKET_SIZE},
 };
 
 // VLP client running on the GCM

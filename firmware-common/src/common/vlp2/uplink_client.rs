@@ -13,8 +13,8 @@ use crate::{
 
 use super::{
     lora_phy::LoraPhy,
-    packet2::{AckPacket, LowPowerModePacket, VLPDownlinkPacket, VLPUplinkPacket},
-    packet_builder2::{VLPPacketBuilder, MAX_VLP_PACKET_SIZE},
+    packet::{AckPacket, LowPowerModePacket, VLPDownlinkPacket, VLPUplinkPacket},
+    packet_builder::{VLPPacketBuilder, MAX_VLP_PACKET_SIZE},
 };
 
 // VLP client running on the rocket

@@ -1,9 +1,6 @@
-pub mod packet_builder;
-pub mod packet_builder2;
-pub mod packet;
-pub mod packet2;
-pub mod uplink_client;
 pub mod downlink_client;
 pub mod lora_phy;
+pub mod packet;
+pub mod packet_builder;
 pub mod telemetry_packet;
-pub mod telemetry_packet2;
+pub mod uplink_client;

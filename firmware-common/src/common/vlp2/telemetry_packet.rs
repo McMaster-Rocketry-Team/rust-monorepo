@@ -1,134 +1,150 @@
+use crate::common::delta_logger::prelude::*;
+use crate::common::unix_clock::UnixClock;
+use crate::common::variable_int::VariableIntRkyvWrapper;
+use crate::driver::gps::GPSData;
+use crate::Clock;
+use crate::{common::fixed_point::F32FixedPointFactory, fixed_point_factory2};
 use core::cell::{RefCell, RefMut};
-
+use embassy_sync::blocking_mutex::{raw::NoopRawMutex, Mutex as BlockingMutex};
+use int_enum::IntEnum;
+use packed_struct::prelude::*;
 use rkyv::{Archive, Deserialize, Serialize};
 
-use crate::{common::unix_clock::UnixClock, driver::gps::GPSData, Clock};
-use embassy_sync::blocking_mutex::{raw::NoopRawMutex, Mutex as BlockingMutex};
+fixed_point_factory2!(BatteryVFac, f32, 6.0, 9.0, 0.001);
+fixed_point_factory2!(TemperatureFac, f32, -30.0, 85.0, 0.1);
+fixed_point_factory2!(FreeSpaceFac, f32, 0.0, 524288.0, 128.0);
+fixed_point_factory2!(AltitudeFac, f32, 0.0, 5000.0, 5.0);
+fixed_point_factory2!(VerticalSpeedFac, f32, -400.0, 400.0, 2.0);
 
-use super::packet::VLPDownlinkPacket;
-
-mod factories {
-    use crate::fixed_point_factory;
-
-    fixed_point_factory!(BatteryV, 2.0 * 2.0, 4.3 * 2.0, f32, u16);
-    fixed_point_factory!(Temperature, -10.0, 85.0, f32, u16);
-    fixed_point_factory!(Altitude, -50.0, 5000.0, f32, u16);
+#[repr(u8)]
+#[derive(defmt::Format, Debug, Clone, Copy, IntEnum)]
+pub enum FlightCoreStateTelemetry {
+    DisArmed = 0,
+    Armed = 1,
+    PowerAscend = 2,
+    Coast = 3,
+    Descent = 4,
+    Landed = 5,
 }
 
-#[derive(defmt::Format, Debug, Clone, Archive, Deserialize, Serialize)]
-pub struct PadIdleTelemetryPacket {
-    pub timestamp: f64,
-    pub lat_lon: (f64, f64),
-    pub battery_v: u16,
-    pub temperature: u16,
-    pub software_armed: bool,
-    pub free_space: u32,
+#[derive(defmt::Format, Debug, Clone, PartialEq, Archive, Deserialize, Serialize)]
+pub struct TelemetryPacket {
+    unix_clock_ready: bool,
+    timestamp: u32, // seconds since unix epoch / seconds since boot
+
+    #[defmt(Debug2Format)]
+    #[with(VariableIntRkyvWrapper)]
+    num_of_fix_satellites: Integer<u8, packed_bits::Bits<5>>,
+    lat_lon: (f64, f64),
+
+    #[defmt(Debug2Format)]
+    #[with(VariableIntRkyvWrapper)]
+    battery_v: BatteryVFacPacked,
+    #[defmt(Debug2Format)]
+    #[with(VariableIntRkyvWrapper)]
+    temperature: TemperatureFacPacked,
+    hardware_armed: bool,
+    software_armed: bool,
+    #[defmt(Debug2Format)]
+    #[with(VariableIntRkyvWrapper)]
+    disk_free_space: FreeSpaceFacPacked,
+
+    pyro_main_continuity: bool,
+    pyro_drogue_continuity: bool,
+
+    #[defmt(Debug2Format)]
+    #[with(VariableIntRkyvWrapper)]
+    altitude: AltitudeFacPacked,
+    #[defmt(Debug2Format)]
+    #[with(VariableIntRkyvWrapper)]
+    max_altitude: AltitudeFacPacked,
+
+    #[defmt(Debug2Format)]
+    #[with(VariableIntRkyvWrapper)]
+    vertical_speed: VerticalSpeedFacPacked,
+    #[defmt(Debug2Format)]
+    #[with(VariableIntRkyvWrapper)]
+    max_vertical_speed: VerticalSpeedFacPacked,
+
+    #[defmt(Debug2Format)]
+    #[with(VariableIntRkyvWrapper)]
+    flight_core_state: Integer<u8, packed_bits::Bits<3>>,
 }
 
-impl PadIdleTelemetryPacket {
+impl TelemetryPacket {
     pub fn new(
-        timestamp: f64,
-        lat_lon: (f64, f64),
-        battery_v: f32,
-        temperature: f32,
-        software_armed: bool,
-        free_space: u32,
-    ) -> Self {
-        Self {
-            timestamp,
-            lat_lon,
-            battery_v: factories::BatteryV::to_fixed_point_capped(battery_v),
-            temperature: factories::Temperature::to_fixed_point_capped(temperature),
-            software_armed,
-            free_space,
-        }
-    }
-
-    pub fn timestamp(&self) -> f64 {
-        self.timestamp
-    }
-
-    pub fn lat_lon(&self) -> (f64, f64) {
-        self.lat_lon
-    }
-
-    pub fn battery_v(&self) -> f32 {
-        factories::BatteryV::to_float(self.battery_v)
-    }
-
-    pub fn temperature(&self) -> f32 {
-        factories::Temperature::to_float(self.temperature)
-    }
-
-    pub fn software_armed(&self) -> bool {
-        self.software_armed
-    }
-}
-
-#[derive(defmt::Format, Debug, Clone, Archive, Deserialize, Serialize)]
-pub struct PadDiagnosticTelemetryPacket {
-    pub timestamp: f64,
-    pub unix_clock_ready: bool,
-    pub lat_lon: Option<(f64, f64)>,
-    pub battery_v: u16,
-    pub temperature: u16,
-    pub hardware_armed: bool,
-    pub software_armed: bool,
-    pub free_space: u32,
-
-    pub num_of_fix_satellites: u8,
-    pub pyro_main_continuity: bool,
-    pub pyro_drogue_continuity: bool,
-    // TODO more
-}
-
-impl PadDiagnosticTelemetryPacket {
-    pub fn new(
-        timestamp: f64,
         unix_clock_ready: bool,
+        timestamp: f64,
+
+        num_of_fix_satellites: u8,
         lat_lon: Option<(f64, f64)>,
+
         battery_v: f32,
         temperature: f32,
+
         hardware_armed: bool,
         software_armed: bool,
-        num_of_fix_satellites: u8,
+
+        free_space: u32,
+
         pyro_main_continuity: bool,
         pyro_drogue_continuity: bool,
-        free_space: u32,
+
+        altitude: f32,
+        max_altitude: f32,
+
+        vertical_speed: f32,
+        max_vertical_speed: f32,
+
+        flight_core_state: FlightCoreStateTelemetry,
     ) -> Self {
         Self {
-            timestamp,
             unix_clock_ready,
-            lat_lon,
-            battery_v: factories::BatteryV::to_fixed_point_capped(battery_v),
-            temperature: factories::Temperature::to_fixed_point_capped(temperature),
+            timestamp: (timestamp / 1000.0) as u32,
+            num_of_fix_satellites: num_of_fix_satellites.into(),
+            lat_lon: lat_lon.unwrap_or((0.0, 0.0)),
+            battery_v: BatteryVFac::to_fixed_point_capped(battery_v),
+            temperature: TemperatureFac::to_fixed_point_capped(temperature),
             hardware_armed,
             software_armed,
-            num_of_fix_satellites,
+            disk_free_space: FreeSpaceFac::to_fixed_point_capped(free_space as f32),
             pyro_main_continuity,
             pyro_drogue_continuity,
-            free_space,
+            altitude: AltitudeFac::to_fixed_point_capped(altitude),
+            max_altitude: AltitudeFac::to_fixed_point_capped(max_altitude),
+            vertical_speed: VerticalSpeedFac::to_fixed_point_capped(vertical_speed),
+            max_vertical_speed: VerticalSpeedFac::to_fixed_point_capped(max_vertical_speed),
+            flight_core_state: (flight_core_state as u8).into(),
         }
-    }
-
-    pub fn timestamp(&self) -> f64 {
-        self.timestamp
     }
 
     pub fn unix_clock_ready(&self) -> bool {
         self.unix_clock_ready
     }
 
+    /// Get the timestamp in milliseconds
+    pub fn timestamp(&self) -> f64 {
+        self.timestamp as f64 * 1000.0
+    }
+
+    pub fn num_of_fix_satellites(&self) -> u8 {
+        self.num_of_fix_satellites.into()
+    }
+
     pub fn lat_lon(&self) -> Option<(f64, f64)> {
-        self.lat_lon
+        if self.lat_lon.0 == 0.0 && self.lat_lon.1 == 0.0 {
+            None
+        } else {
+            Some(self.lat_lon)
+        }
     }
 
     pub fn battery_v(&self) -> f32 {
-        factories::BatteryV::to_float(self.battery_v)
+        BatteryVFac::to_float(self.battery_v)
     }
 
     pub fn temperature(&self) -> f32 {
-        factories::Temperature::to_float(self.temperature)
+        TemperatureFac::to_float(self.temperature)
     }
 
     pub fn hardware_armed(&self) -> bool {
@@ -139,8 +155,9 @@ impl PadDiagnosticTelemetryPacket {
         self.software_armed
     }
 
-    pub fn num_of_fix_satellites(&self) -> u8 {
-        self.num_of_fix_satellites
+    /// Get the free space in bytes
+    pub fn free_space(&self) -> f32 {
+        FreeSpaceFac::to_float(self.disk_free_space)
     }
 
     pub fn pyro_main_continuity(&self) -> bool {
@@ -150,86 +167,91 @@ impl PadDiagnosticTelemetryPacket {
     pub fn pyro_drogue_continuity(&self) -> bool {
         self.pyro_drogue_continuity
     }
-}
-
-#[derive(defmt::Format, Debug, Clone, Copy, Archive, Deserialize, Serialize, PartialEq, Eq)]
-pub enum FlightCoreStateTelemetry {
-    DisArmed,
-    Armed,
-    PowerAscend,
-    Coast,
-    Descent,
-    Landed,
-}
-
-#[derive(defmt::Format, Debug, Clone, Archive, Deserialize, Serialize)]
-pub struct InFlightTelemetryPacket {
-    pub timestamp: f64,
-    pub temperature: u16,
-    pub altitude: u16,
-    pub max_altitude: u16,
-    pub max_speed: u16,
-    pub lat_lon: (f64, f64),
-    pub battery_v: u16,
-    pub flight_core_state: FlightCoreStateTelemetry,
-    pub free_space: u32,
-}
-
-impl InFlightTelemetryPacket {
-    pub fn new(
-        timestamp: f64,
-        temperature: f32,
-        altitude: f32,
-        max_altitude: f32,
-        max_speed: f32,
-        lat_lon: (f64, f64),
-        battery_v: f32,
-        flight_core_state: FlightCoreStateTelemetry,
-        free_space: u32,
-    ) -> Self {
-        Self {
-            timestamp,
-            temperature: factories::Temperature::to_fixed_point_capped(temperature),
-            altitude: factories::Altitude::to_fixed_point_capped(altitude),
-            max_altitude: factories::Altitude::to_fixed_point_capped(max_altitude),
-            max_speed: factories::Altitude::to_fixed_point_capped(max_speed),
-            lat_lon,
-            battery_v: factories::BatteryV::to_fixed_point_capped(battery_v),
-            flight_core_state,
-            free_space,
-        }
-    }
-
-    pub fn timestamp(&self) -> f64 {
-        self.timestamp
-    }
-
-    pub fn temperature(&self) -> f32 {
-        factories::Temperature::to_float(self.temperature)
-    }
 
     pub fn altitude(&self) -> f32 {
-        factories::Altitude::to_float(self.altitude)
+        AltitudeFac::to_float(self.altitude)
     }
 
     pub fn max_altitude(&self) -> f32 {
-        factories::Altitude::to_float(self.max_altitude)
+        AltitudeFac::to_float(self.max_altitude)
     }
 
-    pub fn max_speed(&self) -> f32 {
-        factories::Altitude::to_float(self.max_speed)
+    pub fn vertical_speed(&self) -> f32 {
+        VerticalSpeedFac::to_float(self.vertical_speed)
     }
 
-    pub fn lat_lon(&self) -> (f64, f64) {
-        self.lat_lon
-    }
-
-    pub fn battery_v(&self) -> f32 {
-        factories::BatteryV::to_float(self.battery_v)
+    pub fn max_vertical_speed(&self) -> f32 {
+        VerticalSpeedFac::to_float(self.max_vertical_speed)
     }
 
     pub fn flight_core_state(&self) -> FlightCoreStateTelemetry {
-        self.flight_core_state
+        let flight_core_state: u8 = self.flight_core_state.into();
+        if let Ok(flight_core_state) = FlightCoreStateTelemetry::try_from(flight_core_state) {
+            flight_core_state
+        } else {
+            FlightCoreStateTelemetry::DisArmed
+        }
+    }
+}
+
+impl BitArraySerializable for TelemetryPacket {
+    fn serialize<const N: usize>(&self, writer: &mut BitSliceWriter<N>) {
+        writer.write(self.unix_clock_ready);
+        writer.write(self.timestamp);
+        writer.write(self.num_of_fix_satellites);
+        writer.write(self.lat_lon);
+        writer.write(self.battery_v);
+        writer.write(self.temperature);
+        writer.write(self.hardware_armed);
+        writer.write(self.software_armed);
+        writer.write(self.disk_free_space);
+        writer.write(self.pyro_main_continuity);
+        writer.write(self.pyro_drogue_continuity);
+        writer.write(self.altitude);
+        writer.write(self.max_altitude);
+        writer.write(self.vertical_speed);
+        writer.write(self.max_vertical_speed);
+        writer.write(self.flight_core_state);
+    }
+
+    fn deserialize<const N: usize>(reader: &mut BitSliceReader<N>) -> Self {
+        Self {
+            unix_clock_ready: reader.read().unwrap(),
+            timestamp: reader.read().unwrap(),
+            num_of_fix_satellites: reader.read().unwrap(),
+            lat_lon: reader.read().unwrap(),
+            battery_v: reader.read().unwrap(),
+            temperature: reader.read().unwrap(),
+            hardware_armed: reader.read().unwrap(),
+            software_armed: reader.read().unwrap(),
+            disk_free_space: reader.read().unwrap(),
+            pyro_main_continuity: reader.read().unwrap(),
+            pyro_drogue_continuity: reader.read().unwrap(),
+            altitude: reader.read().unwrap(),
+            max_altitude: reader.read().unwrap(),
+            vertical_speed: reader.read().unwrap(),
+            max_vertical_speed: reader.read().unwrap(),
+            flight_core_state: reader.read().unwrap(),
+        }
+    }
+
+    fn len_bits() -> usize {
+        bool::len_bits()
+            + u32::len_bits()
+            + <Integer<u8, packed_bits::Bits<5>>>::len_bits()
+            + <(f64, f64)>::len_bits()
+            + BatteryVFacPacked::len_bits()
+            + TemperatureFacPacked::len_bits()
+            + bool::len_bits()
+            + bool::len_bits()
+            + FreeSpaceFacPacked::len_bits()
+            + bool::len_bits()
+            + bool::len_bits()
+            + AltitudeFacPacked::len_bits()
+            + AltitudeFacPacked::len_bits()
+            + VerticalSpeedFacPacked::len_bits()
+            + VerticalSpeedFacPacked::len_bits()
+            + <Integer<u8, packed_bits::Bits<3>>>::len_bits()
     }
 }
 
@@ -239,8 +261,8 @@ pub struct TelemetryPacketBuilderState {
     pub temperature: f32,
     pub altitude: f32,
     max_altitude: f32,
-    pub speed: f32,
-    max_speed: f32,
+    pub vertical_speed: f32,
+    max_vertical_speed: f32,
 
     pub hardware_armed: bool,
     pub software_armed: bool,
@@ -265,8 +287,8 @@ impl<'a, K: Clock> TelemetryPacketBuilder<'a, K> {
                 temperature: 0.0,
                 altitude: 0.0,
                 max_altitude: 0.0,
-                speed: 0.0,
-                max_speed: 0.0,
+                vertical_speed: 0.0,
+                max_vertical_speed: 0.0,
                 hardware_armed: false,
                 software_armed: false,
                 pyro_main_continuity: false,
@@ -277,91 +299,31 @@ impl<'a, K: Clock> TelemetryPacketBuilder<'a, K> {
         }
     }
 
-    fn is_pad_ready(&self) -> bool {
-        if !self.unix_clock.ready() {
-            return false;
-        }
+    pub fn create_packet(&self) -> TelemetryPacket {
         self.state.lock(|state| {
             let state = state.borrow();
 
-            if let Some(gps_location) = &state.gps_location {
-                if gps_location.lat_lon.is_none() {
-                    return false;
-                }
-            } else {
-                return false;
-            }
-            if !state.hardware_armed {
-                return false;
-            }
-            if !state.pyro_main_continuity {
-                return false;
-            }
-            if !state.pyro_drogue_continuity {
-                return false;
-            }
-
-            return true;
-        })
-    }
-
-    pub fn create_packet(&self) -> VLPDownlinkPacket {
-        let is_pad_ready = self.is_pad_ready();
-        self.state.lock(|state| {
-            let state = state.borrow();
-
-            if state.flight_core_state == FlightCoreStateTelemetry::DisArmed
-                || state.flight_core_state == FlightCoreStateTelemetry::Armed
-            {
-                // create pad telemetry packet
-                if is_pad_ready {
-                    PadIdleTelemetryPacket::new(
-                        self.unix_clock.now_ms(),
-                        state.gps_location.as_ref().unwrap().lat_lon.unwrap(),
-                        state.battery_v,
-                        state.temperature,
-                        state.software_armed,
-                        state.disk_free_space,
-                    )
-                    .into()
-                } else {
-                    PadDiagnosticTelemetryPacket::new(
-                        self.unix_clock.now_ms(),
-                        self.unix_clock.ready(),
-                        state.gps_location.as_ref().map(|l| l.lat_lon).flatten(),
-                        state.battery_v,
-                        state.temperature,
-                        state.hardware_armed,
-                        state.software_armed,
-                        state
-                            .gps_location
-                            .as_ref()
-                            .map_or(0, |l| l.num_of_fix_satellites),
-                        state.pyro_main_continuity,
-                        state.pyro_drogue_continuity,
-                        state.disk_free_space,
-                    )
-                    .into()
-                }
-            } else {
-                InFlightTelemetryPacket::new(
-                    self.unix_clock.now_ms(),
-                    state.temperature,
-                    state.altitude,
-                    state.max_altitude,
-                    state.max_speed,
-                    state
-                        .gps_location
-                        .as_ref()
-                        .map(|l| l.lat_lon)
-                        .flatten()
-                        .unwrap_or((0.0, 0.0)),
-                    state.battery_v,
-                    state.flight_core_state,
-                    state.disk_free_space,
-                )
-                .into()
-            }
+            TelemetryPacket::new(
+                self.unix_clock.ready(),
+                self.unix_clock.now_ms(),
+                state
+                    .gps_location
+                    .as_ref()
+                    .map_or(0, |l| l.num_of_fix_satellites),
+                state.gps_location.as_ref().map(|l| l.lat_lon).flatten(),
+                state.battery_v,
+                state.temperature,
+                state.hardware_armed,
+                state.software_armed,
+                state.disk_free_space,
+                state.pyro_main_continuity,
+                state.pyro_drogue_continuity,
+                state.altitude,
+                state.max_altitude,
+                state.vertical_speed,
+                state.max_vertical_speed,
+                state.flight_core_state,
+            )
         })
     }
 
@@ -373,7 +335,17 @@ impl<'a, K: Clock> TelemetryPacketBuilder<'a, K> {
             let mut state = state.borrow_mut();
             update_fn(&mut state);
             state.max_altitude = state.altitude.max(state.max_altitude);
-            state.max_speed = state.speed.max(state.max_speed);
+            state.max_vertical_speed = state.vertical_speed.max(state.max_vertical_speed);
         })
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn print_telemetry_packet_length() {
+        println!("Telemetry Packet Length: {}", TelemetryPacket::len_bits());
     }
 }
