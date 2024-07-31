@@ -3,18 +3,18 @@ use crate::common::unix_clock::UnixClock;
 use crate::common::variable_int::VariableIntRkyvWrapper;
 use crate::driver::gps::GPSData;
 use crate::Clock;
-use crate::{common::fixed_point::F32FixedPointFactory, fixed_point_factory2};
+use crate::{common::fixed_point::F32FixedPointFactory, fixed_point_factory};
 use core::cell::{RefCell, RefMut};
 use embassy_sync::blocking_mutex::{raw::NoopRawMutex, Mutex as BlockingMutex};
 use int_enum::IntEnum;
 use packed_struct::prelude::*;
 use rkyv::{Archive, Deserialize, Serialize};
 
-fixed_point_factory2!(BatteryVFac, f32, 6.0, 9.0, 0.001);
-fixed_point_factory2!(TemperatureFac, f32, -30.0, 85.0, 0.1);
-fixed_point_factory2!(FreeSpaceFac, f32, 0.0, 524288.0, 128.0);
-fixed_point_factory2!(AltitudeFac, f32, 0.0, 5000.0, 5.0);
-fixed_point_factory2!(VerticalSpeedFac, f32, -400.0, 400.0, 2.0);
+fixed_point_factory!(BatteryVFac, f32, 6.0, 9.0, 0.001);
+fixed_point_factory!(TemperatureFac, f32, -30.0, 85.0, 0.1);
+fixed_point_factory!(FreeSpaceFac, f32, 0.0, 524288.0, 128.0);
+fixed_point_factory!(AltitudeFac, f32, 0.0, 5000.0, 5.0);
+fixed_point_factory!(VerticalSpeedFac, f32, -400.0, 400.0, 2.0);
 
 #[repr(u8)]
 #[derive(defmt::Format, Debug, Clone, Copy, IntEnum)]

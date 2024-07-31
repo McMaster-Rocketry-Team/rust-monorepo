@@ -2,44 +2,6 @@
 
 use super::variable_int::VariableIntTrait;
 
-// FIXME remove
-#[macro_export]
-macro_rules! fixed_point_factory {
-    ($name:ident, $min:expr, $max:expr, $float:ident, $fixed:ident) => {
-        pub struct $name;
-
-        impl $name {
-            pub fn to_fixed_point(value: $float) -> Option<$fixed> {
-                if value < $min || value > $max {
-                    return None;
-                }
-                let value = value - $min;
-                let value = value / ($max - $min);
-                let value = value * $fixed::max_value() as $float;
-                Some(value as $fixed)
-            }
-
-            pub fn to_fixed_point_capped(value: $float) -> $fixed {
-                let value = if value < $min {
-                    $min
-                } else if value > $max {
-                    $max
-                } else {
-                    value
-                };
-                return Self::to_fixed_point(value).unwrap();
-            }
-
-            pub fn to_float(value: $fixed) -> $float {
-                let value = value as $float;
-                let value = value / $fixed::max_value() as $float;
-                let value = value * ($max - $min);
-                value + $min
-            }
-        }
-    };
-}
-
 pub trait F32FixedPointFactory: Clone {
     type VI: VariableIntTrait;
     fn to_fixed_point(value: f32) -> Option<<Self::VI as VariableIntTrait>::Packed>;
@@ -59,12 +21,12 @@ pub trait F64FixedPointFactory: Clone {
 }
 
 #[macro_export]
-macro_rules! fixed_point_factory2 {
+macro_rules! fixed_point_factory {
     ($name:ident, f32, $min:literal, $max:literal, $max_error:literal) => {
-        fixed_point_factory2!($name, minmax, f32, libm::roundf, $min, $max, $max_error);
+        fixed_point_factory!($name, minmax, f32, libm::roundf, $min, $max, $max_error);
     };
     ($name:ident, f64, $min:literal, $max:literal, $max_error:literal) => {
-        fixed_point_factory2!($name, minmax, f64, libm::round, $min, $max, $max_error);
+        fixed_point_factory!($name, minmax, f64, libm::round, $min, $max, $max_error);
     };
     ($name:ident, $mode: ident, $source: ty, $round_fn: path, $min:literal, $max:literal, $max_error:literal) => {
         calculate_required_bits::calculate_required_bits_docstr!(
@@ -155,7 +117,7 @@ macro_rules! fixed_point_factory2 {
 /// threshold_slope is in unit / second
 macro_rules! fixed_point_factory_slope {
     ($name:ident, $threshold_slope:literal, $sample_time_ms:literal, $max_error:literal) => {
-        crate::fixed_point_factory2!(
+        crate::fixed_point_factory!(
             $name,
             slope,
             f32,
@@ -174,7 +136,7 @@ mod test {
 
     #[test]
     fn test_fixed_point_factory_one_bit() {
-        fixed_point_factory2!(Factory, f32, 0.0, 1.0, 0.5);
+        fixed_point_factory!(Factory, f32, 0.0, 1.0, 0.5);
         assert_eq!(Factory::to_fixed_point(0.0), Some(0.into()));
         assert_eq!(Factory::to_fixed_point(0.25), Some(0.into()));
         assert_eq!(Factory::to_fixed_point(0.5), Some(1.into()));

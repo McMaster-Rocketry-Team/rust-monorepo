@@ -282,14 +282,14 @@ mod test {
     use crate::{
         common::{sensor_reading::SensorReading, test_utils::BufferWriter},
         driver::{adc::ADCData, timestamp::BootTimestamp},
-        fixed_point_factory2, Volt,
+        fixed_point_factory, Volt,
     };
     use approx::assert_relative_eq;
     use rand::Rng;
 
     #[tokio::test]
     async fn test_delta_logger_write_read() {
-        fixed_point_factory2!(TimestampFac, f64, 0.0, 510.0, 0.5);
+        fixed_point_factory!(TimestampFac, f64, 0.0, 510.0, 0.5);
         let mut readings = vec![
             SensorReading::<BootTimestamp, ADCData<Volt>>::new(0.0, ADCData::new(0.0)),
             SensorReading::<BootTimestamp, ADCData<Volt>>::new(501.0, ADCData::new(0.05)), // inside delta range

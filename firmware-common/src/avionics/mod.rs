@@ -36,7 +36,7 @@ use crate::{
         indicator::Indicator,
         mag::MagData,
     },
-    fixed_point_factory2,
+    fixed_point_factory,
 };
 use crate::{common::can_bus::node_types::VOID_LAKE_NODE_TYPE, driver::can_bus::CanBusTX};
 use crate::{
@@ -58,15 +58,14 @@ use crate::{
 };
 use self_test::{self_test, SelfTestResult};
 
-pub mod avionics_state;
-pub mod baro_reading_filter;
-pub mod vertical_speed_filter;
 pub mod backup_flight_core;
+pub mod baro_reading_filter;
 pub mod flight_core;
 pub mod flight_core_event;
 pub mod flight_profile;
 mod imu_calibration_info;
 mod self_test;
+pub mod vertical_speed_filter;
 
 #[inline(never)]
 pub async fn avionics_main(
@@ -175,8 +174,8 @@ pub async fn avionics_main(
 
     log_info!("Creating GPS logger");
     let gps_logger = BufferedTieredRingDeltaLogger::<UnixTimestamp, GPSData, 40>::new();
-    fixed_point_factory2!(GPSFF1, f64, 99.0, 110.0, 0.5);
-    fixed_point_factory2!(GPSFF2, f64, 4999.0, 5010.0, 0.5);
+    fixed_point_factory!(GPSFF1, f64, 99.0, 110.0, 0.5);
+    fixed_point_factory!(GPSFF2, f64, 4999.0, 5010.0, 0.5);
     let gps_logger_fut = gps_logger.run(
         GPSFF1,
         GPSFF2,
@@ -195,8 +194,8 @@ pub async fn avionics_main(
         .unwrap(),
     );
 
-    fixed_point_factory2!(SensorsFF1, f64, 4.9, 7.0, 0.05);
-    fixed_point_factory2!(SensorsFF2, f64, 199.0, 210.0, 0.5);
+    fixed_point_factory!(SensorsFF1, f64, 4.9, 7.0, 0.05);
+    fixed_point_factory!(SensorsFF2, f64, 199.0, 210.0, 0.5);
 
     log_info!("Creating low G IMU logger");
     let low_g_imu_logger = BufferedTieredRingDeltaLogger::<UnixTimestamp, IMUData, 40>::new();
@@ -258,7 +257,7 @@ pub async fn avionics_main(
         .unwrap(),
     );
 
-    fixed_point_factory2!(MagFF1, f64, 49.9, 55.0, 0.05);
+    fixed_point_factory!(MagFF1, f64, 49.9, 55.0, 0.05);
     log_info!("Creating Mag logger");
     let mag_logger = BufferedTieredRingDeltaLogger::<UnixTimestamp, MagData, 40>::new();
     let mag_logger_fut = mag_logger.run(

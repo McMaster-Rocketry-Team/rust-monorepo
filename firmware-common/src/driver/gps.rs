@@ -6,7 +6,7 @@ use crate::{
     common::{delta_logger::delta_factory::Deltable, ticker::Ticker},
     Clock, Delay,
 };
-use crate::{fixed_point_factory2, fixed_point_factory_slope};
+use crate::{fixed_point_factory, fixed_point_factory_slope};
 use chrono::{TimeZone as _, Utc};
 use core::fmt::Debug;
 use core::future::Future;
@@ -93,7 +93,7 @@ impl BitArraySerializable for GPSData {
 
 fixed_point_factory_slope!(LatLonFac, 0.01, 100.0, 0.000005);
 fixed_point_factory_slope!(AltitudeFac, 400.0, 100.0, 0.5);
-fixed_point_factory2!(DoPFac, f32, 0.0, 1.0, 0.1);
+fixed_point_factory!(DoPFac, f32, 0.0, 1.0, 0.1);
 
 #[derive(defmt::Format, Debug, Clone)]
 pub struct GPSDataDelta {
