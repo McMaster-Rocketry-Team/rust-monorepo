@@ -60,6 +60,8 @@ use self_test::{self_test, SelfTestResult};
 
 pub mod avionics_state;
 pub mod baro_reading_filter;
+pub mod vertical_speed_filter;
+pub mod backup_flight_core;
 pub mod flight_core;
 pub mod flight_core_event;
 pub mod flight_profile;
@@ -180,7 +182,12 @@ pub async fn avionics_main(
         GPSFF2,
         TieredRingDeltaLogger::new(
             services.fs,
-            get_logger_config(AVIONICS_GPS_LOGGER_TIER_1, 0, AVIONICS_GPS_LOGGER_TIER_2, 0),
+            get_logger_config(
+                AVIONICS_GPS_LOGGER_TIER_1,
+                25 * 1,
+                AVIONICS_GPS_LOGGER_TIER_2,
+                25 * 2,
+            ),
             services.delay.clone(),
             services.clock.clone(),
         )
@@ -200,9 +207,9 @@ pub async fn avionics_main(
             services.fs,
             get_logger_config(
                 AVIONICS_LOW_G_IMU_LOGGER_TIER_1,
-                0,
+                25 * 3,
                 AVIONICS_LOW_G_IMU_LOGGER_TIER_2,
-                0,
+                25 * 4,
             ),
             services.delay.clone(),
             services.clock.clone(),
@@ -220,9 +227,9 @@ pub async fn avionics_main(
             services.fs,
             get_logger_config(
                 AVIONICS_HIGH_G_IMU_LOGGER_TIER_1,
-                0,
+                25 * 5,
                 AVIONICS_HIGH_G_IMU_LOGGER_TIER_2,
-                0,
+                25 * 6,
             ),
             services.delay.clone(),
             services.clock.clone(),
@@ -240,9 +247,9 @@ pub async fn avionics_main(
             services.fs,
             get_logger_config(
                 AVIONICS_BARO_LOGGER_TIER_1,
-                0,
+                25 * 7,
                 AVIONICS_BARO_LOGGER_TIER_2,
-                0,
+                25 * 8,
             ),
             services.delay.clone(),
             services.clock.clone(),
@@ -259,7 +266,12 @@ pub async fn avionics_main(
         SensorsFF2,
         TieredRingDeltaLogger::new(
             services.fs,
-            get_logger_config(AVIONICS_MAG_LOGGER_TIER_1, 0, AVIONICS_MAG_LOGGER_TIER_2, 0),
+            get_logger_config(
+                AVIONICS_MAG_LOGGER_TIER_1,
+                25 * 9,
+                AVIONICS_MAG_LOGGER_TIER_2,
+                25 * 10,
+            ),
             services.delay.clone(),
             services.clock.clone(),
         )
@@ -276,9 +288,9 @@ pub async fn avionics_main(
             services.fs,
             get_logger_config(
                 AVIONICS_BATTERY_LOGGER_TIER_1,
-                0,
+                25 * 11,
                 AVIONICS_BATTERY_LOGGER_TIER_2,
-                0,
+                25 * 12,
             ),
             services.delay.clone(),
             services.clock.clone(),

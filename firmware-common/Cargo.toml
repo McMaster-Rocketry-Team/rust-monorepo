@@ -69,6 +69,7 @@ calculate-required-bits = { path = "../calculate-required-bits" }
 heatshrink = "0.2.0"
 int-enum = "1.1.2"
 reed-solomon = "0.2.1"
+biquad = "0.4.2"
 
 [dev-dependencies]
 firmware-common = { version = "*", path = ".", default-features = false, features = [
