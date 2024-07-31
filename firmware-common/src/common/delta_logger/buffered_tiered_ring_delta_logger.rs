@@ -49,8 +49,10 @@ where
         self.close_signal.signal(());
     }
 
-    pub async fn run<'a, C, F, FF1, FF2, DL, CL>(
+    pub async fn run<'a, FF1, FF2, C, F, DL, CL>(
         &self,
+        _ff1:FF1,
+        _ff2:FF2,
         logger: TieredRingDeltaLogger<'a, TM, D, C, F, FF1, FF2, DL, CL>,
     ) where
         C: Crc,
@@ -61,6 +63,9 @@ where
         DL: Delay,
         CL: Clock,
     {
+        logger.log_stats();
+        log_info!("Buffer size: {}kb", size_of_val(&self.channel) / 1024);
+        log_info!("Buffer duration: {}s", FF1::min() * CAP as f64 / 1000.0);
         let sub_fut = async {
             let mut sub = self.channel.subscriber().unwrap();
             loop {

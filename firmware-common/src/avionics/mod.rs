@@ -13,33 +13,42 @@ use futures::join;
 use imu_calibration_info::IMUCalibrationInfo;
 use nalgebra::Vector3;
 use rkyv::{Archive, Deserialize, Serialize};
-use vlfs::{Crc, Flash};
+use vlfs::{Crc, FileType, Flash};
 
-use crate::{
-    common::{
-        can_bus::messages::{
-            AvionicsStatusMessage, FlightEvent, FlightEventMessage, UnixTimeMessage,
-        }, config_file::ConfigFile, delta_logger::prelude::{TieredRingDeltaLogger}, device_config::{DeviceConfig, DeviceModeConfig}, file_types::*, vlp::{
-            packet::{LowPowerModePacket, SoftArmPacket, VLPUplinkPacket},
-            telemetry_packet::{FlightCoreStateTelemetry, TelemetryPacketBuilder},
-            uplink_client::VLPUplinkClient,
-        }
-    },
-    driver::timestamp::{BootTimestamp, UnixTimestamp},
-};
 use crate::{
     avionics::{
         flight_core::{FlightCore, Variances},
         flight_core_event::FlightCoreEvent,
     },
     claim_devices,
-    common::{device_manager::prelude::*, sensor_snapshot::PartialSensorSnapshot, ticker::Ticker},
+    common::{
+        delta_logger::buffered_tiered_ring_delta_logger::BufferedTieredRingDeltaLogger,
+        device_manager::prelude::*, sensor_snapshot::PartialSensorSnapshot, ticker::Ticker,
+    },
     device_manager_type,
     driver::{
-        debugger::DebuggerTargetEvent, gps::GPS, indicator::Indicator,
+        adc::ADCData, barometer::BaroData, debugger::DebuggerTargetEvent, gps::{GPSData, GPS}, imu::IMUData, indicator::Indicator, mag::MagData
     },
+    fixed_point_factory2,
 };
 use crate::{common::can_bus::node_types::VOID_LAKE_NODE_TYPE, driver::can_bus::CanBusTX};
+use crate::{
+    common::{
+        can_bus::messages::{
+            AvionicsStatusMessage, FlightEvent, FlightEventMessage, UnixTimeMessage,
+        },
+        config_file::ConfigFile,
+        delta_logger::prelude::{RingDeltaLoggerConfig, TieredRingDeltaLogger},
+        device_config::{DeviceConfig, DeviceModeConfig},
+        file_types::*,
+        vlp::{
+            packet::{LowPowerModePacket, SoftArmPacket, VLPUplinkPacket},
+            telemetry_packet::{FlightCoreStateTelemetry, TelemetryPacketBuilder},
+            uplink_client::VLPUplinkClient,
+        },
+    },
+    driver::timestamp::{BootTimestamp, UnixTimestamp},
+};
 use self_test::{self_test, SelfTestResult};
 
 pub mod avionics_state;
@@ -135,72 +144,151 @@ pub async fn avionics_main(
         }
     };
 
+    let get_logger_config = |tier_1_file_type: FileType,
+                             tier_1_first_segment_seconds: u32,
+                             tier_2_file_type: FileType,
+                             tier_2_first_segment_seconds: u32| {
+        let tier_1_config = RingDeltaLoggerConfig {
+            file_type: tier_1_file_type,
+            seconds_per_segment: 5 * 60,
+            first_segment_seconds: tier_1_first_segment_seconds,
+            segments_per_ring: 6, // 30 min
+        };
+        let tier_2_config = RingDeltaLoggerConfig {
+            file_type: tier_2_file_type,
+            seconds_per_segment: 30 * 60,
+            first_segment_seconds: tier_2_first_segment_seconds,
+            segments_per_ring: 10, // 5 hours
+        };
 
+        (tier_1_config, tier_2_config)
+    };
 
     log_info!("Creating GPS logger");
-    // let gps_logger = TieredRingDeltaLogger::new(
-    //     services.fs, 
-    //     AVIONICS_GPS_LOGGER_TIER_1,
-    //     AVIONICS_GPS_LOGGER_TIER_2,
-    //     &TieredRingDeltaLoggerConfig{
-    //         tier_1_seconds_per_segment: 60*5,
-    //         tier_1_keep_seconds:60*20,
-    //         tier_2_seconds_per_segment: 60*21,
-    //         tier_2_keep_seconds: 60*60*5,
-    //     }
-    // ).await.unwrap();
+    let gps_logger = BufferedTieredRingDeltaLogger::<UnixTimestamp, GPSData, 40>::new();
+    fixed_point_factory2!(GPSFF1, f64, 99.0, 110.0, 0.5);
+    fixed_point_factory2!(GPSFF2, f64, 4999.0, 5010.0, 0.5);
+    let gps_logger_fut = gps_logger.run(
+        GPSFF1,
+        GPSFF2,
+        TieredRingDeltaLogger::new(
+            services.fs,
+            get_logger_config(AVIONICS_GPS_LOGGER_TIER_1, 0, AVIONICS_GPS_LOGGER_TIER_2, 0),
+            services.delay.clone(),
+            services.clock.clone(),
+        )
+        .await
+        .unwrap(),
+    );
 
+    fixed_point_factory2!(SensorsFF1, f64, 4.9, 7.0, 0.05);
+    fixed_point_factory2!(SensorsFF2, f64, 199.0, 210.0, 0.5);
 
-    // let gps_logger =
-    //     BufferedDeltaLogger::<GPSLocation, _, _, 1>::new(services.fs, AVIONICS_GPS_LOGGER_TIER_1)
-    //         .await
-    //         .unwrap();
-    // let gps_logger_fut = gps_logger.run();
-    // log_info!("Creating low G IMU logger");
-    // let low_g_imu_logger = BufferedDeltaLogger::<IMUReading<UnixTimestamp>, _, _, 10>::new(
-    //     services.fs,
-    //     AVIONICS_LOW_G_IMU_LOGGER_TIER_1,
-    // )
-    // .await
-    // .unwrap();
-    // let low_g_imu_logger_fut = low_g_imu_logger.run();
-    // log_info!("Creating high G IMU logger");
-    // let high_g_imu_logger = BufferedDeltaLogger::<IMUReading<UnixTimestamp>, _, _, 10>::new(
-    //     services.fs,
-    //     AVIONICS_HIGH_G_IMU_LOGGER_TIER_1,
-    // )
-    // .await
-    // .unwrap();
-    // let high_g_imu_logger_fut = high_g_imu_logger.run();
-    // log_info!("Creating baro logger");
-    // let baro_logger = BufferedDeltaLogger::<BaroReading<UnixTimestamp>, _, _, 10>::new(
-    //     services.fs,
-    //     AVIONICS_BARO_LOGGER_TIER_1,
-    // )
-    // .await
-    // .unwrap();
-    // let baro_logger_fut = baro_logger.run();
-    // log_info!("Creating MAG logger");
-    // let mag_logger = BufferedDeltaLogger::<MagReading<UnixTimestamp>, _, _, 10>::new(
-    //     services.fs,
-    //     AVIONICS_MAG_LOGGER_TIER_1,
-    // )
-    // .await
-    // .unwrap();
-    // let mag_logger_fut = mag_logger.run();
-    // log_info!("Creating battery logger");
-    // let battery_logger = BufferedDeltaLogger::<ADCReading<Volt, UnixTimestamp>, _, _, 10>::new(
-    //     services.fs,
-    //     AVIONICS_BATTERY_LOGGER_TIER_1,
-    // )
-    // .await
-    // .unwrap();
-    // let battery_logger_fut = battery_logger.run();
+    log_info!("Creating low G IMU logger");
+    let low_g_imu_logger = BufferedTieredRingDeltaLogger::<UnixTimestamp, IMUData, 40>::new();
+    let low_g_imu_logger_fut = low_g_imu_logger.run(
+        SensorsFF1,
+        SensorsFF2,
+        TieredRingDeltaLogger::new(
+            services.fs,
+            get_logger_config(
+                AVIONICS_LOW_G_IMU_LOGGER_TIER_1,
+                0,
+                AVIONICS_LOW_G_IMU_LOGGER_TIER_2,
+                0,
+            ),
+            services.delay.clone(),
+            services.clock.clone(),
+        )
+        .await
+        .unwrap(),
+    );
 
-    // log_info!(
-    //     "Loggers created, free size: {}MB",
-    //     services.fs.free().await / 1024 / 1024
-    // );
+    log_info!("Creating High G IMU logger");
+    let high_g_imu_logger = BufferedTieredRingDeltaLogger::<UnixTimestamp, IMUData, 40>::new();
+    let high_g_imu_logger_fut = high_g_imu_logger.run(
+        SensorsFF1,
+        SensorsFF2,
+        TieredRingDeltaLogger::new(
+            services.fs,
+            get_logger_config(
+                AVIONICS_HIGH_G_IMU_LOGGER_TIER_1,
+                0,
+                AVIONICS_HIGH_G_IMU_LOGGER_TIER_2,
+                0,
+            ),
+            services.delay.clone(),
+            services.clock.clone(),
+        )
+        .await
+        .unwrap(),
+    );
+
+    log_info!("Creating baro logger");
+    let baro_logger = BufferedTieredRingDeltaLogger::<UnixTimestamp, BaroData, 40>::new();
+    let baro_logger_fut = baro_logger.run(
+        SensorsFF1,
+        SensorsFF2,
+        TieredRingDeltaLogger::new(
+            services.fs,
+            get_logger_config(
+                AVIONICS_BARO_LOGGER_TIER_1,
+                0,
+                AVIONICS_BARO_LOGGER_TIER_2,
+                0,
+            ),
+            services.delay.clone(),
+            services.clock.clone(),
+        )
+        .await
+        .unwrap(),
+    );
+    
+    fixed_point_factory2!(MagFF1, f64, 49.9, 55.0, 0.05);
+    log_info!("Creating Mag logger");
+    let mag_logger = BufferedTieredRingDeltaLogger::<UnixTimestamp, MagData, 40>::new();
+    let mag_logger_fut = mag_logger.run(
+        MagFF1,
+        SensorsFF2,
+        TieredRingDeltaLogger::new(
+            services.fs,
+            get_logger_config(
+                AVIONICS_MAG_LOGGER_TIER_1,
+                0,
+                AVIONICS_MAG_LOGGER_TIER_2,
+                0,
+            ),
+            services.delay.clone(),
+            services.clock.clone(),
+        )
+        .await
+        .unwrap(),
+    );
+
+    log_info!("Creating battery logger");
+    let battery_logger = BufferedTieredRingDeltaLogger::<UnixTimestamp, ADCData<Volt>, 40>::new();
+    let battery_logger_fut = battery_logger.run(
+        SensorsFF1,
+        SensorsFF2,
+        TieredRingDeltaLogger::new(
+            services.fs,
+            get_logger_config(
+                AVIONICS_BATTERY_LOGGER_TIER_1,
+                0,
+                AVIONICS_BATTERY_LOGGER_TIER_2,
+                0,
+            ),
+            services.delay.clone(),
+            services.clock.clone(),
+        )
+        .await
+        .unwrap(),
+    );
+
+    log_info!(
+        "Loggers created, free size: {}MB",
+        services.fs.free().await / 1024 / 1024
+    );
 
     // // states
     // let storage_full = BlockingMutex::<NoopRawMutex, _>::new(RefCell::new(false));

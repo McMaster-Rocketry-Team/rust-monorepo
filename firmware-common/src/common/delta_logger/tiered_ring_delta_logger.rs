@@ -1,5 +1,5 @@
 use futures::join;
-use vlfs::{Crc, FileType, Flash, VLFSError, VLFS};
+use vlfs::{Crc, Flash, VLFSError, VLFS};
 
 use crate::{
     common::{
@@ -44,28 +44,23 @@ where
 {
     pub async fn new(
         fs: &'a VLFS<F, C>,
-        tier_1_file_type: FileType,
-        tier_1_config: RingDeltaLoggerConfig,
-        tier_2_file_type: FileType,
-        tier_2_config: RingDeltaLoggerConfig,
+        configs: (RingDeltaLoggerConfig, RingDeltaLoggerConfig),
         delay: DL,
         clock: CL,
     ) -> Result<Self, VLFSError<F::Error>> {
         Ok(Self {
             delta_logger_1: RingDeltaLogger::new(
                 fs,
-                tier_1_file_type,
                 delay.clone(),
                 clock.clone(),
-                tier_1_config,
+                configs.0,
             )
             .await?,
             delta_logger_2: RingDeltaLogger::new(
                 fs,
-                tier_2_file_type,
                 delay.clone(),
                 clock.clone(),
-                tier_2_config,
+                configs.1,
             )
             .await?,
         })
@@ -89,5 +84,12 @@ where
         let logger_2_fut = self.delta_logger_2.run();
 
         join!(logger_1_fut, logger_2_fut);
+    }
+
+    pub fn log_stats(&self) {
+        log_info!("Tier 1:");
+        self.delta_logger_1.log_stats();
+        log_info!("Tier 2:");
+        self.delta_logger_2.log_stats();
     }
 }

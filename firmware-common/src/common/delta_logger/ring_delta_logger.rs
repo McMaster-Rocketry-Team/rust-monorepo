@@ -1,11 +1,11 @@
 use core::cell::RefCell;
 use core::mem::replace;
 
-use embassy_futures::select::Either;
-use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex, signal::Signal};
-use vlfs::{ConcurrentFilesIterator, Crc, FileEntry, FileType, Flash, VLFSError, VLFS};
-
 use super::delta_logger::{DeltaLogger, DeltaLoggerReader};
+use crate::common::delta_logger::bitslice_primitive::BitSlicePrimitive;
+use crate::common::{
+    delta_logger::bitslice_serialize::BitArraySerializable, variable_int::VariableIntTrait,
+};
 use crate::{
     common::{
         fixed_point::F64FixedPointFactory,
@@ -16,8 +16,12 @@ use crate::{
     Clock, Delay,
 };
 use embassy_futures::select::select;
+use embassy_futures::select::Either;
+use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex, signal::Signal};
+use vlfs::{ConcurrentFilesIterator, Crc, FileEntry, FileType, Flash, VLFSError, VLFS};
 
 pub struct RingDeltaLoggerConfig {
+    pub file_type: FileType,
     pub seconds_per_segment: u32,
     pub first_segment_seconds: u32,
     pub segments_per_ring: u32,
@@ -36,12 +40,11 @@ where
     [(); size_of::<D>() + 10]:,
 {
     fs: &'a VLFS<F, C>,
-    file_type: FileType,
     delta_logger: Mutex<NoopRawMutex, Option<DeltaLogger<TM, D, vlfs::FileWriter<'a, F, C>, FF>>>,
     close_signal: Signal<NoopRawMutex, ()>,
     delay: DL,
     clock: CL,
-    config:RingDeltaLoggerConfig,
+    config: RingDeltaLoggerConfig,
     current_ring_segments: RefCell<u32>,
 }
 
@@ -59,13 +62,12 @@ where
 {
     pub async fn new(
         fs: &'a VLFS<F, C>,
-        file_type: FileType,
         delay: DL,
         clock: CL,
-        config:RingDeltaLoggerConfig,
+        config: RingDeltaLoggerConfig,
     ) -> Result<Self, VLFSError<F::Error>> {
         let mut files_iter = fs
-            .files_iter_filter(|file_entry| file_entry.typ == file_type)
+            .files_iter_filter(|file_entry| file_entry.typ == config.file_type)
             .await;
         let mut files_count = 0;
         while let Some(_) = files_iter.next().await? {
@@ -76,29 +78,34 @@ where
 
         let mut builder = fs.new_at_builder().await?;
 
-        let (mut files_to_remove, current_ring_segments) = if files_count > config.segments_per_ring {
-            (files_count - config.segments_per_ring, config.segments_per_ring)
+        let (mut files_to_remove, current_ring_segments) = if files_count > config.segments_per_ring
+        {
+            (
+                files_count - config.segments_per_ring,
+                config.segments_per_ring,
+            )
         } else {
             (0, files_count)
         };
 
         log_info!("Removing {} extra files", files_to_remove);
         while let Some(file_entry) = builder.read_next().await? {
-            if file_entry.typ == file_type && files_to_remove > 0 {
+            if file_entry.typ == config.file_type && files_to_remove > 0 {
                 files_to_remove -= 1;
             } else {
                 builder.write(&file_entry).await?;
             }
         }
 
-        let writer = builder.write_new_file_and_open_for_write(file_type).await?;
+        let writer = builder
+            .write_new_file_and_open_for_write(config.file_type)
+            .await?;
         builder.commit().await?;
 
         let delta_logger = DeltaLogger::new(writer);
 
         Ok(Self {
             fs,
-            file_type,
             delay,
             clock,
             delta_logger: Mutex::new(Some(delta_logger)),
@@ -151,24 +158,25 @@ where
     async fn create_new_segment(&self) -> Result<(), VLFSError<F::Error>> {
         log_info!("Creating new ring segment");
         let mut builder = self.fs.new_at_builder().await?;
-        let new_ring_segments = if *self.current_ring_segments.borrow() >= self.config.segments_per_ring {
-            let mut first_segment_removed = false;
-            while let Some(file_entry) = builder.read_next().await? {
-                if file_entry.typ == self.file_type && !first_segment_removed {
-                    first_segment_removed = true;
-                } else {
+        let new_ring_segments =
+            if *self.current_ring_segments.borrow() >= self.config.segments_per_ring {
+                let mut first_segment_removed = false;
+                while let Some(file_entry) = builder.read_next().await? {
+                    if file_entry.typ == self.config.file_type && !first_segment_removed {
+                        first_segment_removed = true;
+                    } else {
+                        builder.write(&file_entry).await?;
+                    }
+                }
+                self.config.segments_per_ring
+            } else {
+                while let Some(file_entry) = builder.read_next().await? {
                     builder.write(&file_entry).await?;
                 }
-            }
-            self.config.segments_per_ring
-        } else {
-            while let Some(file_entry) = builder.read_next().await? {
-                builder.write(&file_entry).await?;
-            }
-            *self.current_ring_segments.borrow() + 1
-        };
+                *self.current_ring_segments.borrow() + 1
+            };
         let new_writer = builder
-            .write_new_file_and_open_for_write(self.file_type)
+            .write_new_file_and_open_for_write(self.config.file_type)
             .await?;
         builder.commit().await?;
         let new_delta_logger = DeltaLogger::new(new_writer);
@@ -184,6 +192,25 @@ where
         *self.current_ring_segments.borrow_mut() = new_ring_segments;
 
         Ok(())
+    }
+
+    pub fn log_stats(&self) {
+        let readings_per_segment =
+            (self.config.seconds_per_segment as f64 * 1000.0 / FF::min()) as u32;
+        let reading_size_bits = D::len_bits() + 64 + 2;
+        let reading_delta_size_bits =
+            D::DeltaType::len_bits() + <FF::VI as VariableIntTrait>::Packed::len_bits() + 2;
+
+        // assume worst case 30% of readings are full readings
+        let avg_reading_size_bits =
+            0.7 * reading_size_bits as f32 + 0.3 * reading_delta_size_bits as f32;
+        let segment_size_kb = (readings_per_segment as f32 * avg_reading_size_bits) / 8.0 / 1024.0;
+        let ring_size_kb = segment_size_kb * self.config.segments_per_ring as f32;
+        log_info!(
+            "segment size: {}kb, ring size: {}kb",
+            segment_size_kb as u32,
+            ring_size_kb as u32
+        );
     }
 }
 
