@@ -91,66 +91,49 @@ where
     }
 
     pub async fn remove_file(&self, file_id: FileID) -> Result<(), VLFSError<F::Error>> {
-        let mut current_sector_index =
-            if let Some((file_entry, _)) = self.find_file_entry(file_id).await? {
-                if self.is_file_opened(file_entry.id).await {
-                    return Err(VLFSError::FileInUse);
-                }
-                self.delete_file_entry(file_id).await?;
-                file_entry.first_sector_index
-            } else {
-                return Err(VLFSError::FileDoesNotExist);
-            };
-
-        // update sectors list
-        let mut buffer = [0u8; 5 + 8];
-        let flash = self.flash.read().await;
-
-        while let Some(sector_index) = current_sector_index {
-            let address = sector_index as u32 * SECTOR_SIZE as u32;
-            let address = address + SECTOR_SIZE as u32 - 8;
-
-            let read_result = flash
-                .read(address, 8, &mut buffer)
-                .await
-                .map_err(VLFSError::FlashError)?;
-            let next_sector_index = find_most_common_u16_out_of_4(read_result).unwrap();
-            self.return_sector(sector_index).await;
-            current_sector_index = if next_sector_index == 0xFFFF {
-                None
-            } else {
-                Some(next_sector_index)
-            };
+        let (number_of_removed_files, number_of_opened_files_cant_be_removed) = self
+            .remove_files(|file_entry| file_entry.id == file_id)
+            .await?;
+        if number_of_removed_files == 1 {
+            return Ok(());
+        } else if number_of_opened_files_cant_be_removed == 1 {
+            return Err(VLFSError::FileInUse);
+        } else {
+            return Err(VLFSError::FileDoesNotExist);
         }
-
-        Ok(())
     }
 
+    /// returns (number_of_removed_files, number_of_opened_files_cant_be_removed)
     pub async fn remove_files(
         &self,
         mut predicate: impl FnMut(&FileEntry) -> bool,
-    ) -> Result<u16, VLFSError<F::Error>> {
+    ) -> Result<(u16, u16), VLFSError<F::Error>> {
+        let mut number_of_removed_files = 0u16;
+        let mut unremoved_open_files = 0u16;
         let mut builder = self.new_at_builder().await?;
 
-        let mut unremoved_open_files = 0u16;
         while let Some(file_entry) = builder.read_next().await? {
             if predicate(&file_entry) {
                 if builder.is_file_opened(file_entry.id) {
                     unremoved_open_files += 1;
                     builder.write(&file_entry).await?;
+                } else {
+                    number_of_removed_files += 1;
+                    builder.release_file_sectors(&file_entry).await?;
                 }
             } else {
                 builder.write(&file_entry).await?;
             }
         }
 
-        Ok(unremoved_open_files)
+        Ok((number_of_removed_files, unremoved_open_files))
     }
 
+    /// returns (number_of_removed_files, number_of_opened_files_cant_be_removed)
     pub async fn remove_files_with_type(
         &self,
         file_type: FileType,
-    ) -> Result<u16, VLFSError<F::Error>> {
+    ) -> Result<(u16, u16), VLFSError<F::Error>> {
         self.remove_files(|file_entry| file_entry.typ == file_type)
             .await
     }

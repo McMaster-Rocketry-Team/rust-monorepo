@@ -92,6 +92,7 @@ where
         while let Some(file_entry) = builder.read_next().await? {
             if file_entry.typ == config.file_type && files_to_remove > 0 {
                 files_to_remove -= 1;
+                builder.release_file_sectors(&file_entry).await?;
             } else {
                 builder.write(&file_entry).await?;
             }
@@ -164,6 +165,7 @@ where
                 while let Some(file_entry) = builder.read_next().await? {
                     if file_entry.typ == self.config.file_type && !first_segment_removed {
                         first_segment_removed = true;
+                        builder.release_file_sectors(&file_entry).await?;
                     } else {
                         builder.write(&file_entry).await?;
                     }

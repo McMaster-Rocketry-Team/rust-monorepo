@@ -8,8 +8,7 @@ use crate::{
 use super::{
     allocation_table::{
         AllocationTable, AllocationTableFooter, ALLOC_TABLE_HEADER_SIZE, FILE_ENTRY_SIZE,
-    },
-    FileID, FileType, VLFS,
+    }, sector_management::SectorsMng, utils::find_most_common_u16_out_of_4, FileID, FileType, SECTOR_SIZE, VLFS
 };
 
 /// This struct does not check if the new allocation table is valid.
@@ -17,13 +16,13 @@ use super::{
 /// It is possible to create more file entries than fit in the allocation table.
 /// It is possible to delete opened files.
 /// TODO: buffer reads
-/// FIXME: removing files does not release sectors
 pub struct ATBuilder<'a, 'b, F: Flash, C: Crc>
 where
     'b: 'a,
 {
     at: RwLockWriteGuard<'a, NoopRawMutex, AllocationTable, 10>,
     flash: RwLockWriteGuard<'a, NoopRawMutex, FlashWrapper<F>, 10>,
+    sectors_mng: RwLockWriteGuard<'a, NoopRawMutex, SectorsMng, 10>,
     fs: &'b VLFS<F, C>,
 
     read_address: u32,
@@ -52,10 +51,12 @@ where
         let new_at_address = at.address();
 
         let flash = fs.flash.write().await;
+        let sectors_mng = fs.sectors_mng.write().await;
 
         let mut builder = Self {
             at,
             flash,
+            sectors_mng,
             fs,
 
             read_address: curr_at_address + ALLOC_TABLE_HEADER_SIZE as u32,
@@ -192,6 +193,32 @@ where
 
     pub fn is_file_opened(&self, file_id: FileID) -> bool {
         self.at.opened_files.iter().any(|&id| id == file_id)
+    }
+
+    /// If you remove a file entry from the allocation table, you must also
+    /// release the sectors used by the file. Or the space occupied by the file
+    /// won't be available until next reboot.
+    pub async fn release_file_sectors(&mut self, file_entry: &FileEntry)-> Result<(), VLFSError<F::Error>>{
+        let mut current_sector_index = file_entry.first_sector_index;
+        let mut buffer = [0u8; 5 + 8];
+        while let Some(sector_index) = current_sector_index {
+            let address = sector_index as u32 * SECTOR_SIZE as u32;
+            let address = address + SECTOR_SIZE as u32 - 8;
+
+            let read_result = self.flash
+                .read(address, 8, &mut buffer)
+                .await
+                .map_err(VLFSError::FlashError)?;
+            let next_sector_index = find_most_common_u16_out_of_4(read_result).unwrap();
+            self.sectors_mng.sector_map.set_sector_unused(sector_index);
+            current_sector_index = if next_sector_index == 0xFFFF {
+                None
+            } else {
+                Some(next_sector_index)
+            };
+        }
+        
+        Ok(())
     }
 
     pub async fn commit(mut self) -> Result<(), VLFSError<F::Error>> {

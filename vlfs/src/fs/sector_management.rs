@@ -5,7 +5,7 @@ use super::*;
 const SECTOR_MAP_ARRAY_SIZE: usize = DATA_REGION_SECTORS / 32;
 
 // false: unused; true: used
-pub(super) struct SectorMap {
+pub(crate) struct SectorMap {
     pub(super) map_4k: BitArray<[u32; SECTOR_MAP_ARRAY_SIZE], Lsb0>,
     pub(super) map_32k: BitArray<[u32; (SECTOR_MAP_ARRAY_SIZE / 8) + 1], Lsb0>,
     pub(super) map_64k: BitArray<[u32; (SECTOR_MAP_ARRAY_SIZE / 16) + 1], Lsb0>,
@@ -13,7 +13,7 @@ pub(super) struct SectorMap {
 }
 
 impl SectorMap {
-    pub(super) fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             map_4k: BitArray::default(),
             map_32k: BitArray::default(),
@@ -22,7 +22,7 @@ impl SectorMap {
         }
     }
 
-    pub(super) fn set_sector_used(&mut self, sector_index_unoffsetted: u16) {
+    pub(crate) fn set_sector_used(&mut self, sector_index_unoffsetted: u16) {
         let sector_index = sector_index_unoffsetted as usize - ALLOC_TABLES_SECTORS_USED;
         if self.map_4k[sector_index] {
             return;
@@ -33,7 +33,7 @@ impl SectorMap {
         self.free_sectors_count -= 1;
     }
 
-    pub(super) fn set_sector_unused(&mut self, sector_index_unoffsetted: u16) {
+    pub(crate) fn set_sector_unused(&mut self, sector_index_unoffsetted: u16) {
         let sector_index = sector_index_unoffsetted as usize - ALLOC_TABLES_SECTORS_USED;
 
         if !self.map_4k[sector_index] {
@@ -54,15 +54,15 @@ impl SectorMap {
     }
 }
 
-pub(super) struct SectorsMng {
-    pub(super) sector_map: SectorMap,
-    pub(super) erase_ahead_sectors: Vec<u16, 16>,
-    pub(super) async_erase_ahead_sectors: Vec<u16, 16>,
-    pub(super) rng: SmallRng,
+pub(crate) struct SectorsMng {
+    pub(crate) sector_map: SectorMap,
+    pub(crate) erase_ahead_sectors: Vec<u16, 16>,
+    pub(crate) async_erase_ahead_sectors: Vec<u16, 16>,
+    pub(crate) rng: SmallRng,
 }
 
 impl SectorsMng {
-    pub(super) fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             sector_map: SectorMap::new(),
             erase_ahead_sectors: Vec::new(),

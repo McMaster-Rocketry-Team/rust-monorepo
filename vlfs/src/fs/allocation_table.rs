@@ -259,37 +259,6 @@ where
 
     // FIXME when one of the builder methods throw an error and delete_file_entry returns,
     // builder will be dropped without calling commit(), which panics.
-    pub(super) async fn delete_file_entry(
-        &self,
-        file_id: FileID,
-    ) -> Result<(), VLFSError<F::Error>> {
-        if let Some((_, file_entry_i)) = self.find_file_entry(file_id).await? {
-            let mut builder = self.new_at_builder().await?;
-
-            // copy entries before the deleted entry
-            for _ in 0..file_entry_i {
-                let file_entry = builder
-                    .read_next()
-                    .await?
-                    .ok_or(VLFSError::CorruptedFileSystem)?;
-                builder.write(&file_entry).await?;
-            }
-
-            // skip the entry to be deleted
-            builder.read_next().await?;
-
-            // copy entries after the deleted entry
-            while let Some(file_entry) = builder.read_next().await? {
-                builder.write(&file_entry).await?;
-            }
-
-            builder.commit().await?;
-            return Ok(());
-        } else {
-            return Err(VLFSError::FileDoesNotExist);
-        }
-    }
-
     pub(super) async fn set_file_first_sector_index(
         &self,
         file_id: FileID,
