@@ -3,8 +3,21 @@ use crate::{get_test_image_path, tests::harness::VLFSTestingHarness};
 use crate::{FileEntry, FileID, FileType};
 use function_name::named;
 
-
-
+#[named]
+#[tokio::test]
+async fn write_read_empty() {
+    init_logger();
+    let path = get_test_image_path!();
+    let mut harness = VLFSTestingHarness::new(path).await;
+    let file_id = harness.create_file(FileType(0)).await;
+    harness.open_file_for_write(file_id).await;
+    harness.close_write_file(file_id).await;
+    harness.reinit().await;
+    harness.open_file_for_read(file_id).await;
+    harness.read_file(file_id, 0).await;
+    harness.close_read_file(file_id).await;
+    harness.verify_invariants().await;
+}
 
 macro_rules! test_write_read {
     ($name:ident, $length:expr) => {
@@ -26,6 +39,8 @@ macro_rules! test_write_read {
             harness.open_file_for_read(file_id).await;
             harness.read_file(file_id, $length).await;
             harness.close_read_file(file_id).await;
+
+            harness.verify_invariants().await;
         }
     };
 }
@@ -411,7 +426,7 @@ async fn files_iter_filter() {
     while let Some(file) = iter.next().await.unwrap() {
         files.push(file);
     }
-    
+
     assert_eq!(
         files
             .iter()

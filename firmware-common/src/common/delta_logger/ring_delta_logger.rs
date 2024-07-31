@@ -1,15 +1,29 @@
+use core::cell::RefCell;
 use core::mem::replace;
 
+use embassy_futures::select::Either;
+use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex, signal::Signal};
 use vlfs::{ConcurrentFilesIterator, Crc, FileEntry, FileType, Flash, VLFSError, VLFS};
 
-use crate::{
-    common::{fixed_point::F64FixedPointFactory, sensor_reading::{SensorData, SensorReading}},
-    driver::timestamp::TimestampType,
-};
-
 use super::delta_logger::{DeltaLogger, DeltaLoggerReader};
+use crate::{
+    common::{
+        fixed_point::F64FixedPointFactory,
+        sensor_reading::{SensorData, SensorReading},
+        ticker::Ticker,
+    },
+    driver::timestamp::TimestampType,
+    Clock, Delay,
+};
+use embassy_futures::select::select;
 
-pub struct RingDeltaLogger<'a, TM, D, C, F, FF>
+pub struct RingDeltaLoggerConfig {
+    pub seconds_per_segment: u32,
+    pub first_segment_seconds: u32,
+    pub segments_per_ring: u32,
+}
+
+pub struct RingDeltaLogger<'a, TM, D, C, F, FF, DL, CL>
 where
     TM: TimestampType,
     C: Crc,
@@ -17,18 +31,21 @@ where
     F::Error: defmt::Format,
     D: SensorData,
     FF: F64FixedPointFactory,
+    DL: Delay,
+    CL: Clock,
     [(); size_of::<D>() + 10]:,
 {
     fs: &'a VLFS<F, C>,
     file_type: FileType,
-    delta_logger: DeltaLogger<TM, D, vlfs::FileWriter<'a, F, C>, FF>,
-    logs_per_segment: u32,
-    current_segment_logs: u32,
-    segments_per_ring: u32,
-    current_ring_segments: u32,
+    delta_logger: Mutex<NoopRawMutex, Option<DeltaLogger<TM, D, vlfs::FileWriter<'a, F, C>, FF>>>,
+    close_signal: Signal<NoopRawMutex, ()>,
+    delay: DL,
+    clock: CL,
+    config:RingDeltaLoggerConfig,
+    current_ring_segments: RefCell<u32>,
 }
 
-impl<'a, TM, D, C, F, FF> RingDeltaLogger<'a, TM, D, C, F, FF>
+impl<'a, TM, D, C, F, FF, DL, CL> RingDeltaLogger<'a, TM, D, C, F, FF, DL, CL>
 where
     TM: TimestampType,
     C: Crc,
@@ -36,17 +53,17 @@ where
     F::Error: defmt::Format,
     D: SensorData,
     FF: F64FixedPointFactory,
+    DL: Delay,
+    CL: Clock,
     [(); size_of::<D>() + 10]:,
 {
     pub async fn new(
         fs: &'a VLFS<F, C>,
         file_type: FileType,
-        seconds_per_segment: u32,
-        keep_seconds: u32,
+        delay: DL,
+        clock: CL,
+        config:RingDeltaLoggerConfig,
     ) -> Result<Self, VLFSError<F::Error>> {
-        let logs_per_segment = (seconds_per_segment as f64 * 1000.0 / FF::min()) as u32;
-        let segments_per_ring = keep_seconds / seconds_per_segment;
-
         let mut files_iter = fs
             .files_iter_filter(|file_entry| file_entry.typ == file_type)
             .await;
@@ -59,8 +76,8 @@ where
 
         let mut builder = fs.new_at_builder().await?;
 
-        let (mut files_to_remove, current_ring_segments) = if files_count > segments_per_ring {
-            (files_count - segments_per_ring, segments_per_ring)
+        let (mut files_to_remove, current_ring_segments) = if files_count > config.segments_per_ring {
+            (files_count - config.segments_per_ring, config.segments_per_ring)
         } else {
             (0, files_count)
         };
@@ -82,63 +99,90 @@ where
         Ok(Self {
             fs,
             file_type,
-            delta_logger,
-            logs_per_segment,
-            current_segment_logs: 0,
-
-            segments_per_ring,
-            current_ring_segments,
+            delay,
+            clock,
+            delta_logger: Mutex::new(Some(delta_logger)),
+            close_signal: Signal::new(),
+            config,
+            current_ring_segments: RefCell::new(current_ring_segments),
         })
     }
 
-    pub async fn log(&mut self, value: SensorReading<TM, D>) -> Result<bool, VLFSError<F::Error>> {
-        if self.current_segment_logs >= self.logs_per_segment {
-            log_info!("Creating new ring segment");
-            let mut builder = self.fs.new_at_builder().await?;
-
-            let new_ring_segments = if self.current_ring_segments >= self.segments_per_ring {
-                let mut first_segment_removed = false;
-                while let Some(file_entry) = builder.read_next().await? {
-                    if file_entry.typ == self.file_type && !first_segment_removed {
-                        first_segment_removed = true;
-                    } else {
-                        builder.write(&file_entry).await?;
-                    }
-                }
-                self.segments_per_ring
-            } else {
-                while let Some(file_entry) = builder.read_next().await? {
-                    builder.write(&file_entry).await?;
-                }
-                self.current_ring_segments + 1
-            };
-
-            let new_writer = builder
-                .write_new_file_and_open_for_write(self.file_type)
-                .await?;
-            builder.commit().await?;
-
-            let new_delta_logger = DeltaLogger::new(new_writer);
-            let mut old_delta_logger = replace(&mut self.delta_logger, new_delta_logger);
-
-            old_delta_logger.flush().await?;
-            let old_writer = old_delta_logger.into_writer();
-            old_writer.close().await?;
-
-            self.current_segment_logs = 0;
-            self.current_ring_segments = new_ring_segments;
-        }
-
-        let logged = self.delta_logger.log(value).await?;
-        self.current_segment_logs += logged as u32;
+    pub async fn log(&self, value: SensorReading<TM, D>) -> Result<bool, VLFSError<F::Error>> {
+        let mut delta_logger = self.delta_logger.lock().await;
+        let delta_logger = delta_logger.as_mut().unwrap();
+        let logged = delta_logger.log(value).await?;
 
         Ok(logged)
     }
 
-    pub async fn close(mut self) -> Result<(), VLFSError<F::Error>> {
-        self.delta_logger.flush().await?;
-        let writer = self.delta_logger.into_writer();
-        writer.close().await?;
+    pub fn close(&self) {
+        self.close_signal.signal(());
+    }
+
+    pub async fn run(&self) -> Result<(), VLFSError<F::Error>> {
+        self.delay
+            .delay_ms(self.config.first_segment_seconds as f64 * 1000.0)
+            .await;
+        self.create_new_segment().await?;
+
+        let mut ticker = Ticker::every(
+            self.clock.clone(),
+            self.delay.clone(),
+            self.config.seconds_per_segment as f64 * 1000.0,
+        );
+        loop {
+            match select(ticker.next(), self.close_signal.wait()).await {
+                Either::First(_) => {}
+                Either::Second(_) => {
+                    let mut delta_logger = self.delta_logger.lock().await;
+                    let mut delta_logger = delta_logger.take().unwrap();
+                    delta_logger.flush().await?;
+                    let writer = delta_logger.into_writer();
+                    writer.close().await?;
+                    return Ok(());
+                }
+            }
+            ticker.next().await;
+            self.create_new_segment().await?;
+        }
+    }
+
+    async fn create_new_segment(&self) -> Result<(), VLFSError<F::Error>> {
+        log_info!("Creating new ring segment");
+        let mut builder = self.fs.new_at_builder().await?;
+        let new_ring_segments = if *self.current_ring_segments.borrow() >= self.config.segments_per_ring {
+            let mut first_segment_removed = false;
+            while let Some(file_entry) = builder.read_next().await? {
+                if file_entry.typ == self.file_type && !first_segment_removed {
+                    first_segment_removed = true;
+                } else {
+                    builder.write(&file_entry).await?;
+                }
+            }
+            self.config.segments_per_ring
+        } else {
+            while let Some(file_entry) = builder.read_next().await? {
+                builder.write(&file_entry).await?;
+            }
+            *self.current_ring_segments.borrow() + 1
+        };
+        let new_writer = builder
+            .write_new_file_and_open_for_write(self.file_type)
+            .await?;
+        builder.commit().await?;
+        let new_delta_logger = DeltaLogger::new(new_writer);
+        let mut old_delta_logger = {
+            let mut delta_logger = self.delta_logger.lock().await;
+            let delta_logger = delta_logger.as_mut().unwrap();
+            replace(delta_logger, new_delta_logger)
+        };
+
+        old_delta_logger.flush().await?;
+        let old_writer = old_delta_logger.into_writer();
+        old_writer.close().await?;
+        *self.current_ring_segments.borrow_mut() = new_ring_segments;
+
         Ok(())
     }
 }
@@ -169,7 +213,7 @@ where
     TryAgain,
 }
 
-impl<'a, TM,D, C, F, FF, P> RingDeltaLoggerReader<'a, TM, D, C, F, FF, P>
+impl<'a, TM, D, C, F, FF, P> RingDeltaLoggerReader<'a, TM, D, C, F, FF, P>
 where
     TM: TimestampType,
     C: Crc,

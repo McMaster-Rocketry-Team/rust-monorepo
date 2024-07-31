@@ -17,6 +17,7 @@ use super::{
 /// It is possible to create more file entries than fit in the allocation table.
 /// It is possible to delete opened files.
 /// TODO: buffer reads
+/// FIXME: removing files does not release sectors
 pub struct ATBuilder<'a, 'b, F: Flash, C: Crc>
 where
     'b: 'a,

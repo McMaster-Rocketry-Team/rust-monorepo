@@ -19,19 +19,13 @@ use crate::{
     common::{
         can_bus::messages::{
             AvionicsStatusMessage, FlightEvent, FlightEventMessage, UnixTimeMessage,
-        },
-        config_file::ConfigFile,
-        device_config::{DeviceConfig, DeviceModeConfig},
-        file_types::*,
-        vlp::{
+        }, config_file::ConfigFile, delta_logger::prelude::{TieredRingDeltaLogger}, device_config::{DeviceConfig, DeviceModeConfig}, file_types::*, vlp::{
             packet::{LowPowerModePacket, SoftArmPacket, VLPUplinkPacket},
             telemetry_packet::{FlightCoreStateTelemetry, TelemetryPacketBuilder},
             uplink_client::VLPUplinkClient,
-        },
+        }
     },
-    driver::{
-        timestamp::{BootTimestamp, UnixTimestamp},
-    },
+    driver::timestamp::{BootTimestamp, UnixTimestamp},
 };
 use crate::{
     avionics::{
@@ -69,79 +63,94 @@ pub async fn avionics_main(
         log_unreachable!()
     };
 
-    // claim_devices!(device_manager, indicators);
+    claim_devices!(device_manager, indicators);
 
-    // let flight_profile_file =
-    //     ConfigFile::<FlightProfile, _, _>::new(services.fs, FLIGHT_PROFILE_FILE_TYPE);
-    // let flight_profile: FlightProfile =
-    //     if let Some(flight_profile) = flight_profile_file.read().await {
-    //         log_info!("Flight profile: {:?}", flight_profile);
-    //         flight_profile
-    //     } else {
-    //         log_info!("No flight profile file found, halting");
-    //         indicators
-    //             .run([333, 666], [0, 333, 333, 333], [0, 666, 333, 0])
-    //             .await
-    //     };
+    let flight_profile_file =
+        ConfigFile::<FlightProfile, _, _>::new(services.fs, FLIGHT_PROFILE_FILE_TYPE);
+    let flight_profile: FlightProfile =
+        if let Some(flight_profile) = flight_profile_file.read().await {
+            log_info!("Flight profile: {:?}", flight_profile);
+            flight_profile
+        } else {
+            log_info!("No flight profile file found, halting");
+            indicators
+                .run([333, 666], [0, 333, 333, 333], [0, 666, 333, 0])
+                .await
+        };
 
-    // log_info!("Running self test");
-    // match self_test(device_manager).await {
-    //     SelfTestResult::Ok => {
-    //         log_info!("Self test passed");
-    //         services.buzzer_queue.publish(2000, 50, 150);
-    //         services.buzzer_queue.publish(2000, 50, 150);
-    //         services.buzzer_queue.publish(3000, 50, 150);
-    //         services.buzzer_queue.publish(3000, 50, 150);
-    //     }
-    //     SelfTestResult::PartialFailed => {
-    //         log_warn!("Self test partially failed");
-    //         services.buzzer_queue.publish(2000, 50, 150);
-    //         services.buzzer_queue.publish(2000, 50, 150);
-    //         services.buzzer_queue.publish(3000, 50, 150);
-    //         services.buzzer_queue.publish(2000, 50, 150);
-    //     }
-    //     SelfTestResult::Failed => {
-    //         log_error!("Self test failed");
-    //         services.buzzer_queue.publish(2000, 50, 150);
-    //         services.buzzer_queue.publish(2000, 50, 150);
-    //         services.buzzer_queue.publish(3000, 50, 150);
-    //         services.buzzer_queue.publish(3000, 50, 150);
-    //         indicators.run([200, 200], [], []).await;
-    //     }
-    // }
+    log_info!("Running self test");
+    match self_test(device_manager).await {
+        SelfTestResult::Ok => {
+            log_info!("Self test passed");
+            services.buzzer_queue.publish(2000, 50, 150);
+            services.buzzer_queue.publish(2000, 50, 150);
+            services.buzzer_queue.publish(3000, 50, 150);
+            services.buzzer_queue.publish(3000, 50, 150);
+        }
+        SelfTestResult::PartialFailed => {
+            log_warn!("Self test partially failed");
+            services.buzzer_queue.publish(2000, 50, 150);
+            services.buzzer_queue.publish(2000, 50, 150);
+            services.buzzer_queue.publish(3000, 50, 150);
+            services.buzzer_queue.publish(2000, 50, 150);
+        }
+        SelfTestResult::Failed => {
+            log_error!("Self test failed");
+            services.buzzer_queue.publish(2000, 50, 150);
+            services.buzzer_queue.publish(2000, 50, 150);
+            services.buzzer_queue.publish(3000, 50, 150);
+            services.buzzer_queue.publish(3000, 50, 150);
+            indicators.run([200, 200], [], []).await;
+        }
+    }
 
-    // let (mut pyro_main_cont, mut pyro_main_ctrl) = match flight_profile.main_pyro {
-    //     PyroSelection::Pyro1 => {
-    //         claim_devices!(device_manager, pyro1_cont, pyro1_ctrl);
-    //         (pyro1_cont, pyro1_ctrl)
-    //     }
-    //     PyroSelection::Pyro2 => {
-    //         claim_devices!(device_manager, pyro2_cont, pyro2_ctrl);
-    //         (pyro2_cont, pyro2_ctrl)
-    //     }
-    //     PyroSelection::Pyro3 => {
-    //         todo!();
-    //         // claim_devices!(device_manager, pyro3_cont, pyro3_ctrl);
-    //         // (pyro3_cont.unwrap(), pyro3_ctrl.unwrap())
-    //     }
-    // };
-    // let (mut pyro_drogue_cont, mut pyro_drouge_ctrl) = match flight_profile.drogue_pyro {
-    //     PyroSelection::Pyro1 => {
-    //         claim_devices!(device_manager, pyro1_cont, pyro1_ctrl);
-    //         (pyro1_cont, pyro1_ctrl)
-    //     }
-    //     PyroSelection::Pyro2 => {
-    //         claim_devices!(device_manager, pyro2_cont, pyro2_ctrl);
-    //         (pyro2_cont, pyro2_ctrl)
-    //     }
-    //     PyroSelection::Pyro3 => {
-    //         todo!();
-    //         // claim_devices!(device_manager, pyro3_cont, pyro3_ctrl);
-    //         // (pyro3_cont, pyro3_ctrl)
-    //     }
-    // };
+    let (mut pyro_main_cont, mut pyro_main_ctrl) = match flight_profile.main_pyro {
+        PyroSelection::Pyro1 => {
+            claim_devices!(device_manager, pyro1_cont, pyro1_ctrl);
+            (pyro1_cont, pyro1_ctrl)
+        }
+        PyroSelection::Pyro2 => {
+            claim_devices!(device_manager, pyro2_cont, pyro2_ctrl);
+            (pyro2_cont, pyro2_ctrl)
+        }
+        PyroSelection::Pyro3 => {
+            todo!();
+            // claim_devices!(device_manager, pyro3_cont, pyro3_ctrl);
+            // (pyro3_cont.unwrap(), pyro3_ctrl.unwrap())
+        }
+    };
+    let (mut pyro_drogue_cont, mut pyro_drouge_ctrl) = match flight_profile.drogue_pyro {
+        PyroSelection::Pyro1 => {
+            claim_devices!(device_manager, pyro1_cont, pyro1_ctrl);
+            (pyro1_cont, pyro1_ctrl)
+        }
+        PyroSelection::Pyro2 => {
+            claim_devices!(device_manager, pyro2_cont, pyro2_ctrl);
+            (pyro2_cont, pyro2_ctrl)
+        }
+        PyroSelection::Pyro3 => {
+            todo!();
+            // claim_devices!(device_manager, pyro3_cont, pyro3_ctrl);
+            // (pyro3_cont, pyro3_ctrl)
+        }
+    };
 
-    // log_info!("Creating GPS logger");
+
+
+    log_info!("Creating GPS logger");
+    // let gps_logger = TieredRingDeltaLogger::new(
+    //     services.fs, 
+    //     AVIONICS_GPS_LOGGER_TIER_1,
+    //     AVIONICS_GPS_LOGGER_TIER_2,
+    //     &TieredRingDeltaLoggerConfig{
+    //         tier_1_seconds_per_segment: 60*5,
+    //         tier_1_keep_seconds:60*20,
+    //         tier_2_seconds_per_segment: 60*21,
+    //         tier_2_keep_seconds: 60*60*5,
+    //     }
+    // ).await.unwrap();
+
+
     // let gps_logger =
     //     BufferedDeltaLogger::<GPSLocation, _, _, 1>::new(services.fs, AVIONICS_GPS_LOGGER_TIER_1)
     //         .await
