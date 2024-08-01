@@ -61,7 +61,7 @@ where
     }
 
     async fn read_free_sectors(&mut self) -> Result<(), VLFSError<F::Error>> {
-        let mut iter = self.files_iter().await;
+        let mut iter = self.files_iter(()).await;
         while let Some(file_entry) = iter.next().await? {
             let mut current_sector_index = file_entry.first_sector_index;
                 while let Some(sector_index) = current_sector_index {

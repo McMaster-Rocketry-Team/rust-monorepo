@@ -421,7 +421,7 @@ async fn files_iter_filter() {
     let mut files = Vec::<FileEntry>::new();
     let mut iter = harness
         .vlfs
-        .files_iter_filter(|entry| entry.id.0 % 2 == 0)
+        .files_iter(|entry: &FileEntry| entry.id.0 % 2 == 0)
         .await;
     while let Some(file) = iter.next().await.unwrap() {
         files.push(file);

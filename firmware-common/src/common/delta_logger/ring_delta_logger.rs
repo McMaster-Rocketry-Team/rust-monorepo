@@ -67,7 +67,7 @@ where
         config: RingDeltaLoggerConfig,
     ) -> Result<Self, VLFSError<F::Error>> {
         let mut files_iter = fs
-            .files_iter_filter(|file_entry| file_entry.typ == config.file_type)
+            .files_iter(config.file_type)
             .await;
         let mut files_count = 0;
         while let Some(_) = files_iter.next().await? {
@@ -216,7 +216,7 @@ where
     }
 }
 
-pub struct RingDeltaLoggerReader<'a, TM, D, C, F, FF, P>
+pub struct RingDeltaLoggerReader<'a, TM, D, C, F, FF>
 where
     TM: TimestampType,
     C: Crc,
@@ -224,11 +224,10 @@ where
     F::Error: defmt::Format,
     D: SensorData,
     FF: F64FixedPointFactory,
-    P: FnMut(&FileEntry) -> bool,
     [(); size_of::<D>() + 10]:,
 {
     fs: &'a VLFS<F, C>,
-    file_iter: ConcurrentFilesIterator<'a, F, C, P>,
+    file_iter: ConcurrentFilesIterator<'a, F, C, FileType>,
     delta_logger_reader: Option<DeltaLoggerReader<TM, D, vlfs::FileReader<'a, F, C>, FF>>,
 }
 
@@ -242,7 +241,7 @@ where
     TryAgain,
 }
 
-impl<'a, TM, D, C, F, FF, P> RingDeltaLoggerReader<'a, TM, D, C, F, FF, P>
+impl<'a, TM, D, C, F, FF> RingDeltaLoggerReader<'a, TM, D, C, F, FF>
 where
     TM: TimestampType,
     C: Crc,
@@ -250,18 +249,17 @@ where
     F::Error: defmt::Format,
     D: SensorData,
     FF: F64FixedPointFactory,
-    P: FnMut(&FileEntry) -> bool,
     [(); size_of::<D>() + 10]:,
 {
     pub async fn new(
         fs: &'a VLFS<F, C>,
         file_type: FileType,
     ) -> Result<
-        RingDeltaLoggerReader<'a, TM, D, C, F, FF, impl FnMut(&FileEntry) -> bool>,
+        Self,
         VLFSError<F::Error>,
     > {
         let mut file_iter = fs
-            .concurrent_files_iter_filter(move |file_entry| file_entry.typ == file_type)
+            .concurrent_files_iter(file_type)
             .await;
 
         if let Some(first_file) = file_iter.next().await? {

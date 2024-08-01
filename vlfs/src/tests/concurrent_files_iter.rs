@@ -20,7 +20,7 @@ async fn concurrent_files_iter_no_changes() {
     }
 
     let mut files = Vec::<FileEntry>::new();
-    let mut iter = harness.vlfs.concurrent_files_iter().await;
+    let mut iter = harness.vlfs.concurrent_files_iter(()).await;
     while let Some(file) = iter.next().await.unwrap() {
         files.push(file);
     }
@@ -50,7 +50,7 @@ async fn concurrent_files_iter_no_changes_filter() {
     }
 
     let mut files = Vec::<FileEntry>::new();
-    let mut iter = harness.vlfs.concurrent_files_iter_filter(|entry| entry.id.0 % 2 == 0).await;
+    let mut iter = harness.vlfs.concurrent_files_iter(|entry:&FileEntry| entry.id.0 % 2 == 0).await;
     while let Some(file) = iter.next().await.unwrap() {
         files.push(file);
     }
@@ -81,7 +81,7 @@ async fn concurrent_files_iter_delete_1() {
     }
 
     let mut files = Vec::<FileEntry>::new();
-    let mut iter = harness.vlfs.concurrent_files_iter().await;
+    let mut iter = harness.vlfs.concurrent_files_iter(()).await;
     for _i in 0..3 {
         files.push(iter.next().await.unwrap().unwrap());
     }
@@ -115,7 +115,7 @@ async fn concurrent_files_iter_delete_1_filter() {
         harness.close_write_file(file_id).await;
     }
 
-    let mut iter = harness.vlfs.concurrent_files_iter_filter(|entry| entry.id.0 % 2 == 0).await;
+    let mut iter = harness.vlfs.concurrent_files_iter(|entry:&FileEntry| entry.id.0 % 2 == 0).await;
     assert_eq!(iter.next().await.unwrap().unwrap().id, FileID(2));
     harness.remove_file(FileID(4)).await;
     assert_eq!(iter.next().await.unwrap(), None);
@@ -138,7 +138,7 @@ async fn concurrent_files_iter_delete_last_iterated() {
     }
 
     let mut files = Vec::<FileEntry>::new();
-    let mut iter = harness.vlfs.concurrent_files_iter().await;
+    let mut iter = harness.vlfs.concurrent_files_iter(()).await;
     for _i in 0..3 {
         files.push(iter.next().await.unwrap().unwrap());
     }
@@ -173,7 +173,7 @@ async fn concurrent_files_iter_delete_2() {
     }
 
     let mut files = Vec::<FileEntry>::new();
-    let mut iter = harness.vlfs.concurrent_files_iter().await;
+    let mut iter = harness.vlfs.concurrent_files_iter(()).await;
     for _i in 0..3 {
         files.push(iter.next().await.unwrap().unwrap());
     }
@@ -209,7 +209,7 @@ async fn concurrent_files_iter_delete_all_before() {
     }
 
     let mut files = Vec::<FileEntry>::new();
-    let mut iter = harness.vlfs.concurrent_files_iter().await;
+    let mut iter = harness.vlfs.concurrent_files_iter(()).await;
     for _i in 0..3 {
         files.push(iter.next().await.unwrap().unwrap());
     }
@@ -246,7 +246,7 @@ async fn concurrent_files_iter_delete_all_then_create() {
     }
 
     let mut files = Vec::<FileEntry>::new();
-    let mut iter = harness.vlfs.concurrent_files_iter().await;
+    let mut iter = harness.vlfs.concurrent_files_iter(()).await;
     for _i in 0..3 {
         files.push(iter.next().await.unwrap().unwrap());
     }
@@ -289,7 +289,7 @@ async fn concurrent_files_iter_delete_some_then_create() {
         harness.close_write_file(file_id).await;
     }
 
-    let mut iter = harness.vlfs.concurrent_files_iter().await;
+    let mut iter = harness.vlfs.concurrent_files_iter(()).await;
     assert_eq!(iter.next().await.unwrap().unwrap().id, FileID(1));
     assert_eq!(iter.next().await.unwrap().unwrap().id, FileID(2));
     assert_eq!(iter.next().await.unwrap().unwrap().id, FileID(3));
@@ -301,7 +301,7 @@ async fn concurrent_files_iter_delete_some_then_create() {
     assert_eq!(iter.next().await.unwrap().unwrap().id, FileID(6));
     assert_eq!(iter.next().await.unwrap(), None);
 
-    let mut iter = harness.vlfs.concurrent_files_iter().await;
+    let mut iter = harness.vlfs.concurrent_files_iter(()).await;
     assert_eq!(iter.next().await.unwrap().unwrap().id, FileID(1));
     assert_eq!(iter.next().await.unwrap().unwrap().id, FileID(5));
     assert_eq!(iter.next().await.unwrap().unwrap().id, FileID(6));

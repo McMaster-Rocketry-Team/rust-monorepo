@@ -39,7 +39,7 @@ where
     }
 
     pub async fn read(&self) -> Option<T> {
-        if let Ok(Some(file)) = self.fs.find_first_file_by_type(self.file_type).await {
+        if let Ok(Some(file)) = self.fs.find_first_file(self.file_type).await {
             match self.fs.open_file_for_read(file.id).await {
                 Ok(mut reader) => {
                     let mut buffer: AlignedBytes<{ size_of::<T::Archived>() }> = Default::default();

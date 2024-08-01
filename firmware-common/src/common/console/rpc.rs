@@ -1,19 +1,20 @@
 use core::cell::RefCell;
 
+use crate::avionics::flight_profile::FlightProfile;
 use crate::common::device_manager::prelude::*;
+use crate::common::file_types::{DEVICE_CONFIG_FILE_TYPE, FLIGHT_PROFILE_FILE_TYPE};
 use crate::common::rkyv_structs::RkyvString;
 use crate::common::rpc_channel::RpcChannelClient;
 use crate::common::vlp::packet::VLPDownlinkPacket;
 use crate::common::vlp::packet::VLPUplinkPacket;
 use crate::create_rpc;
+use crate::ConfigFile;
 use crate::DeviceConfig;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, channel::Receiver};
 use lora_phy::mod_params::PacketStatus;
 use rkyv::{Archive, Deserialize, Serialize};
+use vlfs::ConcurrentFilesIterator;
 use vlfs::{AsyncReader, Crc, FileID, FileReader, FileType, Flash, VLFSError, VLFSReadStatus};
-use crate::ConfigFile;
-use crate::avionics::flight_profile::FlightProfile;
-use crate::common::file_types::{FLIGHT_PROFILE_FILE_TYPE, DEVICE_CONFIG_FILE_TYPE};
 
 #[derive(defmt::Format, Debug, Clone, Archive, Deserialize, Serialize)]
 pub struct RpcPacketStatus {
@@ -52,18 +53,9 @@ create_rpc! {
     ) {
         let mut send_uplink_packet_rpc_client = send_uplink_packet_rpc_client;
         let fs = &services.fs;
+        
         let mut reader: Option<FileReader<F, C>> = None;
-
-        let selected_file_type: RefCell<Option<FileType>> = RefCell::new(None);
-        let mut file_iter = fs.concurrent_files_iter_filter(|file| {
-            let borrowed = selected_file_type.borrow();
-            if let Some(file_type) = borrowed.as_ref() {
-                file.typ == *file_type
-            } else {
-                true
-            }
-        })
-        .await;
+        let mut file_iter: Option<ConcurrentFilesIterator<F, C, Option<FileType>>> = None;
     }
     rpc 0 WhoAmI | | -> (name: Option<RkyvString<64>>, serial_number: [u8; 12]) {
         WhoAmIResponse {
@@ -121,23 +113,26 @@ create_rpc! {
         }
     }
     rpc 4 StartListFiles |file_type: Option<u16>| -> () {
-        selected_file_type.replace(file_type.map(FileType));
-        file_iter.reset();
+        file_iter = Some(fs.concurrent_files_iter(file_type.map(FileType)).await);
         StartListFilesResponse {}
     }
     rpc 5 GetListedFile | | -> (file_id: Option<u64>) {
-        match file_iter.next().await {
-            Ok(Some(file)) => {
-                GetListedFileResponse {
-                    file_id: Some(file.id.0),
+        if let Some(file_iter) = &mut file_iter {
+            match file_iter.next().await {
+                Ok(Some(file)) => {
+                    GetListedFileResponse {
+                        file_id: Some(file.id.0),
+                    }
+                }
+                Ok(None) => {
+                    GetListedFileResponse { file_id: None }
+                }
+                Err(_) => {
+                    GetListedFileResponse { file_id: None }
                 }
             }
-            Ok(None) => {
-                GetListedFileResponse { file_id: None }
-            }
-            Err(_) => {
-                GetListedFileResponse { file_id: None }
-            }
+        }else{
+            GetListedFileResponse { file_id: None }
         }
     }
     rpc 6 GCMSendUplinkPacket |packet: VLPUplinkPacket| -> (status: Option<RpcPacketStatus>) {

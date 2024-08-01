@@ -163,7 +163,7 @@ impl VLFSTestingHarness {
     pub async fn verify_invariants(&mut self) {
         self.flush_all_files().await;
         let mut files = Vec::<FileEntry>::new();
-        let mut files_iter = self.vlfs.files_iter().await;
+        let mut files_iter = self.vlfs.files_iter(()).await;
         while let Some(file) = files_iter.next().await.unwrap() {
             files.push(file);
         }
@@ -172,7 +172,7 @@ impl VLFSTestingHarness {
         assert_eq!(files.len(), self.files.lock().await.len());
 
         let mut files_concurrent = Vec::<FileEntry>::new();
-        let mut files_iter = self.vlfs.concurrent_files_iter().await;
+        let mut files_iter = self.vlfs.concurrent_files_iter(()).await;
         while let Some(file) = files_iter.next().await.unwrap() {
             files_concurrent.push(file);
         }
