@@ -1,5 +1,3 @@
-use core::cell::RefCell;
-
 use crate::avionics::flight_profile::FlightProfile;
 use crate::common::device_manager::prelude::*;
 use crate::common::file_types::{DEVICE_CONFIG_FILE_TYPE, FLIGHT_PROFILE_FILE_TYPE};
@@ -53,7 +51,7 @@ create_rpc! {
     ) {
         let mut send_uplink_packet_rpc_client = send_uplink_packet_rpc_client;
         let fs = &services.fs;
-        
+
         let mut reader: Option<FileReader<F, C>> = None;
         let mut file_iter: Option<ConcurrentFilesIterator<F, C, Option<FileType>>> = None;
     }

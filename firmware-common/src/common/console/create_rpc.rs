@@ -25,7 +25,7 @@ macro_rules! create_rpc {
     } => {
         $(
             $(
-                #[derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize, Debug, Clone, defmt::Format)]
+                #[derive(rkyv::Archive, rkyv::Deserialize, rkyv::Serialize, Debug, Clone, PartialEq, defmt::Format)]
                 pub enum $enum_name {
                     $( $enum_body )*
                 }

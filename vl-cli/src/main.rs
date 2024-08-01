@@ -1,5 +1,8 @@
 use std::time::Duration;
 
+use crate::list_files::list_files;
+use crate::pull_file::pull_file;
+use crate::pull_vacuum_test::pull_vacuum_test;
 use anyhow::anyhow;
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -27,6 +30,9 @@ use tokio_serial::{SerialPortBuilderExt, SerialStream};
 
 mod device_config;
 mod flight_profile;
+mod list_files;
+mod pull_file;
+mod pull_vacuum_test;
 
 struct Delay;
 
@@ -58,6 +64,7 @@ enum Commands {
     DeviceConfig(DeviceConfigArgs),
     #[command(about = "Generate a new Lora key")]
     GenLoraKey,
+    PullVacuumTest(PullVacuumTestArgs),
 }
 
 fn file_type_parser(s: &str) -> Result<u16, String> {
@@ -105,6 +112,12 @@ struct DeviceConfigArgs {
     config_path: std::path::PathBuf,
 }
 
+#[derive(clap::Args)]
+#[command(about = "Pull vacuum test data from device")]
+struct PullVacuumTestArgs {
+    save_path: std::path::PathBuf,
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let _ = env_logger::builder()
@@ -140,17 +153,13 @@ async fn main() -> Result<()> {
         Commands::LS(args) => {
             client.start_list_files(args.file_type).await.unwrap();
             println!("Files:");
-            loop {
-                let response = client.get_listed_file().await.unwrap();
-                if let Some(file_id) = response.file_id {
-                    println!("File: {:?}", file_id);
-                } else {
-                    break;
-                }
+            let file_ids = list_files(&mut client, args).await.unwrap();
+            for file_id in file_ids {
+                println!("File: {:?}", file_id);
             }
         }
         Commands::Pull(args) => {
-            println!("{:?} {:?}", args.file_id, args.host_path);
+            pull_file(&mut client, args).await.unwrap();
         }
         Commands::Detect => todo!(),
         Commands::SendUplink(SendUplinkArgs { command }) => {
@@ -225,6 +234,9 @@ async fn main() -> Result<()> {
         Commands::GenLoraKey => {
             let key = gen_lora_key();
             println!("{}", format_lora_key(&key));
+        }
+        Commands::PullVacuumTest(args) => {
+            pull_vacuum_test(&mut client, args).await.unwrap();
         }
     }
     Ok(())
