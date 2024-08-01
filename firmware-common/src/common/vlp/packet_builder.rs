@@ -116,7 +116,7 @@ impl<'a, 'b, CL: Clock> VLPPacketBuilder<'a, 'b, CL> {
             VLPUplinkPacket::DeleteLogsPacket(packet) => {
                 packet.serialize(&mut self.bit_slice_writer)
             }
-            VLPUplinkPacket::GroundTestDeployPacket(packet) =>{
+            VLPUplinkPacket::GroundTestDeployPacket(packet) => {
                 packet.serialize(&mut self.bit_slice_writer)
             }
         };
@@ -318,9 +318,7 @@ fn calculate_ecc_length_from_total_length(total_length: usize) -> usize {
 
 #[cfg(test)]
 mod test {
-    use crate::common::{
-        unix_clock::UnixClockTask, vlp::telemetry_packet::FlightCoreStateTelemetry,
-    };
+    use crate::{avionics::flight_core_event::FlightCoreState, common::unix_clock::UnixClockTask};
 
     use super::*;
 
@@ -414,7 +412,7 @@ mod test {
             3456.3,
             -200.1,
             350.3,
-            FlightCoreStateTelemetry::Armed,
+            FlightCoreState::Armed,
         ));
         packet_builder
             .serialize_downlink(&mut buffer, &packet)

@@ -8,6 +8,7 @@ use embassy_sync::{
     pubsub::{PubSubBehavior, PubSubChannel},
     signal::Signal,
 };
+use flight_core_event::FlightCoreState;
 use flight_profile::{FlightProfile, PyroSelection};
 use futures::join;
 use imu_calibration_info::IMUCalibrationInfo;
@@ -50,7 +51,7 @@ use crate::{
         file_types::*,
         vlp::{
             packet::{LowPowerModePacket, SoftArmPacket, VLPUplinkPacket},
-            telemetry_packet::{FlightCoreStateTelemetry, TelemetryPacketBuilder},
+            telemetry_packet::TelemetryPacketBuilder,
             uplink_client::VLPUplinkClient,
         },
     },
@@ -283,7 +284,7 @@ pub async fn avionics_main(
     > = BlockingMutex::new(RefCell::new(None));
     let flight_core_events = Channel::<NoopRawMutex, FlightCoreEvent, 3>::new();
     let flight_core_state_pub_sub =
-        PubSubChannel::<NoopRawMutex, FlightCoreStateTelemetry, 2, 3, 1>::new();
+        PubSubChannel::<NoopRawMutex, FlightCoreState, 2, 3, 1>::new();
 
     let vertical_calibration_in_progress =
         BlockingMutex::<NoopRawMutex, _>::new(RefCell::new(false));
@@ -512,7 +513,7 @@ pub async fn avionics_main(
                 }
             } else if !armed && flight_core_initialized {
                 flight_core.lock(|s| s.take());
-                flight_core_state_pub_sub.publish_immediate(FlightCoreStateTelemetry::DisArmed);
+                flight_core_state_pub_sub.publish_immediate(FlightCoreState::DisArmed);
             }
         }
     };
@@ -738,22 +739,22 @@ pub async fn avionics_main(
         loop {
             let state = sub.next_message_pure().await;
             match state {
-                FlightCoreStateTelemetry::DisArmed => {}
-                FlightCoreStateTelemetry::Armed => {}
-                FlightCoreStateTelemetry::PowerAscend => {
+                FlightCoreState::DisArmed => {}
+                FlightCoreState::Armed => {}
+                FlightCoreState::PowerAscend => {
                     can_send_flight_event(FlightEvent::Ignition).await;
                 }
-                FlightCoreStateTelemetry::Coast => {
+                FlightCoreState::Coast => {
                     can_send_flight_event(FlightEvent::Coast).await;
                 }
-                FlightCoreStateTelemetry::Descent => {
+                FlightCoreState::Descent => {
                     can_send_flight_event(FlightEvent::Apogee).await;
                 }
-                FlightCoreStateTelemetry::Landed => {
+                FlightCoreState::Landed => {
                     can_send_flight_event(FlightEvent::Landed).await;
                 }
-                FlightCoreStateTelemetry::DrogueChuteDeployed => {},
-                FlightCoreStateTelemetry::MainChuteDeployed => {},
+                FlightCoreState::DrogueChuteDeployed => {},
+                FlightCoreState::MainChuteDeployed => {},
             }
         }
     };

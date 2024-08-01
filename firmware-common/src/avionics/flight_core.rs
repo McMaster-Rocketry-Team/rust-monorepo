@@ -4,10 +4,10 @@ use super::baro_reading_filter::BaroFilterOutput;
 use super::baro_reading_filter::BaroReadingFilter;
 use super::flight_core_event::FlightCoreEvent;
 use super::flight_core_event::FlightCoreEventDispatcher;
+use super::flight_core_event::FlightCoreState as EventFlightCoreState;
 use super::flight_profile::FlightProfile;
 use crate::common::moving_average::NoSumSMA;
 use crate::common::sensor_snapshot::PartialSensorSnapshot;
-use crate::common::vlp::telemetry_packet::FlightCoreStateTelemetry;
 use eskf::ESKF;
 use ferraris_calibration::CalibrationInfo;
 use heapless::Deque;
@@ -42,7 +42,7 @@ impl Default for Variances {
     }
 }
 
-pub enum FlightCoreState {
+enum FlightCoreState {
     Armed {
         // 500ms history
         snapshot_history: Deque<PartialSensorSnapshot, 100>,
@@ -121,7 +121,7 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
         eskf.gravity = Vector3::new(0.0, 0.0, -9.81);
 
         event_dispatcher.dispatch(FlightCoreEvent::ChangeState(
-            FlightCoreStateTelemetry::Armed,
+            EventFlightCoreState::Armed,
         ));
         Self {
             event_dispatcher,
@@ -287,7 +287,7 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
 
                     self.event_dispatcher.dispatch(FlightCoreEvent::Ignition);
                     self.event_dispatcher.dispatch(FlightCoreEvent::ChangeState(
-                        FlightCoreStateTelemetry::PowerAscend,
+                        EventFlightCoreState::PowerAscend,
                     ));
                     self.state = FlightCoreState::PowerAscend {
                         launch_timestamp: snapshot.timestamp,
@@ -307,7 +307,7 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
                 // coast detection
                 if acc_mag_moving_average.is_full() && acc_mag_moving_average.get_average() < 10.0 {
                     self.event_dispatcher.dispatch(FlightCoreEvent::ChangeState(
-                        FlightCoreStateTelemetry::Coast,
+                        EventFlightCoreState::Coast,
                     ));
                     self.state = FlightCoreState::Coast {
                         launch_timestamp: *launch_timestamp,
@@ -322,7 +322,7 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
                 // apogee detection
                 if self.eskf.velocity.z <= 0.0 {
                     self.event_dispatcher.dispatch(FlightCoreEvent::ChangeState(
-                        FlightCoreStateTelemetry::Descent,
+                        EventFlightCoreState::Descent,
                     ));
                     self.event_dispatcher.dispatch(FlightCoreEvent::Apogee);
                     self.state = FlightCoreState::DrogueChute {
@@ -384,7 +384,7 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
                 if self.eskf.velocity.z.abs() < 0.5 {
                     self.event_dispatcher.dispatch(FlightCoreEvent::Landed);
                     self.event_dispatcher.dispatch(FlightCoreEvent::ChangeState(
-                        FlightCoreStateTelemetry::Landed,
+                        EventFlightCoreState::Landed,
                     ));
                     self.state = FlightCoreState::Landed {};
                 }

@@ -7,7 +7,7 @@ use embassy_sync::signal::Signal;
 use futures::join;
 
 use crate::avionics::backup_flight_core::BackupFlightCore;
-use crate::avionics::flight_core_event::FlightCoreEvent;
+use crate::avionics::flight_core_event::{FlightCoreEvent, FlightCoreState};
 use crate::avionics::flight_profile::FlightProfile;
 use crate::common::config_file::ConfigFile;
 use crate::common::delta_logger::buffered_tiered_ring_delta_logger::BufferedTieredRingDeltaLogger;
@@ -18,7 +18,6 @@ use crate::common::file_types::{
     VACUUM_TEST_LOG_FILE_TYPE,
 };
 use crate::common::ticker::Ticker;
-use crate::common::vlp::telemetry_packet::FlightCoreStateTelemetry;
 use crate::driver::barometer::BaroData;
 use crate::driver::timestamp::BootTimestamp;
 use crate::{claim_devices, create_serialized_enum, fixed_point_factory};
@@ -110,7 +109,7 @@ pub async fn vacuum_test_main(
         }
     };
 
-    let flight_core_state_signal = Signal::<NoopRawMutex, FlightCoreStateTelemetry>::new();
+    let flight_core_state_signal = Signal::<NoopRawMutex, FlightCoreState>::new();
     let flight_core_events_sub_fut = async {
         let mut sub = flight_core_events.subscriber().unwrap();
         loop {
@@ -139,13 +138,13 @@ pub async fn vacuum_test_main(
         loop {
             let indicator_fut = async {
                 match *state.borrow() {
-                    FlightCoreStateTelemetry::DrogueChuteDeployed => {
+                    FlightCoreState::DrogueChuteDeployed => {
                         indicators.run([], [], [250, 250]).await;
                     }
-                    FlightCoreStateTelemetry::MainChuteDeployed => {
+                    FlightCoreState::MainChuteDeployed => {
                         indicators.run([], [250, 250], []).await;
                     }
-                    FlightCoreStateTelemetry::Landed => {
+                    FlightCoreState::Landed => {
                         indicators.run([], [250, 250], [0, 250, 250, 0]).await;
                     }
                     _ => {

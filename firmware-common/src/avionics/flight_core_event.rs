@@ -1,7 +1,20 @@
 use embassy_sync::{blocking_mutex::raw::RawMutex, channel::Sender as ChannelSender, pubsub::publisher::Publisher as PubSubPublisher};
 
-use crate::common::vlp::telemetry_packet::FlightCoreStateTelemetry;
+use int_enum::IntEnum;
 use rkyv::{Archive, Deserialize, Serialize};
+
+#[repr(u8)]
+#[derive(defmt::Format, Debug, Clone, Copy, IntEnum, Archive, Deserialize, Serialize)]
+pub enum FlightCoreState {
+    DisArmed = 0,
+    Armed = 1,
+    PowerAscend = 2,
+    Coast = 3,
+    Descent = 4,
+    DrogueChuteDeployed = 5,
+    MainChuteDeployed = 6,
+    Landed = 7,
+}
 
 #[derive(Debug, Clone, Copy, Archive, Deserialize, Serialize, defmt::Format)]
 pub enum FlightCoreEvent {
@@ -12,7 +25,7 @@ pub enum FlightCoreEvent {
     DeployDrogue,
     Landed,
     DidNotReachMinApogee,
-    ChangeState(FlightCoreStateTelemetry),
+    ChangeState(FlightCoreState),
     ChangeAltitude(f32),
     ChangeAirSpeed(f32),
 }

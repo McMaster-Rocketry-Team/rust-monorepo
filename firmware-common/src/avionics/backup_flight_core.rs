@@ -1,9 +1,10 @@
 use libm::fabsf;
 
 use crate::{
-    common::{sensor_reading::SensorReading, vlp::telemetry_packet::FlightCoreStateTelemetry},
+    common::sensor_reading::SensorReading,
     driver::{barometer::BaroData, timestamp::BootTimestamp},
 };
+use super::flight_core_event::FlightCoreState as EventFlightCoreState;
 
 use super::{
     flight_core_event::{FlightCoreEvent, FlightCoreEventDispatcher},
@@ -32,7 +33,7 @@ pub struct BackupFlightCore<D: FlightCoreEventDispatcher> {
 impl<D: FlightCoreEventDispatcher> BackupFlightCore<D> {
     pub fn new(flight_profile: FlightProfile, mut event_dispatcher: D) -> Self {
         event_dispatcher.dispatch(FlightCoreEvent::ChangeState(
-            FlightCoreStateTelemetry::Armed,
+            EventFlightCoreState::Armed,
         ));
         Self {
             event_dispatcher,
@@ -64,7 +65,7 @@ impl<D: FlightCoreEventDispatcher> BackupFlightCore<D> {
                     self.event_dispatcher
                         .dispatch(FlightCoreEvent::DeployDrogue);
                     self.event_dispatcher.dispatch(FlightCoreEvent::ChangeState(
-                        FlightCoreStateTelemetry::DrogueChuteDeployed,
+                        EventFlightCoreState::DrogueChuteDeployed,
                     ));
                 }
             }
@@ -80,7 +81,7 @@ impl<D: FlightCoreEventDispatcher> BackupFlightCore<D> {
                     self.state = BackupFlightCoreState::MainChuteDeployed;
                     self.event_dispatcher.dispatch(FlightCoreEvent::DeployMain);
                     self.event_dispatcher.dispatch(FlightCoreEvent::ChangeState(
-                        FlightCoreStateTelemetry::MainChuteDeployed,
+                        EventFlightCoreState::MainChuteDeployed,
                     ));
                 }
             }
@@ -89,7 +90,7 @@ impl<D: FlightCoreEventDispatcher> BackupFlightCore<D> {
                     self.state = BackupFlightCoreState::Landed;
                     self.event_dispatcher.dispatch(FlightCoreEvent::Landed);
                     self.event_dispatcher.dispatch(FlightCoreEvent::ChangeState(
-                        FlightCoreStateTelemetry::Landed,
+                        EventFlightCoreState::Landed,
                     ));
                 }
             }

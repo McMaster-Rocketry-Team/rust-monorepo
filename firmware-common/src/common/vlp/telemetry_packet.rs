@@ -1,3 +1,4 @@
+use crate::avionics::flight_core_event::FlightCoreState;
 use crate::common::delta_logger::prelude::*;
 use crate::common::unix_clock::UnixClock;
 use crate::common::variable_int::VariableIntRkyvWrapper;
@@ -6,7 +7,6 @@ use crate::Clock;
 use crate::{common::fixed_point::F32FixedPointFactory, fixed_point_factory};
 use core::cell::{RefCell, RefMut};
 use embassy_sync::blocking_mutex::{raw::NoopRawMutex, Mutex as BlockingMutex};
-use int_enum::IntEnum;
 use packed_struct::prelude::*;
 use rkyv::{Archive, Deserialize, Serialize};
 
@@ -15,19 +15,6 @@ fixed_point_factory!(TemperatureFac, f32, -30.0, 85.0, 0.1);
 fixed_point_factory!(FreeSpaceFac, f32, 0.0, 524288.0, 128.0);
 fixed_point_factory!(AltitudeFac, f32, 0.0, 5000.0, 5.0);
 fixed_point_factory!(AirSpeedFac, f32, -400.0, 400.0, 2.0);
-
-#[repr(u8)]
-#[derive(defmt::Format, Debug, Clone, Copy, IntEnum, Archive, Deserialize, Serialize)]
-pub enum FlightCoreStateTelemetry {
-    DisArmed = 0,
-    Armed = 1,
-    PowerAscend = 2,
-    Coast = 3,
-    Descent = 4,
-    DrogueChuteDeployed = 5,
-    MainChuteDeployed = 6,
-    Landed = 7,
-}
 
 #[derive(defmt::Format, Debug, Clone, PartialEq, Archive, Deserialize, Serialize)]
 pub struct TelemetryPacket {
@@ -98,7 +85,7 @@ impl TelemetryPacket {
         air_speed: f32,
         max_air_speed: f32,
 
-        flight_core_state: FlightCoreStateTelemetry,
+        flight_core_state: FlightCoreState,
     ) -> Self {
         Self {
             unix_clock_ready,
@@ -186,12 +173,12 @@ impl TelemetryPacket {
         AirSpeedFac::to_float(self.max_air_speed)
     }
 
-    pub fn flight_core_state(&self) -> FlightCoreStateTelemetry {
+    pub fn flight_core_state(&self) -> FlightCoreState {
         let flight_core_state: u8 = self.flight_core_state.into();
-        if let Ok(flight_core_state) = FlightCoreStateTelemetry::try_from(flight_core_state) {
+        if let Ok(flight_core_state) = FlightCoreState::try_from(flight_core_state) {
             flight_core_state
         } else {
-            FlightCoreStateTelemetry::DisArmed
+            FlightCoreState::DisArmed
         }
     }
 }
@@ -270,7 +257,7 @@ pub struct TelemetryPacketBuilderState {
     pub software_armed: bool,
     pub pyro_main_continuity: bool,
     pub pyro_drogue_continuity: bool,
-    pub flight_core_state: FlightCoreStateTelemetry,
+    pub flight_core_state: FlightCoreState,
     pub disk_free_space: u32,
 }
 
@@ -295,7 +282,7 @@ impl<'a, K: Clock> TelemetryPacketBuilder<'a, K> {
                 software_armed: false,
                 pyro_main_continuity: false,
                 pyro_drogue_continuity: false,
-                flight_core_state: FlightCoreStateTelemetry::DisArmed,
+                flight_core_state: FlightCoreState::DisArmed,
                 disk_free_space: 0,
             })),
         }
