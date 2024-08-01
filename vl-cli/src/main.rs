@@ -18,6 +18,7 @@ use firmware_common::common::vlp::packet::SoftArmPacket;
 use firmware_common::common::vlp::packet::VLPUplinkPacket;
 use firmware_common::common::vlp::packet::VerticalCalibrationPacket;
 use firmware_common::{driver::serial::SplitableSerialWrapper, RpcClient};
+use flight_profile::read_flight_profile;
 use log::LevelFilter;
 use tokio::io::{split, AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::time::sleep;
@@ -25,6 +26,7 @@ use tokio_serial::available_ports;
 use tokio_serial::{SerialPortBuilderExt, SerialStream};
 
 mod device_config;
+mod flight_profile;
 
 struct Delay;
 
@@ -94,13 +96,7 @@ struct GCMArgs {}
 #[derive(clap::Args)]
 #[command(about = "Set flight profile")]
 struct FlightProfileArgs {
-    drogue_pyro: u8,
-    drogue_chute_minimum_time_ms: f64,
-    drogue_chute_minimum_altitude_agl: f32,
-    drogue_chute_delay_ms: f64,
-    main_pyro: u8,
-    main_chute_altitude_agl: f32,
-    main_chute_delay_ms: f64,
+    profile_path: std::path::PathBuf,
 }
 
 #[derive(clap::Args)]
@@ -218,23 +214,13 @@ async fn main() -> Result<()> {
             }
             sleep(Duration::from_millis(100)).await;
         },
-        Commands::FlightProfile(profile) => {
-            client
-                .set_flight_profile(
-                    profile.drogue_pyro,
-                    profile.drogue_chute_minimum_time_ms,
-                    profile.drogue_chute_minimum_altitude_agl,
-                    profile.drogue_chute_delay_ms,
-                    profile.main_pyro,
-                    profile.main_chute_altitude_agl,
-                    profile.main_chute_delay_ms,
-                )
-                .await
-                .unwrap();
+        Commands::FlightProfile(args) => {
+            let profile = read_flight_profile(args.profile_path).unwrap();
+            client.set_flight_profile(profile).await.unwrap();
         }
-        Commands::DeviceConfig(config) => {
-            let config = read_device_config(config.config_path).unwrap();
-            client.set_device_config(config.into()).await.unwrap();
+        Commands::DeviceConfig(args) => {
+            let config = read_device_config(args.config_path).unwrap();
+            client.set_device_config(config).await.unwrap();
         }
         Commands::GenLoraKey => {
             let key = gen_lora_key();

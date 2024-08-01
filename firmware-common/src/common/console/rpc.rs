@@ -14,7 +14,6 @@ use vlfs::{AsyncReader, Crc, FileID, FileReader, FileType, Flash, VLFSError, VLF
 use crate::ConfigFile;
 use crate::avionics::flight_profile::FlightProfile;
 use crate::common::file_types::{FLIGHT_PROFILE_FILE_TYPE, DEVICE_CONFIG_FILE_TYPE};
-use crate::avionics::flight_profile::PyroSelection;
 
 #[derive(defmt::Format, Debug, Clone, Archive, Deserialize, Serialize)]
 pub struct RpcPacketStatus {
@@ -153,34 +152,10 @@ create_rpc! {
         }
     }
     rpc 8 SetFlightProfile |
-        drogue_pyro: u8,
-        drogue_chute_minimum_time_ms: f64,
-        drogue_chute_minimum_altitude_agl: f32,
-        drogue_chute_delay_ms: f64,
-        main_pyro: u8,
-        main_chute_altitude_agl: f32,
-        main_chute_delay_ms: f64
+        flight_profile: FlightProfile
     | -> () {
         let flight_profile_file = ConfigFile::<FlightProfile, _, _>::new(services.fs, FLIGHT_PROFILE_FILE_TYPE);
-        flight_profile_file.write(&FlightProfile {
-            drogue_pyro: match drogue_pyro {
-                1 => PyroSelection::Pyro1,
-                2 => PyroSelection::Pyro2,
-                3 => PyroSelection::Pyro3,
-                _ => PyroSelection::Pyro1,
-            },
-            drogue_chute_minimum_time_ms,
-            drogue_chute_minimum_altitude_agl,
-            drogue_chute_delay_ms,
-            main_pyro: match main_pyro {
-                1 => PyroSelection::Pyro1,
-                2 => PyroSelection::Pyro2,
-                3 => PyroSelection::Pyro3,
-                _ => PyroSelection::Pyro1,
-            },
-            main_chute_altitude_agl,
-            main_chute_delay_ms,
-        }).await.unwrap();
+        flight_profile_file.write(&flight_profile).await.unwrap();
         SetFlightProfileResponse {}
     }
     rpc 9 SetDeviceConfig |

@@ -1,0 +1,9 @@
+{
+  "drogue_pyro": "Pyro1",
+  "drogue_chute_minimum_time_ms": 15000,
+  "drogue_chute_minimum_altitude_agl": 2000,
+  "drogue_chute_delay_ms": 1000,
+  "main_pyro": "Pyro2",
+  "main_chute_altitude_agl": 500,
+  "main_chute_delay_ms": 1000
+}

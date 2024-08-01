@@ -11,6 +11,8 @@ use firmware_common::{
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
+use crate::flight_profile::PyroSelectionSerde;
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DeviceConfigSerde {
     pub name: String,
@@ -58,7 +60,7 @@ impl Into<LoraConfig> for LoraConfigSerde {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "mode")]
 pub enum DeviceModeConfigSerde {
-    Avionics,
+    Avionics ,
     GCM,
     GroundTestAvionics {
         drogue_pyro: PyroSelectionSerde,
@@ -80,23 +82,6 @@ impl Into<DeviceModeConfig> for DeviceModeConfigSerde {
                 main_pyro: main_pyro.into(),
             },
             DeviceModeConfigSerde::VacuumTest => DeviceModeConfig::VacuumTest,
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub enum PyroSelectionSerde {
-    Pyro1 = 1,
-    Pyro2 = 2,
-    Pyro3 = 3,
-}
-
-impl Into<PyroSelection> for PyroSelectionSerde {
-    fn into(self) -> PyroSelection {
-        match self {
-            PyroSelectionSerde::Pyro1 => PyroSelection::Pyro1,
-            PyroSelectionSerde::Pyro2 => PyroSelection::Pyro2,
-            PyroSelectionSerde::Pyro3 => PyroSelection::Pyro3,
         }
     }
 }
