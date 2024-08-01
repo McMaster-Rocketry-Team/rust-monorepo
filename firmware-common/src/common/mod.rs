@@ -1,3 +1,4 @@
+pub mod pyro_macro;
 pub mod buzzer_queue;
 pub mod can_bus;
 pub mod config_file;

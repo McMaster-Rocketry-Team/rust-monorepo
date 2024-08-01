@@ -1,210 +1,247 @@
 use core::cell::RefCell;
 
 use crate::{
+    avionics::flight_profile::PyroSelection,
     claim_devices,
-    common::{device_manager::prelude::*, file_types::GROUND_TEST_LOG_FILE_TYPE, ticker::Ticker},
+    common::{
+        delta_logger::prelude::DeltaLogger,
+        device_config::{DeviceConfig, DeviceModeConfig},
+        device_manager::prelude::*,
+        file_types::{GROUND_TEST_BARO_FILE_TYPE, GROUND_TEST_LOG_FILE_TYPE},
+        sensor_reading::SensorReading,
+        ticker::Ticker,
+        vlp::{
+            packet::{GroundTestDeployPacket, VLPDownlinkPacket, VLPUplinkPacket},
+            telemetry_packet::TelemetryPacketBuilder,
+            uplink_client::VLPUplinkClient,
+        },
+    },
     create_serialized_enum, device_manager_type,
-    driver::{indicator::Indicator, timestamp::UnixTimestamp},
+    driver::{barometer::BaroData, indicator::Indicator, timestamp::UnixTimestamp},
+    fixed_point_factory, pyro,
 };
-use core::fmt::Write;
-use embassy_sync::channel::Channel;
-use embassy_sync::{blocking_mutex::raw::NoopRawMutex, blocking_mutex::Mutex as BlockingMutex};
+use embassy_sync::pubsub::PubSubChannel;
+use embassy_sync::{
+    blocking_mutex::{raw::NoopRawMutex, Mutex as BlockingMutex},
+    pubsub::PubSubBehavior,
+};
 use futures::join;
-use heapless::String;
-use lora_phy::mod_params::Bandwidth;
-use lora_phy::mod_params::CodingRate;
-use lora_phy::mod_params::SpreadingFactor;
-use lora_phy::RxMode;
 use rkyv::{Archive, Deserialize, Serialize};
 
-// #[derive(defmt::Format, Debug, Clone, Archive, Deserialize, Serialize)]
-// struct FireEvent {
-//     pub timestamp: f64, // ms
-// }
+#[derive(defmt::Format, Debug, Clone, Archive, Deserialize, Serialize)]
+struct FireEvent {
+    pub timestamp: f64, // ms
+}
 
-// type BaroReadingUnix = BaroReading<UnixTimestamp>;
-// type ArchivedBaroReadingUnix = ArchivedBaroReading<UnixTimestamp>;
-
-// create_serialized_enum!(
-//     GroundTestLogger, // this is the name of the struct
-//     GroundTestLoggerReader,
-//     GroundTestLog,
-//     (0, BaroReadingUnix),
-//     (1, FireEvent)
-// );
-
-// async fn fire_pyro(
-//     services: system_services_type!(),
-//     ctrl: &mut impl PyroCtrl,
-//     baro: &mut impl Barometer,
-// ) {
-//     let file = services
-//         .fs
-//         .create_file(GROUND_TEST_LOG_FILE_TYPE)
-//         .await
-//         .unwrap();
-//     let writer = services.fs.open_file_for_write(file.id).await.unwrap();
-//     let mut logger = GroundTestLogger::new(writer);
-
-//     let finished = BlockingMutex::<NoopRawMutex, _>::new(RefCell::new(false));
-
-//     let logs_channel = Channel::<NoopRawMutex, GroundTestLog, 500>::new();
-//     let logger_fut = async {
-//         while !finished.lock(|s| *s.borrow()) {
-//             let log = logs_channel.receive().await;
-//             logger.write(&log).await.unwrap();
-//         }
-//     };
-
-//     let mut baro_ticker = Ticker::every(services.unix_clock(), services.delay(), 5.0);
-//     let log_baro_fut = async {
-//         while !finished.lock(|s| *s.borrow()) {
-//             baro_ticker.next().await;
-//             if let Ok(reading) = baro.read().await {
-//                 let reading = reading.to_unix_timestamp(services.unix_clock());
-//                 logs_channel
-//                     .try_send(GroundTestLog::BaroReadingUnix(reading))
-//                     .unwrap();
-//             }
-//         }
-//     };
-
-//     let buzzer_queue = &services.buzzer_queue;
-//     let fire_fut = async {
-//         log_info!("3");
-
-//         buzzer_queue.publish(3000, 50, 100);
-//         buzzer_queue.publish(3000, 50, 100);
-//         buzzer_queue.publish(3000, 50, 100);
-//         services.delay.delay_ms(1000.0).await;
-
-//         log_info!("2");
-//         buzzer_queue.publish(3000, 50, 100);
-//         buzzer_queue.publish(3000, 50, 100);
-//         services.delay.delay_ms(1000.0).await;
-
-//         log_info!("1");
-//         buzzer_queue.publish(3000, 50, 100);
-//         services.delay.delay_ms(1000.0).await;
-
-//         log_info!("fire");
-//         logs_channel
-//             .try_send(GroundTestLog::FireEvent(FireEvent {
-//                 timestamp: services.unix_clock.now_ms(),
-//             }))
-//             .unwrap();
-//         ctrl.set_enable(true).await.unwrap();
-//         services.delay.delay_ms(2000.0).await;
-//         ctrl.set_enable(false).await.unwrap();
-//         services.delay.delay_ms(10000.0).await;
-//         finished.lock(|s| *s.borrow_mut() = true);
-//     };
-
-//     join!(logger_fut, log_baro_fut, fire_fut);
-
-//     let writer = logger.into_writer();
-//     writer.close().await.unwrap();
-// }
+create_serialized_enum!(
+    GroundTestLogger,
+    GroundTestLoggerReader,
+    GroundTestLog,
+    (0, FireEvent)
+);
 
 #[inline(never)]
 pub async fn ground_test_avionics(
     device_manager: device_manager_type!(),
     services: system_services_type!(),
+    config: &DeviceConfig,
 ) -> ! {
-    claim_devices!(
-        device_manager,
-        lora,
-        pyro1_cont,
-        pyro1_ctrl,
-        pyro2_cont,
-        pyro2_ctrl,
-        barometer,
-        arming_switch,
-        indicators
+    let (drogue_pyro, main_pyro) = if let DeviceModeConfig::GroundTestAvionics {
+        drogue_pyro,
+        main_pyro,
+    } = config.mode
+    {
+        (drogue_pyro, main_pyro)
+    } else {
+        log_unreachable!()
+    };
+
+    claim_devices!(device_manager, lora, barometer, arming_switch, indicators);
+
+    log_info!("Creating logger");
+    let log_file_writer = services
+        .fs
+        .create_file_and_open_for_write(GROUND_TEST_LOG_FILE_TYPE)
+        .await
+        .unwrap();
+    let mut logger = GroundTestLogger::new(log_file_writer);
+
+    log_info!("Creating baro logger");
+    fixed_point_factory!(BaroFF, f64, 4.9, 7.0, 0.05);
+    let log_file_writer = services
+        .fs
+        .create_file_and_open_for_write(GROUND_TEST_BARO_FILE_TYPE)
+        .await
+        .unwrap();
+    let mut baro_logger = DeltaLogger::<UnixTimestamp, BaroData, _, BaroFF>::new(log_file_writer);
+    let baro_channel =
+        PubSubChannel::<NoopRawMutex, SensorReading<UnixTimestamp, BaroData>, 400, 1, 1>::new();
+
+    let baro_logger_fut = async {
+        let mut sub = baro_channel.subscriber().unwrap();
+        loop {
+            let reading = sub.next_message_pure().await;
+            baro_logger.log(reading).await.ok();
+        }
+    };
+
+    log_info!("resetting barometer");
+    barometer.reset().await.unwrap();
+
+    let indicator_fut = indicators.run([], [50, 2000], []);
+
+    let telemetry_packet_builder = TelemetryPacketBuilder::new(services.unix_clock());
+    let vlp = VLPUplinkClient::new();
+    let vlp_tx_fut = async {
+        let mut update_ticker = Ticker::every(services.clock(), services.delay(), 1000.0);
+        loop {
+            update_ticker.next().await;
+
+            let free = services.fs.free().await;
+            telemetry_packet_builder.update(|b| {
+                b.disk_free_space = free;
+            });
+            let packet = telemetry_packet_builder.create_packet();
+            vlp.send(VLPDownlinkPacket::TelemetryPacket(packet));
+        }
+    };
+    let vlp_rx_fut = async {
+        let (packet, _) = vlp.wait_receive().await;
+        log_info!("Received packet: {:?}", packet);
+        match packet {
+            VLPUplinkPacket::GroundTestDeployPacket(GroundTestDeployPacket {
+                pyro: pyro_selection,
+                ..
+            }) => {
+                let finished = BlockingMutex::<NoopRawMutex, _>::new(RefCell::new(false));
+
+                let log_baro_fut = async {
+                    let mut baro_ticker =
+                        Ticker::every(services.unix_clock(), services.delay(), 5.0);
+                    while !finished.lock(|s| *s.borrow()) {
+                        baro_ticker.next().await;
+                        if let Ok(reading) = barometer.read().await {
+                            let reading = reading.to_unix_timestamp(&services.unix_clock());
+                            baro_channel.publish_immediate(reading);
+                        }
+                    }
+                };
+
+                let buzzer_queue = &services.buzzer_queue;
+                let fire_fut = async {
+                    log_info!("3");
+
+                    buzzer_queue.publish(3000, 50, 200);
+                    buzzer_queue.publish(3000, 50, 200);
+                    buzzer_queue.publish(3000, 50, 200);
+                    services.delay.delay_ms(1000.0).await;
+
+                    log_info!("2");
+                    buzzer_queue.publish(3000, 50, 200);
+                    buzzer_queue.publish(3000, 50, 200);
+                    services.delay.delay_ms(1000.0).await;
+
+                    log_info!("1");
+                    buzzer_queue.publish(3000, 50, 200);
+                    services.delay.delay_ms(1000.0).await;
+
+                    log_info!("fire");
+                    let fire_time = services.unix_clock.now_ms();
+                    pyro!(
+                        device_manager,
+                        pyro_selection,
+                        pyro_ctrl.set_enable(true).await.unwrap()
+                    );
+                    services.delay.delay_ms(3000.0).await;
+                    pyro!(
+                        device_manager,
+                        pyro_selection,
+                        pyro_ctrl.set_enable(false).await.unwrap()
+                    );
+                    logger
+                        .write(&GroundTestLog::FireEvent(FireEvent {
+                            timestamp: fire_time,
+                        }))
+                        .await
+                        .unwrap();
+                    services.delay.delay_ms(10000.0).await;
+                    finished.lock(|s| *s.borrow_mut() = true);
+                    logger.flush().await.unwrap();
+                };
+
+                join!(log_baro_fut, fire_fut);
+            }
+            _ => {
+                // noop
+            }
+        }
+    };
+    let vlp_fut = vlp.run(
+        services.delay(),
+        &mut lora,
+        &config.lora,
+        services.unix_clock(),
+        &config.lora_key,
     );
 
-    // log_info!("resetting barometer");
-    // barometer.reset().await.unwrap();
+    let pyro_main_cont_fut = async {
+        let mut cont = pyro!(
+            device_manager,
+            main_pyro,
+            pyro_cont.read_continuity().await.unwrap()
+        );
 
-    // let indicator_fut = indicators.run([], [50, 2000], []);
+        loop {
+            telemetry_packet_builder.update(|b| {
+                b.pyro_main_continuity = cont;
+            });
+            cont = pyro!(
+                device_manager,
+                main_pyro,
+                pyro_cont.wait_continuity_change().await.unwrap()
+            );
+        }
+    };
 
-    // let avionics_fut = async {
-    //     let modulation_params = lora
-    //         .create_modulation_params(
-    //             SpreadingFactor::_12,
-    //             Bandwidth::_250KHz,
-    //             CodingRate::_4_8,
-    //             903_900_000,
-    //         )
-    //         .unwrap();
-    //     let mut tx_params = lora
-    //         .create_tx_packet_params(4, false, false, false, &modulation_params)
-    //         .unwrap();
-    //     let rx_pkt_params = lora
-    //         .create_rx_packet_params(4, false, 50, false, false, &modulation_params)
-    //         .unwrap();
-    //     let mut receiving_buffer = [0u8; 50];
-    //     loop {
-    //         let mut lora_message = String::<100>::new();
-    //         match pyro1_cont.read_continuity().await {
-    //             Ok(true) => lora_message.push_str("Pyro 1: Cont | ").unwrap(),
-    //             Ok(false) => lora_message.push_str("Pyro 1: No Cont | ").unwrap(),
-    //             Err(_) => lora_message.push_str("Pyro 1: Error | ").unwrap(),
-    //         };
-    //         match pyro2_cont.read_continuity().await {
-    //             Ok(true) => lora_message.push_str("Pyro 2: Cont | ").unwrap(),
-    //             Ok(false) => lora_message.push_str("Pyro 2: No Cont | ").unwrap(),
-    //             Err(_) => lora_message.push_str("Pyro 2: Error | ").unwrap(),
-    //         };
-    //         if arming_switch.read_arming().await.unwrap() {
-    //             lora_message.push_str("Armed | ").unwrap();
-    //         } else {
-    //             lora_message.push_str("Disarmed | ").unwrap();
-    //         }
-    //         if services.unix_clock.ready() {
-    //             lora_message.push_str("Clock Ready ").unwrap();
-    //             let mut timestamp_str = String::<32>::new();
-    //             core::write!(&mut timestamp_str, "{}", services.unix_clock.now_ms()).unwrap();
-    //             lora_message.push_str(timestamp_str.as_str()).unwrap();
-    //         } else {
-    //             lora_message.push_str("Clock Not Ready").unwrap();
-    //         }
+    let pyro_drogue_cont_fut = async {
+        let mut cont = pyro!(
+            device_manager,
+            drogue_pyro,
+            pyro_cont.read_continuity().await.unwrap()
+        );
 
-    //         log_info!("{}", lora_message.as_str());
+        loop {
+            telemetry_packet_builder.update(|b| {
+                b.pyro_drogue_continuity = cont;
+            });
+            cont = pyro!(
+                device_manager,
+                drogue_pyro,
+                pyro_cont.wait_continuity_change().await.unwrap()
+            );
+        }
+    };
 
-    //         lora.prepare_for_tx(
-    //             &modulation_params,
-    //             &mut tx_params,
-    //             9,
-    //             lora_message.as_bytes(),
-    //         )
-    //         .await
-    //         .unwrap();
-    //         lora.tx().await.unwrap();
+    let arming_switch_fut = async {
+        let mut armed = arming_switch.read_arming().await.unwrap();
+        loop {
+            telemetry_packet_builder.update(|b| {
+                b.hardware_armed = armed;
+                b.software_armed = true;
+            });
+            armed = arming_switch.wait_arming_change().await.unwrap();
+        }
+    };
 
-    //         lora.prepare_for_rx(RxMode::Single(1000), &modulation_params, &rx_pkt_params)
-    //             .await
-    //             .unwrap();
-
-    //         match lora.rx(&rx_pkt_params, &mut receiving_buffer).await {
-    //             Ok((length, _)) => {
-    //                 let data = &receiving_buffer[0..(length as usize)];
-    //                 log_info!("Received {} bytes", length);
-    //                 if data == b"VLF4 fire 1" {
-    //                     log_info!("Firing pyro 1");
-    //                     fire_pyro(services, &mut pyro1_ctrl, &mut barometer).await;
-    //                 } else if data == b"VLF4 fire 2" {
-    //                     log_info!("Firing pyro 2");
-    //                     fire_pyro(services, &mut pyro2_ctrl, &mut barometer).await;
-    //                 }
-    //             }
-    //             Err(lora_error) => {
-    //                 log_info!("Radio Error: {:?}", lora_error);
-    //             }
-    //         }
-    //     }
-    // };
-
-    // join!(indicator_fut, avionics_fut);
+    join!(
+        indicator_fut,
+        vlp_tx_fut,
+        vlp_rx_fut,
+        vlp_fut,
+        pyro_main_cont_fut,
+        pyro_drogue_cont_fut,
+        arming_switch_fut,
+        baro_logger_fut,
+    );
     log_unreachable!()
 }

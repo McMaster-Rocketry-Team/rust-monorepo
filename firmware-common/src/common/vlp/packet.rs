@@ -1,4 +1,4 @@
-use crate::common::delta_logger::prelude::*;
+use crate::{avionics::flight_profile::PyroSelection, common::delta_logger::prelude::*};
 
 use super::telemetry_packet::TelemetryPacket;
 use rkyv::{Archive, Deserialize, Serialize};
@@ -115,12 +115,37 @@ impl BitArraySerializable for DeleteLogsPacket {
 }
 
 #[derive(defmt::Format, Debug, Clone, PartialEq, Archive, Deserialize, Serialize)]
+pub struct GroundTestDeployPacket {
+    pub timestamp: f64,
+    pub pyro: PyroSelection,
+}
+
+impl BitArraySerializable for GroundTestDeployPacket {
+    fn serialize<const N: usize>(&self, writer: &mut BitSliceWriter<N>) {
+        writer.write(self.timestamp);
+        writer.write::<u8>(self.pyro.into());
+    }
+
+    fn deserialize<const N: usize>(reader: &mut BitSliceReader<N>) -> Self {
+        Self {
+            timestamp: reader.read().unwrap(),
+            pyro: PyroSelection::try_from(reader.read::<u8>().unwrap()).unwrap(),
+        }
+    }
+
+    fn len_bits() -> usize {
+        64 + 8
+    }
+}
+
+#[derive(defmt::Format, Debug, Clone, PartialEq, Archive, Deserialize, Serialize)]
 pub enum VLPUplinkPacket {
     VerticalCalibrationPacket(VerticalCalibrationPacket),
     SoftArmPacket(SoftArmPacket),
     LowPowerModePacket(LowPowerModePacket),
     ResetPacket(ResetPacket),
     DeleteLogsPacket(DeleteLogsPacket),
+    GroundTestDeployPacket(GroundTestDeployPacket),
 }
 
 impl From<VerticalCalibrationPacket> for VLPUplinkPacket {

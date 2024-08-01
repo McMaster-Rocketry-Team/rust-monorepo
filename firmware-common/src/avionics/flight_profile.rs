@@ -1,10 +1,12 @@
+use int_enum::IntEnum;
 use rkyv::{Archive, Deserialize, Serialize};
 
-#[derive(Clone, Debug, defmt::Format, Archive, Serialize, Deserialize)]
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, defmt::Format, PartialEq, Archive, Serialize, Deserialize, IntEnum)]
 pub enum PyroSelection {
-    Pyro1,
-    Pyro2,
-    Pyro3,
+    Pyro1 = 1,
+    Pyro2 = 2,
+    Pyro3 = 3,
 }
 
 #[derive(Clone, Debug, defmt::Format, Archive, Serialize, Deserialize)]

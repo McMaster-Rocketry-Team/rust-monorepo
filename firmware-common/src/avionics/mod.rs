@@ -8,7 +8,7 @@ use embassy_sync::{
     pubsub::{PubSubBehavior, PubSubChannel},
     signal::Signal,
 };
-use flight_profile::{FlightProfile, PyroSelection, PyroSelectionResolver};
+use flight_profile::{FlightProfile, PyroSelection};
 use futures::join;
 use imu_calibration_info::IMUCalibrationInfo;
 use nalgebra::Vector3;
@@ -36,7 +36,7 @@ use crate::{
         indicator::Indicator,
         mag::MagData,
     },
-    fixed_point_factory,
+    fixed_point_factory, pyro,
 };
 use crate::{common::can_bus::node_types::VOID_LAKE_NODE_TYPE, driver::can_bus::CanBusTX};
 use crate::{
@@ -46,7 +46,7 @@ use crate::{
         },
         config_file::ConfigFile,
         delta_logger::prelude::{RingDeltaLoggerConfig, TieredRingDeltaLogger},
-        device_config::{DeviceConfig, DeviceModeConfig},
+        device_config::DeviceConfig,
         file_types::*,
         vlp::{
             packet::{LowPowerModePacket, SoftArmPacket, VLPUplinkPacket},
@@ -67,73 +67,6 @@ mod imu_calibration_info;
 mod self_test;
 pub mod vertical_speed_filter;
 
-macro_rules! pyro {
-  ($device_manager:ident, $flight_profile:ident, main_pyro_cont.$($call:tt)*) =>{
-    match $flight_profile.main_pyro {
-        PyroSelection::Pyro1 => {
-            claim_devices!($device_manager, pyro1_cont);
-            pyro1_cont.$($call)*
-        },
-        PyroSelection::Pyro2 => {
-            claim_devices!($device_manager, pyro2_cont);
-            pyro2_cont.$($call)*
-        },
-        PyroSelection::Pyro3 => {
-            claim_devices!($device_manager, pyro2_cont);
-            pyro2_cont.$($call)*
-        },
-    }
-  };
-  ($device_manager:ident, $flight_profile:ident, main_pyro_ctrl.$($call:tt)*) =>{
-    match $flight_profile.main_pyro {
-        PyroSelection::Pyro1 => {
-            claim_devices!($device_manager, pyro1_ctrl);
-            pyro1_ctrl.$($call)*
-        },
-        PyroSelection::Pyro2 => {
-            claim_devices!($device_manager, pyro2_ctrl);
-            pyro2_ctrl.$($call)*
-        },
-        PyroSelection::Pyro3 => {
-            claim_devices!($device_manager, pyro3_ctrl);
-            pyro3_ctrl.$($call)*
-        },
-    }
-  };
-  ($device_manager:ident, $flight_profile:ident, drogue_pyro_cont.$($call:tt)*) =>{
-    match $flight_profile.drogue_pyro {
-        PyroSelection::Pyro1 => {
-            claim_devices!($device_manager, pyro1_cont);
-            pyro1_cont.$($call)*
-        },
-        PyroSelection::Pyro2 => {
-            claim_devices!($device_manager, pyro2_cont);
-            pyro2_cont.$($call)*
-        },
-        PyroSelection::Pyro3 => {
-            claim_devices!($device_manager, pyro2_cont);
-            pyro2_cont.$($call)*
-        },
-    }
-  };
-  ($device_manager:ident, $flight_profile:ident, drogue_pyro_ctrl.$($call:tt)*) =>{
-    match $flight_profile.drogue_pyro {
-        PyroSelection::Pyro1 => {
-            claim_devices!($device_manager, pyro1_ctrl);
-            pyro1_ctrl.$($call)*
-        },
-        PyroSelection::Pyro2 => {
-            claim_devices!($device_manager, pyro2_ctrl);
-            pyro2_ctrl.$($call)*
-        },
-        PyroSelection::Pyro3 => {
-            claim_devices!($device_manager, pyro3_ctrl);
-            pyro3_ctrl.$($call)*
-        },
-    }
-  };
-}
-
 #[inline(never)]
 pub async fn avionics_main(
     device_manager: device_manager_type!(),
@@ -141,12 +74,6 @@ pub async fn avionics_main(
     config: &DeviceConfig,
     device_serial_number: &[u8; 12],
 ) -> ! {
-    let lora_key = if let DeviceModeConfig::Avionics { lora_key } = &config.mode {
-        lora_key
-    } else {
-        log_unreachable!()
-    };
-
     claim_devices!(device_manager, indicators);
 
     let flight_profile_file =
@@ -187,37 +114,6 @@ pub async fn avionics_main(
             indicators.run([200, 200], [], []).await;
         }
     }
-
-    // let (mut pyro_main_cont, mut pyro_main_ctrl) = match flight_profile.main_pyro {
-    //     PyroSelection::Pyro1 => {
-    //         claim_devices!(device_manager, pyro1_cont, pyro1_ctrl);
-    //         (pyro1_cont, pyro1_ctrl)
-    //     }
-    //     PyroSelection::Pyro2 => {
-    //         claim_devices!(device_manager, pyro2_cont, pyro2_ctrl);
-    //         (pyro2_cont, pyro2_ctrl)
-    //     }
-    //     PyroSelection::Pyro3 => {
-    //         todo!();
-    //         // claim_devices!(device_manager, pyro3_cont, pyro3_ctrl);
-    //         // (pyro3_cont.unwrap(), pyro3_ctrl.unwrap())
-    //     }
-    // };
-    // let (mut pyro_drogue_cont, mut pyro_drouge_ctrl) = match flight_profile.drogue_pyro {
-    //     PyroSelection::Pyro1 => {
-    //         claim_devices!(device_manager, pyro1_cont, pyro1_ctrl);
-    //         (pyro1_cont, pyro1_ctrl)
-    //     }
-    //     PyroSelection::Pyro2 => {
-    //         claim_devices!(device_manager, pyro2_cont, pyro2_ctrl);
-    //         (pyro2_cont, pyro2_ctrl)
-    //     }
-    //     PyroSelection::Pyro3 => {
-    //         todo!();
-    //         // claim_devices!(device_manager, pyro3_cont, pyro3_ctrl);
-    //         // (pyro3_cont, pyro3_ctrl)
-    //     }
-    // };
 
     let get_logger_config = |tier_1_file_type: FileType,
                              tier_1_first_segment_seconds: u32,
@@ -468,16 +364,11 @@ pub async fn avionics_main(
 
     let telemetry_packet_builder = TelemetryPacketBuilder::new(services.unix_clock());
     let vlp = VLPUplinkClient::new();
-    // &config.lora,
-    // services.unix_clock(),
-    // services.delay(),
-    // lora_key,
     let vlp_tx_fut = async {
-        // Wait 1 sec for all the fields to be populated
-        services.delay.delay_ms(1000.0).await;
-
         let mut update_ticker = Ticker::every(services.clock(), services.delay(), 1000.0);
         loop {
+            update_ticker.next().await;
+
             let free = services.fs.free().await;
             // log_info!("Free space: {}MB", free / 1024 / 1024);
             telemetry_packet_builder.update(|b| {
@@ -485,12 +376,11 @@ pub async fn avionics_main(
             });
             let packet = telemetry_packet_builder.create_packet();
             vlp.send(VLPDownlinkPacket::TelemetryPacket(packet));
-            update_ticker.next().await;
         }
     };
     let vlp_rx_fut = async {
         loop {
-            let (packet, status) = vlp.wait_receive().await;
+            let (packet, _250KHz) = vlp.wait_receive().await;
             low_power_mode.lock(|s| *s.borrow_mut() = false);
             log_info!("Received packet: {:?}", packet);
             match packet {
@@ -562,6 +452,9 @@ pub async fn avionics_main(
                         .await
                         .ok();
                 }
+                VLPUplinkPacket::GroundTestDeployPacket(_) => {
+                    // noop
+                }
             }
         }
     };
@@ -570,7 +463,7 @@ pub async fn avionics_main(
         &mut lora,
         &config.lora,
         services.unix_clock(),
-        lora_key,
+        &config.lora_key,
     );
 
     let hardware_arming_fut = async {
@@ -625,8 +518,8 @@ pub async fn avionics_main(
     let pyro_main_cont_fut = async {
         let mut cont = pyro!(
             device_manager,
-            flight_profile,
-            main_pyro_cont.read_continuity().await.unwrap()
+            flight_profile.main_pyro,
+            pyro_cont.read_continuity().await.unwrap()
         );
 
         loop {
@@ -635,8 +528,8 @@ pub async fn avionics_main(
             });
             cont = pyro!(
                 device_manager,
-                flight_profile,
-                main_pyro_cont.wait_continuity_change().await.unwrap()
+                flight_profile.main_pyro,
+                pyro_cont.wait_continuity_change().await.unwrap()
             );
         }
     };
@@ -644,8 +537,8 @@ pub async fn avionics_main(
     let pyro_drogue_cont_fut = async {
         let mut cont = pyro!(
             device_manager,
-            flight_profile,
-            drogue_pyro_cont.read_continuity().await.unwrap()
+            flight_profile.drogue_pyro,
+            pyro_cont.read_continuity().await.unwrap()
         );
 
         loop {
@@ -654,8 +547,8 @@ pub async fn avionics_main(
             });
             cont = pyro!(
                 device_manager,
-                flight_profile,
-                drogue_pyro_cont.wait_continuity_change().await.unwrap()
+                flight_profile.drogue_pyro,
+                pyro_cont.wait_continuity_change().await.unwrap()
             );
         }
     };
@@ -867,14 +760,14 @@ pub async fn avionics_main(
             pyro_main_fire_signal.wait().await;
             pyro!(
                 device_manager,
-                flight_profile,
-                main_pyro_ctrl.set_enable(true).await.ok()
+                flight_profile.main_pyro,
+                pyro_ctrl.set_enable(true).await.ok()
             );
             services.delay.delay_ms(3000.0).await;
             pyro!(
                 device_manager,
-                flight_profile,
-                main_pyro_ctrl.set_enable(false).await.ok()
+                flight_profile.main_pyro,
+                pyro_ctrl.set_enable(false).await.ok()
             );
         }
     };
@@ -884,14 +777,14 @@ pub async fn avionics_main(
             pyro_drouge_fire_signal.wait().await;
             pyro!(
                 device_manager,
-                flight_profile,
-                drogue_pyro_ctrl.set_enable(true).await.ok()
+                flight_profile.drogue_pyro,
+                pyro_ctrl.set_enable(true).await.ok()
             );
             services.delay.delay_ms(3000.0).await;
             pyro!(
                 device_manager,
-                flight_profile,
-                drogue_pyro_ctrl.set_enable(false).await.ok()
+                flight_profile.drogue_pyro,
+                pyro_ctrl.set_enable(false).await.ok()
             );
         }
     };

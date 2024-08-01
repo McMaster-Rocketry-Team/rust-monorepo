@@ -216,8 +216,8 @@ pub async fn init(
                 )
                 .await
             }
-            DeviceModeConfig::GroundTestAvionics => {
-                ground_test_avionics(device_manager, &services).await
+            DeviceModeConfig::GroundTestAvionics{..} => {
+                ground_test_avionics(device_manager, &services, &device_config).await
             }
             DeviceModeConfig::GroundTestGCM => ground_test_gcm(device_manager).await,
         };

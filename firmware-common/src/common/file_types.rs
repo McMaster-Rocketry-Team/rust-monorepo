@@ -22,3 +22,4 @@ pub static AVIONICS_MAG_LOGGER_TIER_2: FileType = FileType(16);
 pub static AVIONICS_BATTERY_LOGGER_TIER_1: FileType = FileType(17);
 pub static AVIONICS_BATTERY_LOGGER_TIER_2: FileType = FileType(18);
 pub static UPRIGHT_VECTOR_AND_GYRO_OFFSET_FILE_TYPE: FileType = FileType(19);
+pub static GROUND_TEST_BARO_FILE_TYPE: FileType = FileType(20);

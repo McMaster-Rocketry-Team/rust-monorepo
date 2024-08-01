@@ -79,6 +79,10 @@ macro_rules! create_serialized_enum {
                 Ok(())
             }
 
+            pub async fn flush(&mut self) -> Result<(), W::Error> {
+                self.writer.flush().await
+            }
+
             #[allow(dead_code)]
             pub fn into_writer(self) -> W {
                 self.writer

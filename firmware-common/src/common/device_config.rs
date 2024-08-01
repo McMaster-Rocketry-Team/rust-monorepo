@@ -1,5 +1,7 @@
 use rkyv::{Archive, Deserialize, Serialize};
 
+use crate::avionics::flight_profile::PyroSelection;
+
 use super::rkyv_structs::{RkyvString, RkyvVec};
 
 #[derive(Clone, Debug, defmt::Format, Archive, Serialize, Deserialize)]
@@ -114,9 +116,12 @@ impl Into<lora_modulation::BaseBandModulationParams> for &LoraConfig {
 
 #[derive(Clone, Debug, defmt::Format, Archive, Serialize, Deserialize)]
 pub enum DeviceModeConfig {
-    Avionics { lora_key: [u8; 32] },
-    GCM { lora_key: [u8; 32] },
-    GroundTestAvionics,
+    Avionics,
+    GCM,
+    GroundTestAvionics {
+        drogue_pyro: PyroSelection,
+        main_pyro: PyroSelection,
+    },
     GroundTestGCM,
 }
 
@@ -125,4 +130,5 @@ pub struct DeviceConfig {
     pub name: RkyvString<64>,
     pub mode: DeviceModeConfig,
     pub lora: LoraConfig,
+    pub lora_key: [u8; 32],
 }

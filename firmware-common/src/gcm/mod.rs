@@ -7,7 +7,7 @@ use vlfs::{Crc, Flash};
 use crate::{
     claim_devices,
     common::{
-        device_config::{DeviceConfig, DeviceModeConfig},
+        device_config::DeviceConfig,
         device_manager::prelude::*,
         rpc_channel::RpcChannelServer,
         vlp::{
@@ -32,12 +32,6 @@ pub async fn gcm_main(
         Option<PacketStatus>,
     >,
 ) {
-    let lora_key = if let DeviceModeConfig::GCM { lora_key } = &config.mode {
-        lora_key
-    } else {
-        log_unreachable!()
-    };
-
     claim_devices!(device_manager, lora, indicators);
 
     let indicators_fut = indicators.run([], [], [250, 250]);
@@ -51,7 +45,7 @@ pub async fn gcm_main(
         &mut lora,
         &config.lora,
         services.unix_clock(),
-        lora_key,
+        &config.lora_key,
     );
 
     let vlp_send_fut = async {
