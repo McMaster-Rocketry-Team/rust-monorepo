@@ -44,7 +44,7 @@ pub mod driver;
 mod gcm;
 mod ground_test_avionics;
 pub mod utils;
-mod vacuum_test;
+pub mod vacuum_test;
 
 pub async fn init(
     device_manager: device_manager_type!(mut),

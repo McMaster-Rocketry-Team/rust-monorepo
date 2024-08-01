@@ -9,12 +9,13 @@ use std::io::Write;
 pub async fn pull_file(
     rpc: &mut RpcClient<'_, impl SplitableSerial, impl DelayNs>,
     args: PullArgs,
-) -> Result<()> {
+) -> Result<Vec<u8>> {
     let open_status = rpc.open_file(args.file_id).await.unwrap().status;
     if open_status != OpenFileStatus::Sucess {
         return Err(anyhow!("Failed to open file"));
     }
 
+    let mut content = Vec::<u8>::new();
     let mut file = fs::File::create(&args.host_path)?;
     loop {
         let read_result = rpc.read_file().await.unwrap();
@@ -25,11 +26,12 @@ pub async fn pull_file(
             println!("Warning: file is corrupted");
         }
         let data = &read_result.data[..read_result.length as usize];
+        content.extend_from_slice(data);
         file.write_all(data)?;
     }
 
     rpc.close_file().await.unwrap();
     file.flush()?;
 
-    Ok(())
+    Ok(content)
 }

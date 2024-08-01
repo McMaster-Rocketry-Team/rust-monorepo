@@ -7,7 +7,7 @@ use embassy_sync::signal::Signal;
 use futures::join;
 
 use crate::avionics::backup_flight_core::BackupFlightCore;
-use crate::avionics::flight_core_event::{ArchivedFlightCoreEvent, FlightCoreEvent};
+use crate::avionics::flight_core_event::FlightCoreEvent;
 use crate::avionics::flight_profile::FlightProfile;
 use crate::common::config_file::ConfigFile;
 use crate::common::delta_logger::buffered_tiered_ring_delta_logger::BufferedTieredRingDeltaLogger;
@@ -24,12 +24,21 @@ use crate::driver::timestamp::BootTimestamp;
 use crate::{claim_devices, create_serialized_enum, fixed_point_factory};
 use crate::{device_manager_type, system_services_type};
 
+#[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Debug, Clone, defmt::Format)]
+pub struct FlightCoreEventLog {
+    timestamp: f64,
+    event: FlightCoreEvent,
+}
+
 create_serialized_enum!(
     VacuumTestLogger,
     VacuumTestLoggerReader,
     VacuumTestLog,
-    (0, FlightCoreEvent)
+    (0, FlightCoreEventLog)
 );
+
+fixed_point_factory!(SensorsFF1, f64, 4.9, 7.0, 0.05);
+fixed_point_factory!(SensorsFF2, f64, 199.0, 210.0, 0.5);
 
 #[inline(never)]
 pub async fn vacuum_test_main(
@@ -59,8 +68,6 @@ pub async fn vacuum_test_main(
         .unwrap();
     let mut logger = VacuumTestLogger::new(log_file_writer);
 
-    fixed_point_factory!(SensorsFF1, f64, 4.9, 7.0, 0.05);
-    fixed_point_factory!(SensorsFF2, f64, 199.0, 210.0, 0.5);
     log_info!("Creating baro logger");
     let baro_logger = BufferedTieredRingDeltaLogger::<BootTimestamp, BaroData, 40>::new();
     let baro_logger_fut = baro_logger.run(
@@ -117,7 +124,10 @@ pub async fn vacuum_test_main(
                 }
             }
             logger
-                .write(&VacuumTestLog::FlightCoreEvent(event))
+                .write(&VacuumTestLog::FlightCoreEventLog(FlightCoreEventLog {
+                    timestamp: services.clock().now_ms(),
+                    event: event.clone(),
+                }))
                 .await
                 .unwrap();
             logger.flush().await.unwrap();

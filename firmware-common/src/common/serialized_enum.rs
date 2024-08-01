@@ -60,7 +60,7 @@ macro_rules! create_serialized_enum {
             }
         }
 
-        struct $writer_struct_name<W: embedded_io_async::Write> {
+        pub struct $writer_struct_name<W: embedded_io_async::Write> {
             writer: W,
             buffer: [u8; core::mem::size_of::<<$enum_name as rkyv::Archive>::Archived>()],
         }
@@ -90,7 +90,7 @@ macro_rules! create_serialized_enum {
         }
 
         #[repr(C, align(16))]
-        struct $reader_struct_name<R: embedded_io_async::Read> {
+        pub struct $reader_struct_name<R: embedded_io_async::Read> {
             buffer: [u8; core::mem::size_of::<<$enum_name as rkyv::Archive>::Archived>()],
             reader: R,
         }

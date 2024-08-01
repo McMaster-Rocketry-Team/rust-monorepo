@@ -33,6 +33,7 @@ mod flight_profile;
 mod list_files;
 mod pull_file;
 mod pull_vacuum_test;
+mod reader;
 
 struct Delay;
 
