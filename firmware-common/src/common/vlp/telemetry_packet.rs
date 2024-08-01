@@ -17,7 +17,7 @@ fixed_point_factory!(AltitudeFac, f32, 0.0, 5000.0, 5.0);
 fixed_point_factory!(VerticalSpeedFac, f32, -400.0, 400.0, 2.0);
 
 #[repr(u8)]
-#[derive(defmt::Format, Debug, Clone, Copy, IntEnum)]
+#[derive(defmt::Format, Debug, Clone, Copy, IntEnum, Archive, Deserialize, Serialize)]
 pub enum FlightCoreStateTelemetry {
     DisArmed = 0,
     Armed = 1,

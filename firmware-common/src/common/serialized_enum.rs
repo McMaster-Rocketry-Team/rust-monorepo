@@ -28,7 +28,7 @@ macro_rules! create_serialized_enum {
                             buffer[0] = $log_type_i;
                             let mut serializer = BufferSerializer::new(&mut buffer[1..]);
                             serializer.serialize_value(log).unwrap();
-                            return size_of::<<$log_type as Archive>::Archived>() + 1;
+                            return size_of::<<$log_type as rkyv::Archive>::Archived>() + 1;
                         }
                     )*
                 };
@@ -42,11 +42,11 @@ macro_rules! create_serialized_enum {
                 match buffer[0] {
                     $(
                         $log_type_i => {
-                            let size = size_of::<<$log_type as Archive>::Archived>();
+                            let size = size_of::<<$log_type as rkyv::Archive>::Archived>();
                             if buffer.len() < size+1 {
                                 return None;
                             }
-                            let mut aligned_buffer: AlignedBytes<{ size_of::<<$log_type as Archive>::Archived>() }> = Default::default();
+                            let mut aligned_buffer: AlignedBytes<{ size_of::<<$log_type as rkyv::Archive>::Archived>() }> = Default::default();
                             aligned_buffer.as_mut().copy_from_slice(&buffer[1..size+1]);
                             let archived = unsafe { archived_root::<$log_type>(aligned_buffer.as_ref()) };
                             let deserialized = <paste!{ [<Archived $log_type>] } as rkyv::Deserialize<$log_type, rkyv::Infallible>>::deserialize(archived, &mut rkyv::Infallible).unwrap();
@@ -110,7 +110,7 @@ macro_rules! create_serialized_enum {
                 match self.buffer[0] {
                     $(
                         $log_type_i => {
-                            let size = core::mem::size_of::<<$log_type as Archive>::Archived>();
+                            let size = core::mem::size_of::<<$log_type as rkyv::Archive>::Archived>();
                             self.reader.read_exact(&mut self.buffer[..size]).await?;
                             let archived = unsafe { archived_root::<$log_type>(&self.buffer[..size]) };
                             let deserialized = <paste!{ [<Archived $log_type>] } as rkyv::Deserialize<$log_type, rkyv::Infallible>>::deserialize(archived, &mut rkyv::Infallible).unwrap();

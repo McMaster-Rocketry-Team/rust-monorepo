@@ -4,11 +4,10 @@ use crate::{
     avionics::flight_profile::PyroSelection,
     claim_devices,
     common::{
-        delta_logger::prelude::DeltaLogger,
+        delta_logger::{buffered_delta_logger::BufferedDeltaLogger, prelude::DeltaLogger},
         device_config::{DeviceConfig, DeviceModeConfig},
         device_manager::prelude::*,
         file_types::{GROUND_TEST_BARO_FILE_TYPE, GROUND_TEST_LOG_FILE_TYPE},
-        sensor_reading::SensorReading,
         ticker::Ticker,
         vlp::{
             packet::{GroundTestDeployPacket, VLPDownlinkPacket, VLPUplinkPacket},
@@ -20,11 +19,7 @@ use crate::{
     driver::{barometer::BaroData, indicator::Indicator, timestamp::UnixTimestamp},
     fixed_point_factory, pyro,
 };
-use embassy_sync::pubsub::PubSubChannel;
-use embassy_sync::{
-    blocking_mutex::{raw::NoopRawMutex, Mutex as BlockingMutex},
-    pubsub::PubSubBehavior,
-};
+use embassy_sync::blocking_mutex::{raw::NoopRawMutex, Mutex as BlockingMutex};
 use futures::join;
 use rkyv::{Archive, Deserialize, Serialize};
 
@@ -73,17 +68,8 @@ pub async fn ground_test_avionics(
         .create_file_and_open_for_write(GROUND_TEST_BARO_FILE_TYPE)
         .await
         .unwrap();
-    let mut baro_logger = DeltaLogger::<UnixTimestamp, BaroData, _, BaroFF>::new(log_file_writer);
-    let baro_channel =
-        PubSubChannel::<NoopRawMutex, SensorReading<UnixTimestamp, BaroData>, 400, 1, 1>::new();
-
-    let baro_logger_fut = async {
-        let mut sub = baro_channel.subscriber().unwrap();
-        loop {
-            let reading = sub.next_message_pure().await;
-            baro_logger.log(reading).await.ok();
-        }
-    };
+    let baro_logger = BufferedDeltaLogger::<UnixTimestamp, BaroData, 400>::new();
+    let baro_logger_fut = baro_logger.run(BaroFF, DeltaLogger::new(log_file_writer));
 
     log_info!("resetting barometer");
     barometer.reset().await.unwrap();
@@ -122,7 +108,7 @@ pub async fn ground_test_avionics(
                         baro_ticker.next().await;
                         if let Ok(reading) = barometer.read().await {
                             let reading = reading.to_unix_timestamp(&services.unix_clock());
-                            baro_channel.publish_immediate(reading);
+                            baro_logger.log(reading);
                         }
                     }
                 };

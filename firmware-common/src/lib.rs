@@ -26,6 +26,7 @@ use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_sync::pubsub::{PubSubBehavior, PubSubChannel};
 use futures::join;
+use vacuum_test::vacuum_test_main;
 
 use crate::{avionics::avionics_main, common::device_manager::prelude::*};
 use vlfs::{StatFlash, VLFS};
@@ -43,6 +44,7 @@ pub mod driver;
 mod gcm;
 mod ground_test_avionics;
 pub mod utils;
+mod vacuum_test;
 
 pub async fn init(
     device_manager: device_manager_type!(mut),
@@ -217,6 +219,7 @@ pub async fn init(
             DeviceModeConfig::GroundTestAvionics { .. } => {
                 ground_test_avionics(device_manager, &services, &device_config).await
             }
+            DeviceModeConfig::VacuumTest => vacuum_test_main(device_manager, &services).await,
         };
     };
 

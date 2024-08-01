@@ -9,6 +9,7 @@ pub mod delta_logger;
 pub mod ring_delta_logger;
 pub mod buffered_tiered_ring_delta_logger;
 pub mod tiered_ring_delta_logger;
+pub mod buffered_delta_logger;
 
 pub mod prelude {
     pub use super::bitslice_serialize::{BitArraySerializable, BitSliceReader, BitSliceWriter};

@@ -1,8 +1,9 @@
 use embassy_sync::{blocking_mutex::raw::RawMutex, channel::Sender};
 
 use crate::common::vlp::telemetry_packet::FlightCoreStateTelemetry;
+use rkyv::{Archive, Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Archive, Deserialize, Serialize, defmt::Format)]
 pub enum FlightCoreEvent {
     CriticalError,
     Ignition,

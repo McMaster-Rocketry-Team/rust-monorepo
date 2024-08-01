@@ -122,6 +122,7 @@ pub enum DeviceModeConfig {
         drogue_pyro: PyroSelection,
         main_pyro: PyroSelection,
     },
+    VacuumTest,
 }
 
 #[derive(Clone, Debug, defmt::Format, Archive, Serialize, Deserialize)]
