@@ -38,7 +38,7 @@ use crate::ground_test_avionics::ground_test_avionics;
 pub use common::device_manager::DeviceManager;
 
 pub use common::console::rpc::RpcClient;
-mod avionics;
+pub mod avionics;
 pub mod common;
 pub mod driver;
 mod gcm;

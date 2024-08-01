@@ -22,7 +22,7 @@ impl<'a, 'b, LK: RadioKind, DL: DelayNs> LoraPhy<'a, 'b, LK, DL> {
             self.lora_config.sf_phy(),
             self.lora_config.bw_phy(),
             self.lora_config.cr_phy(),
-            self.lora_config.frequencies[0],
+            self.lora_config.frequency,
         )?;
         let mut tx_params =
             self.lora
@@ -49,7 +49,7 @@ impl<'a, 'b, LK: RadioKind, DL: DelayNs> LoraPhy<'a, 'b, LK, DL> {
             self.lora_config.sf_phy(),
             self.lora_config.bw_phy(),
             self.lora_config.cr_phy(),
-            self.lora_config.frequencies[0],
+            self.lora_config.frequency,
         )?;
         let rx_pkt_params = self.lora.create_rx_packet_params(
             8,

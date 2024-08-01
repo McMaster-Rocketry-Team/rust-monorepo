@@ -67,6 +67,8 @@ mod imu_calibration_info;
 mod self_test;
 pub mod vertical_speed_filter;
 
+// FIXME refactor events
+// FIXME fix unix clock drift
 #[inline(never)]
 pub async fn avionics_main(
     device_manager: device_manager_type!(),

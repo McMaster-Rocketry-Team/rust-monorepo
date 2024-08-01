@@ -2,11 +2,30 @@ use rkyv::{Archive, Deserialize, Serialize};
 
 use crate::avionics::flight_profile::PyroSelection;
 
-use super::rkyv_structs::{RkyvString, RkyvVec};
+use super::rkyv_structs::RkyvString;
+
+#[derive(Clone, Debug, defmt::Format, Archive, Serialize, Deserialize)]
+pub struct DeviceConfig {
+    pub name: RkyvString<64>,
+    pub mode: DeviceModeConfig,
+    pub lora: LoraConfig,
+    pub lora_key: [u8; 32],
+}
+
+#[derive(Clone, Debug, defmt::Format, Archive, Serialize, Deserialize)]
+pub enum DeviceModeConfig {
+    Avionics,
+    GCM,
+    GroundTestAvionics {
+        drogue_pyro: PyroSelection,
+        main_pyro: PyroSelection,
+    },
+    VacuumTest,
+}
 
 #[derive(Clone, Debug, defmt::Format, Archive, Serialize, Deserialize)]
 pub struct LoraConfig {
-    pub frequencies: RkyvVec<32, u32>,
+    pub frequency: u32,
     pub sf: u8,
     pub bw: u32,
     pub cr: u8,
@@ -112,23 +131,4 @@ impl Into<lora_modulation::BaseBandModulationParams> for &LoraConfig {
             self.cr_modulation(),
         )
     }
-}
-
-#[derive(Clone, Debug, defmt::Format, Archive, Serialize, Deserialize)]
-pub enum DeviceModeConfig {
-    Avionics,
-    GCM,
-    GroundTestAvionics {
-        drogue_pyro: PyroSelection,
-        main_pyro: PyroSelection,
-    },
-    VacuumTest,
-}
-
-#[derive(Clone, Debug, defmt::Format, Archive, Serialize, Deserialize)]
-pub struct DeviceConfig {
-    pub name: RkyvString<64>,
-    pub mode: DeviceModeConfig,
-    pub lora: LoraConfig,
-    pub lora_key: [u8; 32],
 }

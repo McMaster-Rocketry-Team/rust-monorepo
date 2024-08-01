@@ -68,6 +68,12 @@ impl<const N: usize> RkyvString<N> {
         Self::from_str(s.as_str())
     }
 
+    pub fn from_slice(slice: &[u8]) -> Self {
+        Self {
+            vec: RkyvVec::from_slice(slice),
+        }
+    }
+
     pub fn as_str(&self) -> &str {
         core::str::from_utf8(&self.vec.as_slice()).unwrap()
     }

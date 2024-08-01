@@ -6,9 +6,11 @@ use clap::{Parser, Subcommand};
 use clap_num::maybe_hex;
 use crc::Crc;
 use crc::CRC_8_SMBUS;
+use device_config::format_lora_key;
+use device_config::gen_lora_key;
+use device_config::read_device_config;
 use embedded_hal_async::delay::DelayNs;
 use firmware_common::common::console::rpc::GCMPollDownlinkPacketResponse;
-use firmware_common::common::rkyv_structs::RkyvString;
 use firmware_common::common::vlp::packet::DeleteLogsPacket;
 use firmware_common::common::vlp::packet::LowPowerModePacket;
 use firmware_common::common::vlp::packet::ResetPacket;
@@ -21,6 +23,8 @@ use tokio::io::{split, AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::time::sleep;
 use tokio_serial::available_ports;
 use tokio_serial::{SerialPortBuilderExt, SerialStream};
+
+mod device_config;
 
 struct Delay;
 
@@ -50,6 +54,8 @@ enum Commands {
     GCM(GCMArgs),
     FlightProfile(FlightProfileArgs),
     DeviceConfig(DeviceConfigArgs),
+    #[command(about = "Generate a new Lora key")]
+    GenLoraKey,
 }
 
 fn file_type_parser(s: &str) -> Result<u16, String> {
@@ -100,14 +106,7 @@ struct FlightProfileArgs {
 #[derive(clap::Args)]
 #[command(about = "Set device config")]
 struct DeviceConfigArgs {
-    #[clap(long, short, action)]
-    avionics: bool,
-    name: String,
-    lora_frequency: u32,
-    lora_sf: u8,
-    lora_bw: u32,
-    lora_cr: u8,
-    lora_power: i32,
+    config_path: std::path::PathBuf,
 }
 
 #[tokio::main]
@@ -122,7 +121,7 @@ async fn main() -> Result<()> {
     let args = Cli::parse();
 
     if matches!(args.command, Commands::Detect) {
-        for port in available_ports().unwrap(){
+        for port in available_ports().unwrap() {
             println!("{:?}", port);
         }
         return Ok(());
@@ -182,12 +181,8 @@ async fn main() -> Result<()> {
                     enabled: false,
                 }
                 .into(),
-                "reset" => ResetPacket {
-                    timestamp: 0.0,
-                }.into(),
-                "delete_logs" => DeleteLogsPacket {
-                    timestamp: 0.0,
-                }.into(),
+                "reset" => ResetPacket { timestamp: 0.0 }.into(),
+                "delete_logs" => DeleteLogsPacket { timestamp: 0.0 }.into(),
                 _ => {
                     return Err(anyhow!("Invalid command"));
                 }
@@ -238,20 +233,12 @@ async fn main() -> Result<()> {
                 .unwrap();
         }
         Commands::DeviceConfig(config) => {
-            let lora_key = [0x69u8; 32];
-            client
-                .set_device_config(
-                    config.avionics,
-                    RkyvString::from_str(&config.name),
-                    lora_key,
-                    config.lora_frequency,
-                    config.lora_sf,
-                    config.lora_bw,
-                    config.lora_cr,
-                    config.lora_power,
-                )
-                .await
-                .unwrap();
+            let config = read_device_config(config.config_path).unwrap();
+            client.set_device_config(config.into()).await.unwrap();
+        }
+        Commands::GenLoraKey => {
+            let key = gen_lora_key();
+            println!("{}", format_lora_key(&key));
         }
     }
     Ok(())

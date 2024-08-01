@@ -50,7 +50,6 @@ macro_rules! impl_variable_int {
                 serializer: &mut S,
             ) -> Result<Self::Resolver, S::Error> {
                 let field: $base_type = (*field).into();
-                println!("serialize");
                 field.serialize(serializer)
             }
         }
@@ -66,7 +65,6 @@ macro_rules! impl_variable_int {
                 out: *mut Self::Archived,
             ) {
                 let field: $base_type = (*field).into();
-                println!("archive");
                 field.resolve(pos, (), out);
             }
         }
@@ -81,7 +79,6 @@ macro_rules! impl_variable_int {
                 field: &Archived<$base_type>,
                 deserializer: &mut D,
             ) -> Result<Integer<$base_type, packed_bits::Bits<$bits>>, D::Error> {
-                println!("deserialize");
                 Ok(field.deserialize(deserializer)?.into())
             }
         }

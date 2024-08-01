@@ -2811,7 +2811,10 @@ dependencies = [
  "env_logger",
  "firmware-common",
  "log",
+ "rand",
  "rustyline",
+ "serde",
+ "serde_json",
  "tokio",
  "tokio-serial",
 ]
