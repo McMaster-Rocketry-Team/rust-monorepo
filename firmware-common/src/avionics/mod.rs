@@ -711,10 +711,9 @@ pub async fn avionics_main(
                         s.altitude = new_altitude;
                     });
                 }
-                FlightCoreEvent::ChangeSpeed(new_speed) => {
+                FlightCoreEvent::ChangeAirSpeed(new_speed) => {
                     telemetry_packet_builder.update(|s| {
-                        // TODO is new_speed vertical speed?
-                        s.vertical_speed = new_speed;
+                        s.air_speed = new_speed;
                     });
                 }
             }
@@ -751,6 +750,8 @@ pub async fn avionics_main(
                 FlightCoreStateTelemetry::Landed => {
                     can_send_flight_event(FlightEvent::Landed).await;
                 }
+                FlightCoreStateTelemetry::DrogueChuteDeployed => {},
+                FlightCoreStateTelemetry::MainChuteDeployed => {},
             }
         }
     };

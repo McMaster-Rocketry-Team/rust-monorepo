@@ -1,7 +1,7 @@
 use libm::fabsf;
 
 use crate::{
-    common::sensor_reading::SensorReading,
+    common::{sensor_reading::SensorReading, vlp::telemetry_packet::FlightCoreStateTelemetry},
     driver::{barometer::BaroData, timestamp::BootTimestamp},
 };
 
@@ -30,7 +30,10 @@ pub struct BackupFlightCore<D: FlightCoreEventDispatcher> {
 }
 
 impl<D: FlightCoreEventDispatcher> BackupFlightCore<D> {
-    pub fn new(flight_profile: FlightProfile, event_dispatcher: D) -> Self {
+    pub fn new(flight_profile: FlightProfile, mut event_dispatcher: D) -> Self {
+        event_dispatcher.dispatch(FlightCoreEvent::ChangeState(
+            FlightCoreStateTelemetry::Armed,
+        ));
         Self {
             event_dispatcher,
             flight_profile,
@@ -59,7 +62,10 @@ impl<D: FlightCoreEventDispatcher> BackupFlightCore<D> {
                 if timestamp > *deploy_time {
                     self.state = BackupFlightCoreState::DrogueChuteDeployed;
                     self.event_dispatcher
-                        .dispatch(FlightCoreEvent::DeployDrogue)
+                        .dispatch(FlightCoreEvent::DeployDrogue);
+                    self.event_dispatcher.dispatch(FlightCoreEvent::ChangeState(
+                        FlightCoreStateTelemetry::DrogueChuteDeployed,
+                    ));
                 }
             }
             BackupFlightCoreState::DrogueChuteDeployed => {
@@ -72,13 +78,19 @@ impl<D: FlightCoreEventDispatcher> BackupFlightCore<D> {
             BackupFlightCoreState::MainChute { deploy_time } => {
                 if timestamp > *deploy_time {
                     self.state = BackupFlightCoreState::MainChuteDeployed;
-                    self.event_dispatcher.dispatch(FlightCoreEvent::DeployMain)
+                    self.event_dispatcher.dispatch(FlightCoreEvent::DeployMain);
+                    self.event_dispatcher.dispatch(FlightCoreEvent::ChangeState(
+                        FlightCoreStateTelemetry::MainChuteDeployed,
+                    ));
                 }
             }
             BackupFlightCoreState::MainChuteDeployed => {
                 if fabsf(vertical_speed) < -0.5 {
                     self.state = BackupFlightCoreState::Landed;
-                    self.event_dispatcher.dispatch(FlightCoreEvent::Landed)
+                    self.event_dispatcher.dispatch(FlightCoreEvent::Landed);
+                    self.event_dispatcher.dispatch(FlightCoreEvent::ChangeState(
+                        FlightCoreStateTelemetry::Landed,
+                    ));
                 }
             }
             BackupFlightCoreState::Landed => {}
@@ -136,14 +148,8 @@ mod test {
             500.0,
             Pascals(calculate_isa_pressure(Metres(2000.0)).0 * 1.2),
         );
-        lerp(
-            5000.0,
-            calculate_isa_pressure(Metres(3000.0)),
-        );
-        lerp(
-            30000.0,
-            calculate_isa_pressure(Metres(0.0)),
-        );
+        lerp(5000.0, calculate_isa_pressure(Metres(3000.0)));
+        lerp(30000.0, calculate_isa_pressure(Metres(0.0)));
 
         println!("readings length: {:?}", baro_readings.len());
     }

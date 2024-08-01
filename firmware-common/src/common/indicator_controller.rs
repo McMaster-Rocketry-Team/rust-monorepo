@@ -8,9 +8,9 @@ pub struct IndicatorController<
     T: Clock,
     DL: Delay,
 > {
-    red: R,
-    green: G,
-    blue: B,
+    pub red: R,
+    pub green: G,
+    pub blue: B,
     clock: T,
     delay: DL,
 }

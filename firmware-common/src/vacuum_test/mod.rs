@@ -1,5 +1,9 @@
+use std::cell::RefCell;
+
+use embassy_futures::select::select;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
-use embassy_sync::channel::Channel;
+use embassy_sync::pubsub::PubSubChannel;
+use embassy_sync::signal::Signal;
 use futures::join;
 
 use crate::avionics::backup_flight_core::BackupFlightCore;
@@ -14,6 +18,7 @@ use crate::common::file_types::{
     VACUUM_TEST_LOG_FILE_TYPE,
 };
 use crate::common::ticker::Ticker;
+use crate::common::vlp::telemetry_packet::FlightCoreStateTelemetry;
 use crate::driver::barometer::BaroData;
 use crate::driver::timestamp::BootTimestamp;
 use crate::{claim_devices, create_serialized_enum, fixed_point_factory};
@@ -84,8 +89,9 @@ pub async fn vacuum_test_main(
         .unwrap(),
     );
 
-    let flight_core_events = Channel::<NoopRawMutex, FlightCoreEvent, 3>::new();
-    let mut flight_core = BackupFlightCore::new(flight_profile, flight_core_events.sender());
+    let flight_core_events = PubSubChannel::<NoopRawMutex, FlightCoreEvent, 3, 1, 1>::new();
+    let mut flight_core =
+        BackupFlightCore::new(flight_profile, flight_core_events.publisher().unwrap());
 
     let mut baro_ticker = Ticker::every(services.clock(), services.delay(), 5.0);
     let baro_fut = async {
@@ -97,9 +103,19 @@ pub async fn vacuum_test_main(
         }
     };
 
+    let flight_core_state_signal = Signal::<NoopRawMutex, FlightCoreStateTelemetry>::new();
     let flight_core_events_sub_fut = async {
+        let mut sub = flight_core_events.subscriber().unwrap();
         loop {
-            let event = flight_core_events.receive().await;
+            let event = sub.next_message_pure().await;
+            match event {
+                FlightCoreEvent::ChangeState(state) => {
+                    flight_core_state_signal.signal(state);
+                }
+                _ => {
+                    // noop
+                }
+            }
             logger
                 .write(&VacuumTestLog::FlightCoreEvent(event))
                 .await
@@ -108,6 +124,40 @@ pub async fn vacuum_test_main(
         }
     };
 
-    join!(baro_logger_fut, baro_fut, flight_core_events_sub_fut);
+    let indicators_fut = async {
+        let state = RefCell::new(flight_core_state_signal.wait().await);
+        loop {
+            let indicator_fut = async {
+                match *state.borrow() {
+                    FlightCoreStateTelemetry::DrogueChuteDeployed => {
+                        indicators.run([], [], [250, 250]).await;
+                    }
+                    FlightCoreStateTelemetry::MainChuteDeployed => {
+                        indicators.run([], [250, 250], []).await;
+                    }
+                    FlightCoreStateTelemetry::Landed => {
+                        indicators.run([], [250, 250], [0, 250, 250, 0]).await;
+                    }
+                    _ => {
+                        indicators.run([], [50, 950], []).await;
+                    }
+                }
+            };
+
+            let wait_signal_fut = async {
+                let new_state = flight_core_state_signal.wait().await;
+                state.replace(new_state);
+            };
+
+            select(wait_signal_fut, indicator_fut).await;
+        }
+    };
+
+    join!(
+        baro_logger_fut,
+        baro_fut,
+        flight_core_events_sub_fut,
+        indicators_fut
+    );
     log_unreachable!();
 }

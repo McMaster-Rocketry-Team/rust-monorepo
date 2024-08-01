@@ -190,7 +190,7 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
             self.event_dispatcher
                 .dispatch(FlightCoreEvent::ChangeAltitude(self.eskf.position.z));
             self.event_dispatcher
-                .dispatch(FlightCoreEvent::ChangeSpeed(self.eskf.velocity.z));
+                .dispatch(FlightCoreEvent::ChangeAirSpeed(self.eskf.velocity.z));
         }
 
         match &mut self.state {
