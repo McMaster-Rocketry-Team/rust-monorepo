@@ -166,7 +166,7 @@ async fn open_file_twice() {
 
     let path = get_test_image_path!();
 
-    let mut harness = VLFSTestingHarness::new(path).await;
+    let harness = VLFSTestingHarness::new(path).await;
     let file_id = harness.create_file(FileType(0)).await;
     let writer1 = harness.vlfs.open_file_for_write(file_id).await.unwrap();
     let _ = harness.vlfs.open_file_for_write(file_id).await.unwrap_err();

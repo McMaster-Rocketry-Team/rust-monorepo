@@ -3,12 +3,31 @@ use lora_phy::{mod_traits::RadioKind, LoRa};
 use vlfs::{Crc, Flash, VLFS};
 
 use crate::driver::{
-    adc::{Ampere, Volt, ADC}, arming::HardwareArming, barometer::Barometer, buzzer::Buzzer, camera::Camera, can_bus::SplitableCanBus, clock::Clock, debugger::Debugger, delay::Delay, gps::{GPSData, GPS, GPSPPS}, imu::IMU, indicator::Indicator, mag::Magnetometer, pyro::{Continuity, PyroCtrl}, rng::RNG, serial::SplitableSerial, sys_reset::SysReset, timestamp::BootTimestamp, usb::SplitableUSB
+    adc::{Ampere, Volt, ADC},
+    arming::HardwareArming,
+    barometer::Barometer,
+    buzzer::Buzzer,
+    camera::Camera,
+    can_bus::SplitableCanBus,
+    clock::Clock,
+    debugger::Debugger,
+    delay::Delay,
+    gps::{GPSData, GPS, GPSPPS},
+    imu::IMU,
+    indicator::Indicator,
+    mag::Magnetometer,
+    pyro::{Continuity, PyroCtrl},
+    rng::RNG,
+    serial::SplitableSerial,
+    sys_reset::SysReset,
+    timestamp::BootTimestamp,
+    usb::SplitableUSB,
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex, pubsub::PubSubChannel};
 
 use super::{
-    buzzer_queue::BuzzerQueue, indicator_controller::IndicatorController, sensor_reading::SensorReading, unix_clock::UnixClock
+    buzzer_queue::BuzzerQueue, indicator_controller::IndicatorController,
+    sensor_reading::SensorReading, unix_clock::UnixClock,
 };
 
 #[allow(dead_code)]
@@ -23,8 +42,12 @@ pub struct DeviceManager<
     IH: IMU,
     V: ADC<Volt>,
     A: ADC<Ampere>,
-    PC: Continuity,
-    PT: PyroCtrl,
+    PC1: Continuity,
+    PT1: PyroCtrl,
+    PC2: Continuity,
+    PT2: PyroCtrl,
+    PC3: Continuity,
+    PT3: PyroCtrl,
     ARM: HardwareArming,
     S: SplitableSerial,
     U: SplitableUSB,
@@ -48,12 +71,12 @@ pub struct DeviceManager<
     pub(crate) high_g_imu: Mutex<NoopRawMutex, IH>,
     pub(crate) batt_voltmeter: Mutex<NoopRawMutex, V>,
     pub(crate) batt_ammeter: Mutex<NoopRawMutex, A>,
-    pub(crate) pyro1_cont: Mutex<NoopRawMutex, PC>,
-    pub(crate) pyro1_ctrl: Mutex<NoopRawMutex, PT>,
-    pub(crate) pyro2_cont: Mutex<NoopRawMutex, PC>,
-    pub(crate) pyro2_ctrl: Mutex<NoopRawMutex, PT>,
-    pub(crate) pyro3_cont: Mutex<NoopRawMutex, Option<PC>>,
-    pub(crate) pyro3_ctrl: Mutex<NoopRawMutex, Option<PT>>,
+    pub(crate) pyro1_cont: Mutex<NoopRawMutex, PC1>,
+    pub(crate) pyro1_ctrl: Mutex<NoopRawMutex, PT1>,
+    pub(crate) pyro2_cont: Mutex<NoopRawMutex, PC2>,
+    pub(crate) pyro2_ctrl: Mutex<NoopRawMutex, PT2>,
+    pub(crate) pyro3_cont: Mutex<NoopRawMutex, PC3>,
+    pub(crate) pyro3_ctrl: Mutex<NoopRawMutex, PT3>,
     pub(crate) arming_switch: Mutex<NoopRawMutex, ARM>,
     pub(crate) serial: Mutex<NoopRawMutex, Option<S>>,
     pub(crate) usb: Mutex<NoopRawMutex, Option<U>>,
@@ -84,8 +107,12 @@ impl<
         IH: IMU,
         V: ADC<Volt>,
         A: ADC<Ampere>,
-        PC: Continuity,
-        PT: PyroCtrl,
+        PC1: Continuity,
+        PT1: PyroCtrl,
+        PC2: Continuity,
+        PT2: PyroCtrl,
+        PC3: Continuity,
+        PT3: PyroCtrl,
         ARM: HardwareArming,
         S: SplitableSerial,
         U: SplitableUSB,
@@ -113,8 +140,12 @@ impl<
         IH,
         V,
         A,
-        PC,
-        PT,
+        PC1,
+        PT1,
+        PC2,
+        PT2,
+        PC3,
+        PT3,
         ARM,
         S,
         U,
@@ -142,9 +173,9 @@ impl<
         high_g_imu: IH,
         batt_voltmeter: V,
         batt_ammeter: A,
-        pyro1: (PC, PT),
-        pyro2: (PC, PT),
-        pyro3: Option<(PC, PT)>,
+        pyro1: (PC1, PT1),
+        pyro2: (PC2, PT2),
+        pyro3: (PC3, PT3),
         arming_switch: ARM,
         serial: S,
         usb: U,
@@ -163,12 +194,6 @@ impl<
         can_bus_health_check_ids: Vec<u32, 8>,
         debugger: DB,
     ) -> Self {
-        let (pyro3_cont, pyro3_ctrl) = if pyro3.is_some() {
-            let pyro3 = pyro3.unwrap();
-            (Some(pyro3.0), Some(pyro3.1))
-        } else {
-            (None, None)
-        };
         Self {
             debugger,
             sys_reset: Mutex::new(sys_reset),
@@ -182,8 +207,8 @@ impl<
             pyro1_ctrl: Mutex::new(pyro1.1),
             pyro2_cont: Mutex::new(pyro2.0),
             pyro2_ctrl: Mutex::new(pyro2.1),
-            pyro3_cont: Mutex::new(pyro3_cont),
-            pyro3_ctrl: Mutex::new(pyro3_ctrl),
+            pyro3_cont: Mutex::new(pyro3.0),
+            pyro3_ctrl: Mutex::new(pyro3.1),
             arming_switch: Mutex::new(arming_switch),
             serial: Mutex::new(Some(serial)),
             usb: Mutex::new(Some(usb)),
@@ -258,6 +283,10 @@ macro_rules! device_manager_type {
     impl ADC<Ampere>,
     impl Continuity,
     impl PyroCtrl,
+    impl Continuity,
+    impl PyroCtrl,
+    impl Continuity,
+    impl PyroCtrl,
     impl HardwareArming,
     impl SplitableSerial,
     impl SplitableUSB,
@@ -286,6 +315,10 @@ macro_rules! device_manager_type {
     impl IMU,
     impl ADC<Volt>,
     impl ADC<Ampere>,
+    impl Continuity,
+    impl PyroCtrl,
+    impl Continuity,
+    impl PyroCtrl,
     impl Continuity,
     impl PyroCtrl,
     impl HardwareArming,
@@ -336,7 +369,7 @@ pub mod prelude {
 
 pub struct SystemServices<'f, 'a, 'b, 'c, DL: Delay, T: Clock, F: Flash, C: Crc> {
     pub(crate) fs: &'f VLFS<F, C>,
-    pub(crate) gps: &'a PubSubChannel::<NoopRawMutex, SensorReading<BootTimestamp, GPSData>, 1, 1, 1>,
+    pub(crate) gps: &'a PubSubChannel<NoopRawMutex, SensorReading<BootTimestamp, GPSData>, 1, 1, 1>,
     pub(crate) delay: DL,
     pub(crate) clock: T,
     pub(crate) unix_clock: UnixClock<'b, T>,

@@ -14,7 +14,7 @@ use super::{
     FileID, FileType, SECTOR_SIZE, VLFS,
 };
 
-const READ_FILE_ENTRY_BATCH_SIZE: usize = 100;
+const READ_FILE_ENTRY_BATCH_SIZE: usize = 64;
 
 /// This struct does not check if the new allocation table is valid.
 /// All the files entries should have increasing file ids.
