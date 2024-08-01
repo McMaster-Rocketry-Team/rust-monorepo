@@ -126,6 +126,7 @@ where
             }
         }
 
+        builder.commit().await?;
         Ok((number_of_removed_files, unremoved_open_files))
     }
 

@@ -8,14 +8,18 @@ use crate::{
 use super::{
     allocation_table::{
         AllocationTable, AllocationTableFooter, ALLOC_TABLE_HEADER_SIZE, FILE_ENTRY_SIZE,
-    }, sector_management::SectorsMng, utils::find_most_common_u16_out_of_4, FileID, FileType, SECTOR_SIZE, VLFS
+    },
+    sector_management::SectorsMng,
+    utils::find_most_common_u16_out_of_4,
+    FileID, FileType, SECTOR_SIZE, VLFS,
 };
+
+const READ_FILE_ENTRY_BATCH_SIZE: usize = 100;
 
 /// This struct does not check if the new allocation table is valid.
 /// All the files entries should have increasing file ids.
 /// It is possible to create more file entries than fit in the allocation table.
 /// It is possible to delete opened files.
-/// TODO: buffer reads
 pub struct ATBuilder<'a, 'b, F: Flash, C: Crc>
 where
     'b: 'a,
@@ -25,8 +29,9 @@ where
     sectors_mng: RwLockWriteGuard<'a, NoopRawMutex, SectorsMng, 10>,
     fs: &'b VLFS<F, C>,
 
-    read_address: u32,
-    read_buffer: [u8; 5 + FILE_ENTRY_SIZE],
+    curr_at_start_addr: u32,
+    read_buffer: [u8; 5 + FILE_ENTRY_SIZE * READ_FILE_ENTRY_BATCH_SIZE],
+    read_file_entry_i: usize,
     read_finished: bool,
 
     write_page_address: u32,
@@ -59,8 +64,9 @@ where
             sectors_mng,
             fs,
 
-            read_address: curr_at_address + ALLOC_TABLE_HEADER_SIZE as u32,
-            read_buffer: [0u8; 5 + FILE_ENTRY_SIZE],
+            curr_at_start_addr: curr_at_address,
+            read_buffer: [0u8; 5 + FILE_ENTRY_SIZE * READ_FILE_ENTRY_BATCH_SIZE],
+            read_file_entry_i: 0,
             read_finished: false,
 
             write_page_address: new_at_address,
@@ -77,14 +83,24 @@ where
         Ok(builder)
     }
 
-    async fn read_slice(&mut self) -> Result<&[u8], F::Error> {
-        self.flash
-            .read(self.read_address, FILE_ENTRY_SIZE, &mut self.read_buffer)
-            .await?;
-        self.read_address += FILE_ENTRY_SIZE as u32;
+    async fn read_next_file_entry_slice(&mut self) -> Result<&[u8], F::Error> {
+        if self.read_file_entry_i % READ_FILE_ENTRY_BATCH_SIZE == 0 {
+            let read_address = self.curr_at_start_addr
+                + ALLOC_TABLE_HEADER_SIZE as u32
+                + self.read_file_entry_i as u32 * FILE_ENTRY_SIZE as u32;
+            self.flash
+                .read(
+                    read_address,
+                    FILE_ENTRY_SIZE * READ_FILE_ENTRY_BATCH_SIZE,
+                    &mut self.read_buffer,
+                )
+                .await?;
+        }
 
-        let read_result = &self.read_buffer[5..];
-        Ok(read_result)
+        let start = (self.read_file_entry_i % READ_FILE_ENTRY_BATCH_SIZE) * FILE_ENTRY_SIZE + 5;
+        let end = start + FILE_ENTRY_SIZE;
+        self.read_file_entry_i += 1;
+        return Ok(&self.read_buffer[start..end]);
     }
 
     /// Read the next file entry in the current allocation table.
@@ -93,7 +109,10 @@ where
         if self.read_finished {
             return Ok(None);
         }
-        let read_result = self.read_slice().await.map_err(VLFSError::FlashError)?;
+        let read_result = self
+            .read_next_file_entry_slice()
+            .await
+            .map_err(VLFSError::FlashError)?;
         if let Ok(file_entry) = FileEntry::deserialize(read_result) {
             if AllocationTableFooter::is_footer_file_entry(&file_entry) {
                 self.read_finished = true;
@@ -198,14 +217,18 @@ where
     /// If you remove a file entry from the allocation table, you must also
     /// release the sectors used by the file. Or the space occupied by the file
     /// won't be available until next reboot.
-    pub async fn release_file_sectors(&mut self, file_entry: &FileEntry)-> Result<(), VLFSError<F::Error>>{
+    pub async fn release_file_sectors(
+        &mut self,
+        file_entry: &FileEntry,
+    ) -> Result<(), VLFSError<F::Error>> {
         let mut current_sector_index = file_entry.first_sector_index;
         let mut buffer = [0u8; 5 + 8];
         while let Some(sector_index) = current_sector_index {
             let address = sector_index as u32 * SECTOR_SIZE as u32;
             let address = address + SECTOR_SIZE as u32 - 8;
 
-            let read_result = self.flash
+            let read_result = self
+                .flash
                 .read(address, 8, &mut buffer)
                 .await
                 .map_err(VLFSError::FlashError)?;
@@ -217,7 +240,7 @@ where
                 Some(next_sector_index)
             };
         }
-        
+
         Ok(())
     }
 
