@@ -27,15 +27,13 @@ use embassy_sync::channel::Channel;
 use embassy_sync::pubsub::{PubSubBehavior, PubSubChannel};
 use futures::join;
 
-use crate::{
-    avionics::avionics_main, common::device_manager::prelude::*, ground_test::gcm::ground_test_gcm,
-};
+use crate::{avionics::avionics_main, common::device_manager::prelude::*};
 use vlfs::{StatFlash, VLFS};
 
 use futures::{future::select, pin_mut};
 
 use crate::gcm::gcm_main;
-use crate::ground_test::avionics::ground_test_avionics;
+use crate::ground_test_avionics::ground_test_avionics;
 pub use common::device_manager::DeviceManager;
 
 pub use common::console::rpc::RpcClient;
@@ -43,7 +41,7 @@ mod avionics;
 pub mod common;
 pub mod driver;
 mod gcm;
-mod ground_test;
+mod ground_test_avionics;
 pub mod utils;
 
 pub async fn init(
@@ -216,10 +214,9 @@ pub async fn init(
                 )
                 .await
             }
-            DeviceModeConfig::GroundTestAvionics{..} => {
+            DeviceModeConfig::GroundTestAvionics { .. } => {
                 ground_test_avionics(device_manager, &services, &device_config).await
             }
-            DeviceModeConfig::GroundTestGCM => ground_test_gcm(device_manager).await,
         };
     };
 
