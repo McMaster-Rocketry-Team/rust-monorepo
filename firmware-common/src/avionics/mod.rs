@@ -1,3 +1,4 @@
+use arming_state::ArmingState;
 use core::cell::RefCell;
 use crc::CRC_16_GSM;
 use embassy_futures::select::select;
@@ -12,7 +13,6 @@ use flight_profile::{FlightProfile, PyroSelection};
 use futures::join;
 use imu_calibration_info::IMUCalibrationInfo;
 use nalgebra::Vector3;
-use rkyv::{Archive, Deserialize, Serialize};
 use vlfs::{Crc, FileType, Flash};
 
 use crate::{
@@ -56,6 +56,7 @@ use crate::{
 };
 use self_test::{self_test, SelfTestResult};
 
+mod arming_state;
 pub mod backup_flight_core;
 pub mod baro_reading_filter;
 pub mod flight_core;
@@ -269,11 +270,9 @@ pub async fn avionics_main(
     // states
     let storage_full = RefCell::new(false); // TODO if storage_full stop writing sensor data
     let low_power_mode = RefCell::new(false);
-    let arming_state = RefCell::new(ArmingState {
-        hardware_armed: false,
-        software_armed: false,
-    });
-    let arming_changed_signal = Signal::<NoopRawMutex, ()>::new();
+    let arming_state = ArmingState::<NoopRawMutex>::new();
+    let arming_state_debounce_fut = arming_state.run_debounce(services.delay.clone());
+
     let flight_core_events = PubSubChannel::<NoopRawMutex, FlightCoreEvent, 3, 5, 1>::new();
     let flight_core: BlockingMutex<
         NoopRawMutex,
@@ -324,7 +323,7 @@ pub async fn avionics_main(
         loop {
             let message = can_messages::AvionicsStatusMessage {
                 low_power: *low_power_mode.borrow(),
-                armed: arming_state.borrow().is_armed(),
+                armed: arming_state.is_armed(),
             };
             let mut can_tx = can_tx.lock().await;
             can_tx.send(&message, 3).await.ok();
@@ -381,7 +380,7 @@ pub async fn avionics_main(
             match packet {
                 VLPUplinkPacket::VerticalCalibrationPacket(_) => {
                     log_info!("Vertical calibration");
-                    if services.unix_clock.ready() && !arming_state.borrow().is_armed() {
+                    if services.unix_clock.ready() && !arming_state.is_armed() {
                         vertical_calibration_in_progress.lock(|s| *s.borrow_mut() = true);
                         let mut acc_sum = Vector3::<f32>::zeros();
                         let mut gyro_sum = Vector3::<f32>::zeros();
@@ -405,8 +404,7 @@ pub async fn avionics_main(
                     }
                 }
                 VLPUplinkPacket::SoftArmPacket(SoftArmPacket { armed, .. }) => {
-                    arming_state.borrow_mut().software_armed = armed;
-                    arming_changed_signal.signal(());
+                    arming_state.set_software_armed(armed);
                     telemetry_packet_builder.update(|b| {
                         b.software_armed = armed;
                     });
@@ -414,7 +412,10 @@ pub async fn avionics_main(
                 VLPUplinkPacket::LowPowerModePacket(LowPowerModePacket { enabled, .. }) => {
                     low_power_mode.replace(enabled);
                     if !enabled {
-                        arming_state.borrow_mut().software_armed = false;
+                        arming_state.set_software_armed(false);
+                        telemetry_packet_builder.update(|b| {
+                            b.software_armed = false;
+                        });
                     }
                 }
                 VLPUplinkPacket::ResetPacket(_) => {
@@ -466,11 +467,10 @@ pub async fn avionics_main(
             services.buzzer_queue.publish(3000, 700, 300);
         }
         loop {
-            arming_state.borrow_mut().hardware_armed = hardware_armed;
+            arming_state.set_hardware_armed(hardware_armed);
             telemetry_packet_builder.update(|b| {
                 b.hardware_armed = hardware_armed;
             });
-            arming_changed_signal.signal(());
             hardware_armed = arming_switch.wait_arming_change().await.unwrap();
             if hardware_armed {
                 services.buzzer_queue.publish(2000, 700, 300);
@@ -484,8 +484,7 @@ pub async fn avionics_main(
 
     let setup_flight_core_fut = async {
         loop {
-            arming_changed_signal.wait().await;
-            let armed = arming_state.borrow().is_armed();
+            let armed = arming_state.wait().await;
             let flight_core_initialized = flight_core.lock(|s| s.borrow().is_some());
             if armed && !flight_core_initialized {
                 if let Some(imu_config) = imu_config.lock(|s| s.borrow().clone()) {
@@ -834,16 +833,4 @@ pub async fn avionics_main(
         storage_full_detection_fut
     );
     log_unreachable!();
-}
-
-#[derive(defmt::Format, Debug, Clone, Archive, Deserialize, Serialize)]
-pub struct ArmingState {
-    pub hardware_armed: bool,
-    pub software_armed: bool,
-}
-
-impl ArmingState {
-    pub fn is_armed(&self) -> bool {
-        self.hardware_armed && self.software_armed
-    }
 }
