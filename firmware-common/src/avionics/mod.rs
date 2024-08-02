@@ -3,9 +3,8 @@ use crc::CRC_16_GSM;
 use embassy_futures::select::select;
 use embassy_sync::{
     blocking_mutex::{raw::NoopRawMutex, Mutex as BlockingMutex},
-    channel::{Channel, Sender},
     mutex::Mutex,
-    pubsub::{PubSubBehavior, PubSubChannel},
+    pubsub::{PubSubBehavior, PubSubChannel, Publisher},
     signal::Signal,
 };
 use flight_core_event::FlightCoreState;
@@ -42,9 +41,7 @@ use crate::{
 use crate::{common::can_bus::node_types::VOID_LAKE_NODE_TYPE, driver::can_bus::CanBusTX};
 use crate::{
     common::{
-        can_bus::messages::{
-            AvionicsStatusMessage, FlightEvent, FlightEventMessage, UnixTimeMessage,
-        },
+        can_bus::messages::{self as can_messages},
         config_file::ConfigFile,
         delta_logger::prelude::{RingDeltaLoggerConfig, TieredRingDeltaLogger},
         device_config::DeviceConfig,
@@ -270,29 +267,24 @@ pub async fn avionics_main(
     );
 
     // states
-    let storage_full = BlockingMutex::<NoopRawMutex, _>::new(RefCell::new(false));
-    let low_power_mode = BlockingMutex::<NoopRawMutex, _>::new(RefCell::new(false));
-    let is_low_power_mode = || low_power_mode.lock(|s| *s.borrow());
-    let arming_state = BlockingMutex::<NoopRawMutex, _>::new(RefCell::new(ArmingState {
+    let storage_full = RefCell::new(false); // TODO if storage_full stop writing sensor data
+    let low_power_mode = RefCell::new(false);
+    let arming_state = RefCell::new(ArmingState {
         hardware_armed: false,
         software_armed: false,
-    }));
+    });
     let arming_changed_signal = Signal::<NoopRawMutex, ()>::new();
+    let flight_core_events = PubSubChannel::<NoopRawMutex, FlightCoreEvent, 3, 5, 1>::new();
     let flight_core: BlockingMutex<
         NoopRawMutex,
-        RefCell<Option<FlightCore<Sender<NoopRawMutex, FlightCoreEvent, 3>>>>,
+        RefCell<Option<FlightCore<Publisher<NoopRawMutex, FlightCoreEvent, 3, 5, 1>>>>,
     > = BlockingMutex::new(RefCell::new(None));
-    let flight_core_events = Channel::<NoopRawMutex, FlightCoreEvent, 3>::new();
-    let flight_core_state_pub_sub =
-        PubSubChannel::<NoopRawMutex, FlightCoreState, 2, 3, 1>::new();
 
     let vertical_calibration_in_progress =
         BlockingMutex::<NoopRawMutex, _>::new(RefCell::new(false));
     let low_g_imu_signal = Signal::<NoopRawMutex, SensorReading<BootTimestamp, IMUData>>::new();
     let high_g_imu_signal = Signal::<NoopRawMutex, SensorReading<BootTimestamp, IMUData>>::new();
     let baro_signal = Signal::<NoopRawMutex, SensorReading<BootTimestamp, BaroData>>::new();
-    let pyro_main_fire_signal = Signal::<NoopRawMutex, ()>::new();
-    let pyro_drouge_fire_signal = Signal::<NoopRawMutex, ()>::new();
 
     let imu_config_file = ConfigFile::<IMUCalibrationInfo, _, _>::new(
         services.fs,
@@ -330,9 +322,9 @@ pub async fn avionics_main(
     let can_tx_avionics_status_fut = async {
         let mut ticker = Ticker::every(services.clock(), services.delay(), 2000.0);
         loop {
-            let message = AvionicsStatusMessage {
-                low_power: is_low_power_mode(),
-                armed: arming_state.lock(|s| (*s.borrow()).is_armed()),
+            let message = can_messages::AvionicsStatusMessage {
+                low_power: *low_power_mode.borrow(),
+                armed: arming_state.borrow().is_armed(),
             };
             let mut can_tx = can_tx.lock().await;
             can_tx.send(&message, 3).await.ok();
@@ -348,7 +340,7 @@ pub async fn avionics_main(
         loop {
             let mut can_tx = can_tx.lock().await;
             let timestamp = services.unix_clock.now_ms() as u64;
-            let message = UnixTimeMessage {
+            let message = can_messages::UnixTimeMessage {
                 timestamp: timestamp.into(),
             };
             can_tx.send(&message, 2).await.ok();
@@ -383,15 +375,13 @@ pub async fn avionics_main(
     };
     let vlp_rx_fut = async {
         loop {
-            let (packet, _250KHz) = vlp.wait_receive().await;
-            low_power_mode.lock(|s| *s.borrow_mut() = false);
+            let (packet, _) = vlp.wait_receive().await;
+            low_power_mode.replace(false);
             log_info!("Received packet: {:?}", packet);
             match packet {
                 VLPUplinkPacket::VerticalCalibrationPacket(_) => {
                     log_info!("Vertical calibration");
-                    if services.unix_clock.ready()
-                        && !arming_state.lock(|s| (*s.borrow()).is_armed())
-                    {
+                    if services.unix_clock.ready() && !arming_state.borrow().is_armed() {
                         vertical_calibration_in_progress.lock(|s| *s.borrow_mut() = true);
                         let mut acc_sum = Vector3::<f32>::zeros();
                         let mut gyro_sum = Vector3::<f32>::zeros();
@@ -415,16 +405,16 @@ pub async fn avionics_main(
                     }
                 }
                 VLPUplinkPacket::SoftArmPacket(SoftArmPacket { armed, .. }) => {
-                    arming_state.lock(|s| s.borrow_mut().software_armed = armed);
+                    arming_state.borrow_mut().software_armed = armed;
                     arming_changed_signal.signal(());
                     telemetry_packet_builder.update(|b| {
                         b.software_armed = armed;
                     });
                 }
                 VLPUplinkPacket::LowPowerModePacket(LowPowerModePacket { enabled, .. }) => {
-                    low_power_mode.lock(|s| *s.borrow_mut() = enabled);
+                    low_power_mode.replace(enabled);
                     if !enabled {
-                        arming_state.lock(|s| s.borrow_mut().software_armed = false);
+                        arming_state.borrow_mut().software_armed = false;
                     }
                 }
                 VLPUplinkPacket::ResetPacket(_) => {
@@ -476,9 +466,7 @@ pub async fn avionics_main(
             services.buzzer_queue.publish(3000, 700, 300);
         }
         loop {
-            arming_state.lock(|s| {
-                s.borrow_mut().hardware_armed = hardware_armed;
-            });
+            arming_state.borrow_mut().hardware_armed = hardware_armed;
             telemetry_packet_builder.update(|b| {
                 b.hardware_armed = hardware_armed;
             });
@@ -497,7 +485,7 @@ pub async fn avionics_main(
     let setup_flight_core_fut = async {
         loop {
             arming_changed_signal.wait().await;
-            let armed = arming_state.lock(|s| (*s.borrow()).is_armed());
+            let armed = arming_state.borrow().is_armed();
             let flight_core_initialized = flight_core.lock(|s| s.borrow().is_some());
             if armed && !flight_core_initialized {
                 if let Some(imu_config) = imu_config.lock(|s| s.borrow().clone()) {
@@ -505,7 +493,7 @@ pub async fn avionics_main(
                         let mut s = s.borrow_mut();
                         s.replace(FlightCore::new(
                             flight_profile.clone(),
-                            flight_core_events.sender(),
+                            flight_core_events.publisher().unwrap(),
                             imu_config.up_right_vector.into(),
                             Variances::default(),
                         ));
@@ -513,7 +501,8 @@ pub async fn avionics_main(
                 }
             } else if !armed && flight_core_initialized {
                 flight_core.lock(|s| s.take());
-                flight_core_state_pub_sub.publish_immediate(FlightCoreState::DisArmed);
+                flight_core_events
+                    .publish_immediate(FlightCoreEvent::ChangeState(FlightCoreState::DisArmed));
             }
         }
     };
@@ -561,7 +550,7 @@ pub async fn avionics_main(
         services.unix_clock.wait_until_ready().await;
         loop {
             low_g_imu_ticker.next().await;
-            if is_low_power_mode() {
+            if *low_power_mode.borrow() {
                 continue;
             }
             let imu_reading = low_g_imu.read().await.unwrap();
@@ -575,7 +564,7 @@ pub async fn avionics_main(
         services.unix_clock.wait_until_ready().await;
         loop {
             high_g_imu_ticker.next().await;
-            if is_low_power_mode() {
+            if *low_power_mode.borrow() {
                 continue;
             }
             let imu_reading = high_g_imu.read().await.unwrap();
@@ -589,7 +578,7 @@ pub async fn avionics_main(
         services.unix_clock.wait_until_ready().await;
         loop {
             baro_ticker.next().await;
-            if is_low_power_mode() {
+            if *low_power_mode.borrow() {
                 continue;
             }
 
@@ -618,7 +607,7 @@ pub async fn avionics_main(
         services.unix_clock.wait_until_ready().await;
         loop {
             mag_ticker.next().await;
-            if is_low_power_mode() {
+            if *low_power_mode.borrow() {
                 continue;
             }
             let mag_reading = mag.read().await.unwrap();
@@ -669,11 +658,11 @@ pub async fn avionics_main(
     };
 
     let flight_core_event_consumer = async {
-        let receiver = flight_core_events.receiver();
+        let mut sub = flight_core_events.subscriber().unwrap();
 
         let debugger = device_manager.debugger.clone();
         loop {
-            let event = receiver.receive().await;
+            let event = sub.next_message_pure().await;
             match event {
                 FlightCoreEvent::ChangeAltitude(_) => {}
                 _ => {
@@ -685,26 +674,10 @@ pub async fn avionics_main(
                     claim_devices!(device_manager, sys_reset);
                     sys_reset.reset();
                 }
-                FlightCoreEvent::Ignition => {
-                    // noop
-                }
-                FlightCoreEvent::Apogee => {
-                    // noop
-                }
-                FlightCoreEvent::DeployMain => {
-                    pyro_main_fire_signal.signal(());
-                }
-                FlightCoreEvent::DeployDrogue => {
-                    pyro_drouge_fire_signal.signal(());
-                }
-                FlightCoreEvent::Landed => {
-                    // noop
-                }
                 FlightCoreEvent::DidNotReachMinApogee => {
                     // noop
                 }
                 FlightCoreEvent::ChangeState(new_state) => {
-                    flight_core_state_pub_sub.publish_immediate(new_state);
                     telemetry_packet_builder.update(|s| {
                         s.flight_core_state = new_state;
                     });
@@ -723,11 +696,11 @@ pub async fn avionics_main(
         }
     };
 
-    let flight_core_state_sub_fut = async {
-        let mut sub = flight_core_state_pub_sub.subscriber().unwrap();
+    let can_tx_flight_event_fut = async {
+        let mut sub = flight_core_events.subscriber().unwrap();
 
-        let can_send_flight_event = async |event: FlightEvent| {
-            let message = FlightEventMessage {
+        let can_send_flight_event = async |event: can_messages::FlightEvent| {
+            let message = can_messages::FlightEventMessage {
                 timestamp: (services.unix_clock.now_ms() as u64).into(),
                 event,
             };
@@ -737,68 +710,85 @@ pub async fn avionics_main(
         };
 
         loop {
-            let state = sub.next_message_pure().await;
-            match state {
-                FlightCoreState::DisArmed => {}
-                FlightCoreState::Armed => {}
-                FlightCoreState::PowerAscend => {
-                    can_send_flight_event(FlightEvent::Ignition).await;
+            if let FlightCoreEvent::ChangeState(state) = sub.next_message_pure().await {
+                match state {
+                    FlightCoreState::PowerAscend => {
+                        can_send_flight_event(can_messages::FlightEvent::Ignition).await;
+                    }
+                    FlightCoreState::Coast => {
+                        can_send_flight_event(can_messages::FlightEvent::Coast).await;
+                    }
+                    FlightCoreState::Descent => {
+                        can_send_flight_event(can_messages::FlightEvent::Apogee).await;
+                    }
+                    FlightCoreState::Landed => {
+                        can_send_flight_event(can_messages::FlightEvent::Landed).await;
+                    }
+                    _ => {}
                 }
-                FlightCoreState::Coast => {
-                    can_send_flight_event(FlightEvent::Coast).await;
-                }
-                FlightCoreState::Descent => {
-                    can_send_flight_event(FlightEvent::Apogee).await;
-                }
-                FlightCoreState::Landed => {
-                    can_send_flight_event(FlightEvent::Landed).await;
-                }
-                FlightCoreState::DrogueChuteDeployed => {},
-                FlightCoreState::MainChuteDeployed => {},
             }
         }
     };
 
     let pyro_main_ctrl_fut = async {
+        let mut sub = flight_core_events.subscriber().unwrap();
+
         loop {
-            pyro_main_fire_signal.wait().await;
-            pyro!(
-                device_manager,
-                flight_profile.main_pyro,
-                pyro_ctrl.set_enable(true).await.ok()
-            );
-            services.delay.delay_ms(3000.0).await;
-            pyro!(
-                device_manager,
-                flight_profile.main_pyro,
-                pyro_ctrl.set_enable(false).await.ok()
-            );
+            if sub.next_message_pure().await
+                == FlightCoreEvent::ChangeState(FlightCoreState::MainChuteDeployed)
+            {
+                pyro!(
+                    device_manager,
+                    flight_profile.main_pyro,
+                    pyro_ctrl.set_enable(true).await.ok()
+                );
+                services.delay.delay_ms(3000.0).await;
+                pyro!(
+                    device_manager,
+                    flight_profile.main_pyro,
+                    pyro_ctrl.set_enable(false).await.ok()
+                );
+            }
         }
     };
 
     let pyro_drogue_ctrl_fut = async {
+        let mut sub = flight_core_events.subscriber().unwrap();
+
         loop {
-            pyro_drouge_fire_signal.wait().await;
-            pyro!(
-                device_manager,
-                flight_profile.drogue_pyro,
-                pyro_ctrl.set_enable(true).await.ok()
-            );
-            services.delay.delay_ms(3000.0).await;
-            pyro!(
-                device_manager,
-                flight_profile.drogue_pyro,
-                pyro_ctrl.set_enable(false).await.ok()
-            );
+            if sub.next_message_pure().await
+                == FlightCoreEvent::ChangeState(FlightCoreState::DrogueChuteDeployed)
+            {
+                pyro!(
+                    device_manager,
+                    flight_profile.drogue_pyro,
+                    pyro_ctrl.set_enable(true).await.ok()
+                );
+                services.delay.delay_ms(3000.0).await;
+                pyro!(
+                    device_manager,
+                    flight_profile.drogue_pyro,
+                    pyro_ctrl.set_enable(false).await.ok()
+                );
+            }
         }
     };
 
-    let mut camera_ctrl_ticker = Ticker::every(services.clock(), services.delay(), 1000.0);
     let camera_ctrl_fut = async {
+        let mut sub = flight_core_events.subscriber().unwrap();
+
         loop {
-            camera_ctrl_ticker.next().await;
-            let armed = arming_state.lock(|s| (*s.borrow()).is_armed());
-            camera.set_recording(armed).await.ok();
+            if let FlightCoreEvent::ChangeState(state) = sub.next_message_pure().await {
+                match state {
+                    FlightCoreState::DisArmed => {
+                        camera.set_recording(false).await.ok();
+                    }
+                    FlightCoreState::Coast => {
+                        camera.set_recording(true).await.ok();
+                    }
+                    _ => {}
+                }
+            }
         }
     };
 
@@ -808,7 +798,7 @@ pub async fn avionics_main(
         loop {
             storage_full_detection_ticker.next().await;
             let free = services.fs.free().await;
-            storage_full.lock(|s| *s.borrow_mut() = free < 1024 * 1024);
+            storage_full.replace(free < 1024 * 1024);
         }
     };
 
@@ -836,7 +826,7 @@ pub async fn avionics_main(
         pyro_main_ctrl_fut,
         pyro_drogue_ctrl_fut,
         flight_core_event_consumer,
-        flight_core_state_sub_fut,
+        can_tx_flight_event_fut,
         camera_ctrl_fut,
         can_tx_avionics_status_fut,
         can_tx_unix_time_fut,

@@ -4,7 +4,7 @@ use int_enum::IntEnum;
 use rkyv::{Archive, Deserialize, Serialize};
 
 #[repr(u8)]
-#[derive(defmt::Format, Debug, Clone, Copy, IntEnum, Archive, Deserialize, Serialize)]
+#[derive(defmt::Format, Debug, Clone, Copy, IntEnum, Archive, Deserialize, Serialize, PartialEq)]
 pub enum FlightCoreState {
     DisArmed = 0,
     Armed = 1,
@@ -16,14 +16,9 @@ pub enum FlightCoreState {
     Landed = 7,
 }
 
-#[derive(Debug, Clone, Copy, Archive, Deserialize, Serialize, defmt::Format)]
+#[derive(Debug, Clone, Copy, Archive, Deserialize, Serialize, defmt::Format, PartialEq)]
 pub enum FlightCoreEvent {
     CriticalError,
-    Ignition,
-    Apogee,
-    DeployMain,
-    DeployDrogue,
-    Landed,
     DidNotReachMinApogee,
     ChangeState(FlightCoreState),
     ChangeAltitude(f32),

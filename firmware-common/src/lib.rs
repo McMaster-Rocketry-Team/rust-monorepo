@@ -180,12 +180,6 @@ pub async fn init(
     };
 
     let main_fut = async {
-        // if usb_connected {
-        //     log_info!("USB connected on boot, stopping main");
-        //     claim_devices!(device_manager, indicators);
-        //     indicators.run([1000, 1000], [0, 1000, 1000, 0], []).await;
-        // }
-
         if device_config.as_ref().is_none() {
             log_info!("No device mode file found, halting");
             claim_devices!(device_manager, indicators);
@@ -195,9 +189,17 @@ pub async fn init(
         }
         let device_config = device_config.as_ref().unwrap();
 
+        let stop_if_usb_connected = async || {
+            if usb_connected {
+                log_info!("USB connected on boot, stopping");
+                claim_devices!(device_manager, indicators);
+                indicators.run([1000, 1000], [0, 1000, 1000, 0], []).await;
+            }
+        };
         log_info!("Starting in mode {:?}", device_config);
         match device_config.mode {
             DeviceModeConfig::Avionics { .. } => {
+                stop_if_usb_connected().await;
                 avionics_main(
                     device_manager,
                     &services,
@@ -217,9 +219,13 @@ pub async fn init(
                 .await
             }
             DeviceModeConfig::GroundTestAvionics { .. } => {
+                stop_if_usb_connected().await;
                 ground_test_avionics(device_manager, &services, &device_config).await
             }
-            DeviceModeConfig::VacuumTest => vacuum_test_main(device_manager, &services).await,
+            DeviceModeConfig::VacuumTest => {
+                stop_if_usb_connected().await;
+                vacuum_test_main(device_manager, &services).await
+            }
         };
     };
 

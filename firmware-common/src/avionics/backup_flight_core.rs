@@ -1,10 +1,10 @@
 use libm::fabsf;
 
+use super::flight_core_event::FlightCoreState as EventFlightCoreState;
 use crate::{
     common::sensor_reading::SensorReading,
     driver::{barometer::BaroData, timestamp::BootTimestamp},
 };
-use super::flight_core_event::FlightCoreState as EventFlightCoreState;
 
 use super::{
     flight_core_event::{FlightCoreEvent, FlightCoreEventDispatcher},
@@ -12,7 +12,7 @@ use super::{
     vertical_speed_filter::VerticalSpeedFilter,
 };
 
-pub enum BackupFlightCoreState {
+enum BackupFlightCoreState {
     Armed,
     DrogueChute { deploy_time: f64 },
     DrogueChuteDeployed,
@@ -32,9 +32,7 @@ pub struct BackupFlightCore<D: FlightCoreEventDispatcher> {
 
 impl<D: FlightCoreEventDispatcher> BackupFlightCore<D> {
     pub fn new(flight_profile: FlightProfile, mut event_dispatcher: D) -> Self {
-        event_dispatcher.dispatch(FlightCoreEvent::ChangeState(
-            EventFlightCoreState::Armed,
-        ));
+        event_dispatcher.dispatch(FlightCoreEvent::ChangeState(EventFlightCoreState::Armed));
         Self {
             event_dispatcher,
             flight_profile,
@@ -62,8 +60,6 @@ impl<D: FlightCoreEventDispatcher> BackupFlightCore<D> {
             BackupFlightCoreState::DrogueChute { deploy_time } => {
                 if timestamp > *deploy_time {
                     self.state = BackupFlightCoreState::DrogueChuteDeployed;
-                    self.event_dispatcher
-                        .dispatch(FlightCoreEvent::DeployDrogue);
                     self.event_dispatcher.dispatch(FlightCoreEvent::ChangeState(
                         EventFlightCoreState::DrogueChuteDeployed,
                     ));
@@ -79,7 +75,6 @@ impl<D: FlightCoreEventDispatcher> BackupFlightCore<D> {
             BackupFlightCoreState::MainChute { deploy_time } => {
                 if timestamp > *deploy_time {
                     self.state = BackupFlightCoreState::MainChuteDeployed;
-                    self.event_dispatcher.dispatch(FlightCoreEvent::DeployMain);
                     self.event_dispatcher.dispatch(FlightCoreEvent::ChangeState(
                         EventFlightCoreState::MainChuteDeployed,
                     ));
@@ -88,14 +83,19 @@ impl<D: FlightCoreEventDispatcher> BackupFlightCore<D> {
             BackupFlightCoreState::MainChuteDeployed => {
                 if fabsf(vertical_speed) < -0.5 {
                     self.state = BackupFlightCoreState::Landed;
-                    self.event_dispatcher.dispatch(FlightCoreEvent::Landed);
-                    self.event_dispatcher.dispatch(FlightCoreEvent::ChangeState(
-                        EventFlightCoreState::Landed,
-                    ));
+                    self.event_dispatcher
+                        .dispatch(FlightCoreEvent::ChangeState(EventFlightCoreState::Landed));
                 }
             }
             BackupFlightCoreState::Landed => {}
         }
+    }
+}
+
+impl<D: FlightCoreEventDispatcher> Drop for BackupFlightCore<D> {
+    fn drop(&mut self) {
+        self.event_dispatcher
+            .dispatch(FlightCoreEvent::ChangeState(EventFlightCoreState::DisArmed));
     }
 }
 

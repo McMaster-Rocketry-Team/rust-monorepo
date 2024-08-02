@@ -80,7 +80,7 @@ macro_rules! log_unreachable {
             #[cfg(feature = "defmt")]
             ::defmt::unreachable!();
 
-            ::core::panic!("unreachable");
+            ::core::unreachable!();
         }
     };
 }

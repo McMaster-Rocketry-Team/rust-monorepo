@@ -200,7 +200,7 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
                 acc_y_moving_average,
             } => {
                 // update state
-                acc_y_moving_average.add_sample(snapshot.imu_reading.data.acc[2]);
+                acc_y_moving_average.add_sample(acc[2]);
 
                 if snapshot_history.is_full() {
                     snapshot_history.pop_front();
@@ -285,7 +285,6 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
                         );
                     }
 
-                    self.event_dispatcher.dispatch(FlightCoreEvent::Ignition);
                     self.event_dispatcher.dispatch(FlightCoreEvent::ChangeState(
                         EventFlightCoreState::PowerAscend,
                     ));
@@ -324,7 +323,6 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
                     self.event_dispatcher.dispatch(FlightCoreEvent::ChangeState(
                         EventFlightCoreState::Descent,
                     ));
-                    self.event_dispatcher.dispatch(FlightCoreEvent::Apogee);
                     self.state = FlightCoreState::DrogueChute {
                         deploy_time: snapshot.timestamp + self.flight_profile.drogue_chute_delay_ms,
                         launch_altitude: *launch_altitude,
@@ -347,8 +345,6 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
                         && snapshot.timestamp - *launch_timestamp
                             >= self.flight_profile.drogue_chute_minimum_time_ms
                     {
-                        self.event_dispatcher
-                            .dispatch(FlightCoreEvent::DeployDrogue);
                         self.state = FlightCoreState::MainChute {
                             deploy_time: None,
                             launch_altitude: *launch_altitude,
@@ -375,14 +371,12 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
                 launch_altitude: _,
             } => {
                 if snapshot.timestamp >= *deploy_time {
-                    self.event_dispatcher.dispatch(FlightCoreEvent::DeployMain);
                     self.state = FlightCoreState::MainChuteDescend {};
                 }
             }
             FlightCoreState::MainChuteDescend {} => {
                 // landing detection
                 if self.eskf.velocity.z.abs() < 0.5 {
-                    self.event_dispatcher.dispatch(FlightCoreEvent::Landed);
                     self.event_dispatcher.dispatch(FlightCoreEvent::ChangeState(
                         EventFlightCoreState::Landed,
                     ));
@@ -395,6 +389,13 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
         // log_info!("Estimated altitude: {:?}", self.eskf.position.z);
 
         self.last_snapshot_timestamp = Some(snapshot.timestamp);
+    }
+}
+
+impl<D: FlightCoreEventDispatcher> Drop for FlightCore<D> {
+    fn drop(&mut self) {
+        self.event_dispatcher
+            .dispatch(FlightCoreEvent::ChangeState(EventFlightCoreState::DisArmed));
     }
 }
 
