@@ -3,7 +3,7 @@ use core::ops::Mul;
 use super::baro_reading_filter::BaroFilterOutput;
 use super::baro_reading_filter::BaroReadingFilter;
 use super::flight_core_event::FlightCoreEvent;
-use super::flight_core_event::FlightCoreEventDispatcher;
+use super::flight_core_event::FlightCoreEventPublisher;
 use super::flight_core_event::FlightCoreState as EventFlightCoreState;
 use super::flight_profile::FlightProfile;
 use crate::common::moving_average::NoSumSMA;
@@ -90,8 +90,8 @@ impl FlightCoreState {
 
 // TODO throw critical error when too many eskf updates fail
 // Designed to run at 200hz
-pub struct FlightCore<D: FlightCoreEventDispatcher> {
-    event_dispatcher: D,
+pub struct FlightCore<P: FlightCoreEventPublisher> {
+    event_publisher: P,
     flight_profile: FlightProfile,
     state: FlightCoreState,
     mounting_angle_compensation_quat: UnitQuaternion<f32>,
@@ -103,10 +103,10 @@ pub struct FlightCore<D: FlightCoreEventDispatcher> {
     critical_error: bool,
 }
 
-impl<D: FlightCoreEventDispatcher> FlightCore<D> {
+impl<D: FlightCoreEventPublisher> FlightCore<D> {
     pub fn new(
         flight_profile: FlightProfile,
-        mut event_dispatcher: D,
+        mut event_publisher: D,
         rocket_upright_acc: Vector3<f32>,
         variances: Variances,
     ) -> Self {
@@ -120,11 +120,11 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
             .build();
         eskf.gravity = Vector3::new(0.0, 0.0, -9.81);
 
-        event_dispatcher.dispatch(FlightCoreEvent::ChangeState(
+        event_publisher.publish(FlightCoreEvent::ChangeState(
             EventFlightCoreState::Armed,
         ));
         Self {
-            event_dispatcher,
+            event_publisher,
             flight_profile,
             baro_altimeter_offset: None,
             state: FlightCoreState::new(),
@@ -187,10 +187,10 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
                     .ok();
             }
 
-            self.event_dispatcher
-                .dispatch(FlightCoreEvent::ChangeAltitude(self.eskf.position.z));
-            self.event_dispatcher
-                .dispatch(FlightCoreEvent::ChangeAirSpeed(self.eskf.velocity.z));
+            self.event_publisher
+                .publish(FlightCoreEvent::ChangeAltitude(self.eskf.position.z));
+            self.event_publisher
+                .publish(FlightCoreEvent::ChangeAirSpeed(self.eskf.velocity.z));
         }
 
         match &mut self.state {
@@ -285,7 +285,7 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
                         );
                     }
 
-                    self.event_dispatcher.dispatch(FlightCoreEvent::ChangeState(
+                    self.event_publisher.publish(FlightCoreEvent::ChangeState(
                         EventFlightCoreState::PowerAscend,
                     ));
                     self.state = FlightCoreState::PowerAscend {
@@ -305,7 +305,7 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
 
                 // coast detection
                 if acc_mag_moving_average.is_full() && acc_mag_moving_average.get_average() < 10.0 {
-                    self.event_dispatcher.dispatch(FlightCoreEvent::ChangeState(
+                    self.event_publisher.publish(FlightCoreEvent::ChangeState(
                         EventFlightCoreState::Coast,
                     ));
                     self.state = FlightCoreState::Coast {
@@ -320,7 +320,7 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
             } => {
                 // apogee detection
                 if self.eskf.velocity.z <= 0.0 {
-                    self.event_dispatcher.dispatch(FlightCoreEvent::ChangeState(
+                    self.event_publisher.publish(FlightCoreEvent::ChangeState(
                         EventFlightCoreState::Descent,
                     ));
                     self.state = FlightCoreState::DrogueChute {
@@ -337,8 +337,8 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
             } => {
                 let altitude_agl = self.eskf.position.z - *launch_altitude;
                 if altitude_agl < self.flight_profile.drogue_chute_minimum_altitude_agl {
-                    self.event_dispatcher
-                        .dispatch(FlightCoreEvent::DidNotReachMinApogee);
+                    self.event_publisher
+                        .publish(FlightCoreEvent::DidNotReachMinApogee);
                     self.state = FlightCoreState::Landed {};
                 } else {
                     if snapshot.timestamp >= *deploy_time
@@ -377,7 +377,7 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
             FlightCoreState::MainChuteDescend {} => {
                 // landing detection
                 if self.eskf.velocity.z.abs() < 0.5 {
-                    self.event_dispatcher.dispatch(FlightCoreEvent::ChangeState(
+                    self.event_publisher.publish(FlightCoreEvent::ChangeState(
                         EventFlightCoreState::Landed,
                     ));
                     self.state = FlightCoreState::Landed {};
@@ -392,10 +392,10 @@ impl<D: FlightCoreEventDispatcher> FlightCore<D> {
     }
 }
 
-impl<D: FlightCoreEventDispatcher> Drop for FlightCore<D> {
+impl<D: FlightCoreEventPublisher> Drop for FlightCore<D> {
     fn drop(&mut self) {
-        self.event_dispatcher
-            .dispatch(FlightCoreEvent::ChangeState(EventFlightCoreState::DisArmed));
+        self.event_publisher
+            .publish(FlightCoreEvent::ChangeState(EventFlightCoreState::DisArmed));
     }
 }
 

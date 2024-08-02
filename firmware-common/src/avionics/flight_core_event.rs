@@ -25,24 +25,24 @@ pub enum FlightCoreEvent {
     ChangeAirSpeed(f32),
 }
 
-pub trait FlightCoreEventDispatcher {
-    fn dispatch(&mut self, event: FlightCoreEvent);
+pub trait FlightCoreEventPublisher {
+    fn publish(&mut self, event: FlightCoreEvent);
 }
 
-impl<'ch, M: RawMutex, const N: usize> FlightCoreEventDispatcher
+impl<'ch, M: RawMutex, const N: usize> FlightCoreEventPublisher
     for ChannelSender<'ch, M, FlightCoreEvent, N>
 {
-    fn dispatch(&mut self, event: FlightCoreEvent) {
+    fn publish(&mut self, event: FlightCoreEvent) {
         if self.try_send(event).is_err() {
             log_warn!("FlightCoreEventDispatcher: event queue full");
         }
     }
 }
 
-impl<'a, M: RawMutex, const CAP: usize, const SUBS: usize, const PUBS: usize> FlightCoreEventDispatcher
+impl<'a, M: RawMutex, const CAP: usize, const SUBS: usize, const PUBS: usize> FlightCoreEventPublisher
     for PubSubPublisher<'a, M, FlightCoreEvent, CAP, SUBS, PUBS>
 {
-    fn dispatch(&mut self, event: FlightCoreEvent) {
+    fn publish(&mut self, event: FlightCoreEvent) {
         self.publish_immediate(event)
     }
 }
