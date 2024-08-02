@@ -410,8 +410,11 @@ mod test {
             true,
             1234.5,
             3456.3,
+            3456.3,
             -200.1,
             350.3,
+            350.3,
+            FlightCoreState::Armed,
             FlightCoreState::Armed,
         ));
         packet_builder

@@ -28,7 +28,6 @@ use crate::{
     driver::{
         adc::ADCData,
         barometer::BaroData,
-        debugger::DebuggerTargetEvent,
         gps::{GPSData, GPS},
         imu::IMUData,
         indicator::Indicator,
@@ -65,7 +64,6 @@ mod imu_calibration_info;
 mod self_test;
 pub mod vertical_speed_filter;
 
-// FIXME refactor events
 // FIXME fix unix clock drift
 #[inline(never)]
 pub async fn avionics_main(
@@ -647,15 +645,8 @@ pub async fn avionics_main(
     let flight_core_event_consumer = async {
         let mut sub = flight_core_events.subscriber();
 
-        let debugger = device_manager.debugger.clone();
         loop {
             let (is_backup, event) = sub.next_message_pure().await;
-            match event {
-                FlightCoreEvent::ChangeAltitude(_) => {}
-                _ => {
-                    debugger.dispatch(DebuggerTargetEvent::FlightCoreEvent(event));
-                }
-            }
             match event {
                 FlightCoreEvent::CriticalError => {
                     claim_devices!(device_manager, sys_reset);
@@ -666,17 +657,29 @@ pub async fn avionics_main(
                 }
                 FlightCoreEvent::ChangeState(new_state) => {
                     telemetry_packet_builder.update(|s| {
-                        s.flight_core_state = new_state;
+                        if is_backup {
+                            s.backup_flight_core_state = new_state;
+                        } else {
+                            s.flight_core_state = new_state;
+                        }
                     });
                 }
                 FlightCoreEvent::ChangeAltitude(new_altitude) => {
                     telemetry_packet_builder.update(|s| {
-                        s.altitude = new_altitude;
+                        if is_backup {
+                            s.backup_altitude = new_altitude;
+                        } else {
+                            s.altitude = new_altitude;
+                        }
                     });
                 }
                 FlightCoreEvent::ChangeAirSpeed(new_speed) => {
                     telemetry_packet_builder.update(|s| {
-                        s.air_speed = new_speed;
+                        if is_backup {
+                            s.backup_air_speed = new_speed;
+                        } else {
+                            s.air_speed = new_speed;
+                        }
                     });
                 }
             }
@@ -697,7 +700,8 @@ pub async fn avionics_main(
         };
 
         loop {
-            if let (false, FlightCoreEvent::ChangeState(state)) = sub.next_message_pure().await {
+            // FIXME duplicate events, events may not be in order
+            if let (_, FlightCoreEvent::ChangeState(state)) = sub.next_message_pure().await {
                 match state {
                     FlightCoreState::PowerAscend => {
                         can_send_flight_event(can_messages::FlightEvent::Ignition).await;

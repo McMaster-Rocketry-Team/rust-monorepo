@@ -13,7 +13,7 @@ use rkyv::{Archive, Deserialize, Serialize};
 fixed_point_factory!(BatteryVFac, f32, 6.0, 9.0, 0.001);
 fixed_point_factory!(TemperatureFac, f32, -30.0, 85.0, 0.1);
 fixed_point_factory!(FreeSpaceFac, f32, 0.0, 524288.0, 128.0);
-fixed_point_factory!(AltitudeFac, f32, 0.0, 5000.0, 5.0);
+fixed_point_factory!(AltitudeFac, f32, -100.0, 5000.0, 5.0);
 fixed_point_factory!(AirSpeedFac, f32, -400.0, 400.0, 2.0);
 
 #[derive(defmt::Format, Debug, Clone, PartialEq, Archive, Deserialize, Serialize)]
@@ -47,6 +47,9 @@ pub struct TelemetryPacket {
     #[defmt(Debug2Format)]
     #[with(VariableIntRkyvWrapper)]
     max_altitude: AltitudeFacPacked,
+    #[defmt(Debug2Format)]
+    #[with(VariableIntRkyvWrapper)]
+    backup_max_altitude: AltitudeFacPacked,
 
     #[defmt(Debug2Format)]
     #[with(VariableIntRkyvWrapper)]
@@ -54,10 +57,16 @@ pub struct TelemetryPacket {
     #[defmt(Debug2Format)]
     #[with(VariableIntRkyvWrapper)]
     max_air_speed: AirSpeedFacPacked,
+    #[defmt(Debug2Format)]
+    #[with(VariableIntRkyvWrapper)]
+    backup_max_air_speed: AirSpeedFacPacked,
 
     #[defmt(Debug2Format)]
     #[with(VariableIntRkyvWrapper)]
     flight_core_state: Integer<u8, packed_bits::Bits<3>>,
+    #[defmt(Debug2Format)]
+    #[with(VariableIntRkyvWrapper)]
+    backup_flight_core_state: Integer<u8, packed_bits::Bits<3>>,
 }
 
 impl TelemetryPacket {
@@ -81,11 +90,14 @@ impl TelemetryPacket {
 
         altitude: f32,
         max_altitude: f32,
+        backup_max_altitude: f32,
 
         air_speed: f32,
         max_air_speed: f32,
+        backup_max_air_speed: f32,
 
         flight_core_state: FlightCoreState,
+        backup_flight_core_state: FlightCoreState,
     ) -> Self {
         Self {
             unix_clock_ready,
@@ -101,9 +113,12 @@ impl TelemetryPacket {
             pyro_drogue_continuity,
             altitude: AltitudeFac::to_fixed_point_capped(altitude),
             max_altitude: AltitudeFac::to_fixed_point_capped(max_altitude),
+            backup_max_altitude: AltitudeFac::to_fixed_point_capped(backup_max_altitude),
             air_speed: AirSpeedFac::to_fixed_point_capped(air_speed),
             max_air_speed: AirSpeedFac::to_fixed_point_capped(max_air_speed),
+            backup_max_air_speed: AirSpeedFac::to_fixed_point_capped(backup_max_air_speed),
             flight_core_state: (flight_core_state as u8).into(),
+            backup_flight_core_state: (backup_flight_core_state as u8).into(),
         }
     }
 
@@ -165,6 +180,10 @@ impl TelemetryPacket {
         AltitudeFac::to_float(self.max_altitude)
     }
 
+    pub fn backup_max_altitude(&self) -> f32 {
+        AltitudeFac::to_float(self.backup_max_altitude)
+    }
+
     pub fn air_speed(&self) -> f32 {
         AirSpeedFac::to_float(self.air_speed)
     }
@@ -173,10 +192,23 @@ impl TelemetryPacket {
         AirSpeedFac::to_float(self.max_air_speed)
     }
 
+    pub fn backup_max_air_speed(&self) -> f32 {
+        AirSpeedFac::to_float(self.backup_max_air_speed)
+    }
+
     pub fn flight_core_state(&self) -> FlightCoreState {
         let flight_core_state: u8 = self.flight_core_state.into();
         if let Ok(flight_core_state) = FlightCoreState::try_from(flight_core_state) {
             flight_core_state
+        } else {
+            FlightCoreState::DisArmed
+        }
+    }
+
+    pub fn backup_flight_core_state(&self) -> FlightCoreState {
+        let backup_flight_core_state: u8 = self.backup_flight_core_state.into();
+        if let Ok(backup_flight_core_state) = FlightCoreState::try_from(backup_flight_core_state) {
+            backup_flight_core_state
         } else {
             FlightCoreState::DisArmed
         }
@@ -198,9 +230,12 @@ impl BitArraySerializable for TelemetryPacket {
         writer.write(self.pyro_drogue_continuity);
         writer.write(self.altitude);
         writer.write(self.max_altitude);
+        writer.write(self.backup_max_altitude);
         writer.write(self.air_speed);
         writer.write(self.max_air_speed);
+        writer.write(self.backup_max_air_speed);
         writer.write(self.flight_core_state);
+        writer.write(self.backup_flight_core_state);
     }
 
     fn deserialize<const N: usize>(reader: &mut BitSliceReader<N>) -> Self {
@@ -218,9 +253,12 @@ impl BitArraySerializable for TelemetryPacket {
             pyro_drogue_continuity: reader.read().unwrap(),
             altitude: reader.read().unwrap(),
             max_altitude: reader.read().unwrap(),
+            backup_max_altitude: reader.read().unwrap(),
             air_speed: reader.read().unwrap(),
             max_air_speed: reader.read().unwrap(),
+            backup_max_air_speed: reader.read().unwrap(),
             flight_core_state: reader.read().unwrap(),
+            backup_flight_core_state: reader.read().unwrap(),
         }
     }
 
@@ -238,8 +276,11 @@ impl BitArraySerializable for TelemetryPacket {
             + bool::len_bits()
             + AltitudeFacPacked::len_bits()
             + AltitudeFacPacked::len_bits()
+            + AltitudeFacPacked::len_bits()
             + AirSpeedFacPacked::len_bits()
             + AirSpeedFacPacked::len_bits()
+            + AirSpeedFacPacked::len_bits()
+            + <Integer<u8, packed_bits::Bits<3>>>::len_bits()
             + <Integer<u8, packed_bits::Bits<3>>>::len_bits()
     }
 }
@@ -250,14 +291,19 @@ pub struct TelemetryPacketBuilderState {
     pub temperature: f32,
     pub altitude: f32,
     max_altitude: f32,
+    pub backup_altitude: f32,
+    backup_max_altitude: f32,
     pub air_speed: f32,
     max_air_speed: f32,
+    pub backup_air_speed: f32,
+    backup_max_air_speed: f32,
 
     pub hardware_armed: bool,
     pub software_armed: bool,
     pub pyro_main_continuity: bool,
     pub pyro_drogue_continuity: bool,
     pub flight_core_state: FlightCoreState,
+    pub backup_flight_core_state: FlightCoreState,
     pub disk_free_space: u32,
 }
 
@@ -276,13 +322,18 @@ impl<'a, K: Clock> TelemetryPacketBuilder<'a, K> {
                 temperature: 0.0,
                 altitude: 0.0,
                 max_altitude: 0.0,
+                backup_altitude: 0.0,
+                backup_max_altitude: 0.0,
                 air_speed: 0.0,
                 max_air_speed: 0.0,
+                backup_air_speed: 0.0,
+                backup_max_air_speed: 0.0,
                 hardware_armed: false,
                 software_armed: false,
                 pyro_main_continuity: false,
                 pyro_drogue_continuity: false,
                 flight_core_state: FlightCoreState::DisArmed,
+                backup_flight_core_state: FlightCoreState::DisArmed,
                 disk_free_space: 0,
             })),
         }
@@ -309,9 +360,12 @@ impl<'a, K: Clock> TelemetryPacketBuilder<'a, K> {
                 state.pyro_drogue_continuity,
                 state.altitude,
                 state.max_altitude,
+                state.backup_max_altitude,
                 state.air_speed,
                 state.max_air_speed,
+                state.backup_max_air_speed,
                 state.flight_core_state,
+                state.backup_flight_core_state,
             )
         })
     }
@@ -325,6 +379,8 @@ impl<'a, K: Clock> TelemetryPacketBuilder<'a, K> {
             update_fn(&mut state);
             state.max_altitude = state.altitude.max(state.max_altitude);
             state.max_air_speed = state.air_speed.max(state.max_air_speed);
+            state.backup_max_altitude = state.backup_altitude.max(state.backup_max_altitude);
+            state.backup_max_air_speed = state.backup_air_speed.max(state.backup_max_air_speed);
         })
     }
 }
