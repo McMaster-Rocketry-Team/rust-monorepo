@@ -742,11 +742,12 @@ pub async fn avionics_main(
     let pyro_main_ctrl_fut = async {
         let mut sub = flight_core_events.subscriber();
 
+        // only react to backup flight core for now
         loop {
             if matches!(
                 sub.next_message_pure().await,
                 (
-                    _,
+                    true,
                     FlightCoreEvent::ChangeState(FlightCoreState::MainChuteDeployed)
                 )
             ) {
@@ -769,11 +770,12 @@ pub async fn avionics_main(
     let pyro_drogue_ctrl_fut = async {
         let mut sub = flight_core_events.subscriber();
 
+        // only react to backup flight core for now
         loop {
             if matches!(
                 sub.next_message_pure().await,
                 (
-                    _,
+                    true,
                     FlightCoreEvent::ChangeState(FlightCoreState::DrogueChuteDeployed)
                 )
             ) {
