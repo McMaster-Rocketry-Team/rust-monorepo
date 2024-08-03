@@ -1,7 +1,7 @@
 use core::cell::RefCell;
 use core::mem::replace;
 
-use super::delta_logger::{DeltaLogger, DeltaLoggerReader, UnixTimeLog};
+use super::delta_logger::{DeltaLogger, DeltaLoggerReader, UnixTimestampLog};
 use crate::common::delta_logger::bitslice_primitive::BitSlicePrimitive;
 use crate::common::{
     delta_logger::bitslice_serialize::BitArraySerializable, variable_int::VariableIntTrait,
@@ -122,7 +122,7 @@ where
         Ok(logged)
     }
 
-    pub async fn log_unix_time(&self, log: UnixTimeLog) -> Result<(), VLFSError<F::Error>> {
+    pub async fn log_unix_time(&self, log: UnixTimestampLog) -> Result<(), VLFSError<F::Error>> {
         let mut delta_logger = self.delta_logger.lock().await;
         let delta_logger = delta_logger.as_mut().unwrap();
         delta_logger.log_unix_time(log).await
@@ -239,7 +239,7 @@ where
     D: SensorData,
 {
     EOF,
-    Data(either::Either<SensorReading<BootTimestamp, D>, UnixTimeLog>),
+    Data(either::Either<SensorReading<BootTimestamp, D>, UnixTimestampLog>),
     TryAgain,
 }
 
@@ -303,7 +303,7 @@ where
         }
     }
 
-    pub async fn read(&mut self) -> Result<Option<either::Either<SensorReading<BootTimestamp, D>, UnixTimeLog>>, VLFSError<F::Error>> {
+    pub async fn read(&mut self) -> Result<Option<either::Either<SensorReading<BootTimestamp, D>, UnixTimestampLog>>, VLFSError<F::Error>> {
         loop {
             match self.inner_read().await? {
                 DeltaLoggerReaderResult::EOF => {

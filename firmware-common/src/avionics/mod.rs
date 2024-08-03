@@ -20,9 +20,15 @@ use crate::{
     },
     claim_devices,
     common::{
-        delta_logger::buffered_tiered_ring_delta_logger::BufferedTieredRingDeltaLogger,
-        device_manager::prelude::*, sensor_reading::SensorReading,
-        sensor_snapshot::PartialSensorSnapshot, ticker::Ticker, vlp::packet::VLPDownlinkPacket,
+        delta_logger::{
+            buffered_tiered_ring_delta_logger::BufferedTieredRingDeltaLogger,
+            delta_logger::UnixTimestampLog,
+        },
+        device_manager::prelude::*,
+        sensor_reading::SensorReading,
+        sensor_snapshot::PartialSensorSnapshot,
+        ticker::Ticker,
+        vlp::packet::VLPDownlinkPacket,
     },
     device_manager_type,
     driver::{
@@ -582,6 +588,24 @@ pub async fn avionics_main(
         }
     };
 
+    let loggers_unix_time_log_fut = async {
+        let mut unix_clock_sub = services.unix_clock.subscribe_unix_clock_update();
+        loop {
+            let unix_timestamp = unix_clock_sub.next_message_pure().await;
+            let boot_timestamp = services.clock.now_ms();
+            let log = UnixTimestampLog {
+                unix_timestamp,
+                boot_timestamp,
+            };
+            gps_logger.log_unix_time(log.clone());
+            low_g_imu_logger.log_unix_time(log.clone());
+            high_g_imu_logger.log_unix_time(log.clone());
+            baro_logger.log_unix_time(log.clone());
+            mag_logger.log_unix_time(log.clone());
+            battery_logger.log_unix_time(log.clone());
+        }
+    };
+
     let setup_flight_core_fut = async {
         loop {
             let armed = arming_state.wait().await;
@@ -829,7 +853,8 @@ pub async fn avionics_main(
         can_tx_unix_time_fut,
         indicators_fut,
         storage_full_detection_fut,
-        arming_state_debounce_fut
+        arming_state_debounce_fut,
+        loggers_unix_time_log_fut,
     );
     log_unreachable!();
 }

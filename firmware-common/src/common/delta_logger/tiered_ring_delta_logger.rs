@@ -11,7 +11,7 @@ use crate::{
 };
 
 use super::{
-    delta_logger::UnixTimeLog,
+    delta_logger::UnixTimestampLog,
     ring_delta_logger::{RingDeltaLogger, RingDeltaLoggerConfig},
 };
 
@@ -68,7 +68,7 @@ where
         Ok(())
     }
 
-    pub async fn log_unix_time(&self, log: UnixTimeLog) -> Result<(), VLFSError<F::Error>> {
+    pub async fn log_unix_time(&self, log: UnixTimestampLog) -> Result<(), VLFSError<F::Error>> {
         let result_1 = self.delta_logger_1.log_unix_time(log.clone()).await;
         let result_2 = self.delta_logger_2.log_unix_time(log.clone()).await;
         result_1?;

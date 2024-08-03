@@ -15,14 +15,14 @@ use crate::{
     try_or_warn,
 };
 
-use super::{delta_logger::UnixTimeLog, prelude::DeltaLogger};
+use super::{delta_logger::UnixTimestampLog, prelude::DeltaLogger};
 
 pub struct BufferedDeltaLogger<D, const CAP: usize>
 where
     D: SensorData,
     [(); size_of::<D>() + 10]:,
 {
-    channel: PubSubChannel<NoopRawMutex,either::Either<SensorReading<BootTimestamp, D>, UnixTimeLog>, CAP, 1, 1>,
+    channel: PubSubChannel<NoopRawMutex,either::Either<SensorReading<BootTimestamp, D>, UnixTimestampLog>, CAP, 1, 1>,
     close_signal: Signal<NoopRawMutex, ()>,
 }
 
@@ -42,7 +42,7 @@ where
         self.channel.publish_immediate(either::Either::Left(value));
     }
 
-    pub fn log_unix_time(&mut self, log: UnixTimeLog) {
+    pub fn log_unix_time(&mut self, log: UnixTimestampLog) {
         self.channel.publish_immediate(either::Either::Right(log));
     }
 

@@ -16,7 +16,7 @@ use crate::{
     try_or_warn, Clock, Delay,
 };
 
-use super::{delta_logger::UnixTimeLog, prelude::TieredRingDeltaLogger};
+use super::{delta_logger::UnixTimestampLog, prelude::TieredRingDeltaLogger};
 
 pub struct BufferedTieredRingDeltaLogger<D, const CAP: usize>
 where
@@ -25,7 +25,7 @@ where
 {
     channel: PubSubChannel<
         NoopRawMutex,
-        either::Either<SensorReading<BootTimestamp, D>, UnixTimeLog>,
+        either::Either<SensorReading<BootTimestamp, D>, UnixTimestampLog>,
         CAP,
         1,
         1,
@@ -49,7 +49,7 @@ where
         self.channel.publish_immediate(either::Either::Left(value));
     }
 
-    pub fn log_unix_time(&mut self, log: UnixTimeLog) {
+    pub fn log_unix_time(&self, log: UnixTimestampLog) {
         self.channel.publish_immediate(either::Either::Right(log));
     }
 

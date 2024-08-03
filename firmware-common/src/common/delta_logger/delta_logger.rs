@@ -67,12 +67,12 @@ impl Header {
 }
 
 #[derive(Debug, Clone)]
-pub struct UnixTimeLog {
+pub struct UnixTimestampLog {
     pub boot_timestamp: f64,
     pub unix_timestamp: f64,
 }
 
-impl BitArraySerializable for UnixTimeLog {
+impl BitArraySerializable for UnixTimestampLog {
     fn serialize<const N: usize>(&self, writer: &mut BitSliceWriter<N>) {
         writer.write(self.boot_timestamp);
         writer.write(self.unix_timestamp);
@@ -104,7 +104,7 @@ where
     writer: W,
     bit_writer: BitSliceWriter<{ size_of::<D>() + 10 }>,
     last_entry_is_unix_time: bool,
-    unix_time_log_buffer: Option<UnixTimeLog>,
+    unix_time_log_buffer: Option<UnixTimestampLog>,
 }
 
 impl<D, W, FF> DeltaLogger<D, W, FF>
@@ -171,7 +171,7 @@ where
         Ok(true)
     }
 
-    pub async fn log_unix_time(&mut self, log: UnixTimeLog) -> Result<(), W::Error> {
+    pub async fn log_unix_time(&mut self, log: UnixTimestampLog) -> Result<(), W::Error> {
         if self.last_entry_is_unix_time {
             self.unix_time_log_buffer = Some(log);
             return Ok(());
@@ -222,7 +222,7 @@ where
     D: SensorData,
 {
     EOF,
-    Data(Either<SensorReading<BootTimestamp, D>, UnixTimeLog>),
+    Data(Either<SensorReading<BootTimestamp, D>, UnixTimestampLog>),
     TryAgain,
 }
 
@@ -244,7 +244,7 @@ where
 
     pub async fn read(
         &mut self,
-    ) -> Result<Option<Either<SensorReading<BootTimestamp, D>, UnixTimeLog>>, R::Error> {
+    ) -> Result<Option<Either<SensorReading<BootTimestamp, D>, UnixTimestampLog>>, R::Error> {
         loop {
             match self.inner_read().await? {
                 DeltaLoggerReaderResult::EOF => {
@@ -289,10 +289,10 @@ where
         }
 
         if header == Header::UnixTimeStampLog {
-            if !self.ensure_at_least_bits(UnixTimeLog::len_bits()).await? {
+            if !self.ensure_at_least_bits(UnixTimestampLog::len_bits()).await? {
                 return Ok(DeltaLoggerReaderResult::EOF);
             }
-            let log = UnixTimeLog::deserialize(&mut self.bit_reader);
+            let log = UnixTimestampLog::deserialize(&mut self.bit_reader);
             return Ok(DeltaLoggerReaderResult::Data(Either::Right(log)));
         }
 
