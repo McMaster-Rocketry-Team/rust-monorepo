@@ -55,11 +55,6 @@ pub async fn init(
     #[cfg(all(feature = "defmt", feature = "log"))]
     compile_error!("Feature defmt and log are mutually exclusive and cannot be enabled together");
 
-    #[cfg(all(feature = "std", feature = "global-allocator"))]
-    compile_error!(
-        "Feature std and global-allocator are mutually exclusive and cannot be enabled together"
-    );
-
     claim_devices!(
         device_manager,
         flash,

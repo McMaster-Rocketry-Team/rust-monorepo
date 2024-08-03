@@ -674,16 +674,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "embedded-alloc"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ddae17915accbac2cfbc64ea0ae6e3b330e6ea124ba108dada63646fd3c6f815"
-dependencies = [
- "critical-section",
- "linked_list_allocator",
-]
-
-[[package]]
 name = "embedded-hal"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -837,7 +827,6 @@ dependencies = [
  "either",
  "embassy-futures",
  "embassy-sync 0.5.0",
- "embedded-alloc",
  "embedded-hal-async",
  "embedded-io-async",
  "eskf",
@@ -849,13 +838,12 @@ dependencies = [
  "futures-timer",
  "futures-util",
  "heapless 0.8.0",
- "heatshrink",
  "icao-isa",
  "icao-units",
  "int-enum",
  "libm 0.2.8",
  "log",
- "lora-modulation 0.1.4 (registry+https://github.com/rust-lang/crates.io-index)",
+ "lora-modulation",
  "lora-phy",
  "micromath",
  "mockall",
@@ -1209,12 +1197,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "heatshrink"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8b94defcbbb6dc44a18c52fb872edc27fff6dad1c093e7b88ea3bc8f732e19f5"
-
-[[package]]
 name = "heck"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1438,12 +1420,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "linked_list_allocator"
-version = "0.10.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9afa463f5405ee81cdb9cc2baf37e08ec7e4c8209442b5d72c04cfb2cd6e6286"
-
-[[package]]
 name = "linux-raw-sys"
 version = "0.4.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1474,12 +1450,6 @@ checksum = "a7a70ba024b9dc04c27ea2f0c0548feb474ec5c54bba33a7f72f873a39d07b24"
 [[package]]
 name = "lora-modulation"
 version = "0.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fe94d1a6dac71b9d54e7a76eb093fdb8e622601c3515f15e8cdca197d663b41c"
-
-[[package]]
-name = "lora-modulation"
-version = "0.1.4"
 source = "git+https://github.com/lora-rs/lora-rs#36885275fbfed98578e1a3a48555d973638b6105"
 
 [[package]]
@@ -1491,7 +1461,7 @@ dependencies = [
  "document-features",
  "embedded-hal",
  "embedded-hal-async",
- "lora-modulation 0.1.4 (git+https://github.com/lora-rs/lora-rs)",
+ "lora-modulation",
  "num-traits",
 ]
 
