@@ -30,9 +30,9 @@ pub struct VLFSTestingHarness {
 
 impl VLFSTestingHarness {
     pub async fn new(flash_image_path: PathBuf) -> Self {
-        #[cfg(feature = "tests_use_debug_flash")]
+        #[cfg(feature = "internal_tests_use_debug_flash")]
         let flash = DebugFlash::new().await;
-        #[cfg(not(feature = "tests_use_debug_flash"))]
+        #[cfg(not(feature = "internal_tests_use_debug_flash"))]
         let flash = MemoryFlash::new(Some(flash_image_path));
 
         let mut vlfs = VLFS::new(flash, DummyCrc {});

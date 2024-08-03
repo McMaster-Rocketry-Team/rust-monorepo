@@ -1,12 +1,9 @@
 use std::{fs::read_to_string, path::Path};
 
 use anyhow::Result;
-use firmware_common::{
-    avionics::flight_profile::PyroSelection,
-    common::{
-        device_config::{DeviceConfig, DeviceModeConfig, LoraConfig},
-        rkyv_structs::RkyvString,
-    },
+use firmware_common::common::{
+    device_config::{DeviceConfig, DeviceModeConfig, LoraConfig},
+    rkyv_structs::RkyvString,
 };
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -60,7 +57,7 @@ impl Into<LoraConfig> for LoraConfigSerde {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "mode")]
 pub enum DeviceModeConfigSerde {
-    Avionics ,
+    Avionics,
     GCM,
     GroundTestAvionics {
         drogue_pyro: PyroSelectionSerde,

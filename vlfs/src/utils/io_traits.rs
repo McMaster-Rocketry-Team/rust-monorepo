@@ -1,12 +1,14 @@
+use core::future::Future;
+
 pub trait AsyncReader {
     type Error;
     type ReadStatus;
 
-    async fn read_slice<'b>(
+    fn read_slice<'b>(
         &mut self,
         buffer: &'b mut [u8],
         length: usize,
-    ) -> Result<(&'b [u8], Self::ReadStatus), Self::Error>;
+    ) -> impl Future<Output = Result<(&'b [u8], Self::ReadStatus), Self::Error>>;
 
     async fn read_all<'b>(
         &mut self,
@@ -71,7 +73,7 @@ pub trait AsyncReader {
 pub trait AsyncWriter {
     type Error;
 
-    async fn extend_from_slice(&mut self, slice: &[u8]) -> Result<(), Self::Error>;
+    fn extend_from_slice(&mut self, slice: &[u8]) -> impl Future<Output = Result<(), Self::Error>>;
 
     async fn extend_from_u8(&mut self, value: u8) -> Result<(), Self::Error> {
         self.extend_from_slice(&[value]).await
@@ -87,27 +89,5 @@ pub trait AsyncWriter {
 
     async fn extend_from_u64(&mut self, value: u64) -> Result<(), Self::Error> {
         self.extend_from_slice(&value.to_be_bytes()).await
-    }
-}
-
-pub trait Writer {
-    type Error;
-
-    fn extend_from_slice(&mut self, slice: &[u8]) -> Result<(), Self::Error>;
-
-    fn extend_from_u8(&mut self, value: u8) -> Result<(), Self::Error> {
-        self.extend_from_slice(&[value])
-    }
-
-    fn extend_from_u16(&mut self, value: u16) -> Result<(), Self::Error> {
-        self.extend_from_slice(&value.to_be_bytes())
-    }
-
-    fn extend_from_u32(&mut self, value: u32) -> Result<(), Self::Error> {
-        self.extend_from_slice(&value.to_be_bytes())
-    }
-
-    fn extend_from_u64(&mut self, value: u64) -> Result<(), Self::Error> {
-        self.extend_from_slice(&value.to_be_bytes())
     }
 }

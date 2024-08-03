@@ -375,7 +375,6 @@ where
 
 #[cfg(test)]
 mod test {
-
     use super::*;
     use crate::{
         common::{sensor_reading::SensorReading, test_utils::BufferWriter},

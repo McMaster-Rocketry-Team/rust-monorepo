@@ -3,9 +3,8 @@ use core::ops::{Deref, DerefMut};
 use core::task::{Poll, Waker};
 
 use core::future::poll_fn;
-use embassy_sync::blocking_mutex::raw::{NoopRawMutex, RawMutex};
+use embassy_sync::blocking_mutex::raw::RawMutex;
 use embassy_sync::blocking_mutex::Mutex as BlockingMutex;
-use futures::future::join;
 
 use heapless::Deque;
 
@@ -104,68 +103,38 @@ where
     }
 }
 
-pub async fn fairMutexTest() {
-    let m: FairMutex<NoopRawMutex, u32, 10> = FairMutex::new(0);
-    let task1 = async {
-        loop {
-            log_info!("Task 1");
-            let mut guard = m.lock().await;
-            *guard += 1;
-            if *guard > 100 {
-                break;
-            }
-        }
-    };
-    let task2 = async {
-        loop {
-            log_info!("Task 2");
-            let mut guard = m.lock().await;
-            *guard += 1;
-            if *guard > 100 {
-                break;
-            }
-        }
-    };
 
-    join(task1, task2).await;
+
+#[cfg(test)]
+mod tests {
+    use embassy_sync::blocking_mutex::raw::NoopRawMutex;
+    use tokio::join;
+    use super::*;
+
+    #[tokio::test]
+    async fn fair_mutex_test() {
+        let m: FairMutex<NoopRawMutex, u32, 10> = FairMutex::new(0);
+        let task1 = async {
+            loop {
+                log_info!("Task 1");
+                let mut guard = m.lock().await;
+                *guard += 1;
+                if *guard > 100 {
+                    break;
+                }
+            }
+        };
+        let task2 = async {
+            loop {
+                log_info!("Task 2");
+                let mut guard = m.lock().await;
+                *guard += 1;
+                if *guard > 100 {
+                    break;
+                }
+            }
+        };
+    
+        join!(task1, task2);
+    }
 }
-
-// #[cfg(test)]
-// mod tests {
-//     use core::time::Duration;
-
-//     use embassy_sync::blocking_mutex::raw::NoopRawMutex;
-//     use futures_executor::LocalPool;
-//     use futures_timer::Delay;
-//     use futures_util::task::SpawnExt;
-//     use static_cell::StaticCell;
-
-//     use super::*;
-
-//     #[futures_test::test]
-//     async fn test() {
-//         let executor = LocalPool::new();
-//         static MUTEX: StaticCell<FairMutex::<NoopRawMutex, u32, 10>> = StaticCell::new();
-//         let mutex = &*MUTEX.init(FairMutex::new(0));
-
-//         let m = mutex;
-//         loop{
-//             println!("Task 1");
-//             let mut guard = m.lock().await;
-//             *guard += 1;
-//             if *guard > 100 {
-//                 break;
-//             }
-//         }
-//         let task2 = async {
-//             loop{
-//                 println!("Task 2");
-//                 let mut guard = m.lock().await;
-//                 *guard += 1;
-//                 if *guard > 100 {
-//                     break;
-//                 }
-//             }
-//         };
-//     }
-// }

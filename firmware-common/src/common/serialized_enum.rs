@@ -1,12 +1,11 @@
-use core::future::Future;
 use embedded_io_async::{Read, ReadExactError};
 
 pub trait SerializedEnumReader<R: Read> {
     type Output;
 
-    fn read_next(
+    async fn read_next(
         &mut self,
-    ) -> impl Future<Output = Result<Option<Self::Output>, ReadExactError<R::Error>>>;
+    ) -> Result<Option<Self::Output>, ReadExactError<R::Error>>;
 
     fn into_reader(self) -> R;
 }

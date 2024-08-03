@@ -1,5 +1,6 @@
 use core::{
     fmt::Debug,
+    future::Future,
     ops::{Deref, DerefMut},
 };
 
@@ -10,15 +11,15 @@ pub trait Flash {
     type Error: defmt::Format + Debug + embedded_io_async::Error;
 
     // This function returns the size of the flash memory in bytes.
-    async fn size(&self) -> u32;
+    fn size(&self) -> impl Future<Output = u32>;
 
     // "reboots" the flash device, returning it to a known state
-    async fn reset(&mut self) -> Result<(), Self::Error>;
+    fn reset(&mut self) -> impl Future<Output = Result<(), Self::Error>>;
 
     // erase methods must set all the erased bits to 1 - VLFS relies on this assumption
-    async fn erase_sector_4kib(&mut self, address: u32) -> Result<(), Self::Error>;
-    async fn erase_block_32kib(&mut self, address: u32) -> Result<(), Self::Error>;
-    async fn erase_block_64kib(&mut self, address: u32) -> Result<(), Self::Error>;
+    fn erase_sector_4kib(&mut self, address: u32) -> impl Future<Output = Result<(), Self::Error>>;
+    fn erase_block_32kib(&mut self, address: u32) -> impl Future<Output = Result<(), Self::Error>>;
+    fn erase_block_64kib(&mut self, address: u32) -> impl Future<Output = Result<(), Self::Error>>;
 
     /// Reads 4KiB of data from the memory device starting at the specified address.
     /// maximum read length is 4 kb
@@ -37,12 +38,12 @@ pub trait Flash {
     /// let read_data = flash.read_4kib(0x0000_0000, 4096, &mut read_buffer).await;
     ///
     /// ```
-    async fn read_4kib<'b>(
+    fn read_4kib<'b>(
         &mut self,
         address: u32,
         read_length: usize,
         read_buffer: &'b mut [u8],
-    ) -> Result<&'b [u8], Self::Error>; //
+    ) -> impl Future<Output = Result<&'b [u8], Self::Error>>; //
 
     /// Writes 256 bytes of data to the memory device starting at the specified address.
     /// size of the buffer must be at least 261 bytes long
@@ -59,11 +60,11 @@ pub trait Flash {
     /// flash.write_256b(0x0000_0000, &mut write_buffer).await;
     ///
     /// ```
-    async fn write_256b<'b>(
+    fn write_256b<'b>(
         &mut self,
         address: u32,
         write_buffer: &'b mut [u8],
-    ) -> Result<(), Self::Error>;
+    ) -> impl Future<Output = Result<(), Self::Error>>;
 
     /// Reads arbitary length of data from the memory device starting at the specified address.
     /// maximum read length is 4 kb

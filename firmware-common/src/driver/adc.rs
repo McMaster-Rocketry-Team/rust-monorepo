@@ -1,6 +1,5 @@
 use core::marker::PhantomData;
 
-use core::future::Future;
 use embedded_hal_async::delay::DelayNs;
 
 use crate::common::delta_logger::prelude::*;
@@ -100,9 +99,7 @@ impl<U: UnitType> SensorData for ADCData<U> {}
 pub trait ADC<U: UnitType> {
     type Error: defmt::Format + core::fmt::Debug;
 
-    fn read(
-        &mut self,
-    ) -> impl Future<Output = Result<SensorReading<BootTimestamp, ADCData<U>>, Self::Error>>;
+    async fn read(&mut self) -> Result<SensorReading<BootTimestamp, ADCData<U>>, Self::Error>;
 }
 
 pub struct DummyADC<D: DelayNs, U: UnitType> {

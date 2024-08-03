@@ -1,5 +1,4 @@
 use core::fmt::Debug;
-use core::future::Future;
 
 use embedded_hal_async::delay::DelayNs;
 use ferraris_calibration::IMUReadingTrait;
@@ -129,10 +128,8 @@ impl<T: TimestampType> IMUReadingTrait for SensorReading<T, IMUData> {
 pub trait IMU {
     type Error: defmt::Format + Debug;
 
-    fn reset(&mut self) -> impl Future<Output = Result<(), Self::Error>>;
-    fn read(
-        &mut self,
-    ) -> impl Future<Output = Result<SensorReading<BootTimestamp, IMUData>, Self::Error>>;
+    async fn reset(&mut self) -> Result<(), Self::Error>;
+    async fn read(&mut self) -> Result<SensorReading<BootTimestamp, IMUData>, Self::Error>;
 }
 
 pub struct DummyIMU<D: DelayNs> {

@@ -169,7 +169,7 @@ struct WriteRequest {
     data: Vec<u8>,
 }
 
-#[cfg(feature = "tests_use_debug_flash")]
+#[cfg(feature = "internal_tests_use_debug_flash")]
 #[cfg(test)]
 mod test {
     use super::*;

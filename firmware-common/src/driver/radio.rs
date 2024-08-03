@@ -43,10 +43,12 @@ where
         self.deref_mut().tx(payload).await
     }
 
+    #[allow(refining_impl_trait_reachable)]
     async fn rx(&mut self) -> Result<(RadioReceiveInfo, Vec<u8, MAX_PAYLOAD_LENGTH>), Self::Error> {
         self.deref_mut().rx().await
     }
 
+    #[allow(refining_impl_trait_reachable)]
     async fn rx_with_timeout(
         &mut self,
         timeout_ms: u32,
@@ -82,6 +84,7 @@ impl RadioPhy for DummyRadio {
 
     async fn tx(&mut self, _payload: &[u8]) {}
 
+    #[allow(refining_impl_trait_reachable)]
     async fn rx(&mut self) -> Result<(RadioReceiveInfo, Vec<u8, MAX_PAYLOAD_LENGTH>), Self::Error> {
         Ok((
             RadioReceiveInfo {
@@ -93,6 +96,7 @@ impl RadioPhy for DummyRadio {
         ))
     }
 
+    #[allow(refining_impl_trait_reachable)]
     async fn rx_with_timeout(
         &mut self,
         _timeout_ms: u32,

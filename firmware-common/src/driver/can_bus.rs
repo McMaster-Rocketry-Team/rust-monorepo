@@ -89,12 +89,11 @@ impl<D: Delay> CanBusTX for DummyCanBus<D> {
 impl<D: Delay> CanBusRX for DummyCanBus<D> {
     type Error = ();
 
-    async fn receive(&mut self) -> Result<impl CanBusRawMessage, Self::Error> {
+    #[allow(refining_impl_trait_reachable)]
+    async fn receive(&mut self) -> Result<DummyCanBusMessage, Self::Error> {
         loop {
             self.delay.delay_ms(1000.0).await;
         }
-        log_unreachable!();
-        Ok(DummyCanBusMessage)
     }
 }
 

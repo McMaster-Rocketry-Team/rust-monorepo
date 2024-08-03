@@ -7,6 +7,7 @@
 #![feature(async_closure)]
 #![feature(assert_matches)]
 #![feature(never_type)]
+#![allow(async_fn_in_trait)]
 
 mod fmt;
 

@@ -3,13 +3,11 @@ use crate::common::fixed_point::F32FixedPointFactory;
 use crate::common::sensor_reading::{SensorData, SensorReading};
 use crate::fixed_point_factory_slope;
 
-use core::future::Future;
 use core::{fmt::Debug, ops::DerefMut as _};
 use embassy_sync::{blocking_mutex::raw::RawMutex, mutex::MutexGuard};
 use embedded_hal_async::delay::DelayNs;
 use icao_isa::calculate_isa_altitude;
 use icao_units::si::Pascals;
-use libm::powf;
 
 use super::timestamp::BootTimestamp;
 
@@ -100,10 +98,10 @@ impl BaroData {
 pub trait Barometer {
     type Error: defmt::Format + Debug;
 
-    fn reset(&mut self) -> impl Future<Output = Result<(), Self::Error>>;
-    fn read(
+    async fn reset(&mut self) -> Result<(), Self::Error>;
+    async fn read(
         &mut self,
-    ) -> impl Future<Output = Result<SensorReading<BootTimestamp, BaroData>, Self::Error>>;
+    ) -> Result<SensorReading<BootTimestamp, BaroData>, Self::Error>;
 }
 
 pub struct DummyBarometer<D: DelayNs> {

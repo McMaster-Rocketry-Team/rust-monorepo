@@ -47,6 +47,7 @@ impl<
 {
     type Error = E;
 
+    #[allow(refining_impl_trait_reachable)]
     fn split(&mut self) -> (TXGuard<'_, E, T, R>, RXGuard<'_, E, T, R>) {
         (TXGuard { wrapper: self }, RXGuard { wrapper: self })
     }

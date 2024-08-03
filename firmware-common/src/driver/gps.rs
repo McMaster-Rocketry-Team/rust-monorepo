@@ -9,7 +9,6 @@ use crate::{
 use crate::{fixed_point_factory, fixed_point_factory_slope};
 use chrono::{TimeZone as _, Utc};
 use core::fmt::Debug;
-use core::future::Future;
 use core::ops::DerefMut;
 use embassy_sync::{blocking_mutex::raw::RawMutex, mutex::MutexGuard};
 use libm::floor;
@@ -223,13 +222,13 @@ impl SensorData for GPSData {}
 pub trait GPS {
     type Error: defmt::Format + Debug;
 
-    fn next_location(
+    async fn next_location(
         &mut self,
-    ) -> impl Future<Output = Result<SensorReading<BootTimestamp, GPSData>, Self::Error>>;
+    ) ->  Result<SensorReading<BootTimestamp, GPSData>, Self::Error>;
 }
 
 pub trait GPSPPS {
-    fn wait_for_pps(&mut self) -> impl Future<Output = ()>;
+    async fn wait_for_pps(&mut self);
 }
 
 impl<'a, M, T> GPSPPS for MutexGuard<'a, M, T>

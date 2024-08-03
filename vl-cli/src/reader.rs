@@ -2,7 +2,6 @@ use std::convert::Infallible;
 
 use tokio::io::AsyncReadExt;
 use tokio::io::{AsyncRead, BufReader};
-use tokio::pin;
 pub struct VecReader {
     pub buffer: Vec<u8>,
     pub offset: usize,
