@@ -627,9 +627,9 @@ dependencies = [
 
 [[package]]
 name = "either"
-version = "1.12.0"
+version = "1.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3dca9240753cf90908d7e4aac30f630662b02aebaa1b58a3cadabdb23385b58b"
+checksum = "60b1af1c220855b6ceac025d3f6ecdd2b7c4894bfe9cd9bda4fbb4bc7c0d4cf0"
 
 [[package]]
 name = "embassy-futures"
@@ -1479,6 +1479,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "19b955cdeb2a02b9117f121ce63aa52d08ade45de53e48fe6a38b39c10f6f709"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "map-range"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bffa558d7f51b549670be5ff6db164cd9be428c035cbf4e3f782db3da66845a5"
+dependencies = [
+ "num-traits",
 ]
 
 [[package]]
@@ -2806,12 +2815,14 @@ dependencies = [
  "csv",
  "defmt",
  "directories",
+ "either",
  "embassy-sync 0.6.0",
  "embedded-hal-async",
  "embedded-io-async",
  "env_logger",
  "firmware-common",
  "log",
+ "map-range",
  "rand",
  "rustyline",
  "serde",
