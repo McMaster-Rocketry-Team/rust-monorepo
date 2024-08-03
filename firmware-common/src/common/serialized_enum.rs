@@ -1,3 +1,16 @@
+use core::future::Future;
+use embedded_io_async::{Read, ReadExactError};
+
+pub trait SerializedEnumReader<R: Read> {
+    type Output;
+
+    fn read_next(
+        &mut self,
+    ) -> impl Future<Output = Result<Option<Self::Output>, ReadExactError<R::Error>>>;
+
+    fn into_reader(self) -> R;
+}
+
 #[macro_export]
 macro_rules! create_serialized_enum {
     ($writer_struct_name:ident, $reader_struct_name:ident, $enum_name:ident, $(($log_type_i:expr, $log_type:ident)),*) => {
@@ -102,8 +115,12 @@ macro_rules! create_serialized_enum {
                     buffer: [0; core::mem::size_of::<<$enum_name as rkyv::Archive>::Archived>()],
                 }
             }
+        }
 
-            pub async fn read_next(&mut self) -> Result<Option<$enum_name>, embedded_io_async::ReadExactError<R::Error>> {
+        impl<R: embedded_io_async::Read> crate::common::serialized_enum::SerializedEnumReader<R> for $reader_struct_name<R> {
+            type Output = $enum_name;
+
+            async fn read_next(&mut self) -> Result<Option<$enum_name>, embedded_io_async::ReadExactError<R::Error>> {
                 use paste::paste;
                 use rkyv::archived_root;
                 self.reader.read_exact(&mut self.buffer[..1]).await?;
@@ -124,7 +141,7 @@ macro_rules! create_serialized_enum {
             }
 
             #[allow(dead_code)]
-            pub fn into_reader(self) -> R {
+            fn into_reader(self) -> R {
                 self.reader
             }
         }
@@ -133,17 +150,17 @@ macro_rules! create_serialized_enum {
 
 #[cfg(test)]
 mod file_logger_test {
-    use crate::common::test_utils::BufferWriter;
+    use crate::common::{serialized_enum::SerializedEnumReader, test_utils::BufferWriter};
     use core::assert_matches::assert_matches;
     use rkyv::{Archive, Deserialize, Serialize};
 
     #[derive(Archive, Deserialize, Serialize, Debug, Clone, defmt::Format)]
-    struct LogType1 {
+    pub struct LogType1 {
         pub fielda: u32,
     }
 
     #[derive(Archive, Deserialize, Serialize, Debug, Clone, defmt::Format)]
-    struct LogType2 {
+    pub struct LogType2 {
         pub fieldb: f32,
     }
 

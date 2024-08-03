@@ -37,6 +37,7 @@ mod pull_file;
 mod pull_vacuum_test;
 mod reader;
 mod pull_delta_logs;
+mod pull_logs;
 
 struct Delay;
 

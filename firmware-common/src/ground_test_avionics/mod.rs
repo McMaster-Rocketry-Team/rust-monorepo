@@ -16,7 +16,7 @@ use crate::{
         },
     },
     create_serialized_enum, device_manager_type,
-    driver::{barometer::BaroData, indicator::Indicator, timestamp::UnixTimestamp},
+    driver::{barometer::BaroData, indicator::Indicator},
     fixed_point_factory, pyro,
 };
 use embassy_sync::blocking_mutex::{raw::NoopRawMutex, Mutex as BlockingMutex};
@@ -24,7 +24,7 @@ use futures::join;
 use rkyv::{Archive, Deserialize, Serialize};
 
 #[derive(defmt::Format, Debug, Clone, Archive, Deserialize, Serialize)]
-struct FireEvent {
+pub struct FireEvent {
     pub timestamp: f64, // ms
 }
 
