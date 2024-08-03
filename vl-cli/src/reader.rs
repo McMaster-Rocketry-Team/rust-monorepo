@@ -1,5 +1,8 @@
 use std::convert::Infallible;
 
+use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncRead, BufReader};
+use tokio::pin;
 pub struct VecReader {
     pub buffer: Vec<u8>,
     pub offset: usize,
@@ -33,5 +36,17 @@ impl embedded_io_async::Read for VecReader {
             self.offset += buf.len();
             Ok(buf.len())
         }
+    }
+}
+
+pub struct BufReaderWrapper<R: AsyncRead>(pub BufReader<R>);
+
+impl<R: AsyncRead + Unpin> embedded_io_async::ErrorType for BufReaderWrapper<R> {
+    type Error = Infallible;
+}
+
+impl<R: AsyncRead + Unpin> embedded_io_async::Read for BufReaderWrapper<R> {
+    async fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
+        Ok(self.0.read(buf).await.unwrap())
     }
 }

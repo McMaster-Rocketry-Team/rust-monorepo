@@ -1,3 +1,5 @@
+#![feature(generic_const_exprs)]
+
 use std::time::Duration;
 
 use crate::list_files::list_files;
@@ -34,6 +36,7 @@ mod list_files;
 mod pull_file;
 mod pull_vacuum_test;
 mod reader;
+mod pull_delta_logs;
 
 struct Delay;
 
