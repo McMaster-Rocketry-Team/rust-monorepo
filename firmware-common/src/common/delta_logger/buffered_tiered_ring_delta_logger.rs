@@ -12,25 +12,29 @@ use crate::{
         fixed_point::F64FixedPointFactory,
         sensor_reading::{SensorData, SensorReading},
     },
-    driver::timestamp::TimestampType,
+    driver::timestamp::BootTimestamp,
     try_or_warn, Clock, Delay,
 };
 
-use super::prelude::TieredRingDeltaLogger;
+use super::{delta_logger::UnixTimeLog, prelude::TieredRingDeltaLogger};
 
-pub struct BufferedTieredRingDeltaLogger<TM, D, const CAP: usize>
+pub struct BufferedTieredRingDeltaLogger<D, const CAP: usize>
 where
-    TM: TimestampType,
     D: SensorData,
     [(); size_of::<D>() + 10]:,
 {
-    channel: PubSubChannel<NoopRawMutex, SensorReading<TM, D>, CAP, 1, 1>,
+    channel: PubSubChannel<
+        NoopRawMutex,
+        either::Either<SensorReading<BootTimestamp, D>, UnixTimeLog>,
+        CAP,
+        1,
+        1,
+    >,
     close_signal: Signal<NoopRawMutex, ()>,
 }
 
-impl<TM, D, const CAP: usize> BufferedTieredRingDeltaLogger<TM, D, CAP>
+impl<D, const CAP: usize> BufferedTieredRingDeltaLogger<D, CAP>
 where
-    TM: TimestampType,
     D: SensorData,
     [(); size_of::<D>() + 10]:,
 {
@@ -41,8 +45,12 @@ where
         }
     }
 
-    pub fn log(&self, value: SensorReading<TM, D>) {
-        self.channel.publish_immediate(value);
+    pub fn log(&self, value: SensorReading<BootTimestamp, D>) {
+        self.channel.publish_immediate(either::Either::Left(value));
+    }
+
+    pub fn log_unix_time(&mut self, log: UnixTimeLog) {
+        self.channel.publish_immediate(either::Either::Right(log));
     }
 
     pub fn close(&self) {
@@ -51,9 +59,9 @@ where
 
     pub async fn run<'a, FF1, FF2, C, F, DL, CL>(
         &self,
-        _ff1:FF1,
-        _ff2:FF2,
-        logger: TieredRingDeltaLogger<'a, TM, D, C, F, FF1, FF2, DL, CL>,
+        _ff1: FF1,
+        _ff2: FF2,
+        logger: TieredRingDeltaLogger<'a, D, C, F, FF1, FF2, DL, CL>,
     ) where
         C: Crc,
         F: Flash,
@@ -70,8 +78,11 @@ where
             let mut sub = self.channel.subscriber().unwrap();
             loop {
                 match select(sub.next_message_pure(), self.close_signal.wait()).await {
-                    Either::First(value) => {
+                    Either::First(either::Either::Left(value)) => {
                         try_or_warn!(logger.log(value).await);
+                    }
+                    Either::First(either::Either::Right(log)) => {
+                        try_or_warn!(logger.log_unix_time(log).await);
                     }
                     Either::Second(_) => {
                         logger.close();

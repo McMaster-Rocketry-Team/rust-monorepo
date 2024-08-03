@@ -5,13 +5,13 @@ use embassy_sync::{
         raw::{NoopRawMutex, RawMutex},
         Mutex as BlockingMutex,
     },
-    pubsub::Subscriber,
+    pubsub::{PubSubChannel, Subscriber},
 };
 use futures::join;
 
 use crate::{driver::gps::GPSPPS, Clock};
 
-use super::{moving_average::NoSumSMA, multi_waker::MultiWakerRegistration};
+use super::multi_waker::MultiWakerRegistration;
 
 #[derive(Default)]
 struct UnixClockState {
@@ -22,6 +22,7 @@ struct UnixClockState {
 pub struct UnixClockTask<K: Clock> {
     state: BlockingMutex<NoopRawMutex, RefCell<UnixClockState>>,
     clock: K,
+    channel: PubSubChannel<NoopRawMutex, f64, 1, 10, 1>,
 }
 
 impl<K: Clock> UnixClockTask<K> {
@@ -29,6 +30,7 @@ impl<K: Clock> UnixClockTask<K> {
         Self {
             state: BlockingMutex::new(RefCell::new(UnixClockState::default())),
             clock,
+            channel: PubSubChannel::new(),
         }
     }
 
@@ -42,7 +44,7 @@ impl<K: Clock> UnixClockTask<K> {
         mut gps_timestamp_sub: Subscriber<'_, impl RawMutex, i64, CAP, SUBS, PUBS>,
         clock: impl Clock,
     ) -> ! {
-        let mut offset_running_avg = NoSumSMA::<f64, f64, 30>::new(0.0);
+        let publisher = self.channel.publisher().unwrap();
         let latest_gps_timestamp =
             BlockingMutex::<NoopRawMutex, _>::new(RefCell::new((0f64, 0i64)));
 
@@ -64,12 +66,12 @@ impl<K: Clock> UnixClockTask<K> {
                     if pps_time - latest_gps_timestamp.0 < 800.0 {
                         let current_unix_timestamp = ((latest_gps_timestamp.1 + 1) as f64) * 1000.0;
                         let new_offset = current_unix_timestamp - pps_time;
-                        offset_running_avg.add_sample(new_offset);
                         self.state.lock(|state| {
                             let mut state = state.borrow_mut();
-                            state.offset.replace(offset_running_avg.get_average());
+                            state.offset.replace(new_offset);
                             state.waker.wake();
                         });
+                        publisher.publish_immediate(current_unix_timestamp);
                     }
                 });
             }
@@ -103,12 +105,16 @@ impl<'a, K: Clock> UnixClock<'a, K> {
                 if state.offset.is_some() {
                     return Poll::Ready(());
                 } else {
-                    state.waker.register(cx.waker());
+                    state.waker.register(cx.waker()).unwrap();
                     return Poll::Pending;
                 }
             })
         })
         .await;
+    }
+
+    pub fn subscribe_unix_clock_update(&self) -> Subscriber<'_, NoopRawMutex, f64, 1, 10, 1> {
+        self.task.channel.subscriber().unwrap()
     }
 
     pub fn convert_to_unix(&self, boot_timstamp: f64) -> f64 {

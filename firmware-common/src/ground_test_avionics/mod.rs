@@ -68,7 +68,7 @@ pub async fn ground_test_avionics(
         .create_file_and_open_for_write(GROUND_TEST_BARO_FILE_TYPE)
         .await
         .unwrap();
-    let baro_logger = BufferedDeltaLogger::<UnixTimestamp, BaroData, 400>::new();
+    let baro_logger = BufferedDeltaLogger::<BaroData, 400>::new();
     let baro_logger_fut = baro_logger.run(BaroFF, DeltaLogger::new(log_file_writer));
 
     log_info!("resetting barometer");
@@ -103,11 +103,10 @@ pub async fn ground_test_avionics(
 
                 let log_baro_fut = async {
                     let mut baro_ticker =
-                        Ticker::every(services.unix_clock(), services.delay(), 5.0);
+                        Ticker::every(services.clock(), services.delay(), 5.0);
                     while !finished.lock(|s| *s.borrow()) {
                         baro_ticker.next().await;
                         if let Ok(reading) = barometer.read().await {
-                            let reading = reading.to_unix_timestamp(&services.unix_clock());
                             baro_logger.log(reading);
                         }
                     }
@@ -132,7 +131,7 @@ pub async fn ground_test_avionics(
                     services.delay.delay_ms(1000.0).await;
 
                     log_info!("fire");
-                    let fire_time = services.unix_clock.now_ms();
+                    let fire_time = services.clock.now_ms();
                     pyro!(
                         device_manager,
                         pyro_selection,

@@ -19,7 +19,6 @@ use crate::common::file_types::{
 };
 use crate::common::ticker::Ticker;
 use crate::driver::barometer::BaroData;
-use crate::driver::timestamp::BootTimestamp;
 use crate::{claim_devices, create_serialized_enum, fixed_point_factory};
 use crate::{device_manager_type, system_services_type};
 
@@ -68,7 +67,7 @@ pub async fn vacuum_test_main(
     let mut logger = VacuumTestLogger::new(log_file_writer);
 
     log_info!("Creating baro logger");
-    let baro_logger = BufferedTieredRingDeltaLogger::<BootTimestamp, BaroData, 40>::new();
+    let baro_logger = BufferedTieredRingDeltaLogger::<BaroData, 400>::new();
     let baro_logger_fut = baro_logger.run(
         SensorsFF1,
         SensorsFF2,

@@ -28,6 +28,10 @@ impl<T: Deltable> DeltaFactory<T> {
         self.last_value = Some(value.clone());
         Either::Left(value)
     }
+
+    pub fn push_no_delta(&mut self, value: T)  {
+        self.last_value = Some(value);
+    }
 }
 
 pub struct UnDeltaFactory<T>

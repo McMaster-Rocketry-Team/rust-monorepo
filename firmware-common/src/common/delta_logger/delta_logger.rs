@@ -8,11 +8,11 @@ use crate::{
         sensor_reading::{SensorData, SensorReading},
         variable_int::VariableIntTrait,
     },
-    driver::timestamp::TimestampType,
+    driver::timestamp::BootTimestamp,
 };
 
-use super::delta_factory::{DeltaFactory, Deltable, UnDeltaFactory};
 use super::bitslice_serialize::{BitArraySerializable, BitSliceReader, BitSliceWriter};
+use super::delta_factory::{DeltaFactory, Deltable, UnDeltaFactory};
 use crate::common::delta_logger::bitslice_primitive::BitSlicePrimitive;
 
 #[derive(Debug, Clone)]
@@ -39,11 +39,61 @@ impl<F: F64FixedPointFactory> Deltable for Timestamp<F> {
 #[derive(Debug, Clone)]
 struct TimestampDelta<F: F64FixedPointFactory>(<F::VI as VariableIntTrait>::Packed);
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Header {
+    DeltaTimestampDeltaData,
+    DeltaTimestampFullData,
+    UnixTimeStampLog,
+    EndOfByte,
+    FullTimestampFullData,
+}
+
+impl Header {
+    // Using huffman coding:
+    // 10 -> delta timestamp, delta data
+    // 01 -> delta timestamp, full data
+    // 00 -> unix timestamp log
+    // 111 -> end of byte
+    // 110 -> full timestamp, full data
+    fn serialize<const N: usize>(&self, writer: &mut BitSliceWriter<N>) {
+        match self {
+            Header::DeltaTimestampDeltaData => writer.write([true, false]),
+            Header::DeltaTimestampFullData => writer.write([false, true]),
+            Header::UnixTimeStampLog => writer.write([false, false]),
+            Header::EndOfByte => writer.write([true, true, true]),
+            Header::FullTimestampFullData => writer.write([true, true, false]),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct UnixTimeLog {
+    pub boot_timestamp: f64,
+    pub unix_timestamp: f64,
+}
+
+impl BitArraySerializable for UnixTimeLog {
+    fn serialize<const N: usize>(&self, writer: &mut BitSliceWriter<N>) {
+        writer.write(self.boot_timestamp);
+        writer.write(self.unix_timestamp);
+    }
+
+    fn deserialize<const N: usize>(reader: &mut BitSliceReader<N>) -> Self {
+        Self {
+            boot_timestamp: reader.read().unwrap(),
+            unix_timestamp: reader.read().unwrap(),
+        }
+    }
+
+    fn len_bits() -> usize {
+        64 + 64
+    }
+}
+
 /// If the readings are closer than the minimum value supported by the
 /// fixed point factory, they will be ignored
-pub struct DeltaLogger<TM, D, W, FF>
+pub struct DeltaLogger<D, W, FF>
 where
-    TM: TimestampType,
     D: SensorData,
     W: embedded_io_async::Write,
     FF: F64FixedPointFactory,
@@ -53,11 +103,12 @@ where
     timestamp_factory: DeltaFactory<Timestamp<FF>>,
     writer: W,
     bit_writer: BitSliceWriter<{ size_of::<D>() + 10 }>,
+    last_entry_is_unix_time: bool,
+    unix_time_log_buffer: Option<UnixTimeLog>,
 }
 
-impl<TM, D, W, FF> DeltaLogger<TM, D, W, FF>
+impl<D, W, FF> DeltaLogger<D, W, FF>
 where
-    TM: TimestampType,
     D: SensorData,
     W: embedded_io_async::Write,
     FF: F64FixedPointFactory,
@@ -69,16 +120,16 @@ where
             timestamp_factory: DeltaFactory::new(),
             writer,
             bit_writer: Default::default(),
+            last_entry_is_unix_time: false,
+            unix_time_log_buffer: None,
         }
     }
 
-    // header:
-    // 00 -> delta timestamp, delta data
-    // 01 -> delta timestamp, full data
-    // 10 -> end of byte
-    // 11 -> full timestamp, full data
     /// returns true if the reading was logged
-    pub async fn log(&mut self, reading: SensorReading<TM, D>) -> Result<bool, W::Error> {
+    pub async fn log(
+        &mut self,
+        reading: SensorReading<BootTimestamp, D>,
+    ) -> Result<bool, W::Error> {
         if let Some(last_timestamp) = &self.timestamp_factory.last_value {
             let interval = reading.timestamp - last_timestamp.0;
             if interval < FF::min() {
@@ -86,28 +137,29 @@ where
             }
         }
 
+        if let Some(unix_time_log) = self.unix_time_log_buffer.take() {
+            self.log_unix_time(unix_time_log).await?;
+        }
+
         match self.timestamp_factory.push(reading.timestamp.into()) {
             Either::Left(full_timestamp) => {
-                self.bit_writer.write(true);
-                self.bit_writer.write(true);
+                Header::FullTimestampFullData.serialize(&mut self.bit_writer);
                 self.bit_writer.write(full_timestamp.0);
                 reading.data.serialize(&mut self.bit_writer);
+                self.factory.push_no_delta(reading.data);
             }
-            Either::Right(delta_timestamp) => {
-                self.bit_writer.write(false);
-                match self.factory.push(reading.data) {
-                    Either::Left(data) => {
-                        self.bit_writer.write(true);
-                        self.bit_writer.write(delta_timestamp.0);
-                        data.serialize(&mut self.bit_writer);
-                    }
-                    Either::Right(delta) => {
-                        self.bit_writer.write(false);
-                        self.bit_writer.write(delta_timestamp.0);
-                        delta.serialize(&mut self.bit_writer);
-                    }
+            Either::Right(delta_timestamp) => match self.factory.push(reading.data) {
+                Either::Left(data) => {
+                    Header::DeltaTimestampFullData.serialize(&mut self.bit_writer);
+                    self.bit_writer.write(delta_timestamp.0);
+                    data.serialize(&mut self.bit_writer);
                 }
-            }
+                Either::Right(delta) => {
+                    Header::DeltaTimestampDeltaData.serialize(&mut self.bit_writer);
+                    self.bit_writer.write(delta_timestamp.0);
+                    delta.serialize(&mut self.bit_writer);
+                }
+            },
         }
 
         self.writer
@@ -115,12 +167,29 @@ where
             .await?;
         self.bit_writer.clear_full_byte_slice();
 
+        self.last_entry_is_unix_time = false;
         Ok(true)
     }
 
+    pub async fn log_unix_time(&mut self, log: UnixTimeLog) -> Result<(), W::Error> {
+        if self.last_entry_is_unix_time {
+            self.unix_time_log_buffer = Some(log);
+            return Ok(());
+        }
+
+        Header::UnixTimeStampLog.serialize(&mut self.bit_writer);
+        log.serialize(&mut self.bit_writer);
+        self.writer
+            .write_all(self.bit_writer.view_full_byte_slice())
+            .await?;
+        self.bit_writer.clear_full_byte_slice();
+
+        self.last_entry_is_unix_time = true;
+        Ok(())
+    }
+
     pub async fn flush(&mut self) -> Result<(), W::Error> {
-        self.bit_writer.write(true);
-        self.bit_writer.write(false);
+        Header::EndOfByte.serialize(&mut self.bit_writer);
         self.writer
             .write_all(self.bit_writer.view_all_data_slice())
             .await?;
@@ -135,9 +204,8 @@ where
     }
 }
 
-pub struct DeltaLoggerReader<TM, D, R, FF>
+pub struct DeltaLoggerReader<D, R, FF>
 where
-    TM: TimestampType,
     D: SensorData,
     R: embedded_io_async::Read,
     FF: F64FixedPointFactory,
@@ -149,19 +217,17 @@ where
     bit_reader: BitSliceReader<{ size_of::<D>() + 10 }>,
 }
 
-enum DeltaLoggerReaderResult<TM, D>
+enum DeltaLoggerReaderResult<D>
 where
-    TM: TimestampType,
     D: SensorData,
 {
     EOF,
-    Data(SensorReading<TM, D>),
+    Data(Either<SensorReading<BootTimestamp, D>, UnixTimeLog>),
     TryAgain,
 }
 
-impl<TM, D, R, F> DeltaLoggerReader<TM, D, R, F>
+impl<D, R, F> DeltaLoggerReader<D, R, F>
 where
-    TM: TimestampType,
     D: SensorData,
     R: embedded_io_async::Read,
     F: F64FixedPointFactory,
@@ -176,7 +242,9 @@ where
         }
     }
 
-    pub async fn read(&mut self) -> Result<Option<SensorReading<TM, D>>, R::Error> {
+    pub async fn read(
+        &mut self,
+    ) -> Result<Option<Either<SensorReading<BootTimestamp, D>, UnixTimeLog>>, R::Error> {
         loop {
             match self.inner_read().await? {
                 DeltaLoggerReaderResult::EOF => {
@@ -192,19 +260,50 @@ where
         }
     }
 
-    async fn inner_read(&mut self) -> Result<DeltaLoggerReaderResult<TM, D>, R::Error> {
+    async fn inner_read(&mut self) -> Result<DeltaLoggerReaderResult<D>, R::Error> {
         if !self.ensure_at_least_bits(2).await? {
             return Ok(DeltaLoggerReaderResult::EOF);
         }
 
-        let is_full_timestamp: bool = self.bit_reader.read().unwrap();
-        let is_full_data: bool = self.bit_reader.read().unwrap();
+        let header_1: bool = self.bit_reader.read().unwrap();
+        let header_2: bool = self.bit_reader.read().unwrap();
+        let header = match (header_1, header_2) {
+            (true, false) => Header::DeltaTimestampDeltaData,
+            (false, true) => Header::DeltaTimestampFullData,
+            (false, false) => Header::UnixTimeStampLog,
+            (true, true) => {
+                if !self.ensure_at_least_bits(1).await? {
+                    return Ok(DeltaLoggerReaderResult::EOF);
+                }
+                if self.bit_reader.read().unwrap() {
+                    Header::EndOfByte
+                } else {
+                    Header::FullTimestampFullData
+                }
+            }
+        };
 
-        if is_full_timestamp && !is_full_data {
-            // end of byte
+        if header == Header::EndOfByte {
             self.bit_reader.skip_byte();
             return Ok(DeltaLoggerReaderResult::TryAgain);
         }
+
+        if header == Header::UnixTimeStampLog {
+            if !self.ensure_at_least_bits(UnixTimeLog::len_bits()).await? {
+                return Ok(DeltaLoggerReaderResult::EOF);
+            }
+            let log = UnixTimeLog::deserialize(&mut self.bit_reader);
+            return Ok(DeltaLoggerReaderResult::Data(Either::Right(log)));
+        }
+
+        let (is_full_timestamp, is_full_data) = match header {
+            Header::FullTimestampFullData => (true, true),
+            Header::DeltaTimestampDeltaData => (false, false),
+            Header::DeltaTimestampFullData => (false, true),
+            _ => {
+                log_unreachable!()
+            }
+        };
 
         let timestamp = if is_full_timestamp {
             if !self.ensure_at_least_bits(64).await? {
@@ -250,9 +349,8 @@ where
         let timestamp = timestamp.unwrap();
         let data = data.unwrap();
 
-        Ok(DeltaLoggerReaderResult::Data(SensorReading::new(
-            timestamp.0,
-            data,
+        Ok(DeltaLoggerReaderResult::Data(Either::Left(
+            SensorReading::new(timestamp.0, data),
         )))
     }
 
@@ -314,7 +412,7 @@ mod test {
 
         let mut buffer = [0u8; 512];
         let writer = BufferWriter::new(&mut buffer);
-        let mut logger = DeltaLogger::<_, _, _, TimestampFac>::new(writer);
+        let mut logger = DeltaLogger::<_, _, TimestampFac>::new(writer);
         for reading in readings.iter() {
             logger.log(reading.clone()).await.unwrap();
         }
@@ -328,13 +426,13 @@ mod test {
             (reader.len() * 8) as f32 / readings.len() as f32
         );
 
-        let mut log_reader =
-            DeltaLoggerReader::<BootTimestamp, ADCData<Volt>, _, TimestampFac>::new(reader);
+        let mut log_reader = DeltaLoggerReader::<ADCData<Volt>, _, TimestampFac>::new(reader);
         let mut i = 0usize;
         loop {
             match log_reader.read().await.unwrap() {
                 Some(reading) => {
                     println!("{:?}", reading);
+                    let reading = reading.unwrap_left();
                     assert_relative_eq!(reading.timestamp, readings[i].timestamp, epsilon = 0.5);
                     assert_relative_eq!(reading.data.value, readings[i].data.value, epsilon = 0.1);
                 }
