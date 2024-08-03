@@ -12,7 +12,7 @@ pub trait CanBusMessage: PackedStruct + Clone + Debug {
         CanBusExtendedId::new(priority, Self::message_type(), node_type, node_id)
     }
 
-    fn to_data(&self) -> Vec<u8, 64> {
+    fn to_data(&self) -> Vec<u8, 8> {
         let packed = self.pack().unwrap();
         Vec::from_slice(packed.as_bytes_slice()).unwrap()
     }

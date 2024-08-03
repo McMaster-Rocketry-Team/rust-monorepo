@@ -5,6 +5,7 @@ use embassy_sync::{
     signal::Signal,
 };
 use vlfs::{Crc, FileWriter, Flash};
+use core::mem::size_of;
 
 use crate::{
     common::{

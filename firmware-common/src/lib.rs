@@ -76,7 +76,7 @@ pub async fn init(
     // Start VLFS
     let stat_flash = StatFlash::new();
     let mut flash = stat_flash.get_flash(flash, VLFSTimerWrapper(device_manager.clock()));
-    flash.reset().await.ok();
+    flash.reset().await.unwrap();
     let mut fs = VLFS::new(flash, crc);
     fs.init().await.unwrap();
 

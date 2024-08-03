@@ -1,5 +1,6 @@
 use futures::join;
 use vlfs::{Crc, Flash, VLFSError, VLFS};
+use core::mem::size_of;
 
 use crate::{
     common::{

@@ -1,5 +1,6 @@
 use core::cell::RefCell;
 use core::mem::replace;
+use core::mem::size_of;
 
 use super::delta_logger::{DeltaLogger, DeltaLoggerReader, UnixTimestampLog};
 use crate::common::delta_logger::bitslice_primitive::BitSlicePrimitive;

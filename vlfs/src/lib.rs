@@ -5,6 +5,7 @@
 #![feature(assert_matches)]
 #![feature(is_sorted)]
 #![feature(async_closure)]
+#![feature(exclusive_range_pattern)]
 
 mod fmt;
 

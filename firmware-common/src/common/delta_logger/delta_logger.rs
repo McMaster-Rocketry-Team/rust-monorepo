@@ -10,7 +10,7 @@ use crate::{
     },
     driver::timestamp::BootTimestamp,
 };
-
+use core::mem::size_of;
 use super::bitslice_serialize::{BitArraySerializable, BitSliceReader, BitSliceWriter};
 use super::delta_factory::{DeltaFactory, Deltable, UnDeltaFactory};
 use crate::common::delta_logger::bitslice_primitive::BitSlicePrimitive;

@@ -12,6 +12,7 @@ log = ["dep:log", "vlfs/log"]
 std = []
 
 [dependencies]
+embassy-futures = "0.1.1"
 embassy-sync = { version = "0.5.0", default-features = false }
 bitvec = { version = "1.0.1", default-features = false }
 defmt = "0.3"
@@ -53,7 +54,6 @@ chrono = { version = "0.4.26", default-features = false }
 num-traits = { version = "0.2.15", default-features = false }
 eskf = { git = "https://github.com/PegasisForever/eskf-rs.git", default-features = false }
 libm = "0.2.7"
-embassy-futures = "0.1.0"
 serde = { version = "1.0.164", default-features = false, features = ["derive"] }
 serde-json-core = "0.5.0"
 lora-phy = {  git = "https://github.com/lora-rs/lora-rs", default-features = false }

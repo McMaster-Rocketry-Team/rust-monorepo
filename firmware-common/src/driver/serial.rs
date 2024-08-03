@@ -5,6 +5,7 @@ use embedded_io_async::ReadExactError;
 
 pub trait SplitableSerial {
     type Error: defmt::Format + embedded_io_async::Error + core::fmt::Debug;
+    // TODO use type: XXX instead of impl in return?
 
     fn split(
         &mut self,

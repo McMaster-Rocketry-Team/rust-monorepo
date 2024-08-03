@@ -6,6 +6,7 @@ use embassy_sync::{
 };
 use futures::join;
 use vlfs::{Crc, Flash};
+use core::mem::size_of;
 
 use crate::{
     common::{

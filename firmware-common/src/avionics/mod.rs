@@ -313,6 +313,7 @@ pub async fn avionics_main(
     );
     log_info!("Devices claimed");
 
+    let mut can_bus = can_bus.take().unwrap();
     let crc = crc::Crc::<u16>::new(&CRC_16_GSM);
     can_bus.configure_self_node(
         VOID_LAKE_NODE_TYPE,

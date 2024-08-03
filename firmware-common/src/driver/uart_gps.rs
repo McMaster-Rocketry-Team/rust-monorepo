@@ -58,6 +58,7 @@ impl UARTGPS {
 
 impl GPS for &UARTGPS {
     type Error = ();
+
     async fn next_location(
         &mut self,
     ) -> Result<SensorReading<BootTimestamp, GPSData>, Self::Error> {
