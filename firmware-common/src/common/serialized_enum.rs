@@ -1,7 +1,11 @@
+use core::fmt::Debug;
+
 use embedded_io_async::{Read, ReadExactError};
 
 pub trait SerializedEnumReader<R: Read> {
-    type Output;
+    type Output: Debug;
+
+    fn new(reader: R) -> Self;
 
     async fn read_next(
         &mut self,
@@ -107,17 +111,15 @@ macro_rules! create_serialized_enum {
             reader: R,
         }
 
-        impl<R: embedded_io_async::Read> $reader_struct_name<R> {
-            pub fn new(reader: R) -> Self {
+        impl<R: embedded_io_async::Read> crate::common::serialized_enum::SerializedEnumReader<R> for $reader_struct_name<R> {
+            type Output = $enum_name;
+
+            fn new(reader: R) -> Self {
                 Self {
                     reader,
                     buffer: [0; core::mem::size_of::<<$enum_name as rkyv::Archive>::Archived>()],
                 }
             }
-        }
-
-        impl<R: embedded_io_async::Read> crate::common::serialized_enum::SerializedEnumReader<R> for $reader_struct_name<R> {
-            type Output = $enum_name;
 
             async fn read_next(&mut self) -> Result<Option<$enum_name>, embedded_io_async::ReadExactError<R::Error>> {
                 use paste::paste;

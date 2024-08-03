@@ -28,8 +28,9 @@ pub async fn pull_delta_logs<D: SensorData, FF: F64FixedPointFactory>(
 where
     [(); size_of::<D>() + 10]:,
 {
-    let mut vldl_path = save_folder.clone();
     // VLDL: void lake delta log
+    let mut vldl_path = save_folder.clone();
+    
     vldl_path.push(format!("{}.{}.vldl", file_id, file_type_name));
     pull_file(
         rpc,
