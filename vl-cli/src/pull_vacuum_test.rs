@@ -38,24 +38,38 @@ pub async fn pull_vacuum_test(
     )
     .await?;
 
-    let baro_tier_2_files = list_files(
-        rpc,
-        LSArgs {
-            file_type: Some(VACUUM_TEST_BARO_LOGGER_TIER_2.0),
-        },
-    )
-    .await?;
+    // let baro_tier_2_files = list_files(
+    //     rpc,
+    //     LSArgs {
+    //         file_type: Some(VACUUM_TEST_BARO_LOGGER_TIER_2.0),
+    //     },
+    // )
+    // .await?;
 
+    let mut combined_logs_path = args.save_path.clone();
+    combined_logs_path.push("combined.vacuum_test_log.log");
+    let mut combined_logs_writer = tokio::io::BufWriter::new(File::create(combined_logs_path).await?);
     for file_id in log_files {
         pull_logs::<VacuumTestLoggerReader<BufReaderWrapper<File>>>(
             rpc,
             args.save_path.clone(),
             file_id,
             "vacuum_test_log",
+            &mut combined_logs_writer,
         )
         .await?;
     }
 
+    let mut combined_baro_tier_1_csv_path = args.save_path.clone();
+    combined_baro_tier_1_csv_path.push(format!("combined.baro_tier_1.csv"));
+    let mut combined_baro_tier_1_csv_writer = csv::Writer::from_path(&combined_baro_tier_1_csv_path)?;
+    combined_baro_tier_1_csv_writer.write_record(&[
+        "boot timestamp",
+        "unix timestamp",
+        "pressure",
+        "altitude",
+        "temperature",
+    ])?;
     for file_id in baro_tier_1_files {
         pull_delta_logs::<BaroData, SensorsFF1>(
             rpc,
@@ -70,6 +84,7 @@ pub async fn pull_vacuum_test(
                     format!("{}", data.temperature),
                 ]
             },
+            &mut combined_baro_tier_1_csv_writer,
         )
         .await?;
     }

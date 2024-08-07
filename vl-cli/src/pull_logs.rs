@@ -14,6 +14,7 @@ pub async fn pull_logs<SR: SerializedEnumReader<BufReaderWrapper<File>>>(
     save_folder: PathBuf,
     file_id: u64,
     file_type_name: &str,
+    combined_log_writer: &mut BufWriter<File>
 ) -> Result<()> {
     // VLL: void lake log
     let mut vll_path = save_folder.clone();
@@ -35,6 +36,7 @@ pub async fn pull_logs<SR: SerializedEnumReader<BufReaderWrapper<File>>>(
     let mut writer = BufWriter::new(File::create(log_path).await?);
     while let Some(log) = reader.read_next().await.unwrap() {
         writer.write_all(format!("{:?}\n", log).as_bytes()).await?;
+        combined_log_writer.write_all(format!("{:?}\n", log).as_bytes()).await?;
     }
     writer.flush().await?;
 

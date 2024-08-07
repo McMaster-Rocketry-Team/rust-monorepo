@@ -76,8 +76,8 @@ pub async fn vacuum_test_main(
             (
                 RingDeltaLoggerConfig {
                     file_type: VACUUM_TEST_BARO_LOGGER_TIER_1,
-                    seconds_per_segment: 10,
-                    first_segment_seconds: 5,
+                    seconds_per_segment: 5 * 60,
+                    first_segment_seconds: 30,
                     segments_per_ring: 6, // 30 min
                 },
                 RingDeltaLoggerConfig {

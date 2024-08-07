@@ -24,6 +24,7 @@ pub async fn pull_delta_logs<D: SensorData, FF: F64FixedPointFactory>(
     file_type_name: &str,
     row_titles: Vec<String>,
     row_data_getter: impl Fn(D) -> Vec<String>,
+    combined_csv_writer: &mut csv::Writer<std::fs::File>,
 ) -> Result<()>
 where
     [(); size_of::<D>() + 10]:,
@@ -75,6 +76,7 @@ where
             row.push(unix_timestamp);
             row.extend(row_data_getter(reading.data.clone()));
             csv_writer.write_record(&row)?;
+            combined_csv_writer.write_record(&row)?;
         }
         readings_buffer.clear();
         Ok(())
