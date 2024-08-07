@@ -113,22 +113,28 @@ pub async fn vacuum_test_main(
         let mut sub = flight_core_events.subscriber().unwrap();
         loop {
             let event = sub.next_message_pure().await;
+            log_info!("event: {:?}", event);
             match event {
                 FlightCoreEvent::ChangeState(state) => {
                     flight_core_state_signal.signal(state);
+                    if state == FlightCoreState::MainChuteDeployed
+                        || state == FlightCoreState::DrogueChuteDeployed
+                    {
+                        services.buzzer_queue.publish(2700, 2000, 150);
+                    }
+                    logger
+                        .write(&VacuumTestLog::FlightCoreEventLog(FlightCoreEventLog {
+                            timestamp: services.clock().now_ms(),
+                            event: event.clone(),
+                        }))
+                        .await
+                        .unwrap();
+                    logger.flush().await.unwrap();
                 }
                 _ => {
                     // noop
                 }
             }
-            logger
-                .write(&VacuumTestLog::FlightCoreEventLog(FlightCoreEventLog {
-                    timestamp: services.clock().now_ms(),
-                    event: event.clone(),
-                }))
-                .await
-                .unwrap();
-            logger.flush().await.unwrap();
         }
     };
 
@@ -160,6 +166,9 @@ pub async fn vacuum_test_main(
             select(wait_signal_fut, indicator_fut).await;
         }
     };
+
+    services.buzzer_queue.publish(2000, 50, 150);
+    services.buzzer_queue.publish(2000, 50, 150);
 
     join!(
         baro_logger_fut,

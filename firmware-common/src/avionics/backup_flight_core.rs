@@ -28,17 +28,18 @@ pub struct BackupFlightCore<P: FlightCoreEventPublisher> {
     state: BackupFlightCoreState,
     vertical_speed_filter: VerticalSpeedFilter,
     launch_pad_altitude: Option<f32>,
+    first_tick: bool,
 }
 
 impl<D: FlightCoreEventPublisher> BackupFlightCore<D> {
-    pub fn new(flight_profile: FlightProfile, mut event_publisher: D) -> Self {
-        event_publisher.publish(FlightCoreEvent::ChangeState(EventFlightCoreState::Armed));
+    pub fn new(flight_profile: FlightProfile, event_publisher: D) -> Self {
         Self {
             event_publisher,
             flight_profile,
             state: BackupFlightCoreState::Armed,
             vertical_speed_filter: VerticalSpeedFilter::new(200.0),
             launch_pad_altitude: None,
+            first_tick: true,
         }
     }
 
@@ -48,6 +49,12 @@ impl<D: FlightCoreEventPublisher> BackupFlightCore<D> {
 
         match &mut self.state {
             BackupFlightCoreState::Armed => {
+                if self.first_tick {
+                    self.event_publisher
+                        .publish(FlightCoreEvent::ChangeState(EventFlightCoreState::Armed));
+                    self.first_tick = false;
+                }
+
                 if self.launch_pad_altitude.is_none() {
                     self.launch_pad_altitude = Some(baro_reading.data.altitude());
                 }
