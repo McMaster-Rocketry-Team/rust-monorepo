@@ -35,7 +35,7 @@ create_serialized_enum!(
     (0, FlightCoreEventLog)
 );
 
-fixed_point_factory!(SensorsFF1, f64, 4.9, 7.0, 0.05);
+fixed_point_factory!(SensorsFF1, f64, 4.0, 7.0, 0.05);
 fixed_point_factory!(SensorsFF2, f64, 199.0, 210.0, 0.5);
 
 #[inline(never)]
@@ -67,7 +67,7 @@ pub async fn vacuum_test_main(
     let mut logger = VacuumTestLogger::new(log_file_writer);
 
     log_info!("Creating baro logger");
-    let baro_logger = BufferedTieredRingDeltaLogger::<BaroData, 400>::new();
+    let baro_logger = BufferedTieredRingDeltaLogger::<BaroData, 100>::new();
     let baro_logger_fut = baro_logger.run(
         SensorsFF1,
         SensorsFF2,
@@ -76,8 +76,8 @@ pub async fn vacuum_test_main(
             (
                 RingDeltaLoggerConfig {
                     file_type: VACUUM_TEST_BARO_LOGGER_TIER_1,
-                    seconds_per_segment: 5 * 60,
-                    first_segment_seconds: 30,
+                    seconds_per_segment: 10,
+                    first_segment_seconds: 5,
                     segments_per_ring: 6, // 30 min
                 },
                 RingDeltaLoggerConfig {

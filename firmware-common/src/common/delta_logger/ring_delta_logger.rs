@@ -65,9 +65,7 @@ where
         clock: CL,
         config: RingDeltaLoggerConfig,
     ) -> Result<Self, VLFSError<F::Error>> {
-        let mut files_iter = fs
-            .files_iter(config.file_type)
-            .await;
+        let mut files_iter = fs.files_iter(config.file_type).await;
         let mut files_count = 0;
         while let Some(_) = files_iter.next().await? {
             files_count += 1;
@@ -115,7 +113,10 @@ where
         })
     }
 
-    pub async fn log(&self, value: SensorReading<BootTimestamp, D>) -> Result<bool, VLFSError<F::Error>> {
+    pub async fn log(
+        &self,
+        value: SensorReading<BootTimestamp, D>,
+    ) -> Result<bool, VLFSError<F::Error>> {
         let mut delta_logger = self.delta_logger.lock().await;
         let delta_logger = delta_logger.as_mut().unwrap();
         let logged = delta_logger.log(value).await?;
@@ -146,7 +147,9 @@ where
         );
         loop {
             match select(ticker.next(), self.close_signal.wait()).await {
-                Either::First(_) => {}
+                Either::First(_) => {
+                    self.create_new_segment().await?;
+                }
                 Either::Second(_) => {
                     let mut delta_logger = self.delta_logger.lock().await;
                     let mut delta_logger = delta_logger.take().unwrap();
@@ -156,8 +159,6 @@ where
                     return Ok(());
                 }
             }
-            ticker.next().await;
-            self.create_new_segment().await?;
         }
     }
 
@@ -169,6 +170,7 @@ where
                 let mut first_segment_removed = false;
                 while let Some(file_entry) = builder.read_next().await? {
                     if file_entry.typ == self.config.file_type && !first_segment_removed {
+                        log_info!("Deleting one ring segment");
                         first_segment_removed = true;
                         builder.release_file_sectors(&file_entry).await?;
                     } else {
@@ -198,6 +200,7 @@ where
         old_writer.close().await?;
         *self.current_ring_segments.borrow_mut() = new_ring_segments;
 
+        log_info!("Ring segment created");
         Ok(())
     }
 
@@ -253,16 +256,8 @@ where
     FF: F64FixedPointFactory,
     [(); size_of::<D>() + 10]:,
 {
-    pub async fn new(
-        fs: &'a VLFS<F, C>,
-        file_type: FileType,
-    ) -> Result<
-        Self,
-        VLFSError<F::Error>,
-    > {
-        let mut file_iter = fs
-            .concurrent_files_iter(file_type)
-            .await;
+    pub async fn new(fs: &'a VLFS<F, C>, file_type: FileType) -> Result<Self, VLFSError<F::Error>> {
+        let mut file_iter = fs.concurrent_files_iter(file_type).await;
 
         if let Some(first_file) = file_iter.next().await? {
             let file_reader = fs.open_file_for_read(first_file.id).await?;
@@ -304,7 +299,12 @@ where
         }
     }
 
-    pub async fn read(&mut self) -> Result<Option<either::Either<SensorReading<BootTimestamp, D>, UnixTimestampLog>>, VLFSError<F::Error>> {
+    pub async fn read(
+        &mut self,
+    ) -> Result<
+        Option<either::Either<SensorReading<BootTimestamp, D>, UnixTimestampLog>>,
+        VLFSError<F::Error>,
+    > {
         loop {
             match self.inner_read().await? {
                 DeltaLoggerReaderResult::EOF => {

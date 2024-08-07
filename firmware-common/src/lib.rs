@@ -225,7 +225,7 @@ pub async fn init(
                 ground_test_avionics(device_manager, &services, &device_config).await
             }
             DeviceModeConfig::VacuumTest => {
-                // stop_if_usb_connected().await;
+                stop_if_usb_connected().await;
                 vacuum_test_main(device_manager, &services).await
             }
         };

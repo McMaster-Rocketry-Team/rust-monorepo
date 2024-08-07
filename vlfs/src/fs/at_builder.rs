@@ -49,14 +49,18 @@ where
     'b: 'a,
 {
     pub(crate) async fn new(fs: &'b VLFS<F, C>) -> Result<Self, VLFSError<F::Error>> {
+        log_info!("locking at");
         let mut at = fs.allocation_table.write().await;
         let max_file_id = at.footer.max_file_id;
         let curr_at_address = at.address();
         at.increment_position();
         let new_at_address = at.address();
 
+        log_info!("locking flash");
         let flash = fs.flash.write().await;
+        log_info!("locking sectors_mng");
         let sectors_mng = fs.sectors_mng.write().await;
+        log_info!("done");
 
         let mut builder = Self {
             at,
@@ -115,11 +119,9 @@ where
             .map_err(VLFSError::FlashError)?;
         if let Ok(file_entry) = FileEntry::deserialize(read_result) {
             if AllocationTableFooter::is_footer_file_entry(&file_entry) {
-                log_info!("found footer entry");
                 self.read_finished = true;
                 return Ok(None);
             } else {
-                log_info!("found file entry");
                 return Ok(Some(file_entry));
             }
         } else {
@@ -256,6 +258,7 @@ where
             .map_err(VLFSError::FlashError)?;
         self.flush().await.map_err(VLFSError::FlashError)?;
         self.finished = true;
+        log_info!("committed");
         Ok(())
     }
 }

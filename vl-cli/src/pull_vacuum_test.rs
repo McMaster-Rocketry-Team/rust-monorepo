@@ -62,10 +62,11 @@ pub async fn pull_vacuum_test(
             args.save_path.clone(),
             file_id,
             "baro_tier_1",
-            vec!["pressure".into(), "temperature".into()],
+            vec!["pressure".into(), "altitude".into(), "temperature".into()],
             |data| {
                 vec![
                     format!("{}", data.pressure),
+                    format!("{}", data.altitude()),
                     format!("{}", data.temperature),
                 ]
             },
@@ -73,22 +74,23 @@ pub async fn pull_vacuum_test(
         .await?;
     }
 
-    for file_id in baro_tier_2_files {
-        pull_delta_logs::<BaroData, SensorsFF2>(
-            rpc,
-            args.save_path.clone(),
-            file_id,
-            "baro_tier_2",
-            vec!["pressure".into(), "temperature".into()],
-            |data| {
-                vec![
-                    format!("{}", data.pressure),
-                    format!("{}", data.temperature),
-                ]
-            },
-        )
-        .await?;
-    }
+    // for file_id in baro_tier_2_files {
+    //     pull_delta_logs::<BaroData, SensorsFF2>(
+    //         rpc,
+    //         args.save_path.clone(),
+    //         file_id,
+    //         "baro_tier_2",
+    //         vec!["pressure".into(), "altitude".into(), "temperature".into()],
+    //         |data| {
+    //             vec![
+    //                 format!("{}", data.pressure),
+    //                 format!("{}", data.altitude()),
+    //                 format!("{}", data.temperature),
+    //             ]
+    //         },
+    //     )
+    //     .await?;
+    // }
 
     Ok(())
 }

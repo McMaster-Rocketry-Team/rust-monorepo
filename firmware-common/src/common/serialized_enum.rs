@@ -1,6 +1,6 @@
 use core::fmt::Debug;
 
-use embedded_io_async::{Read, ReadExactError};
+use embedded_io_async::Read;
 
 pub trait SerializedEnumReader<R: Read> {
     type Output: Debug;
@@ -9,7 +9,7 @@ pub trait SerializedEnumReader<R: Read> {
 
     async fn read_next(
         &mut self,
-    ) -> Result<Option<Self::Output>, ReadExactError<R::Error>>;
+    ) -> Result<Option<Self::Output>, R::Error>;
 
     fn into_reader(self) -> R;
 }
@@ -121,15 +121,31 @@ macro_rules! create_serialized_enum {
                 }
             }
 
-            async fn read_next(&mut self) -> Result<Option<$enum_name>, embedded_io_async::ReadExactError<R::Error>> {
+            async fn read_next(&mut self) -> Result<Option<$enum_name>, R::Error> {
                 use paste::paste;
                 use rkyv::archived_root;
-                self.reader.read_exact(&mut self.buffer[..1]).await?;
+                match self.reader.read_exact(&mut self.buffer[..1]).await {
+                    Ok(_) => {},
+                    Err(embedded_io_async::ReadExactError::UnexpectedEof) => {
+                        return Ok(None)
+                    }
+                    Err(embedded_io_async::ReadExactError::Other(e)) =>{
+                        return Err(e)
+                    }
+                }
                 match self.buffer[0] {
                     $(
                         $log_type_i => {
                             let size = core::mem::size_of::<<$log_type as rkyv::Archive>::Archived>();
-                            self.reader.read_exact(&mut self.buffer[..size]).await?;
+                            match self.reader.read_exact(&mut self.buffer[..size]).await {
+                                Ok(_) => {},
+                                Err(embedded_io_async::ReadExactError::UnexpectedEof) => {
+                                    return Ok(None)
+                                }
+                                Err(embedded_io_async::ReadExactError::Other(e)) =>{
+                                    return Err(e)
+                                }
+                            }
                             let archived = unsafe { archived_root::<$log_type>(&self.buffer[..size]) };
                             let deserialized = <paste!{ [<Archived $log_type>] } as rkyv::Deserialize<$log_type, rkyv::Infallible>>::deserialize(archived, &mut rkyv::Infallible).unwrap();
                             Ok(Some($enum_name::$log_type(deserialized)))

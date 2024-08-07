@@ -218,6 +218,7 @@ where
         let next_sector_index = sectors_mng
             .claim_avaliable_sector_and_erase(&mut flash)
             .await?;
+        drop(flash);
         drop(sectors_mng);
         self._flush(next_sector_index).await?;
         self.current_sector_index = next_sector_index;
@@ -335,6 +336,7 @@ where
                     let next_sector_index = sectors_mng
                         .claim_avaliable_sector_and_erase(&mut flash)
                         .await?;
+                    drop(flash);
                     drop(sectors_mng);
                     self.write_length_and_next_sector_index(next_sector_index);
 

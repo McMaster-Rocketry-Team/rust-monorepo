@@ -178,9 +178,7 @@ impl SectorsMng {
             return Ok(sector_index);
         }
 
-        log_trace!("a");
         if !self.async_erase_ahead_sectors.is_empty() {
-            log_trace!("b");
             // swap erase_ahead_sectors and async_erase_ahead_sectors
             unsafe {
                 let erase_ahead_sectors = &mut self.erase_ahead_sectors as *mut Vec<u16, 16>;
@@ -189,7 +187,6 @@ impl SectorsMng {
                 mem::swap(&mut *erase_ahead_sectors, &mut *async_erase_ahead_sectors);
             };
 
-            log_trace!("c");
             if let Ok(async_erase_region) = self.claim_erase_region() {
                 // If using ManagedEraseFlash,
                 // this call will start an erase in the background and return immediately.
@@ -197,18 +194,14 @@ impl SectorsMng {
                     .await?;
             }
         } else {
-            log_trace!("d");
             // both erase_ahead_sectors and async_erase_ahead_sectors are empty
             if let Ok(current_erase_region) = self.claim_erase_region() {
-                log_trace!("e");
                 // If using ManagedEraseFlash,
                 // this call will start an erase in the background and return immediately.
                 self.erase(current_erase_region, false, flash)
                     .await?;
 
-                    log_trace!("f");
                 if let Ok(async_erase_region) = self.claim_erase_region() {
-                    log_trace!("g");
                     // If using ManagedEraseFlash,
                     // this call will wait for the `current_erase_region` erase to finish,
                     // then start an erase for `async_erase_region` in the background and return immediately.
@@ -216,7 +209,6 @@ impl SectorsMng {
                         .await?;
                 }
             }
-            log_trace!("h");
         }
 
         self

@@ -152,7 +152,7 @@ macro_rules! create_rpc {
 
                                     response_buffer[response_size] = crc.checksum(&response_buffer[..response_size]);
                                     tx.write_all(&response_buffer[..(response_size+1)]).await?;
-                                    //log_info!("Response sent.");
+                                    log_info!("Response sent, crc: {}", response_buffer[response_size]);
                                 }
                             )*
                             255 => {
@@ -206,6 +206,8 @@ macro_rules! create_rpc {
                     // flush the serial buffer
                     tx.write_all(&[255; size_of::<<RequestEnum as rkyv::Archive>::Archived>() + 1]).await.map_err(|_|RpcClientError::Serial)?;
                     Self::clear_read_buffer(&mut self.delay, &mut rx).await;
+
+                    // TODO clear rx read buffer
 
                     // send reset command
                     tx.write_all(&[255]).await.map_err(|_|RpcClientError::Serial)?;
@@ -274,6 +276,7 @@ macro_rules! create_rpc {
                                 let calculated_crc = crc.checksum(&response_buffer[..response_size]);
                                 let received_crc = response_buffer[response_size];
                                 if calculated_crc != received_crc {
+                                    log_warn!("Response CRC mismatch, received: {}, calculated: {}",received_crc, calculated_crc);
                                     return Err(RpcClientError::ECCMismatch);
                                 }
                                 // log_debug!("Response CRC matched.");
