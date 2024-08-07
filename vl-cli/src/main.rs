@@ -129,9 +129,6 @@ async fn main() -> Result<()> {
         .filter_level(LevelFilter::Trace)
         .try_init();
 
-    let crc = Crc::<u8>::new(&CRC_8_SMBUS);
-    println!("{:?}", crc.checksum(&[]));
-
     let args = Cli::parse();
 
     if matches!(args.command, Commands::Detect) {
@@ -142,6 +139,7 @@ async fn main() -> Result<()> {
     }
 
     if args.serial.is_none() {
+        eprintln!("No serial port specified");
         return Ok(());
     }
     let serial: tokio_serial::SerialStream =

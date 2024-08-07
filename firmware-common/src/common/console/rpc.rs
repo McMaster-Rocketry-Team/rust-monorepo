@@ -149,6 +149,7 @@ create_rpc! {
     | -> () {
         let flight_profile_file = ConfigFile::<FlightProfile, _, _>::new(services.fs, FLIGHT_PROFILE_FILE_TYPE);
         flight_profile_file.write(&flight_profile).await.unwrap();
+        log_info!("Flight profile updated");
         SetFlightProfileResponse {}
     }
     rpc 9 SetDeviceConfig |
@@ -156,6 +157,7 @@ create_rpc! {
     | -> () {
         let device_config_file = ConfigFile::<DeviceConfig, _, _>::new(services.fs, DEVICE_CONFIG_FILE_TYPE);
         device_config_file.write(&device_config).await.unwrap();
+        log_info!("Device config updated");
         SetDeviceConfigResponse {}
     }
 }

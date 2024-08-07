@@ -6,6 +6,8 @@ use core::task::Poll;
 use embassy_sync::blocking_mutex::Mutex as BlockingMutex;
 use embassy_sync::{blocking_mutex::raw::RawMutex, waitqueue::MultiWakerRegistration};
 
+use crate::Flash;
+
 #[derive(defmt::Format, Debug)]
 enum LockedState {
     Unlocked,

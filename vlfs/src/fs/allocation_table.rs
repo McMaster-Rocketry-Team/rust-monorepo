@@ -48,7 +48,6 @@ impl FileEntry {
 
     // expect a FILE_ENTRY_SIZE byte buffer
     pub(crate) fn deserialize(buffer: &[u8]) -> Result<Self, CorruptedFileEntry> {
-        log_trace!("Deserializing file entry: {:?}", buffer);
         let buffer = hamming_decode(buffer.try_into().unwrap()).map_err(|_| CorruptedFileEntry)?;
 
         let file_type = FileType(u16::from_be_bytes((&buffer[0..2]).try_into().unwrap()));

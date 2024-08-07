@@ -5,7 +5,7 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-defmt = []
+defmt = ["vlfs/defmt"]
 log = ["dep:log", "vlfs/log"]
 std = []
 
@@ -29,7 +29,7 @@ ahrs = { version = "0.6.0", default-features = false, features = [
 futures = { version = "0.3.17", default-features = false, features = [
     "async-await",
 ] }
-vlfs = { path = "../vlfs" }
+vlfs = { path = "../vlfs", default-features = false, features = ["ecc"] }
 rand = { version = "0.8.5", features = ["small_rng"], default-features = false }
 micromath = { version = "2.0.0", features = [
     "statistics",
@@ -53,14 +53,16 @@ eskf = { git = "https://github.com/PegasisForever/eskf-rs.git", default-features
 libm = "0.2.7"
 serde = { version = "1.0.164", default-features = false, features = ["derive"] }
 serde-json-core = "0.5.0"
-lora-phy = {  git = "https://github.com/lora-rs/lora-rs", default-features = false }
-lora-modulation = {  git = "https://github.com/lora-rs/lora-rs", default-features = false }
+lora-phy = { git = "https://github.com/lora-rs/lora-rs", default-features = false }
+lora-modulation = { git = "https://github.com/lora-rs/lora-rs", default-features = false }
 paste = "1.0.15"
 approx = { version = "0.5.1", default-features = false }
 either = { version = "1.12.0", default-features = false }
 crc = "3.2.1"
 embedded-io-async = { version = "0.6.1", features = ["defmt-03"] }
-cryptoxide = { version = "0.4.4", default-features = false, features = ["chacha"] }
+cryptoxide = { version = "0.4.4", default-features = false, features = [
+    "chacha",
+] }
 packed_struct = { version = "0.10.1", default-features = false }
 calculate-required-bits = { path = "../calculate-required-bits" }
 int-enum = "1.1.2"

@@ -61,12 +61,13 @@ where
     }
 
     async fn read_free_sectors(&mut self) -> Result<(), VLFSError<F::Error>> {
+        let mut sectors_mng = self.sectors_mng.write().await;
         let mut iter = self.files_iter(()).await;
         while let Some(file_entry) = iter.next().await? {
             let mut current_sector_index = file_entry.first_sector_index;
                 while let Some(sector_index) = current_sector_index {
                     log_trace!("at sector {:#X}", sector_index);
-                    self.claim_sector(sector_index).await;
+                    sectors_mng.claim_sector(sector_index).await;
 
                     let mut buffer = [0u8; 5 + 8];
                     let next_sector_index_address =

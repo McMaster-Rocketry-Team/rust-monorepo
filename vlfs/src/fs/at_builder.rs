@@ -115,9 +115,11 @@ where
             .map_err(VLFSError::FlashError)?;
         if let Ok(file_entry) = FileEntry::deserialize(read_result) {
             if AllocationTableFooter::is_footer_file_entry(&file_entry) {
+                log_info!("found footer entry");
                 self.read_finished = true;
                 return Ok(None);
             } else {
+                log_info!("found file entry");
                 return Ok(Some(file_entry));
             }
         } else {
@@ -186,8 +188,9 @@ where
         &mut self,
         file_type: FileType,
     ) -> Result<FileWriter<'b, F, C>, VLFSError<F::Error>> {
+        log_trace!("write_new_file_and_open_for_write");
         let mut file_entry = FileEntry::new(self.get_new_file_id(), file_type);
-        let new_sector_index = self.fs.claim_avaliable_sector_and_erase().await?;
+        let new_sector_index = self.sectors_mng.claim_avaliable_sector_and_erase(&mut self.flash).await?;
         file_entry.first_sector_index = Some(new_sector_index);
         self.write(&file_entry).await?;
 
@@ -245,6 +248,7 @@ where
     }
 
     pub async fn commit(mut self) -> Result<(), VLFSError<F::Error>> {
+        log_info!("commit");
         self.at.footer.file_count = self.file_count;
         self.at.footer.max_file_id = self.max_file_id;
         self.extend_from_slice(&self.at.footer.serialize())

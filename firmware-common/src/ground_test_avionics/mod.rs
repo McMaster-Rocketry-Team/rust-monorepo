@@ -161,13 +161,17 @@ pub async fn ground_test_avionics(
             }
         }
     };
-    let vlp_fut = vlp.run(
-        services.delay(),
-        &mut lora,
-        &config.lora,
-        services.unix_clock(),
-        &config.lora_key,
-    );
+    let vlp_fut = async {
+        if let Some(lora) = lora.as_mut() {
+            vlp.run(
+                services.delay(),
+                lora,
+                &config.lora,
+                services.unix_clock(),
+                &config.lora_key,
+            ).await;
+        }
+    };
 
     let pyro_main_cont_fut = async {
         let mut cont = pyro!(

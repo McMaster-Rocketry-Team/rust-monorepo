@@ -6,9 +6,10 @@ use super::{
 };
 use embassy_futures::yield_now;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
-use embedded_io_async::{Error, Read};
+use embedded_io_async::{Read, Error};
 use heapless::String;
 use nmea::Nmea;
+
 pub struct UARTGPS {
     last_location: Signal<NoopRawMutex, SensorReading<BootTimestamp, GPSData>>,
 }

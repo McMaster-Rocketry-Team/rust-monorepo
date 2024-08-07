@@ -42,7 +42,7 @@ pub async fn gcm_main(
     let vlp_client = VLPDownlinkClient::new();
     let vlp_client_fut = vlp_client.run(
         services.delay(),
-        &mut lora,
+        lora.as_mut().unwrap(),
         &config.lora,
         services.unix_clock(),
         &config.lora_key,

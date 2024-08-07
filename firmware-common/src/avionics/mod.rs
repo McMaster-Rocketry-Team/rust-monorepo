@@ -314,6 +314,7 @@ pub async fn avionics_main(
     log_info!("Devices claimed");
 
     let mut can_bus = can_bus.take().unwrap();
+    can_bus.reset().await.unwrap();
     let crc = crc::Crc::<u16>::new(&CRC_16_GSM);
     can_bus.configure_self_node(
         VOID_LAKE_NODE_TYPE,
@@ -455,13 +456,17 @@ pub async fn avionics_main(
             }
         }
     };
-    let vlp_fut = vlp.run(
-        services.delay(),
-        &mut lora,
-        &config.lora,
-        services.unix_clock(),
-        &config.lora_key,
-    );
+    let vlp_fut = async {
+        if let Some(lora) = lora.as_mut() {
+            vlp.run(
+                services.delay(),
+                lora,
+                &config.lora,
+                services.unix_clock(),
+                &config.lora_key,
+            ).await;
+        }
+    };
 
     let hardware_arming_fut = async {
         let mut hardware_armed = arming_switch.read_arming().await.unwrap();

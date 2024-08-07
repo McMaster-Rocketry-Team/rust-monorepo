@@ -1,5 +1,7 @@
 use core::mem;
 
+use crate::utils::rwlock::RwLockWriteGuard;
+
 use super::*;
 
 const SECTOR_MAP_ARRAY_SIZE: usize = DATA_REGION_SECTORS / 32;
@@ -70,6 +72,170 @@ impl SectorsMng {
             rng: SmallRng::seed_from_u64(0),
         }
     }
+
+    pub(crate) fn claim_erase_region(&mut self) -> Result<EraseRegion, ()> {
+        if self.sector_map.free_sectors_count == 0 {
+            return Err(());
+        }
+
+        let rng = (self.rng.next_u32() / 2) as usize; // divide by 2 to avoid overflow
+
+        {
+            // see if it can do 64KiB erase
+            for index_64k in 0..(DATA_REGION_SECTORS / 16) {
+                let index_64k = (index_64k + rng) % (DATA_REGION_SECTORS / 16);
+                if self.sector_map.map_64k[index_64k] {
+                    continue;
+                }
+                return Ok(EraseRegion {
+                    sector_index_offseted: index_64k as u16 * 16,
+                    length: EraseLength::E64K,
+                });
+            }
+        }
+
+        {
+            // see if it can do 32KiB erase
+            for index_32k in 0..(DATA_REGION_SECTORS / 8) {
+                let index_32k = (index_32k + rng) % (DATA_REGION_SECTORS / 8);
+                if self.sector_map.map_32k[index_32k] {
+                    continue;
+                }
+                return Ok(EraseRegion {
+                    sector_index_offseted: index_32k as u16 * 8,
+                    length: EraseLength::E32K,
+                });
+            }
+        }
+
+        {
+            // fallback to 4KiB erase
+            for index_4k in 0..DATA_REGION_SECTORS {
+                let index_4k = (index_4k + rng) % DATA_REGION_SECTORS;
+                if self.sector_map.map_4k[index_4k] {
+                    continue;
+                }
+                return Ok(EraseRegion {
+                    sector_index_offseted: index_4k as u16,
+                    length: EraseLength::E4K,
+                });
+            }
+        }
+
+        log_unreachable!()
+    }
+
+    async fn erase<'a, F: Flash>(
+        &mut self,
+        region: EraseRegion,
+        use_async: bool,
+        flash: &mut RwLockWriteGuard<'a, NoopRawMutex, FlashWrapper<F>, 10>,
+    ) -> Result<(), VLFSError<F::Error>> {
+        match region.length {
+            EraseLength::E64K => {
+                flash
+                    .erase_block_64kib(region.get_unoffseted_address())
+                    .await
+                    .map_err(VLFSError::FlashError)?;
+            }
+            EraseLength::E32K => {
+                flash
+                    .erase_block_32kib(region.get_unoffseted_address())
+                    .await
+                    .map_err(VLFSError::FlashError)?;
+            }
+            EraseLength::E4K => {
+                flash
+                    .erase_sector_4kib(region.get_unoffseted_address())
+                    .await
+                    .map_err(VLFSError::FlashError)?;
+            }
+        };
+
+        let erase_ahead_sectors: &mut Vec<u16, 16> = if use_async {
+            &mut self.async_erase_ahead_sectors
+        } else {
+            &mut self.erase_ahead_sectors
+        };
+
+        for i in region.sector_index_offseted
+            ..(region.sector_index_offseted + region.length.get_length_in_sectors())
+        {
+            let unoffseted_sector_index = i + ALLOC_TABLES_SECTORS_USED as u16;
+            self
+                .sector_map
+                .set_sector_used(unoffseted_sector_index);
+            erase_ahead_sectors.push(unoffseted_sector_index).unwrap();
+        }
+        Ok(())
+    }
+
+    pub(super) async fn claim_avaliable_sector_and_erase<'a, F: Flash>(
+        &mut self,
+        flash: &mut RwLockWriteGuard<'a, NoopRawMutex, FlashWrapper<F>, 10>,
+    ) -> Result<u16, VLFSError<F::Error>> {
+        if let Some(sector_index) = self.erase_ahead_sectors.pop() {
+            return Ok(sector_index);
+        }
+
+        log_trace!("a");
+        if !self.async_erase_ahead_sectors.is_empty() {
+            log_trace!("b");
+            // swap erase_ahead_sectors and async_erase_ahead_sectors
+            unsafe {
+                let erase_ahead_sectors = &mut self.erase_ahead_sectors as *mut Vec<u16, 16>;
+                let async_erase_ahead_sectors =
+                    &mut self.async_erase_ahead_sectors as *mut Vec<u16, 16>;
+                mem::swap(&mut *erase_ahead_sectors, &mut *async_erase_ahead_sectors);
+            };
+
+            log_trace!("c");
+            if let Ok(async_erase_region) = self.claim_erase_region() {
+                // If using ManagedEraseFlash,
+                // this call will start an erase in the background and return immediately.
+                self.erase(async_erase_region, true, flash)
+                    .await?;
+            }
+        } else {
+            log_trace!("d");
+            // both erase_ahead_sectors and async_erase_ahead_sectors are empty
+            if let Ok(current_erase_region) = self.claim_erase_region() {
+                log_trace!("e");
+                // If using ManagedEraseFlash,
+                // this call will start an erase in the background and return immediately.
+                self.erase(current_erase_region, false, flash)
+                    .await?;
+
+                    log_trace!("f");
+                if let Ok(async_erase_region) = self.claim_erase_region() {
+                    log_trace!("g");
+                    // If using ManagedEraseFlash,
+                    // this call will wait for the `current_erase_region` erase to finish,
+                    // then start an erase for `async_erase_region` in the background and return immediately.
+                    self.erase(async_erase_region, true, flash)
+                        .await?;
+                }
+            }
+            log_trace!("h");
+        }
+
+        self
+            .erase_ahead_sectors
+            .pop()
+            .ok_or_else(|| VLFSError::DeviceFull)
+    }
+
+    pub(super) async fn claim_sector(&mut self, sector_index_unoffsetted: u16) {
+        self
+            .sector_map
+            .set_sector_used(sector_index_unoffsetted);
+    }
+
+    pub(super) async fn return_sector(&mut self, sector_index_unoffsetted: u16) {
+        self
+            .sector_map
+            .set_sector_unused(sector_index_unoffsetted);
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -99,172 +265,5 @@ struct EraseRegion {
 impl EraseRegion {
     fn get_unoffseted_address(&self) -> u32 {
         (self.sector_index_offseted as u32 + ALLOC_TABLES_SECTORS_USED as u32) * SECTOR_SIZE as u32
-    }
-}
-
-impl<F, C> VLFS<F, C>
-where
-    F: Flash,
-    C: Crc,
-{
-    async fn claim_erase_region(&self, sectors_mng: &mut SectorsMng) -> Result<EraseRegion, ()> {
-        if sectors_mng.sector_map.free_sectors_count == 0 {
-            return Err(());
-        }
-
-        let rng = (sectors_mng.rng.next_u32() / 2) as usize; // divide by 2 to avoid overflow
-
-        {
-            // see if it can do 64KiB erase
-            for index_64k in 0..(DATA_REGION_SECTORS / 16) {
-                let index_64k = (index_64k + rng) % (DATA_REGION_SECTORS / 16);
-                if sectors_mng.sector_map.map_64k[index_64k] {
-                    continue;
-                }
-                return Ok(EraseRegion {
-                    sector_index_offseted: index_64k as u16 * 16,
-                    length: EraseLength::E64K,
-                });
-            }
-        }
-
-        {
-            // see if it can do 32KiB erase
-            for index_32k in 0..(DATA_REGION_SECTORS / 8) {
-                let index_32k = (index_32k + rng) % (DATA_REGION_SECTORS / 8);
-                if sectors_mng.sector_map.map_32k[index_32k] {
-                    continue;
-                }
-                return Ok(EraseRegion {
-                    sector_index_offseted: index_32k as u16 * 8,
-                    length: EraseLength::E32K,
-                });
-            }
-        }
-
-        {
-            // fallback to 4KiB erase
-            for index_4k in 0..DATA_REGION_SECTORS {
-                let index_4k = (index_4k + rng) % DATA_REGION_SECTORS;
-                if sectors_mng.sector_map.map_4k[index_4k] {
-                    continue;
-                }
-                return Ok(EraseRegion {
-                    sector_index_offseted: index_4k as u16,
-                    length: EraseLength::E4K,
-                });
-            }
-        }
-
-        log_unreachable!()
-    }
-
-    async fn erase(
-        &self,
-        region: EraseRegion,
-        use_async: bool,
-        sectors_mng: &mut SectorsMng,
-    ) -> Result<(), VLFSError<F::Error>> {
-        let mut flash = self.flash.write().await;
-
-        match region.length {
-            EraseLength::E64K => {
-                flash
-                    .erase_block_64kib(region.get_unoffseted_address())
-                    .await
-                    .map_err(VLFSError::FlashError)?;
-            }
-            EraseLength::E32K => {
-                flash
-                    .erase_block_32kib(region.get_unoffseted_address())
-                    .await
-                    .map_err(VLFSError::FlashError)?;
-            }
-            EraseLength::E4K => {
-                flash
-                    .erase_sector_4kib(region.get_unoffseted_address())
-                    .await
-                    .map_err(VLFSError::FlashError)?;
-            }
-        };
-
-        let erase_ahead_sectors: &mut Vec<u16, 16> = if use_async {
-            &mut sectors_mng.async_erase_ahead_sectors
-        } else {
-            &mut sectors_mng.erase_ahead_sectors
-        };
-
-        for i in region.sector_index_offseted
-            ..(region.sector_index_offseted + region.length.get_length_in_sectors())
-        {
-            let unoffseted_sector_index = i + ALLOC_TABLES_SECTORS_USED as u16;
-            sectors_mng
-                .sector_map
-                .set_sector_used(unoffseted_sector_index);
-            erase_ahead_sectors.push(unoffseted_sector_index).unwrap();
-        }
-        Ok(())
-    }
-
-    pub(super) async fn claim_avaliable_sector_and_erase(
-        &self,
-    ) -> Result<u16, VLFSError<F::Error>> {
-        let mut sectors_mng = self.sectors_mng.write().await;
-
-        if let Some(sector_index) = sectors_mng.erase_ahead_sectors.pop() {
-            return Ok(sector_index);
-        }
-
-        if !sectors_mng.async_erase_ahead_sectors.is_empty() {
-            // swap erase_ahead_sectors and async_erase_ahead_sectors
-            unsafe {
-                let erase_ahead_sectors = &mut sectors_mng.erase_ahead_sectors as *mut Vec<u16, 16>;
-                let async_erase_ahead_sectors =
-                    &mut sectors_mng.async_erase_ahead_sectors as *mut Vec<u16, 16>;
-                mem::swap(&mut *erase_ahead_sectors, &mut *async_erase_ahead_sectors);
-            };
-
-            if let Ok(async_erase_region) = self.claim_erase_region(&mut sectors_mng).await {
-                // If using ManagedEraseFlash,
-                // this call will start an erase in the background and return immediately.
-                self.erase(async_erase_region, true, &mut sectors_mng)
-                    .await?;
-            }
-        } else {
-            // both erase_ahead_sectors and async_erase_ahead_sectors are empty
-            if let Ok(current_erase_region) = self.claim_erase_region(&mut sectors_mng).await {
-                // If using ManagedEraseFlash,
-                // this call will start an erase in the background and return immediately.
-                self.erase(current_erase_region, false, &mut sectors_mng)
-                    .await?;
-
-                if let Ok(async_erase_region) = self.claim_erase_region(&mut sectors_mng).await {
-                    // If using ManagedEraseFlash,
-                    // this call will wait for the `current_erase_region` erase to finish,
-                    // then start an erase for `async_erase_region` in the background and return immediately.
-                    self.erase(async_erase_region, true, &mut sectors_mng)
-                        .await?;
-                }
-            }
-        }
-
-        sectors_mng
-            .erase_ahead_sectors
-            .pop()
-            .ok_or_else(|| VLFSError::DeviceFull)
-    }
-
-    pub(super) async fn claim_sector(&self, sector_index_unoffsetted: u16) {
-        let mut sectors_mng = self.sectors_mng.write().await;
-        sectors_mng
-            .sector_map
-            .set_sector_used(sector_index_unoffsetted);
-    }
-
-    pub(super) async fn return_sector(&self, sector_index_unoffsetted: u16) {
-        let mut sectors_mng = self.sectors_mng.write().await;
-        sectors_mng
-            .sector_map
-            .set_sector_unused(sector_index_unoffsetted);
     }
 }

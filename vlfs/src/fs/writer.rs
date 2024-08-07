@@ -26,13 +26,16 @@ where
             }
             self.mark_file_opened(file_id).await?;
 
-            let new_sector_index = self.claim_avaliable_sector_and_erase().await?;
+            let mut flash = self.flash.write().await;
+            let mut sectors_mng = self.sectors_mng.write().await;
+            let new_sector_index = sectors_mng
+                .claim_avaliable_sector_and_erase(&mut flash)
+                .await?;
             if let Some(first_sector_index) = file_entry.first_sector_index {
                 // this file has been written to before,
                 // update "index of next sector" in the last sector
 
                 // find index of the last sector
-                let mut flash = self.flash.write().await;
                 let mut buffer = [0u8; 5 + PAGE_SIZE];
                 let mut current_sector_index = first_sector_index;
                 loop {
@@ -57,7 +60,9 @@ where
 
                 let current_sector_address = (current_sector_index as usize * SECTOR_SIZE) as u32;
 
-                let temp_sector_index = self.claim_avaliable_sector_and_erase().await?;
+                let temp_sector_index = sectors_mng
+                    .claim_avaliable_sector_and_erase(&mut flash)
+                    .await?;
                 // copy last sector to temp sector, with "index of next sector" changed
                 for i in 0..PAGES_PER_SECTOR {
                     let read_address = (current_sector_address as usize + i * PAGE_SIZE) as u32;
@@ -99,7 +104,7 @@ where
                         .await
                         .map_err(VLFSError::FlashError)?;
                 }
-                self.return_sector(temp_sector_index).await;
+                sectors_mng.return_sector(temp_sector_index).await;
             } else {
                 // this file haven't been written to before,
                 // update allocation table
@@ -208,7 +213,12 @@ where
             return Ok(());
         }
 
-        let next_sector_index = self.vlfs.claim_avaliable_sector_and_erase().await?;
+        let mut sectors_mng = self.vlfs.sectors_mng.write().await;
+        let mut flash = self.vlfs.flash.write().await;
+        let next_sector_index = sectors_mng
+            .claim_avaliable_sector_and_erase(&mut flash)
+            .await?;
+        drop(sectors_mng);
         self._flush(next_sector_index).await?;
         self.current_sector_index = next_sector_index;
 
@@ -293,12 +303,8 @@ where
         );
         while slice.len() > 0 {
             log_trace!("Length remaining: {}", slice.len());
-            let will_be_last_data_page =  self.sector_data_length >= (252 * 15);
-            let buffer_reserved_size = if will_be_last_data_page {
-                8 + 8 + 4
-            } else {
-                4
-            };
+            let will_be_last_data_page = self.sector_data_length >= (252 * 15);
+            let buffer_reserved_size = if will_be_last_data_page { 8 + 8 + 4 } else { 4 };
             let buffer_len = self.buffer.len();
             let buffer_free = buffer_len - self.buffer_offset - buffer_reserved_size;
 
@@ -324,7 +330,12 @@ where
                 self.sector_data_length += buffer_free as u16;
 
                 if will_be_last_data_page {
-                    let next_sector_index = self.vlfs.claim_avaliable_sector_and_erase().await?;
+                    let mut sectors_mng = self.vlfs.sectors_mng.write().await;
+                    let mut flash = self.vlfs.flash.write().await;
+                    let next_sector_index = sectors_mng
+                        .claim_avaliable_sector_and_erase(&mut flash)
+                        .await?;
+                    drop(sectors_mng);
                     self.write_length_and_next_sector_index(next_sector_index);
 
                     self.write_page(self.page_address(), Some(self.buffer_offset - 5))

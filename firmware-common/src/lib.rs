@@ -69,6 +69,7 @@ pub async fn init(
     let mut usb = usb.take().unwrap();
 
     // Start VLFS
+    log_info!("Initializing VLFS");
     let stat_flash = StatFlash::new();
     let mut flash = stat_flash.get_flash(flash, VLFSTimerWrapper(device_manager.clock()));
     flash.reset().await.unwrap();
@@ -76,6 +77,7 @@ pub async fn init(
     fs.init().await.unwrap();
 
     // Start GPS (provides unix time)
+    log_info!("Initializing GPS");
     let gps_timestamp_pubsub = PubSubChannel::<NoopRawMutex, i64, 1, 1, 1>::new();
     let gps_location_pubsub =
         PubSubChannel::<NoopRawMutex, SensorReading<BootTimestamp, GPSData>, 1, 1, 1>::new();
@@ -104,6 +106,7 @@ pub async fn init(
     let unix_clock = unix_clock_task.get_clock();
 
     // Buzzer Queue
+    log_info!("Initializing Buzzer Queue");
     let buzzer_queue_runner = BuzzerQueueRunner::new();
     let buzzer_queue_runner_fut = buzzer_queue_runner.run(buzzer, device_manager.delay());
     let buzzer_queue = buzzer_queue_runner.get_queue();
@@ -119,6 +122,8 @@ pub async fn init(
 
     let delay = device_manager.delay();
     let usb_connected = {
+        log_info!("Waiting for USB connection");
+        delay.delay_ms(10.0).await;
         let timeout_fut = delay.delay_ms(500.0);
         let usb_wait_connection_fut = usb.wait_connection();
         pin_mut!(timeout_fut);
@@ -149,9 +154,9 @@ pub async fn init(
         }
     };
 
+    log_info!("Initializing RPC Server");
     let gcm_downlink_package_channel = Channel::new();
     let gcm_send_uplink_packet_rpc = RpcChannel::new();
-
     let serial_console_fut = run_rpc_server(
         &mut serial,
         &services,
@@ -174,6 +179,7 @@ pub async fn init(
             .await;
         }
     };
+    log_info!("Initializing RPC Server Done");
 
     let main_fut = async {
         if device_config.as_ref().is_none() {
@@ -195,14 +201,14 @@ pub async fn init(
         log_info!("Starting in mode {:?}", device_config);
         match device_config.mode {
             DeviceModeConfig::Avionics { .. } => {
-                stop_if_usb_connected().await;
-                avionics_main(
-                    device_manager,
-                    &services,
-                    &device_config,
-                    device_serial_number,
-                )
-                .await
+                // stop_if_usb_connected().await;
+                // avionics_main(
+                //     device_manager,
+                //     &services,
+                //     &device_config,
+                //     device_serial_number,
+                // )
+                // .await
             }
             DeviceModeConfig::GCM { .. } => {
                 gcm_main(
@@ -219,7 +225,7 @@ pub async fn init(
                 ground_test_avionics(device_manager, &services, &device_config).await
             }
             DeviceModeConfig::VacuumTest => {
-                stop_if_usb_connected().await;
+                // stop_if_usb_connected().await;
                 vacuum_test_main(device_manager, &services).await
             }
         };
