@@ -108,57 +108,62 @@ impl<D: FlightCoreEventPublisher> Drop for BackupFlightCore<D> {
 
 #[cfg(test)]
 mod test {
-    use icao_isa::calculate_isa_pressure;
-    use icao_units::si::{Metres, Pascals};
-
+    use super::*;
     use crate::{
+        avionics::flight_profile::{FlightProfile, PyroSelection},
         common::sensor_reading::SensorReading,
         driver::{barometer::BaroData, timestamp::BootTimestamp},
     };
+    use embassy_sync::{blocking_mutex::raw::NoopRawMutex, channel::Channel};
 
     #[test]
-    fn test_flight_core() {
-        let mut baro_readings: Vec<SensorReading<BootTimestamp, BaroData>> =
-            vec![SensorReading::new(
-                0.0,
+    fn test_flight_core_106() {
+        let mut baro_readings: Vec<SensorReading<BootTimestamp, BaroData>> = vec![];
+
+        let mut reader = csv::Reader::from_path("./test-data/106.baro_tier_1.csv").unwrap();
+        for result in reader.records().skip(1) {
+            let record = result.unwrap();
+            let timestamp = record[0].parse::<f64>().unwrap();
+            let pressure = record[2].parse::<f32>().unwrap();
+            let temperature = record[4].parse::<f32>().unwrap();
+
+            baro_readings.push(SensorReading::new(
+                timestamp,
                 BaroData {
-                    temperature: 25.0,
-                    pressure: calculate_isa_pressure(Metres(0.0)).0 as f32,
+                    temperature,
+                    pressure,
                 },
-            )];
-
-        let mut lerp = |duration_ms: f64, final_pressure: Pascals| {
-            let sample_count = (duration_ms / 5.0) as usize;
-            let start_time = baro_readings.last().unwrap().timestamp;
-            let start_pressure = baro_readings.last().unwrap().data.pressure;
-            let final_pressure = final_pressure.0 as f32;
-            for i in 0..sample_count {
-                let time = start_time + i as f64 * 5.0;
-                let pressure = start_pressure
-                    + (final_pressure - start_pressure) * (i as f32 / sample_count as f32);
-                baro_readings.push(SensorReading::new(
-                    time,
-                    BaroData {
-                        temperature: 25.0,
-                        pressure,
-                    },
-                ));
-            }
-        };
-
-        lerp(1000.0, calculate_isa_pressure(Metres(0.0)));
-        lerp(15000.0, calculate_isa_pressure(Metres(2000.0)));
-        lerp(
-            10.0,
-            Pascals(calculate_isa_pressure(Metres(2000.0)).0 * 2.0),
-        );
-        lerp(
-            500.0,
-            Pascals(calculate_isa_pressure(Metres(2000.0)).0 * 1.2),
-        );
-        lerp(5000.0, calculate_isa_pressure(Metres(3000.0)));
-        lerp(30000.0, calculate_isa_pressure(Metres(0.0)));
+            ));
+        }
 
         println!("readings length: {:?}", baro_readings.len());
+
+        let flight_profile = FlightProfile {
+            drogue_pyro: PyroSelection::Pyro1,
+            drogue_chute_minimum_time_ms: 10000.0,
+            drogue_chute_minimum_altitude_agl: 1500.0,
+            drogue_chute_delay_ms: 1000.0,
+            main_pyro: PyroSelection::Pyro2,
+            main_chute_altitude_agl: 500.0,
+            main_chute_delay_ms: 1000.0,
+        };
+        let channel = Channel::<NoopRawMutex, FlightCoreEvent, 10>::new();
+        let receiver = channel.receiver();
+
+        let mut flight_core = BackupFlightCore::new(flight_profile, channel.sender());
+        for reading in &baro_readings {
+            flight_core.tick(reading);
+            while let Ok(event) = receiver.try_receive() {
+                match event {
+                    FlightCoreEvent::CriticalError => todo!(),
+                    FlightCoreEvent::DidNotReachMinApogee => todo!(),
+                    FlightCoreEvent::ChangeState(new_state) => {
+                        println!("{}: State changed to {:?}", reading.timestamp, new_state);
+                    }
+                    FlightCoreEvent::ChangeAltitude(_) => {}
+                    FlightCoreEvent::ChangeAirSpeed(_) => {}
+                }
+            }
+        }
     }
 }

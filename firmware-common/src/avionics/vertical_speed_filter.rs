@@ -72,13 +72,12 @@ impl VerticalSpeedFilter {
 
 #[cfg(test)]
 mod test {
-    use biquad::*;
-    use icao_isa::calculate_isa_pressure;
-    use icao_units::si::{Metres, Pascals};
     use crate::{
         common::sensor_reading::SensorReading,
         driver::{barometer::BaroData, timestamp::BootTimestamp},
     };
+    use icao_isa::calculate_isa_pressure;
+    use icao_units::si::{Metres, Pascals};
 
     #[test]
     fn test_vertical_speed_filtering() {
@@ -181,31 +180,12 @@ mod test {
     fn test_vertical_speed_filtering_106() {
         let mut baro_readings: Vec<SensorReading<BootTimestamp, BaroData>> = vec![];
 
-        let coeffs = Coefficients::<f32>::from_params(
-            Type::LowPass,
-            (200.0).hz(),
-            (50.0).hz(),
-            Q_BUTTERWORTH_F32,
-        )
-        .unwrap();
-        let mut pressure_filter = DirectForm2Transposed::<f32>::new(coeffs);
-        let mut pressure_filter_initialized = false;
-
         let mut reader = csv::Reader::from_path("./test-data/106.baro_tier_1.csv").unwrap();
         for result in reader.records().skip(1) {
             let record = result.unwrap();
             let timestamp = record[0].parse::<f64>().unwrap();
             let pressure = record[2].parse::<f32>().unwrap();
             let temperature = record[4].parse::<f32>().unwrap();
-
-            if !pressure_filter_initialized{
-                while (pressure_filter.run(pressure) - pressure).abs() > 1.0 {
-                }
-                pressure_filter_initialized = true;
-                continue;
-            }
-
-            // let pressure = pressure_filter.run(pressure);
 
             baro_readings.push(SensorReading::new(
                 timestamp,
