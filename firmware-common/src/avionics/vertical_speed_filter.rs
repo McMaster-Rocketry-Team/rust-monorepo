@@ -53,7 +53,7 @@ impl VerticalSpeedFilter {
             let vertical_speed = (altitude - prev_altitude)
                 / ((baro_reading.timestamp - prev_timestamp) as f32 / 1000.0);
 
-            if fabsf(vertical_speed) > 1000.0 {
+            if fabsf(vertical_speed) > 3000.0 {
                 self.hold_end_time = baro_reading.timestamp + 500.0;
                 self.prev_altitude = None;
 
@@ -72,9 +72,9 @@ impl VerticalSpeedFilter {
 
 #[cfg(test)]
 mod test {
+    use biquad::*;
     use icao_isa::calculate_isa_pressure;
     use icao_units::si::{Metres, Pascals};
-
     use crate::{
         common::sensor_reading::SensorReading,
         driver::{barometer::BaroData, timestamp::BootTimestamp},
@@ -130,8 +130,8 @@ mod test {
         let mut last_timestamp = baro_readings.last().unwrap().timestamp;
         for reading in baro_readings.iter().skip(1) {
             let altitude = reading.data.altitude();
-            let vertical_speed = (altitude - last_altitude)
-                / ((reading.timestamp - last_timestamp) as f32 / 1000.0);
+            let vertical_speed =
+                (altitude - last_altitude) / ((reading.timestamp - last_timestamp) as f32 / 1000.0);
             last_altitude = altitude;
             last_timestamp = reading.timestamp;
             unfiltered_vertical_speed.push(vertical_speed);
@@ -151,7 +151,110 @@ mod test {
         let mut ctx = ChartBuilder::on(&root_area)
             .set_label_area_size(LabelAreaPosition::Left, 40)
             .set_label_area_size(LabelAreaPosition::Bottom, 40)
-            .build_cartesian_2d(0f32..(baro_readings.len() as f32 / 200.0), -4000f32..4000f32)
+            .build_cartesian_2d(
+                0f32..(baro_readings.len() as f32 / 200.0),
+                -4000f32..4000f32,
+            )
+            .unwrap();
+
+        ctx.configure_mesh().draw().unwrap();
+
+        ctx.draw_series(LineSeries::new(
+            unfiltered_vertical_speed
+                .into_iter()
+                .enumerate()
+                .map(|(i, y)| (i as f32 / 200.0, y)),
+            &GREEN,
+        ))
+        .unwrap();
+        ctx.draw_series(LineSeries::new(
+            filtered_vertical_speed
+                .into_iter()
+                .enumerate()
+                .map(|(i, y)| (i as f32 / 200.0, y)),
+            &RED,
+        ))
+        .unwrap();
+    }
+
+    #[test]
+    fn test_vertical_speed_filtering_106() {
+        let mut baro_readings: Vec<SensorReading<BootTimestamp, BaroData>> = vec![];
+
+        let coeffs = Coefficients::<f32>::from_params(
+            Type::LowPass,
+            (200.0).hz(),
+            (50.0).hz(),
+            Q_BUTTERWORTH_F32,
+        )
+        .unwrap();
+        let mut pressure_filter = DirectForm2Transposed::<f32>::new(coeffs);
+        let mut pressure_filter_initialized = false;
+
+        let mut reader = csv::Reader::from_path("./test-data/106.baro_tier_1.csv").unwrap();
+        for result in reader.records().skip(1) {
+            let record = result.unwrap();
+            let timestamp = record[0].parse::<f64>().unwrap();
+            let pressure = record[2].parse::<f32>().unwrap();
+            let temperature = record[4].parse::<f32>().unwrap();
+
+            if !pressure_filter_initialized{
+                while (pressure_filter.run(pressure) - pressure).abs() > 1.0 {
+                }
+                pressure_filter_initialized = true;
+                continue;
+            }
+
+            // let pressure = pressure_filter.run(pressure);
+
+            baro_readings.push(SensorReading::new(
+                timestamp,
+                BaroData {
+                    temperature,
+                    pressure,
+                },
+            ));
+        }
+
+        println!("readings length: {:?}", baro_readings.len());
+
+        let mut unfiltered_vertical_speed = vec![0f32];
+        let mut last_altitude = baro_readings.last().unwrap().data.altitude();
+        let mut last_timestamp = baro_readings.last().unwrap().timestamp;
+        for reading in baro_readings.iter().skip(1) {
+            let altitude = reading.data.altitude();
+            let vertical_speed =
+                (altitude - last_altitude) / ((reading.timestamp - last_timestamp) as f32 / 1000.0);
+            last_altitude = altitude;
+            last_timestamp = reading.timestamp;
+            unfiltered_vertical_speed.push(vertical_speed);
+        }
+        println!(
+            "unfiltered vertical speed max: {}",
+            unfiltered_vertical_speed
+                .iter()
+                .cloned()
+                .fold(f32::NEG_INFINITY, f32::max)
+        );
+
+        let mut filter = super::VerticalSpeedFilter::new(200.0);
+        let filtered_vertical_speed = baro_readings
+            .iter()
+            .map(|reading| filter.feed(reading))
+            .collect::<Vec<f32>>();
+
+        use plotters::prelude::*;
+        let root_area = BitMapBackend::new("test_vertical_speed_filtering.png", (1920, 1080))
+            .into_drawing_area();
+        root_area.fill(&WHITE).unwrap();
+
+        let mut ctx = ChartBuilder::on(&root_area)
+            .set_label_area_size(LabelAreaPosition::Left, 40)
+            .set_label_area_size(LabelAreaPosition::Bottom, 40)
+            .build_cartesian_2d(
+                0f32..(baro_readings.len() as f32 / 200.0),
+                -1000f32..1000f32,
+            )
             .unwrap();
 
         ctx.configure_mesh().draw().unwrap();

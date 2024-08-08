@@ -823,6 +823,7 @@ dependencies = [
  "crc",
  "critical-section",
  "cryptoxide",
+ "csv",
  "defmt",
  "either",
  "embassy-futures",

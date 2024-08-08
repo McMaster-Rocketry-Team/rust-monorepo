@@ -58,7 +58,7 @@ impl<D: FlightCoreEventPublisher> BackupFlightCore<D> {
                 if self.launch_pad_altitude.is_none() {
                     self.launch_pad_altitude = Some(baro_reading.data.altitude());
                 }
-                if vertical_speed < -10.0 {
+                if vertical_speed < -20.0 {
                     self.state = BackupFlightCoreState::DrogueChute {
                         deploy_time: timestamp + self.flight_profile.drogue_chute_delay_ms,
                     };
