@@ -101,12 +101,13 @@ pub struct FlightCore<P: FlightCoreEventPublisher> {
     variances: Variances,
     baro_filter: BaroReadingFilter,
     critical_error: bool,
+    first_tick: bool,
 }
 
 impl<D: FlightCoreEventPublisher> FlightCore<D> {
     pub fn new(
         flight_profile: FlightProfile,
-        mut event_publisher: D,
+        event_publisher: D,
         rocket_upright_acc: Vector3<f32>,
         variances: Variances,
     ) -> Self {
@@ -120,9 +121,6 @@ impl<D: FlightCoreEventPublisher> FlightCore<D> {
             .build();
         eskf.gravity = Vector3::new(0.0, 0.0, -9.81);
 
-        event_publisher.publish(FlightCoreEvent::ChangeState(
-            EventFlightCoreState::Armed,
-        ));
         Self {
             event_publisher,
             flight_profile,
@@ -140,6 +138,7 @@ impl<D: FlightCoreEventPublisher> FlightCore<D> {
             variances,
             baro_filter: BaroReadingFilter::new(),
             critical_error: false,
+            first_tick: true,
         }
     }
 
@@ -199,6 +198,12 @@ impl<D: FlightCoreEventPublisher> FlightCore<D> {
                 // gps_location_history,
                 acc_y_moving_average,
             } => {
+                if self.first_tick {
+                    self.event_publisher
+                        .publish(FlightCoreEvent::ChangeState(EventFlightCoreState::Armed));
+                    self.first_tick = false;
+                }
+
                 // update state
                 acc_y_moving_average.add_sample(acc[2]);
 

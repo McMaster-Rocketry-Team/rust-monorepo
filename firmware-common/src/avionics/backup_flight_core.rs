@@ -46,6 +46,8 @@ impl<D: FlightCoreEventPublisher> BackupFlightCore<D> {
     pub fn tick(&mut self, baro_reading: &SensorReading<BootTimestamp, BaroData>) {
         let timestamp = baro_reading.timestamp;
         let vertical_speed = self.vertical_speed_filter.feed(baro_reading);
+        self.event_publisher
+            .publish(FlightCoreEvent::ChangeAirSpeed(vertical_speed));
 
         match &mut self.state {
             BackupFlightCoreState::Armed => {
