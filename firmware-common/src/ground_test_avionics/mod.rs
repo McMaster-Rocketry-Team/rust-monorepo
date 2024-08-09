@@ -1,7 +1,7 @@
 use core::cell::RefCell;
 
 use crate::{
-    avionics::flight_profile::PyroSelection,
+    avionics::{arming_state::ArmingStateManager, flight_profile::PyroSelection},
     claim_devices,
     common::{
         delta_logger::{buffered_delta_logger::BufferedDeltaLogger, prelude::DeltaLogger},
@@ -73,6 +73,9 @@ pub async fn ground_test_avionics(
 
     log_info!("resetting barometer");
     barometer.reset().await.unwrap();
+
+    let arming_state = ArmingStateManager::<NoopRawMutex>::new();
+    let arming_state_debounce_fut = arming_state.run_debounce(services.delay.clone());
 
     let indicator_fut = indicators.run([], [50, 2000], []);
 
@@ -214,6 +217,7 @@ pub async fn ground_test_avionics(
     let arming_switch_fut = async {
         let mut armed = arming_switch.read_arming().await.unwrap();
         loop {
+            arming_state.set_hardware_armed(armed);
             telemetry_packet_builder.update(|b| {
                 b.hardware_armed = armed;
                 b.software_armed = true;
@@ -231,6 +235,7 @@ pub async fn ground_test_avionics(
         pyro_drogue_cont_fut,
         arming_switch_fut,
         baro_logger_fut,
+        arming_state_debounce_fut,
     );
     log_unreachable!()
 }

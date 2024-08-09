@@ -23,3 +23,4 @@ pub mod ticker;
 pub mod unix_clock;
 pub mod variable_int;
 pub mod vlp;
+pub mod debounced_signal;

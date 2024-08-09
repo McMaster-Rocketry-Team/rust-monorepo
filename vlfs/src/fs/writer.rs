@@ -113,6 +113,8 @@ where
                     "First sector address={:#X}",
                     (new_sector_index as usize * SECTOR_SIZE) as u32
                 );
+                drop(flash);
+                drop(sectors_mng);
                 self.set_file_first_sector_index(file_id, Some(new_sector_index))
                     .await?;
             };

@@ -74,3 +74,14 @@ impl CanBusMessage for HealthMessage {
         3
     }
 }
+
+#[derive(PackedStruct, Clone, Copy, Debug, PartialEq, Eq)]
+#[packed_struct(bit_numbering = "msb0", endian = "msb", size_bytes = "1")]
+pub struct ResetMessage {
+}
+
+impl CanBusMessage for ResetMessage {
+    fn message_type() -> u8 {
+        4
+    }
+}

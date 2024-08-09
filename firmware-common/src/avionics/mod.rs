@@ -1,4 +1,4 @@
-use arming_state::ArmingState;
+use arming_state::ArmingStateManager;
 use backup_flight_core::BackupFlightCore;
 use core::cell::RefCell;
 use crc::CRC_16_GSM;
@@ -59,7 +59,7 @@ use crate::{
 };
 use self_test::{self_test, SelfTestResult};
 
-mod arming_state;
+pub mod arming_state;
 pub mod backup_flight_core;
 pub mod baro_reading_filter;
 pub mod flight_core;
@@ -272,7 +272,7 @@ pub async fn avionics_main(
     // states
     let storage_full = RefCell::new(false);
     let low_power_mode = RefCell::new(false);
-    let arming_state = ArmingState::<NoopRawMutex>::new();
+    let arming_state = ArmingStateManager::<NoopRawMutex>::new();
     let arming_state_debounce_fut = arming_state.run_debounce(services.delay.clone());
 
     let flight_core_events = FlightCoreEventChannel::new();
@@ -464,29 +464,40 @@ pub async fn avionics_main(
                 &config.lora,
                 services.unix_clock(),
                 &config.lora_key,
-            ).await;
+            )
+            .await;
         }
     };
 
     let hardware_arming_fut = async {
         let mut hardware_armed = arming_switch.read_arming().await.unwrap();
-        if hardware_armed {
-            services.buzzer_queue.publish(2000, 700, 300);
-            services.buzzer_queue.publish(3000, 700, 300);
-        }
         loop {
             arming_state.set_hardware_armed(hardware_armed);
             telemetry_packet_builder.update(|b| {
                 b.hardware_armed = hardware_armed;
             });
             hardware_armed = arming_switch.wait_arming_change().await.unwrap();
-            if hardware_armed {
+        }
+    };
+
+    let hardware_arming_beep_fut = async {
+        let mut sub = arming_state.subscriber();
+        let mut hardware_armed_debounced = arming_state.is_armed();
+        if hardware_armed_debounced {
+            services.buzzer_queue.publish(2000, 700, 300);
+            services.buzzer_queue.publish(3000, 700, 300);
+        }
+
+        loop {
+            let new_hardware_armed = sub.next_message_pure().await.hardware_armed;
+            if !hardware_armed_debounced && new_hardware_armed {
                 services.buzzer_queue.publish(2000, 700, 300);
                 services.buzzer_queue.publish(3000, 700, 300);
-            } else {
+            } else if hardware_armed_debounced && !new_hardware_armed {
                 services.buzzer_queue.publish(3000, 700, 300);
                 services.buzzer_queue.publish(2000, 700, 300);
             }
+            hardware_armed_debounced = new_hardware_armed;
         }
     };
 
@@ -613,8 +624,9 @@ pub async fn avionics_main(
     };
 
     let setup_flight_core_fut = async {
+        let mut arming_state_sub = arming_state.subscriber();
         loop {
-            let armed = arming_state.wait().await;
+            let armed = arming_state_sub.next_message_pure().await.is_armed();
             let flight_core_initialized = flight_core.borrow().is_some();
             if armed && !flight_core_initialized {
                 if let Some(imu_config) = imu_config.borrow().clone() {
@@ -844,6 +856,7 @@ pub async fn avionics_main(
         vlp_rx_fut,
         vlp_fut,
         hardware_arming_fut,
+        hardware_arming_beep_fut,
         setup_flight_core_fut,
         pyro_main_cont_fut,
         pyro_drogue_cont_fut,
