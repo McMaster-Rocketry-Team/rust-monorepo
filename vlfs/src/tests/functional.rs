@@ -1,6 +1,6 @@
 use crate::tests::init_logger;
 use crate::{get_test_image_path, tests::harness::VLFSTestingHarness};
-use crate::{FileEntry, FileID, FileType};
+use crate::{AsyncReader, FileEntry, FileID, FileType, VLFSReadStatus};
 use function_name::named;
 
 #[named]
@@ -157,6 +157,28 @@ async fn disk_full() {
     harness.open_file_for_write(file_id).await;
     harness.append_file(file_id, 65669632).await.unwrap_err();
     harness.close_write_file(file_id).await;
+}
+
+#[named]
+#[tokio::test]
+async fn disk_full_twice() {
+    // init_logger();
+
+    let path = get_test_image_path!();
+
+    let mut harness = VLFSTestingHarness::new(path).await;
+    let file_id = harness.create_file(FileType(0)).await;
+    harness.open_file_for_write(file_id).await;
+    harness.append_file(file_id, 65669631).await.unwrap();
+    harness.close_write_file(file_id).await;
+    harness.verify_invariants().await;
+    harness.remove_file(file_id).await;
+
+    let file_id = harness.create_file(FileType(1)).await;
+    harness.open_file_for_write(file_id).await;
+    harness.append_file(file_id, 65669631).await.unwrap();
+    harness.close_write_file(file_id).await;
+    harness.verify_invariants().await;
 }
 
 #[named]
@@ -446,4 +468,26 @@ async fn files_iter_no_file() {
     let mut harness = VLFSTestingHarness::new(path).await;
 
     harness.verify_invariants().await;
+}
+
+#[named]
+#[tokio::test]
+async fn power_loss() {
+    init_logger();
+    let path = get_test_image_path!();
+    let mut harness = VLFSTestingHarness::new(path).await;
+    let file_id = harness.create_file(FileType(0)).await;
+    harness.open_file_for_write(file_id).await;
+    harness.append_file(file_id, 5000).await.unwrap();
+
+    harness.reinit_powerloss().await;
+    let mut reader = harness.vlfs.open_file_for_read(file_id).await.unwrap();
+    let mut buffer = [0u8;252 + 5];
+    let (read_buffer,read_status) = reader.read_slice(&mut buffer, 252).await.unwrap();
+    assert_eq!(read_buffer.len(), 252);
+    assert_eq!(read_status, VLFSReadStatus::Ok);
+    // let (read_buffer,read_status) = reader.read_slice(&mut buffer, 1).await.unwrap();
+    // assert_eq!(read_buffer.len(), 0);
+    // assert_eq!(read_status, VLFSReadStatus::EndOfFile);
+    reader.close().await;
 }

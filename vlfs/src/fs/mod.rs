@@ -160,8 +160,12 @@ where
                     .await
                     .map_err(VLFSError::FlashError)?;
 
-                let sector_data_size =
+                let mut sector_data_size =
                     find_most_common_u16_out_of_4(&read_result[..8]).unwrap() as usize; // TODO handle error
+                if sector_data_size == 0xFFFF {
+                    sector_data_size = 0;
+                }
+                
                 log_info!(
                     "sector data size = {} at sector #{:#X}",
                     sector_data_size,

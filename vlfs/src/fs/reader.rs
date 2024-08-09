@@ -42,7 +42,7 @@ enum SectorDataLength {
     Unknown,   // Sector data length has been read, but the value is invalid
 }
 
-#[derive(defmt::Format, Debug, Clone)]
+#[derive(defmt::Format, Debug, Clone, PartialEq, Eq)]
 pub enum VLFSReadStatus {
     Ok,
     EndOfFile,
@@ -114,9 +114,13 @@ where
                     .map_err(VLFSError::FlashError)?;
                 let sector_data_length = find_most_common_u16_out_of_4(read_result);
                 if let Some(sector_data_length) = sector_data_length
-                    && sector_data_length <= MAX_DATA_LENGTH_PER_SECTION as u16
                 {
-                    self.sector_data_length = SectorDataLength::Read(sector_data_length);
+                    self.sector_data_length = if sector_data_length <= MAX_DATA_LENGTH_PER_SECTION as u16{
+                        SectorDataLength::Read(sector_data_length)
+                    }else{
+                        SectorDataLength::Read(0)
+                    };
+                    
                 } else {
                     self.sector_data_length = SectorDataLength::Unknown;
                 }

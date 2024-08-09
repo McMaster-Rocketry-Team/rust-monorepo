@@ -1,3 +1,4 @@
+use core::mem;
 use std::assert_matches::assert_matches;
 use std::{collections::HashMap, mem::transmute, path::PathBuf};
 
@@ -52,6 +53,21 @@ impl VLFSTestingHarness {
             }
             for (_, (file_reader, _)) in self.file_readers.drain() {
                 block_on(file_reader.close());
+            }
+
+            let flash = old_fs.into_flash();
+            VLFS::new(flash, DummyCrc {})
+        });
+        self.vlfs.init().await.unwrap();
+    }
+
+    pub async fn reinit_powerloss(&mut self){
+        replace_with_or_abort(&mut self.vlfs, |old_fs| {
+            for (_, file_writer) in self.file_writers.drain() {
+                mem::forget(file_writer);
+            }
+            for (_, (file_reader, _)) in self.file_readers.drain() {
+                mem::forget(file_reader);
             }
 
             let flash = old_fs.into_flash();
