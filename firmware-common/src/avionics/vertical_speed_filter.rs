@@ -5,11 +5,50 @@ use crate::{
 use biquad::{Biquad, Coefficients, DirectForm2Transposed, ToHertz as _, Type, Q_BUTTERWORTH_F32};
 use libm::fabsf;
 
+const MAX_DECELERATION: f32 = 45.0; // m/s^2
+
+struct PhysicalVerticalSpeedModel {
+    last_timestamp: Option<f64>,
+    last_vertical_speed: Option<f32>,
+}
+
+impl PhysicalVerticalSpeedModel {
+    fn new() -> Self {
+        Self {
+            last_timestamp: None,
+            last_vertical_speed: None,
+        }
+    }
+
+    fn feed(&mut self, timestamp: f64, vertical_speed: f32) -> f32 {
+        if self.last_timestamp.is_none() {
+            self.last_timestamp = Some(timestamp as f64);
+            self.last_vertical_speed = Some(vertical_speed);
+            return vertical_speed;
+        }
+
+        let last_vertical_speed = self.last_vertical_speed.unwrap();
+        let dt = ((timestamp - self.last_timestamp.unwrap()) / 1000.0) as f32;
+        let acceleration = (vertical_speed - last_vertical_speed) / dt;
+        if acceleration > -MAX_DECELERATION {
+            self.last_timestamp = Some(timestamp as f64);
+            self.last_vertical_speed = Some(vertical_speed);
+            return vertical_speed;
+        } else {
+            let new_vertical_speed = last_vertical_speed - MAX_DECELERATION * dt;
+            self.last_timestamp = Some(timestamp as f64);
+            self.last_vertical_speed = Some(new_vertical_speed);
+            return new_vertical_speed;
+        }
+    }
+}
+
 pub struct VerticalSpeedFilter {
     hold_end_time: f64,
     prev_altitude: Option<(f64, f32)>,
     vertical_speed_filter: DirectForm2Transposed<f32>,
     last_vertical_speed: Option<f32>,
+    physical_model: PhysicalVerticalSpeedModel,
 }
 
 impl VerticalSpeedFilter {
@@ -28,17 +67,21 @@ impl VerticalSpeedFilter {
             prev_altitude: None,
             vertical_speed_filter: DirectForm2Transposed::<f32>::new(coeffs),
             last_vertical_speed: None,
+            physical_model: PhysicalVerticalSpeedModel::new(),
         }
     }
 
     /// returns vertical speed
     pub fn feed(&mut self, baro_reading: &SensorReading<BootTimestamp, BaroData>) -> f32 {
-        if let Some(vertical_speed) = self.feed_inner(baro_reading) {
+        let filtered_vertical_speed = if let Some(vertical_speed) = self.feed_inner(baro_reading) {
             self.last_vertical_speed = Some(vertical_speed);
-            return vertical_speed;
+            vertical_speed
         } else {
-            return self.last_vertical_speed.unwrap_or(0.0);
-        }
+            self.last_vertical_speed.unwrap_or(0.0)
+        };
+
+        self.physical_model
+            .feed(baro_reading.timestamp, filtered_vertical_speed)
     }
 
     /// returns vertical speed

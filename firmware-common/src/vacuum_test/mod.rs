@@ -67,7 +67,7 @@ pub async fn vacuum_test_main(
     let mut logger = VacuumTestLogger::new(log_file_writer);
 
     log_info!("Creating baro logger");
-    let baro_logger = BufferedTieredRingDeltaLogger::<BaroData, 100>::new();
+    let baro_logger = BufferedTieredRingDeltaLogger::<BaroData, 200>::new();
     let baro_logger_fut = baro_logger.run(
         SensorsFF1,
         SensorsFF2,
@@ -76,14 +76,14 @@ pub async fn vacuum_test_main(
             (
                 RingDeltaLoggerConfig {
                     file_type: VACUUM_TEST_BARO_LOGGER_TIER_1,
-                    seconds_per_segment: 5 * 60,
+                    seconds_per_segment: 60,
                     first_segment_seconds: 30,
                     segments_per_ring: 6, // 30 min
                 },
                 RingDeltaLoggerConfig {
                     file_type: VACUUM_TEST_BARO_LOGGER_TIER_2,
                     seconds_per_segment: 30 * 60,
-                    first_segment_seconds: 60,
+                    first_segment_seconds: 45,
                     segments_per_ring: 10, // 5 hours
                 },
             ),
