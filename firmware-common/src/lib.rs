@@ -63,7 +63,8 @@ pub async fn init(
         serial,
         buzzer,
         gps,
-        gps_pps
+        gps_pps,
+        sys_reset
     );
     let mut serial = serial.take().unwrap();
     let mut usb = usb.take().unwrap();
@@ -118,6 +119,7 @@ pub async fn init(
         clock: device_manager.clock(),
         unix_clock,
         buzzer_queue,
+        sys_reset: sys_reset.take().unwrap(),
     };
 
     let delay = device_manager.delay();

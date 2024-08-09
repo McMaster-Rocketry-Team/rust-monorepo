@@ -75,6 +75,7 @@ pub async fn ground_test_avionics(
     barometer.reset().await.unwrap();
 
     let arming_state = ArmingStateManager::<NoopRawMutex>::new();
+    arming_state.set_software_armed(true);
     let arming_state_debounce_fut = arming_state.run_debounce(services.delay.clone());
 
     let indicator_fut = indicators.run([], [50, 2000], []);
@@ -226,6 +227,27 @@ pub async fn ground_test_avionics(
         }
     };
 
+    let hardware_arming_beep_fut = async {
+        let mut sub = arming_state.subscriber();
+        let mut hardware_armed_debounced = arming_state.is_armed();
+        if hardware_armed_debounced {
+            services.buzzer_queue.publish(2000, 700, 300);
+            services.buzzer_queue.publish(3000, 700, 300);
+        }
+
+        loop {
+            let new_hardware_armed = sub.next_message_pure().await.hardware_armed;
+            if !hardware_armed_debounced && new_hardware_armed {
+                services.buzzer_queue.publish(2000, 700, 300);
+                services.buzzer_queue.publish(3000, 700, 300);
+            } else if hardware_armed_debounced && !new_hardware_armed {
+                services.buzzer_queue.publish(3000, 700, 300);
+                services.buzzer_queue.publish(2000, 700, 300);
+            }
+            hardware_armed_debounced = new_hardware_armed;
+        }
+    };
+
     join!(
         indicator_fut,
         vlp_tx_fut,
@@ -236,6 +258,7 @@ pub async fn ground_test_avionics(
         arming_switch_fut,
         baro_logger_fut,
         arming_state_debounce_fut,
+        hardware_arming_beep_fut,
     );
     log_unreachable!()
 }

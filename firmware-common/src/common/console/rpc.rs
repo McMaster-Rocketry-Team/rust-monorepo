@@ -37,8 +37,8 @@ create_rpc! {
             Error,
         }
     }
-    state<F: Flash, C: Crc>(
-        services: &SystemServices<'_, '_, '_, '_, impl Delay, impl Clock, F, C>,
+    state<F: Flash, C: Crc, D: SysReset>(
+        services: &SystemServices<'_, '_, '_, '_, impl Delay, impl Clock, F, C, D>,
         config: &Option<DeviceConfig>,
         device_serial_number: &[u8; 12],
         downlink_package_receiver: Receiver<'_, NoopRawMutex, (VLPDownlinkPacket, PacketStatus), 1>,
@@ -159,5 +159,9 @@ create_rpc! {
         device_config_file.write(&device_config).await.unwrap();
         log_info!("Device config updated");
         SetDeviceConfigResponse {}
+    }
+    rpc 10 ResetDevice | | -> () {
+        services.reset();
+        ResetDeviceResponse {}
     }
 }

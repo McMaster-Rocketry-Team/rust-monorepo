@@ -20,15 +20,10 @@ use crate::{
     },
     claim_devices,
     common::{
-        delta_logger::{
+        can_bus::messages::ResetMessage, delta_logger::{
             buffered_tiered_ring_delta_logger::BufferedTieredRingDeltaLogger,
             delta_logger::UnixTimestampLog,
-        },
-        device_manager::prelude::*,
-        sensor_reading::SensorReading,
-        sensor_snapshot::PartialSensorSnapshot,
-        ticker::Ticker,
-        vlp::packet::VLPDownlinkPacket,
+        }, device_manager::prelude::*, sensor_reading::SensorReading, sensor_snapshot::PartialSensorSnapshot, ticker::Ticker, vlp::packet::VLPDownlinkPacket
     },
     device_manager_type,
     driver::{
@@ -308,8 +303,7 @@ pub async fn avionics_main(
         batt_voltmeter,
         lora,
         camera,
-        can_bus,
-        sys_reset
+        can_bus
     );
     log_info!("Devices claimed");
 
@@ -423,7 +417,11 @@ pub async fn avionics_main(
                     }
                 }
                 VLPUplinkPacket::ResetPacket(_) => {
-                    sys_reset.reset();
+                    let mut can_tx = can_tx.lock().await;
+                    can_tx.send(&ResetMessage{}, 7).await.ok();
+                    drop(can_tx);
+                    services.delay().delay_ms(100.0).await;
+                    services.reset();
                 }
                 VLPUplinkPacket::DeleteLogsPacket(_) => {
                     services
@@ -685,8 +683,7 @@ pub async fn avionics_main(
             let (is_backup, event) = sub.next_message_pure().await;
             match event {
                 FlightCoreEvent::CriticalError => {
-                    claim_devices!(device_manager, sys_reset);
-                    sys_reset.reset();
+                    services.reset();
                 }
                 FlightCoreEvent::DidNotReachMinApogee => {
                     // noop

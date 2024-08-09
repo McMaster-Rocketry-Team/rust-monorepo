@@ -64,7 +64,7 @@ pub struct DeviceManager<
     CAM: Camera,
     CB: SplitableCanBus,
 > {
-    pub(crate) sys_reset: Mutex<NoopRawMutex, D>,
+    pub(crate) sys_reset: Mutex<NoopRawMutex, Option<D>>,
     pub(crate) flash: Mutex<NoopRawMutex, F>,
     pub(crate) crc: Mutex<NoopRawMutex, C>,
     pub(crate) low_g_imu: Mutex<NoopRawMutex, I>,
@@ -196,7 +196,7 @@ impl<
     ) -> Self {
         Self {
             debugger,
-            sys_reset: Mutex::new(sys_reset),
+            sys_reset: Mutex::new(Some(sys_reset)),
             flash: Mutex::new(flash),
             crc: Mutex::new(crc),
             low_g_imu: Mutex::new(low_g_imu),
@@ -367,17 +367,18 @@ pub mod prelude {
     pub use vlfs::{Crc, Flash};
 }
 
-pub struct SystemServices<'f, 'a, 'b, 'c, DL: Delay, T: Clock, F: Flash, C: Crc> {
+pub struct SystemServices<'f, 'a, 'b, 'c, DL: Delay, T: Clock, F: Flash, C: Crc, D: SysReset> {
     pub(crate) fs: &'f VLFS<F, C>,
     pub(crate) gps: &'a PubSubChannel<NoopRawMutex, SensorReading<BootTimestamp, GPSData>, 1, 1, 1>,
     pub(crate) delay: DL,
     pub(crate) clock: T,
     pub(crate) unix_clock: UnixClock<'b, T>,
     pub(crate) buzzer_queue: BuzzerQueue<'c>,
+    pub(crate) sys_reset: D,
 }
 
-impl<'f, 'a, 'b, 'c, DL: Delay, T: Clock, F: Flash, C: Crc>
-    SystemServices<'f, 'a, 'b, 'c, DL, T, F, C>
+impl<'f, 'a, 'b, 'c, DL: Delay, T: Clock, F: Flash, C: Crc, D: SysReset>
+    SystemServices<'f, 'a, 'b, 'c, DL, T, F, C, D>
 {
     pub fn delay(&self) -> DL {
         self.delay.clone()
@@ -389,6 +390,10 @@ impl<'f, 'a, 'b, 'c, DL: Delay, T: Clock, F: Flash, C: Crc>
 
     pub fn unix_clock(&self) -> UnixClock<'b, T> {
         self.unix_clock.clone()
+    }
+
+    pub fn reset(&self) {
+        self.sys_reset.reset();
     }
 }
 
@@ -403,5 +408,6 @@ macro_rules! system_services_type {
         impl Clock,
         impl Flash,
         impl Crc,
+        impl SysReset,
     >};
 }
