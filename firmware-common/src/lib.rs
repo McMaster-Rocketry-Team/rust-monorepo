@@ -7,19 +7,20 @@
 #![feature(async_closure)]
 #![feature(assert_matches)]
 #![feature(never_type)]
+#![feature(core_intrinsics)]
 #![allow(async_fn_in_trait)]
 
 mod fmt;
-mod vl_main;
-pub mod strain_gauges;
+pub mod utils;
 pub mod avionics;
 pub mod common;
 pub mod driver;
 mod gcm;
 mod ground_test_avionics;
-pub mod utils;
+pub mod strain_gauges;
 pub mod vacuum_test;
+mod vl_main;
 
-pub use common::vl_device_manager::VLDeviceManager;
 pub use common::console::rpc::RpcClient;
+pub use common::vl_device_manager::VLDeviceManager;
 pub use vl_main::vl_main;
