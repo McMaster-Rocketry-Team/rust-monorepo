@@ -1,5 +1,5 @@
 use crate::avionics::flight_profile::FlightProfile;
-use crate::common::device_manager::prelude::*;
+use crate::common::vl_device_manager::prelude::*;
 use crate::common::file_types::{DEVICE_CONFIG_FILE_TYPE, FLIGHT_PROFILE_FILE_TYPE};
 use crate::common::rkyv_structs::RkyvString;
 use crate::common::rpc_channel::RpcChannelClient;
@@ -38,7 +38,7 @@ create_rpc! {
         }
     }
     state<F: Flash, C: Crc, D: SysReset>(
-        services: &SystemServices<'_, '_, '_, '_, impl Delay, impl Clock, F, C, D>,
+        services: &VLSystemServices<'_, '_, '_, '_, impl Delay, impl Clock, F, C, D>,
         config: &Option<DeviceConfig>,
         device_serial_number: &[u8; 12],
         downlink_package_receiver: Receiver<'_, NoopRawMutex, (VLPDownlinkPacket, PacketStatus), 1>,

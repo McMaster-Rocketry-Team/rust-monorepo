@@ -10,7 +10,7 @@ use crate::avionics::flight_profile::FlightProfile;
 use crate::common::config_file::ConfigFile;
 use crate::common::delta_logger::buffered_tiered_ring_delta_logger::BufferedTieredRingDeltaLogger;
 use crate::common::delta_logger::prelude::{RingDeltaLoggerConfig, TieredRingDeltaLogger};
-use crate::common::device_manager::prelude::*;
+use crate::common::vl_device_manager::prelude::*;
 use crate::common::file_types::{
     FLIGHT_PROFILE_FILE_TYPE, VACUUM_TEST_BARO_LOGGER_TIER_1, VACUUM_TEST_BARO_LOGGER_TIER_2,
     VACUUM_TEST_LOG_FILE_TYPE,
@@ -18,7 +18,7 @@ use crate::common::file_types::{
 use crate::common::ticker::Ticker;
 use crate::driver::barometer::BaroData;
 use crate::{claim_devices, create_serialized_enum, fixed_point_factory};
-use crate::{device_manager_type, system_services_type};
+use crate::{vl_device_manager_type, system_services_type};
 
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Debug, Clone, defmt::Format)]
 pub struct FlightCoreEventLog {
@@ -38,7 +38,7 @@ fixed_point_factory!(SensorsFF2, f64, 199.0, 210.0, 0.5);
 
 #[inline(never)]
 pub async fn vacuum_test_main(
-    device_manager: device_manager_type!(),
+    device_manager: vl_device_manager_type!(),
     services: system_services_type!(),
 ) -> ! {
     claim_devices!(device_manager, indicators, barometer);

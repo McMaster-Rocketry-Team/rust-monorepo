@@ -25,13 +25,13 @@ use crate::{
             buffered_tiered_ring_delta_logger::BufferedTieredRingDeltaLogger,
             delta_logger::UnixTimestampLog,
         },
-        device_manager::prelude::*,
+        vl_device_manager::prelude::*,
         sensor_reading::SensorReading,
         sensor_snapshot::PartialSensorSnapshot,
         ticker::Ticker,
         vlp::packet::VLPDownlinkPacket,
     },
-    device_manager_type,
+    vl_device_manager_type,
     driver::{
         adc::ADCData,
         barometer::BaroData,
@@ -73,7 +73,7 @@ pub mod vertical_speed_filter;
 
 #[inline(never)]
 pub async fn avionics_main(
-    device_manager: device_manager_type!(),
+    device_manager: vl_device_manager_type!(),
     services: system_services_type!(),
     config: &DeviceConfig,
     device_serial_number: &[u8; 12],

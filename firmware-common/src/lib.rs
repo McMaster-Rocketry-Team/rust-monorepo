@@ -19,6 +19,6 @@ mod ground_test_avionics;
 pub mod utils;
 pub mod vacuum_test;
 
-pub use common::device_manager::DeviceManager;
+pub use common::vl_device_manager::VLDeviceManager;
 pub use common::console::rpc::RpcClient;
 pub use vl_main::vl_main;

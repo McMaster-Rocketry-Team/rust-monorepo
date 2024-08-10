@@ -6,7 +6,7 @@ use crate::{
     common::{
         delta_logger::{buffered_delta_logger::BufferedDeltaLogger, prelude::DeltaLogger},
         device_config::{DeviceConfig, DeviceModeConfig},
-        device_manager::prelude::*,
+        vl_device_manager::prelude::*,
         file_types::{GROUND_TEST_BARO_FILE_TYPE, GROUND_TEST_LOG_FILE_TYPE},
         ticker::Ticker,
         vlp::{
@@ -15,7 +15,7 @@ use crate::{
             uplink_client::VLPUplinkClient,
         },
     },
-    create_serialized_enum, device_manager_type,
+    create_serialized_enum, vl_device_manager_type,
     driver::{barometer::BaroData, indicator::Indicator},
     fixed_point_factory, pyro,
 };
@@ -37,7 +37,7 @@ create_serialized_enum!(
 
 #[inline(never)]
 pub async fn ground_test_avionics(
-    device_manager: device_manager_type!(),
+    device_manager: vl_device_manager_type!(),
     services: system_services_type!(),
     config: &DeviceConfig,
 ) -> ! {

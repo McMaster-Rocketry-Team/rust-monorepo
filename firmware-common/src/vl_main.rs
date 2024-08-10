@@ -16,7 +16,7 @@ use embassy_sync::pubsub::{PubSubBehavior, PubSubChannel};
 use futures::join;
 use crate::vacuum_test::vacuum_test_main;
 
-use crate::common::device_manager::prelude::*;
+use crate::common::vl_device_manager::prelude::*;
 use vlfs::{StatFlash, VLFS};
 
 use futures::{future::select, pin_mut};
@@ -25,7 +25,7 @@ use crate::gcm::gcm_main;
 use crate::ground_test_avionics::ground_test_avionics;
 
 pub async fn vl_main(
-    device_manager: device_manager_type!(mut),
+    device_manager: vl_device_manager_type!(mut),
     device_serial_number: &[u8; 12],
     device_config: Option<DeviceConfig>,
 ) -> ! {
@@ -89,7 +89,7 @@ pub async fn vl_main(
     let buzzer_queue_runner_fut = buzzer_queue_runner.run(buzzer, device_manager.delay());
     let buzzer_queue = buzzer_queue_runner.get_queue();
 
-    let services = SystemServices {
+    let services = VLSystemServices {
         fs: &fs,
         gps: &gps_location_pubsub,
         delay: device_manager.delay(),

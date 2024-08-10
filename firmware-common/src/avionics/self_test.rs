@@ -1,4 +1,4 @@
-use crate::{claim_devices, common::device_manager::prelude::*};
+use crate::{claim_devices, common::vl_device_manager::prelude::*};
 
 pub enum SelfTestResult {
     Ok,
@@ -6,7 +6,7 @@ pub enum SelfTestResult {
     Failed,
 }
 
-pub async fn self_test(device_manager: device_manager_type!()) -> SelfTestResult {
+pub async fn self_test(device_manager: vl_device_manager_type!()) -> SelfTestResult {
     claim_devices!(device_manager, low_g_imu, high_g_imu, barometer, mag);
     // reset all devices
     low_g_imu.reset().await.unwrap();

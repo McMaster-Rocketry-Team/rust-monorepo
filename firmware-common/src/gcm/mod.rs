@@ -8,20 +8,20 @@ use crate::{
     claim_devices,
     common::{
         device_config::DeviceConfig,
-        device_manager::prelude::*,
+        vl_device_manager::prelude::*,
         rpc_channel::RpcChannelServer,
         vlp::{
             downlink_client::VLPDownlinkClient,
             packet::{VLPDownlinkPacket, VLPUplinkPacket},
         },
     },
-    device_manager_type,
+    vl_device_manager_type,
     driver::indicator::Indicator,
 };
 
 #[inline(never)]
 pub async fn gcm_main(
-    device_manager: device_manager_type!(),
+    device_manager: vl_device_manager_type!(),
     services: system_services_type!(),
     config: &DeviceConfig,
     downlink_package_sender: Sender<'_, NoopRawMutex, (VLPDownlinkPacket, PacketStatus), 1>,

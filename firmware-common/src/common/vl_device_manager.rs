@@ -31,7 +31,7 @@ use super::{
 };
 
 #[allow(dead_code)]
-pub struct DeviceManager<
+pub struct VLDeviceManager<
     DB: Debugger,
     D: SysReset,
     T: Clock,
@@ -129,7 +129,7 @@ impl<
         CAM: Camera,
         CB: SplitableCanBus,
     >
-    DeviceManager<
+    VLDeviceManager<
         DB,
         D,
         T,
@@ -269,8 +269,8 @@ macro_rules! try_claim_devices {
 
 // import all the device types using `crate::common::device_manager::prelude::*;`
 #[macro_export]
-macro_rules! device_manager_type {
-    () => { &DeviceManager<
+macro_rules! vl_device_manager_type {
+    () => { &VLDeviceManager<
     impl Debugger,
     impl SysReset,
     impl Clock,
@@ -304,7 +304,7 @@ macro_rules! device_manager_type {
     impl SplitableCanBus,
 >};
 
-(mut) => { &mut DeviceManager<
+(mut) => { &mut VLDeviceManager<
     impl Debugger,
     impl SysReset,
     impl Clock,
@@ -340,9 +340,9 @@ macro_rules! device_manager_type {
 }
 
 pub mod prelude {
-    pub use super::DeviceManager;
-    pub use super::SystemServices;
-    pub use crate::device_manager_type;
+    pub use super::VLDeviceManager;
+    pub use super::VLSystemServices;
+    pub use crate::vl_device_manager_type;
     pub use crate::driver::adc::{Ampere, Volt, ADC};
     pub use crate::driver::arming::HardwareArming;
     pub use crate::driver::barometer::Barometer;
@@ -367,7 +367,7 @@ pub mod prelude {
     pub use vlfs::{Crc, Flash};
 }
 
-pub struct SystemServices<'f, 'a, 'b, 'c, DL: Delay, T: Clock, F: Flash, C: Crc, D: SysReset> {
+pub struct VLSystemServices<'f, 'a, 'b, 'c, DL: Delay, T: Clock, F: Flash, C: Crc, D: SysReset> {
     pub(crate) fs: &'f VLFS<F, C>,
     pub(crate) gps: &'a PubSubChannel<NoopRawMutex, SensorReading<BootTimestamp, GPSData>, 1, 1, 1>,
     pub(crate) delay: DL,
@@ -378,7 +378,7 @@ pub struct SystemServices<'f, 'a, 'b, 'c, DL: Delay, T: Clock, F: Flash, C: Crc,
 }
 
 impl<'f, 'a, 'b, 'c, DL: Delay, T: Clock, F: Flash, C: Crc, D: SysReset>
-    SystemServices<'f, 'a, 'b, 'c, DL, T, F, C, D>
+    VLSystemServices<'f, 'a, 'b, 'c, DL, T, F, C, D>
 {
     pub fn delay(&self) -> DL {
         self.delay.clone()
@@ -399,7 +399,7 @@ impl<'f, 'a, 'b, 'c, DL: Delay, T: Clock, F: Flash, C: Crc, D: SysReset>
 
 #[macro_export]
 macro_rules! system_services_type {
-    () => { &SystemServices<
+    () => { &VLSystemServices<
         '_,
         '_,
         '_,
