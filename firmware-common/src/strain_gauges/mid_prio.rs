@@ -12,15 +12,12 @@ use crate::create_serialized_enum;
 use crate::driver::can_bus::can_node_id_from_serial_number;
 use crate::driver::clock::{Clock, VLFSTimerWrapper};
 use crate::driver::delay::Delay;
+use crate::driver::sg_adc::SGAdcController;
 use crate::driver::{can_bus::SplitableCanBus, indicator::Indicator};
 use crate::strain_gauges::global_states::SGLEDState;
 
 use super::global_states::SGGlobalStates;
 use super::{ArchivedProcessedSGReading, ProcessedSGReading};
-
-pub trait SGAdcController {
-    async fn set_enable(&mut self, enable: bool);
-}
 
 #[derive(defmt::Format, Debug, Clone, Archive, Deserialize, Serialize)]
 pub struct UnixTimestampLog {

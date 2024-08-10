@@ -4,8 +4,9 @@ use embassy_sync::blocking_mutex::raw::RawMutex;
 use embassy_sync::blocking_mutex::Mutex as BlockingMutex;
 
 use crate::common::zerocopy_channel::ZeroCopyChannel;
+use crate::driver::sg_adc::RawSGReadings;
 
-use super::{ProcessedSGReading, RawSGReadings};
+use super::ProcessedSGReading;
 
 pub struct SGGlobalStates<M: RawMutex> {
     pub(crate) raw_readings_channel: ZeroCopyChannel<M, RawSGReadings>,

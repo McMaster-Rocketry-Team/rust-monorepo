@@ -21,20 +21,6 @@ pub mod low_prio;
 pub const SAMPLES_PER_READ: usize = 2130;
 pub const READS_PER_SECOND: usize = 20;
 
-#[derive(Debug, Clone)]
-pub struct RawSGReadings {
-    pub start_time: f64, // boot time in ms
-    pub sg_readings: [[f32; SAMPLES_PER_READ]; 4],
-}
-
-impl RawSGReadings {
-    const fn new_const() -> Self {
-        Self {
-            start_time: 0.0,
-            sg_readings: [[0.0; SAMPLES_PER_READ]; 4],
-        }
-    }
-}
 
 // one per 200ms per channel
 #[derive(defmt::Format, Debug, Clone, Archive, Deserialize, Serialize)]
