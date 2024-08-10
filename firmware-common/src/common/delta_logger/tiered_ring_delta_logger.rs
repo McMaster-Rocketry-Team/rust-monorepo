@@ -7,8 +7,7 @@ use crate::{
         fixed_point::F64FixedPointFactory,
         sensor_reading::{SensorData, SensorReading},
     },
-    driver::timestamp::BootTimestamp,
-    Clock, Delay,
+    driver::{clock::Clock, delay::Delay, timestamp::BootTimestamp},
 };
 
 use super::{

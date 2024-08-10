@@ -4,7 +4,8 @@ use embassy_sync::{
 };
 use embedded_hal_async::delay::DelayNs;
 
-use crate::Buzzer;
+use crate::driver::buzzer::Buzzer;
+
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct BuzzerTone(

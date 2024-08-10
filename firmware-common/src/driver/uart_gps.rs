@@ -1,8 +1,7 @@
-use crate::{common::sensor_reading::SensorReading, Clock};
+use crate::common::sensor_reading::SensorReading;
 
 use super::{
-    gps::{GPSData, GPS},
-    timestamp::BootTimestamp,
+    clock::Clock, gps::{GPSData, GPS}, timestamp::BootTimestamp
 };
 use embassy_futures::yield_now;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};

@@ -8,8 +8,7 @@ use crate::{
         delta_logger::prelude::{BitArraySerializable, BitSliceReader, BitSliceWriter},
         unix_clock::UnixClock,
         vlp::{packet::*, telemetry_packet::TelemetryPacket},
-    },
-    Clock,
+    }, driver::clock::Clock,
 };
 use packed_struct::prelude::*;
 

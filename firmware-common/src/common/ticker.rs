@@ -1,5 +1,6 @@
-use crate::{Clock, Delay};
 use libm::ceil;
+
+use crate::driver::{clock::Clock, delay::Delay};
 pub struct Ticker<C: Clock, D: Delay> {
     start_timestamp: f64,
     interval_ms: f64,

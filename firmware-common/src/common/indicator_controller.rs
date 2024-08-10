@@ -1,5 +1,6 @@
-use crate::{Clock, Delay, Indicator};
 use futures::join;
+
+use crate::driver::{clock::Clock, delay::Delay, indicator::Indicator};
 
 pub struct IndicatorController<
     R: Indicator,

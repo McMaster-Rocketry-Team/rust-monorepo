@@ -69,7 +69,7 @@ where
 mod test {
     use approx::assert_relative_eq;
 
-    use crate::{driver::adc::ADCData, Volt};
+    use crate::driver::adc::{ADCData, Volt};
 
     use super::*;
 

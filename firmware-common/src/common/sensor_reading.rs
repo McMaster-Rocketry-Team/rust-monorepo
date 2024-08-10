@@ -1,9 +1,6 @@
 use core::marker::PhantomData;
 
-use crate::{
-    driver::timestamp::{TimestampType, UnixTimestamp},
-    Clock,
-};
+use crate::driver::{clock::Clock, timestamp::{TimestampType, UnixTimestamp}};
 
 use super::{
     delta_logger::{bitslice_serialize::BitArraySerializable, delta_factory::Deltable},

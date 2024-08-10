@@ -10,7 +10,8 @@ use embassy_sync::{
 use vlfs::{Crc, FileWriter, Flash, VLFSError, VLFS};
 
 use crate::common::ticker::Ticker;
-use crate::{Clock, Delay};
+use crate::driver::clock::Clock;
+use crate::driver::delay::Delay;
 
 use super::prelude::RingDeltaLoggerConfig;
 

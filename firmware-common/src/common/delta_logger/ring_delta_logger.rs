@@ -7,15 +7,12 @@ use crate::common::delta_logger::bitslice_primitive::BitSlicePrimitive;
 use crate::common::{
     delta_logger::bitslice_serialize::BitArraySerializable, variable_int::VariableIntTrait,
 };
-use crate::driver::timestamp::BootTimestamp;
-use crate::{
-    common::{
+use crate::driver::{clock::Clock, delay::Delay, timestamp::BootTimestamp};
+use crate::common::{
         fixed_point::F64FixedPointFactory,
         sensor_reading::{SensorData, SensorReading},
         ticker::Ticker,
-    },
-    Clock, Delay,
-};
+    };
 use embassy_futures::select::select;
 use embassy_futures::select::Either;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex, signal::Signal};

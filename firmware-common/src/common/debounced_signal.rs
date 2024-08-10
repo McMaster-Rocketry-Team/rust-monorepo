@@ -4,7 +4,7 @@ use embassy_sync::{
     signal::Signal,
 };
 
-use crate::Delay;
+use crate::driver::delay::Delay;
 
 pub struct DebouncedSignal<R, T>
 where

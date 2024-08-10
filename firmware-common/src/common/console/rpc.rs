@@ -6,13 +6,13 @@ use crate::common::rpc_channel::RpcChannelClient;
 use crate::common::vlp::packet::VLPDownlinkPacket;
 use crate::common::vlp::packet::VLPUplinkPacket;
 use crate::create_rpc;
-use crate::ConfigFile;
-use crate::DeviceConfig;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, channel::Receiver};
 use lora_phy::mod_params::PacketStatus;
 use rkyv::{Archive, Deserialize, Serialize};
 use vlfs::ConcurrentFilesIterator;
 use vlfs::{AsyncReader, Crc, FileID, FileReader, FileType, Flash, VLFSError, VLFSReadStatus};
+use crate::common::device_config::DeviceConfig;
+use crate::common::config_file::ConfigFile;
 
 #[derive(defmt::Format, Debug, Clone, Archive, Deserialize, Serialize)]
 pub struct RpcPacketStatus {

@@ -378,8 +378,8 @@ mod test {
     use super::*;
     use crate::{
         common::{sensor_reading::SensorReading, test_utils::BufferWriter},
-        driver::{adc::ADCData, timestamp::BootTimestamp},
-        fixed_point_factory, Volt,
+        driver::{adc::{ADCData, Volt}, timestamp::BootTimestamp},
+        fixed_point_factory,
     };
     use approx::assert_relative_eq;
     use rand::Rng;

@@ -1,6 +1,8 @@
 use heapless::Vec;
 
-use crate::{common::can_bus::message::CanBusMessage, Delay};
+use crate::common::can_bus::message::CanBusMessage;
+
+use super::delay::Delay;
 
 pub trait CanBusRawMessage {
     fn id(&self) -> u32;

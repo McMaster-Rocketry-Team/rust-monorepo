@@ -13,8 +13,8 @@ use crate::{
         fixed_point::F64FixedPointFactory,
         sensor_reading::{SensorData, SensorReading},
     },
-    driver::timestamp::BootTimestamp,
-    try_or_warn, Clock, Delay,
+    driver::{clock::Clock, delay::Delay, timestamp::BootTimestamp},
+    try_or_warn,
 };
 
 use super::{delta_logger::UnixTimestampLog, prelude::TieredRingDeltaLogger};

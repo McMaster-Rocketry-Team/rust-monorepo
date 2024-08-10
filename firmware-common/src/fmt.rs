@@ -65,10 +65,13 @@ macro_rules! log_panic {
     ($s:literal $(, $x:expr)* $(,)?) => {
         #[allow(unreachable_code)]
         {
+            #[cfg(feature = "log")]
+            ::core::panic!($s $(, $x)*);
+
             #[cfg(feature = "defmt")]
             ::defmt::panic!($s $(, $x)*);
 
-            ::core::panic!($s $(, $x)*);
+            ::core::panic!();
         }
     };
 }
@@ -77,13 +80,17 @@ macro_rules! log_unreachable {
     () => {
         #[allow(unreachable_code)]
         {
+            #[cfg(feature = "log")]
+            ::core::panic!("unreachable");
+
             #[cfg(feature = "defmt")]
             ::defmt::unreachable!();
 
-            ::core::unreachable!();
+            ::core::panic!("unreachable");
         }
     };
 }
+
 
 macro_rules! log_assert {
     ($x:expr) => {{

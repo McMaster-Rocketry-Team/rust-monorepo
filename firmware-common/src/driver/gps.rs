@@ -2,10 +2,7 @@ use crate::common::delta_logger::prelude::*;
 use crate::common::fixed_point::F32FixedPointFactory;
 use crate::common::sensor_reading::{SensorData, SensorReading};
 use crate::common::variable_int::{VariableInt, VariableIntTrait};
-use crate::{
-    common::{delta_logger::delta_factory::Deltable, ticker::Ticker},
-    Clock, Delay,
-};
+use crate::common::{delta_logger::delta_factory::Deltable, ticker::Ticker};
 use crate::{fixed_point_factory, fixed_point_factory_slope};
 use chrono::{TimeZone as _, Utc};
 use core::fmt::Debug;
@@ -14,6 +11,8 @@ use embassy_sync::{blocking_mutex::raw::RawMutex, mutex::MutexGuard};
 use libm::floor;
 use nmea::Nmea;
 
+use super::clock::Clock;
+use super::delay::Delay;
 use super::timestamp::BootTimestamp;
 
 #[derive(defmt::Format, Debug, Clone)]

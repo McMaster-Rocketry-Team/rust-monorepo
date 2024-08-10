@@ -70,6 +70,8 @@ macro_rules! log_panic {
 
             #[cfg(feature = "defmt")]
             ::defmt::panic!($s $(, $x)*);
+
+            ::core::panic!();
         }
     };
 }
@@ -79,10 +81,12 @@ macro_rules! log_unreachable {
         #[allow(unreachable_code)]
         {
             #[cfg(feature = "log")]
-            panic!("unreachable");
+            ::core::panic!("unreachable");
 
             #[cfg(feature = "defmt")]
             ::defmt::unreachable!();
+
+            ::core::panic!("unreachable");
         }
     };
 }

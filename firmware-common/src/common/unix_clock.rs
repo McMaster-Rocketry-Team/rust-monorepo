@@ -9,7 +9,7 @@ use embassy_sync::{
 };
 use futures::join;
 
-use crate::{driver::gps::GPSPPS, Clock};
+use crate::driver::{clock::Clock, gps::GPSPPS};
 
 use super::multi_waker::MultiWakerRegistration;
 

@@ -1,6 +1,5 @@
 use crate::{
-    common::{device_config::LoraConfig, unix_clock::UnixClock},
-    Clock, Delay,
+    common::{device_config::LoraConfig, unix_clock::UnixClock}, driver::{clock::Clock, delay::Delay},
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
 use heapless::Vec;

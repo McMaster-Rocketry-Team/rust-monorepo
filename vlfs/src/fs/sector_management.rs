@@ -249,7 +249,7 @@ impl EraseLength {
 
 // sector index are offseted (does not include allocation table address space)
 #[derive(Clone, Copy)]
-struct EraseRegion {
+pub(crate) struct EraseRegion {
     sector_index_offseted: u16,
     length: EraseLength,
 }
