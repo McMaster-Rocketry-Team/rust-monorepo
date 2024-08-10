@@ -17,30 +17,14 @@ use crate::{
     avionics::{
         flight_core::{FlightCore, Variances},
         flight_core_event::FlightCoreEvent,
-    },
-    claim_devices,
-    common::{
-        can_bus::messages::ResetMessage,
-        delta_logger::{
+    }, claim_devices, common::{
+        can_bus::messages::ResetMessage, delta_logger::{
             buffered_tiered_ring_delta_logger::BufferedTieredRingDeltaLogger,
             delta_logger::UnixTimestampLog,
-        },
-        vl_device_manager::prelude::*,
-        sensor_reading::SensorReading,
-        sensor_snapshot::PartialSensorSnapshot,
-        ticker::Ticker,
-        vlp::packet::VLPDownlinkPacket,
-    },
-    vl_device_manager_type,
-    driver::{
-        adc::ADCData,
-        barometer::BaroData,
-        gps::{GPSData, GPS},
-        imu::IMUData,
-        indicator::Indicator,
-        mag::MagData,
-    },
-    fixed_point_factory, pyro,
+        }, sensor_reading::SensorReading, sensor_snapshot::PartialSensorSnapshot, ticker::Ticker, vl_device_manager::prelude::*, vlp::packet::VLPDownlinkPacket
+    }, driver::{
+        adc::ADCData, barometer::BaroData, can_bus::can_node_id_from_serial_number, gps::{GPSData, GPS}, imu::IMUData, indicator::Indicator, mag::MagData
+    }, fixed_point_factory, pyro, vl_device_manager_type
 };
 use crate::{common::can_bus::node_types::VOID_LAKE_NODE_TYPE, driver::can_bus::CanBusTX};
 use crate::{
@@ -316,12 +300,10 @@ pub async fn avionics_main(
 
     let mut can_bus = can_bus.take().unwrap();
     can_bus.reset().await.unwrap();
-    let crc = crc::Crc::<u16>::new(&CRC_16_GSM);
     can_bus.configure_self_node(
         VOID_LAKE_NODE_TYPE,
-        crc.checksum(device_serial_number) & 0xFFF,
+        can_node_id_from_serial_number(device_serial_number),
     );
-    drop(crc);
     let (can_tx, _) = can_bus.split();
 
     let can_tx = Mutex::<NoopRawMutex, _>::new(can_tx);

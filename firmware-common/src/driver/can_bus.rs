@@ -48,6 +48,11 @@ pub trait CanBusRX {
     async fn receive(&mut self) -> Result<Self::Message, Self::Error>;
 }
 
+pub fn can_node_id_from_serial_number(serial_number: &[u8]) -> u16 {
+    let crc = crc::Crc::<u16>::new(&crc::CRC_16_GSM);
+    crc.checksum(serial_number) & 0xFFF
+}
+
 #[derive(Clone)]
 pub struct DummyCanBus<D: Delay> {
     delay: D,

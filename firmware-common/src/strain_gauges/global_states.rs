@@ -1,4 +1,7 @@
-use embassy_sync::{blocking_mutex::raw::RawMutex, signal::Signal};
+use core::cell::RefCell;
+
+use embassy_sync::blocking_mutex::raw::RawMutex;
+use embassy_sync::blocking_mutex::Mutex as BlockingMutex;
 
 use crate::common::zerocopy_channel::ZeroCopyChannel;
 
@@ -6,8 +9,8 @@ use super::{ProcessedSGReading, RawSGReadings};
 
 pub struct SGGlobalStates<M: RawMutex> {
     pub(crate) raw_readings_channel: ZeroCopyChannel<M, RawSGReadings>,
-    pub(crate) sg_enable_signal: Signal<M, bool>,
     pub(crate) processed_readings_channel: ZeroCopyChannel<M, [ProcessedSGReading; 4]>,
+    pub(crate) led_state: BlockingMutex<M, RefCell<SGLEDState>>,
 }
 
 impl<M: RawMutex> SGGlobalStates<M> {
@@ -17,7 +20,6 @@ impl<M: RawMutex> SGGlobalStates<M> {
                 RawSGReadings::new_const(),
                 RawSGReadings::new_const(),
             ),
-            sg_enable_signal: Signal::new(),
             processed_readings_channel: ZeroCopyChannel::new(
                 [
                     ProcessedSGReading::new_const(0),
@@ -32,6 +34,16 @@ impl<M: RawMutex> SGGlobalStates<M> {
                     ProcessedSGReading::new_const(3),
                 ],
             ),
+            led_state: BlockingMutex::new(RefCell::new(SGLEDState {
+                can_bus_error: false,
+                sg_adc_error: false,
+            })),
         }
     }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub(crate) struct SGLEDState {
+    pub(crate) can_bus_error: bool,
+    pub(crate) sg_adc_error: bool,
 }
