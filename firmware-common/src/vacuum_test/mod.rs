@@ -1,6 +1,4 @@
-use core::cell::RefCell;
-
-use embassy_futures::select::select;
+use embassy_futures::select::{select, Either};
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::pubsub::PubSubChannel;
 use embassy_sync::signal::Signal;
@@ -55,7 +53,8 @@ pub async fn vacuum_test_main(
             log_info!("No flight profile file found, halting");
             indicators
                 .run([333, 666], [0, 333, 333, 333], [0, 666, 333, 0])
-                .await
+                .await;
+            log_unreachable!();
         };
 
     log_info!("Creating logger");
@@ -78,7 +77,7 @@ pub async fn vacuum_test_main(
                     file_type: VACUUM_TEST_BARO_LOGGER_TIER_1,
                     seconds_per_segment: 60,
                     first_segment_seconds: 30,
-                    segments_per_ring: 6, // 30 min
+                    segments_per_ring: 30, // 30 min
                 },
                 RingDeltaLoggerConfig {
                     file_type: VACUUM_TEST_BARO_LOGGER_TIER_2,
@@ -113,9 +112,9 @@ pub async fn vacuum_test_main(
         let mut sub = flight_core_events.subscriber().unwrap();
         loop {
             let event = sub.next_message_pure().await;
-            log_info!("event: {:?}", event);
             match event {
                 FlightCoreEvent::ChangeState(state) => {
+                    log_info!("change state event: {:?}", event);
                     flight_core_state_signal.signal(state);
                     if state == FlightCoreState::MainChuteDeployed
                         || state == FlightCoreState::DrogueChuteDeployed
@@ -139,10 +138,10 @@ pub async fn vacuum_test_main(
     };
 
     let indicators_fut = async {
-        let state = RefCell::new(flight_core_state_signal.wait().await);
+        let mut state = flight_core_state_signal.wait().await;
         loop {
             let indicator_fut = async {
-                match *state.borrow() {
+                match state {
                     FlightCoreState::DrogueChuteDeployed => {
                         indicators.run([], [], [250, 250]).await;
                     }
@@ -158,12 +157,14 @@ pub async fn vacuum_test_main(
                 }
             };
 
-            let wait_signal_fut = async {
-                let new_state = flight_core_state_signal.wait().await;
-                state.replace(new_state);
-            };
+            let wait_signal_fut = flight_core_state_signal.wait();
 
-            select(wait_signal_fut, indicator_fut).await;
+            match select(indicator_fut, wait_signal_fut).await {
+                Either::First(_) => {},
+                Either::Second(new_state) => {
+                    state = new_state;
+                },
+            };
         }
     };
 

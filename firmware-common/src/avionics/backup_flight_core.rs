@@ -75,7 +75,7 @@ impl<D: FlightCoreEventPublisher> BackupFlightCore<D> {
                 }
             }
             BackupFlightCoreState::DrogueChuteDeployed => {
-                if baro_reading.data.altitude() < self.flight_profile.main_chute_altitude_agl {
+                if baro_reading.data.altitude() < self.flight_profile.main_chute_altitude_agl + self.launch_pad_altitude.unwrap() {
                     self.state = BackupFlightCoreState::MainChute {
                         deploy_time: timestamp + self.flight_profile.main_chute_delay_ms,
                     };
@@ -90,7 +90,7 @@ impl<D: FlightCoreEventPublisher> BackupFlightCore<D> {
                 }
             }
             BackupFlightCoreState::MainChuteDeployed => {
-                if fabsf(vertical_speed) < -0.5 {
+                if fabsf(vertical_speed) < 1.0 {
                     self.state = BackupFlightCoreState::Landed;
                     self.event_publisher
                         .publish(FlightCoreEvent::ChangeState(EventFlightCoreState::Landed));

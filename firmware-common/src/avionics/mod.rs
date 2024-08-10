@@ -20,10 +20,16 @@ use crate::{
     },
     claim_devices,
     common::{
-        can_bus::messages::ResetMessage, delta_logger::{
+        can_bus::messages::ResetMessage,
+        delta_logger::{
             buffered_tiered_ring_delta_logger::BufferedTieredRingDeltaLogger,
             delta_logger::UnixTimestampLog,
-        }, device_manager::prelude::*, sensor_reading::SensorReading, sensor_snapshot::PartialSensorSnapshot, ticker::Ticker, vlp::packet::VLPDownlinkPacket
+        },
+        device_manager::prelude::*,
+        sensor_reading::SensorReading,
+        sensor_snapshot::PartialSensorSnapshot,
+        ticker::Ticker,
+        vlp::packet::VLPDownlinkPacket,
     },
     device_manager_type,
     driver::{
@@ -84,7 +90,8 @@ pub async fn avionics_main(
             log_info!("No flight profile file found, halting");
             indicators
                 .run([333, 666], [0, 333, 333, 333], [0, 666, 333, 0])
-                .await
+                .await;
+            log_unreachable!();
         };
 
     log_info!("Running self test");
@@ -418,7 +425,7 @@ pub async fn avionics_main(
                 }
                 VLPUplinkPacket::ResetPacket(_) => {
                     let mut can_tx = can_tx.lock().await;
-                    can_tx.send(&ResetMessage{}, 7).await.ok();
+                    can_tx.send(&ResetMessage {}, 7).await.ok();
                     drop(can_tx);
                     services.delay().delay_ms(100.0).await;
                     services.reset();

@@ -65,12 +65,11 @@ impl<R: Indicator, G: Indicator, B: Indicator, T: Clock, DL: Delay>
         red_pattern: [u16; RN],
         green_pattern: [u16; GN],
         blue_pattern: [u16; BN],
-    ) -> ! {
+    ) {
         self.reset().await;
         let red_fut = Self::run_single(&mut self.red, red_pattern, self.clock.clone(), self.delay.clone());
         let green_fut = Self::run_single(&mut self.green, green_pattern, self.clock.clone(), self.delay.clone());
         let blue_fut = Self::run_single(&mut self.blue, blue_pattern, self.clock.clone(), self.delay.clone());
         join!(red_fut, green_fut, blue_fut);
-        log_unreachable!()
     }
 }
