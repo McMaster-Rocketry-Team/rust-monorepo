@@ -23,6 +23,7 @@ where
 {
     fs: &'a VLFS<F, C>,
     current_writer: Mutex<NoopRawMutex, Option<vlfs::FileWriter<'a, F, C>>>,
+    current_writer_dirty: BlockingMutex<NoopRawMutex, RefCell<bool>>,
     close_signal: Signal<NoopRawMutex, ()>,
     config: RingDeltaLoggerConfig,
     delay: DL,
@@ -81,6 +82,7 @@ where
         Ok(Self {
             fs,
             current_writer: Mutex::new(Some(writer)),
+            current_writer_dirty: BlockingMutex::new(RefCell::new(false)),
             close_signal: Signal::new(),
             config,
             delay,
@@ -96,6 +98,8 @@ where
         bool,
         MutexGuard<'_, NoopRawMutex, Option<FileWriter<'a, F, C>>>,
     ) {
+        self.current_writer_dirty
+            .lock(|c: &RefCell<bool>| c.replace(true));
         (
             self.new_segment.lock(|c| c.replace(false)),
             self.current_writer.lock().await,
@@ -121,7 +125,6 @@ where
             match select(ticker.next(), self.close_signal.wait()).await {
                 Either::First(_) => {
                     self.create_new_segment().await?;
-                    self.new_segment.lock(|c| c.replace(true));
                 }
                 Either::Second(_) => {
                     let mut writer = self.current_writer.lock().await;
@@ -135,6 +138,11 @@ where
     }
 
     async fn create_new_segment(&self) -> Result<(), VLFSError<F::Error>> {
+        if self.current_writer_dirty.lock(|c| !c.borrow().clone()) {
+            log_info!("No new data, skipping segment creation");
+            return Ok(());
+        }
+
         log_info!("Creating new ring segment");
         let mut builder = self.fs.new_at_builder().await?;
         let new_ring_segments: u32 = if self
@@ -172,6 +180,8 @@ where
         self.current_ring_segments
             .lock(|c| c.replace(new_ring_segments));
 
+        self.new_segment.lock(|c| c.replace(true));
+        self.current_writer_dirty.lock(|c| c.replace(false));
         log_info!("Ring segment created");
         Ok(())
     }

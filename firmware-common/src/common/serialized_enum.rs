@@ -7,9 +7,7 @@ pub trait SerializedEnumReader<R: Read> {
 
     fn new(reader: R) -> Self;
 
-    async fn read_next(
-        &mut self,
-    ) -> Result<Option<Self::Output>, R::Error>;
+    async fn read_next(&mut self) -> Result<Option<Self::Output>, R::Error>;
 
     fn into_reader(self) -> R;
 }
@@ -76,32 +74,21 @@ macro_rules! create_serialized_enum {
             }
         }
 
-        pub struct $writer_struct_name<W: embedded_io_async::Write> {
-            writer: W,
+        pub struct $writer_struct_name {
             buffer: [u8; core::mem::size_of::<<$enum_name as rkyv::Archive>::Archived>()],
         }
 
-        impl<W: embedded_io_async::Write> $writer_struct_name<W> {
-            pub fn new(writer: W) -> Self {
+        impl $writer_struct_name {
+            pub fn new() -> Self {
                 Self {
-                    writer,
                     buffer: [0; core::mem::size_of::<<$enum_name as rkyv::Archive>::Archived>()],
                 }
             }
 
-            pub async fn write(&mut self, log: &$enum_name) -> Result<(), W::Error> {
+            pub async fn write<W: embedded_io_async::Write>(&mut self, writer: &mut W, log: &$enum_name) -> Result<(), W::Error> {
                 let len = log.write_to_buffer(&mut self.buffer);
-                self.writer.write_all(&self.buffer[..len]).await?;
+                writer.write_all(&self.buffer[..len]).await?;
                 Ok(())
-            }
-
-            pub async fn flush(&mut self) -> Result<(), W::Error> {
-                self.writer.flush().await
-            }
-
-            #[allow(dead_code)]
-            pub fn into_writer(self) -> W {
-                self.writer
             }
         }
 
@@ -111,7 +98,7 @@ macro_rules! create_serialized_enum {
             reader: R,
         }
 
-        impl<R: embedded_io_async::Read> crate::common::serialized_enum::SerializedEnumReader<R> for $reader_struct_name<R> {
+        impl<R: embedded_io_async::Read> $crate::common::serialized_enum::SerializedEnumReader<R> for $reader_struct_name<R> {
             type Output = $enum_name;
 
             fn new(reader: R) -> Self {
@@ -169,6 +156,7 @@ macro_rules! create_serialized_enum {
 mod file_logger_test {
     use crate::common::{serialized_enum::SerializedEnumReader, test_utils::BufferWriter};
     use core::assert_matches::assert_matches;
+    use embedded_io_async::Write;
     use rkyv::{Archive, Deserialize, Serialize};
 
     #[derive(Archive, Deserialize, Serialize, Debug, Clone, defmt::Format)]
@@ -192,19 +180,20 @@ mod file_logger_test {
     #[futures_test::test]
     async fn serialize_deserialize() {
         let mut buffer = [0u8; 4096];
-        let writer = BufferWriter::new(&mut buffer);
+        let mut writer = BufferWriter::new(&mut buffer);
 
-        let mut logger = FileLogger::new(writer);
+        let mut logger = FileLogger::new();
         logger
-            .write(&Log::LogType1(LogType1 { fielda: 10 }))
+            .write(&mut writer, &Log::LogType1(LogType1 { fielda: 10 }))
             .await
             .unwrap();
         logger
-            .write(&Log::LogType2(LogType2 { fieldb: 1234.0 }))
+            .write(&mut writer, &Log::LogType2(LogType2 { fieldb: 1234.0 }))
             .await
             .unwrap();
 
-        let reader = logger.into_writer().into_reader();
+        writer.flush().await.unwrap();
+        let reader = writer.into_reader();
 
         let mut logger_reader = FileLoggerReader::new(reader);
         assert_matches!(

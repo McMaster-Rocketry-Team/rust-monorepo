@@ -58,12 +58,12 @@ pub async fn vacuum_test_main(
         };
 
     log_info!("Creating logger");
-    let log_file_writer = services
+    let mut log_file_writer = services
         .fs
         .create_file_and_open_for_write(VACUUM_TEST_LOG_FILE_TYPE)
         .await
         .unwrap();
-    let mut logger = VacuumTestLogger::new(log_file_writer);
+    let mut logger = VacuumTestLogger::new();
 
     log_info!("Creating baro logger");
     let baro_logger = BufferedTieredRingDeltaLogger::<BaroData, 200>::new();
@@ -122,13 +122,13 @@ pub async fn vacuum_test_main(
                         services.buzzer_queue.publish(2700, 2000, 150);
                     }
                     logger
-                        .write(&VacuumTestLog::FlightCoreEventLog(FlightCoreEventLog {
+                        .write(&mut log_file_writer, &VacuumTestLog::FlightCoreEventLog(FlightCoreEventLog {
                             timestamp: services.clock().now_ms(),
                             event: event.clone(),
                         }))
                         .await
                         .unwrap();
-                    logger.flush().await.unwrap();
+                    log_file_writer.flush().await.unwrap();
                 }
                 _ => {
                     // noop

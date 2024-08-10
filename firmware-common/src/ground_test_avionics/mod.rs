@@ -54,22 +54,22 @@ pub async fn ground_test_avionics(
     claim_devices!(device_manager, lora, barometer, arming_switch, indicators);
 
     log_info!("Creating logger");
-    let log_file_writer = services
+    let mut log_file_writer = services
         .fs
         .create_file_and_open_for_write(GROUND_TEST_LOG_FILE_TYPE)
         .await
         .unwrap();
-    let mut logger = GroundTestLogger::new(log_file_writer);
+    let mut logger = GroundTestLogger::new();
 
     log_info!("Creating baro logger");
     fixed_point_factory!(BaroFF, f64, 4.9, 7.0, 0.05);
-    let log_file_writer = services
+    let baro_log_file_writer = services
         .fs
         .create_file_and_open_for_write(GROUND_TEST_BARO_FILE_TYPE)
         .await
         .unwrap();
     let baro_logger = BufferedDeltaLogger::<BaroData, 400>::new();
-    let baro_logger_fut = baro_logger.run(BaroFF, DeltaLogger::new(log_file_writer));
+    let baro_logger_fut = baro_logger.run(BaroFF, DeltaLogger::new(baro_log_file_writer));
 
     log_info!("resetting barometer");
     barometer.reset().await.unwrap();
@@ -106,8 +106,7 @@ pub async fn ground_test_avionics(
                 let finished = BlockingMutex::<NoopRawMutex, _>::new(RefCell::new(false));
 
                 let log_baro_fut = async {
-                    let mut baro_ticker =
-                        Ticker::every(services.clock(), services.delay(), 5.0);
+                    let mut baro_ticker = Ticker::every(services.clock(), services.delay(), 5.0);
                     while !finished.lock(|s| *s.borrow()) {
                         baro_ticker.next().await;
                         if let Ok(reading) = barometer.read().await {
@@ -148,14 +147,17 @@ pub async fn ground_test_avionics(
                         pyro_ctrl.set_enable(false).await.unwrap()
                     );
                     logger
-                        .write(&GroundTestLog::FireEvent(FireEvent {
-                            timestamp: fire_time,
-                        }))
+                        .write(
+                            &mut log_file_writer,
+                            &GroundTestLog::FireEvent(FireEvent {
+                                timestamp: fire_time,
+                            }),
+                        )
                         .await
                         .unwrap();
                     services.delay.delay_ms(10000.0).await;
                     finished.lock(|s| *s.borrow_mut() = true);
-                    logger.flush().await.unwrap();
+                    log_file_writer.flush().await.unwrap();
                 };
 
                 join!(log_baro_fut, fire_fut);
@@ -173,7 +175,8 @@ pub async fn ground_test_avionics(
                 &config.lora,
                 services.unix_clock(),
                 &config.lora_key,
-            ).await;
+            )
+            .await;
         }
     };
 
