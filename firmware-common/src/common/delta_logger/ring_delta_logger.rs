@@ -72,14 +72,14 @@ where
 
         let mut builder = fs.new_at_builder().await?;
 
-        let (mut files_to_remove, current_ring_segments) = if files_count > config.segments_per_ring
+        let (mut files_to_remove, current_ring_segments) = if files_count > config.segments_per_ring - 1
         {
             (
-                files_count - config.segments_per_ring,
+                files_count - config.segments_per_ring + 1,
                 config.segments_per_ring,
             )
         } else {
-            (0, files_count)
+            (0, files_count + 1)
         };
 
         log_info!("Removing {} extra files", files_to_remove);

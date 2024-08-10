@@ -11,6 +11,7 @@
 
 mod fmt;
 mod vl_main;
+pub mod strain_gauges;
 pub mod avionics;
 pub mod common;
 pub mod driver;
