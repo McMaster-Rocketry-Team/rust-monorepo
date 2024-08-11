@@ -1,7 +1,6 @@
 use arming_state::ArmingStateManager;
 use backup_flight_core::BackupFlightCore;
 use core::cell::RefCell;
-use crc::CRC_16_GSM;
 use embassy_futures::select::select;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex, signal::Signal};
 use flight_core_event::FlightCoreState;
@@ -299,12 +298,11 @@ pub async fn avionics_main(
     log_info!("Devices claimed");
 
     let mut can_bus = can_bus.take().unwrap();
-    can_bus.reset().await.unwrap();
-    can_bus.configure_self_node(
+    let (mut can_tx, _) = can_bus.split();
+    can_tx.configure_self_node(
         VOID_LAKE_NODE_TYPE,
         can_node_id_from_serial_number(device_serial_number),
     );
-    let (can_tx, _) = can_bus.split();
 
     let can_tx = Mutex::<NoopRawMutex, _>::new(can_tx);
 

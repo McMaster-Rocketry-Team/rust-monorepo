@@ -1,5 +1,5 @@
+use core::cell::RefCell;
 use core::ops::DerefMut;
-use std::cell::RefCell;
 
 use embassy_sync::blocking_mutex::raw::{NoopRawMutex, RawMutex};
 use embassy_sync::blocking_mutex::Mutex as BlockingMutex;
@@ -86,12 +86,11 @@ pub async fn sg_mid_prio_main(
     let mut sg_reading_logger = SGReadingLogger::new();
 
     log_info!("Initializing CAN Bus");
-    can.reset().await.unwrap();
-    can.configure_self_node(
+    let (mut can_tx, mut can_rx) = can.split();
+    can_tx.configure_self_node(
         STRAIN_GAUGES_NODE_TYPE,
         can_node_id_from_serial_number(device_serial_number),
     );
-    let (mut can_tx, mut can_rx) = can.split();
 
     let can_rx_fut = async {
         let delay = delay.clone();

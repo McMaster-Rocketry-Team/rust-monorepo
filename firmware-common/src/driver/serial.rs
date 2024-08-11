@@ -4,17 +4,18 @@ use embedded_hal_async::delay::DelayNs;
 use embedded_io_async::ReadExactError;
 
 pub trait SplitableSerial {
-    type Error: defmt::Format + embedded_io_async::Error + core::fmt::Debug;
-    // TODO use type: XXX instead of impl in return?
+    type Error: defmt::Format + embedded_io_async::Error;
+    type TX<'a>: embedded_io_async::Write<Error = Self::Error>
+    where
+        Self: 'a;
+    type RX<'a>: embedded_io_async::Read<Error = Self::Error>
+    where
+        Self: 'a;
 
-    fn split(
-        &mut self,
-    ) -> (
-        impl embedded_io_async::Write<Error = Self::Error>,
-        impl embedded_io_async::Read<Error = Self::Error>,
-    );
+    fn split(&mut self) -> (Self::TX<'_>, Self::RX<'_>);
 }
 
+// TODO move E after T and R
 pub struct SplitableSerialWrapper<
     E: defmt::Format + embedded_io_async::Error,
     T: embedded_io_async::Write<Error = E>,
@@ -47,8 +48,9 @@ impl<
     > SplitableSerial for SplitableSerialWrapper<E, T, R>
 {
     type Error = E;
+    type TX<'a> = TXGuard<'a, E, T, R> where Self: 'a;
+    type RX<'a> = RXGuard<'a, E, T, R> where Self: 'a;
 
-    #[allow(refining_impl_trait_reachable)]
     fn split(&mut self) -> (TXGuard<'_, E, T, R>, RXGuard<'_, E, T, R>) {
         (TXGuard { wrapper: self }, RXGuard { wrapper: self })
     }
