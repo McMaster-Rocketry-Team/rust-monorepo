@@ -5,7 +5,7 @@ use anyhow::anyhow;
 use anyhow::Result;
 use embedded_hal_async::delay::DelayNs;
 use firmware_common::{
-    common::console::rpc::OpenFileStatus, driver::serial::SplitableSerial, RpcClient,
+    common::console::vl_rpc::OpenFileStatus, driver::serial::SplitableSerial, RpcClient,
 };
 use tokio::fs;
 use tokio::io::AsyncWriteExt;

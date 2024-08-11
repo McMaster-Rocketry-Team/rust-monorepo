@@ -1,6 +1,6 @@
 use crate::claim_devices;
 use crate::common::config_file::ConfigFile;
-use crate::common::console::rpc::run_rpc_server;
+use crate::common::console::vl_rpc::run_rpc_server;
 use crate::common::device_config::{DeviceConfig, DeviceModeConfig};
 use crate::common::file_types::DEVICE_CONFIG_FILE_TYPE;
 use crate::common::rpc_channel::RpcChannel;
@@ -9,6 +9,7 @@ use crate::common::{buzzer_queue::BuzzerQueueRunner, unix_clock::UnixClockTask};
 use crate::driver::clock::VLFSTimerWrapper;
 use crate::driver::gps::GPSData;
 use crate::driver::timestamp::BootTimestamp;
+use embassy_futures::select::{select, Either};
 use embassy_futures::yield_now;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::channel::Channel;
@@ -18,8 +19,6 @@ use crate::vacuum_test::vacuum_test_main;
 
 use crate::common::vl_device_manager::prelude::*;
 use vlfs::{StatFlash, VLFS};
-
-use futures::{future::select, pin_mut};
 
 use crate::gcm::gcm_main;
 use crate::ground_test_avionics::ground_test_avionics;
@@ -102,17 +101,14 @@ pub async fn vl_main(
     let delay = device_manager.delay();
     let usb_connected = {
         log_info!("Waiting for USB connection");
-        delay.delay_ms(10.0).await;
         let timeout_fut = delay.delay_ms(500.0);
         let usb_wait_connection_fut = usb.wait_connection();
-        pin_mut!(timeout_fut);
-        pin_mut!(usb_wait_connection_fut);
         match select(timeout_fut, usb_wait_connection_fut).await {
-            futures::future::Either::Left(_) => {
+            Either::First(_) => {
                 log_info!("USB not connected");
                 false
             }
-            futures::future::Either::Right(_) => {
+            Either::Second(_) => {
                 log_info!("USB connected");
                 true
             }

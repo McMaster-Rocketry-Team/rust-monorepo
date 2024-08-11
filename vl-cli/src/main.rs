@@ -15,7 +15,7 @@ use device_config::format_lora_key;
 use device_config::gen_lora_key;
 use device_config::read_device_config;
 use embedded_hal_async::delay::DelayNs;
-use firmware_common::common::console::rpc::GCMPollDownlinkPacketResponse;
+use firmware_common::common::console::vl_rpc::GCMPollDownlinkPacketResponse;
 use firmware_common::common::vlp::packet::DeleteLogsPacket;
 use firmware_common::common::vlp::packet::LowPowerModePacket;
 use firmware_common::common::vlp::packet::ResetPacket;

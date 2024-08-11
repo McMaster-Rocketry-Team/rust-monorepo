@@ -13,6 +13,8 @@ use vlfs::ConcurrentFilesIterator;
 use vlfs::{AsyncReader, Crc, FileID, FileReader, FileType, Flash, VLFSError, VLFSReadStatus};
 use crate::common::device_config::DeviceConfig;
 use crate::common::config_file::ConfigFile;
+use crate::common::console::DeviceType;
+use crate::common::console::OpenFileStatus;
 
 #[derive(defmt::Format, Debug, Clone, Archive, Deserialize, Serialize)]
 pub struct RpcPacketStatus {
@@ -30,13 +32,6 @@ impl From<PacketStatus> for RpcPacketStatus {
 }
 
 create_rpc! {
-    enums {
-        enum OpenFileStatus {
-            Sucess,
-            DoesNotExist,
-            Error,
-        }
-    }
     state<F: Flash, C: Crc, D: SysReset>(
         services: &VLSystemServices<'_, '_, '_, '_, impl Delay, impl Clock, F, C, D>,
         config: &Option<DeviceConfig>,
@@ -55,13 +50,19 @@ create_rpc! {
         let mut reader: Option<FileReader<F, C>> = None;
         let mut file_iter: Option<ConcurrentFilesIterator<F, C, Option<FileType>>> = None;
     }
-    rpc 0 WhoAmI | | -> (name: Option<RkyvString<64>>, serial_number: [u8; 12]) {
+    rpc 0 GetDeviceType | | -> (device_type: DeviceType) {
+        GetDeviceTypeResponse {
+            device_type: DeviceType::VoidLake,
+        }
+    }
+    rpc 1 WhoAmI | | -> (device_type: DeviceType, name: Option<RkyvString<64>>, serial_number: [u8; 12]) {
         WhoAmIResponse {
+            device_type: DeviceType::VoidLake,
             name: config.as_ref().map(|config| config.name.clone()),
             serial_number: device_serial_number.clone(),
         }
     }
-    rpc 1 OpenFile |file_id: u64| -> (status: OpenFileStatus) {
+    rpc 2 OpenFile |file_id: u64| -> (status: OpenFileStatus) {
         let status = match fs.open_file_for_read(FileID(file_id)).await {
             Ok(r) => {
                 let old_reader = reader.replace(r);
@@ -78,7 +79,7 @@ create_rpc! {
         };
         OpenFileResponse { status }
     }
-    rpc 2 ReadFile | | -> (data: [u8; 128], length: u8, corrupted: bool) {
+    rpc 3 ReadFile | | -> (data: [u8; 128], length: u8, corrupted: bool) {
         let response = if let Some(reader) = reader.as_mut() {
             let mut buffer = [0u8; 128];
             match reader.read_all(&mut buffer).await {
@@ -105,16 +106,16 @@ create_rpc! {
         };
         response
     }
-    rpc 3 CloseFile | | -> () {
+    rpc 4 CloseFile | | -> () {
         if let Some(reader) = reader.take() {
             reader.close().await;
         }
     }
-    rpc 4 StartListFiles |file_type: Option<u16>| -> () {
+    rpc 5 StartListFiles |file_type: Option<u16>| -> () {
         file_iter = Some(fs.concurrent_files_iter(file_type.map(FileType)).await);
         StartListFilesResponse {}
     }
-    rpc 5 GetListedFile | | -> (file_id: Option<u64>) {
+    rpc 6 GetListedFile | | -> (file_id: Option<u64>) {
         if let Some(file_iter) = &mut file_iter {
             match file_iter.next().await {
                 Ok(Some(file)) => {
@@ -129,22 +130,22 @@ create_rpc! {
                     GetListedFileResponse { file_id: None }
                 }
             }
-        }else{
+        } else {
             GetListedFileResponse { file_id: None }
         }
     }
-    rpc 6 GCMSendUplinkPacket |packet: VLPUplinkPacket| -> (status: Option<RpcPacketStatus>) {
+    rpc 7 GCMSendUplinkPacket |packet: VLPUplinkPacket| -> (status: Option<RpcPacketStatus>) {
         let status = send_uplink_packet_rpc_client.call(packet).await;
         GCMSendUplinkPacketResponse {
             status: status.map(|status|status.into())
         }
     }
-    rpc 7 GCMPollDownlinkPacket | | -> (packet: Option<(VLPDownlinkPacket, RpcPacketStatus)>) {
+    rpc 8 GCMPollDownlinkPacket | | -> (packet: Option<(VLPDownlinkPacket, RpcPacketStatus)>) {
         GCMPollDownlinkPacketResponse {
             packet: downlink_package_receiver.try_receive().ok().map(|(packet, status)|(packet, status.into()))
         }
     }
-    rpc 8 SetFlightProfile |
+    rpc 9 SetFlightProfile |
         flight_profile: FlightProfile
     | -> () {
         let flight_profile_file = ConfigFile::<FlightProfile, _, _>::new(services.fs, FLIGHT_PROFILE_FILE_TYPE);
@@ -152,7 +153,7 @@ create_rpc! {
         log_info!("Flight profile updated");
         SetFlightProfileResponse {}
     }
-    rpc 9 SetDeviceConfig |
+    rpc 10 SetDeviceConfig |
         device_config: DeviceConfig
     | -> () {
         let device_config_file = ConfigFile::<DeviceConfig, _, _>::new(services.fs, DEVICE_CONFIG_FILE_TYPE);
@@ -160,7 +161,7 @@ create_rpc! {
         log_info!("Device config updated");
         SetDeviceConfigResponse {}
     }
-    rpc 10 ResetDevice | | -> () {
+    rpc 11 ResetDevice | | -> () {
         services.reset();
         ResetDeviceResponse {}
     }

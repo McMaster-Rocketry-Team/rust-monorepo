@@ -1,6 +1,7 @@
 use core::cell::RefCell;
 use core::ops::DerefMut;
 
+use embassy_futures::select::{select, Either};
 use embassy_sync::blocking_mutex::raw::{NoopRawMutex, RawMutex};
 use embassy_sync::blocking_mutex::Mutex as BlockingMutex;
 use embassy_sync::mutex::Mutex;
@@ -15,6 +16,7 @@ use crate::common::can_bus::messages::{
     ResetMessage, UnixTimeMessage,
 };
 use crate::common::can_bus::node_types::STRAIN_GAUGES_NODE_TYPE;
+use crate::common::console::sg_rpc::run_rpc_server;
 use crate::common::delta_logger::prelude::{RingDeltaLoggerConfig, RingFileWriter};
 use crate::common::file_types::SG_READINGS;
 use crate::common::ticker::Ticker;
@@ -26,8 +28,8 @@ use crate::driver::clock::Clock;
 use crate::driver::delay::Delay;
 use crate::driver::sg_adc::{RawSGReadingsTrait, SGAdcController};
 use crate::driver::sys_reset::SysReset;
+use crate::driver::usb::SplitableUSB;
 use crate::driver::{can_bus::SplitableCanBus, indicator::Indicator};
-use crate::strain_gauges::global_states::SGLEDState;
 
 use super::global_states::SGGlobalStates;
 use super::{ArchivedProcessedSGReading, ProcessedSGReading};
@@ -57,6 +59,7 @@ pub async fn sg_mid_prio_main(
     clock: impl Clock,
     delay: impl Delay,
     sys_reset: impl SysReset,
+    mut usb: impl SplitableUSB,
 ) {
     let sg_adc_controller = Mutex::<NoopRawMutex, _>::new(sg_adc_controller);
     let unix_timestamp_log_mutex = BlockingMutex::<
@@ -92,6 +95,30 @@ pub async fn sg_mid_prio_main(
         can_node_id_from_serial_number(device_serial_number),
     );
 
+    let usb_connected = {
+        log_info!("Waiting for USB connection");
+        let timeout_fut = delay.delay_ms(500.0);
+        let usb_wait_connection_fut = usb.wait_connection();
+        match select(timeout_fut, usb_wait_connection_fut).await {
+            Either::First(_) => {
+                log_info!("USB not connected");
+                false
+            }
+            Either::Second(_) => {
+                log_info!("USB connected");
+                true
+            }
+        }
+    };
+
+    log_info!("Initializing RPC Server");
+    let usb_console_fut = async {
+        loop {
+            usb.wait_connection().await;
+            run_rpc_server(&mut usb, &fs, &sys_reset, device_serial_number).await;
+        }
+    };
+
     let can_rx_fut = async {
         let delay = delay.clone();
         let mut armed = false;
@@ -99,7 +126,7 @@ pub async fn sg_mid_prio_main(
         loop {
             match can_rx.receive().await {
                 Ok(message) => {
-                    states.led_state.lock(|s| {
+                    states.error_states.lock(|s| {
                         s.borrow_mut().can_bus_error = false;
                     });
 
@@ -144,7 +171,7 @@ pub async fn sg_mid_prio_main(
                         .await;
                 }
                 Err(_) => {
-                    states.led_state.lock(|s| {
+                    states.error_states.lock(|s| {
                         s.borrow_mut().can_bus_error = true;
                     });
                     delay.delay_ms(150.0).await;
@@ -156,8 +183,13 @@ pub async fn sg_mid_prio_main(
     let can_tx_fut = async {
         let mut ticker = Ticker::every(clock.clone(), delay.clone(), 1000.0);
         loop {
+            let error_states = states.error_states.lock(|s| s.borrow().clone());
             let health_message = HealthMessage {
-                state: HealthState::Healthy,
+                state: if error_states.can_bus_error || error_states.sg_adc_error {
+                    HealthState::UnHealthy
+                } else {
+                    HealthState::Healthy
+                },
             };
             can_tx.send(&health_message, 3).await.ok();
             ticker.next().await;
@@ -165,8 +197,16 @@ pub async fn sg_mid_prio_main(
     };
 
     let store_sg_fut = async {
+        if usb_connected {
+            log_info!("USB connected on boot, stopping");
+            states.error_states.lock(|led_state| {
+                led_state.borrow_mut().usb_connected = true;
+            });
+            return;
+        }
+
         let processed_readings_receiver = states.processed_readings_channel.receiver();
-        sg_adc_controller.lock().await.set_enable(true).await; // TODO only do this in dev mode
+        // sg_adc_controller.lock().await.set_enable(true).await; // TODO only do this in dev mode
 
         loop {
             let reading = processed_readings_receiver.receive().await;
@@ -216,31 +256,32 @@ pub async fn sg_mid_prio_main(
 
     let led_fut = async {
         loop {
-            let led_state = states.led_state.lock(|s| s.borrow().clone());
-            match led_state {
-                SGLEDState {
-                    can_bus_error: true,
-                    ..
-                } => loop {
-                    indicator.set_enable(true).await;
-                    delay.delay_ms(100.0).await;
-                    indicator.set_enable(false).await;
-                    delay.delay_ms(100.0).await;
-                },
-                SGLEDState {
-                    can_bus_error: false,
-                    ..
-                } => {
-                    indicator.set_enable(true).await;
-                    delay.delay_ms(50.0).await;
-                    indicator.set_enable(false).await;
-                    delay.delay_ms(950.0).await;
-                }
+            let error_states = states.error_states.lock(|s| s.borrow().clone());
+            if error_states.usb_connected {
+                indicator.set_enable(true).await;
+                delay.delay_ms(50.0).await;
+                indicator.set_enable(false).await;
+                delay.delay_ms(100.0).await;
+                indicator.set_enable(true).await;
+                delay.delay_ms(50.0).await;
+                indicator.set_enable(false).await;
+                delay.delay_ms(800.0).await;
+            } else if error_states.can_bus_error || error_states.sg_adc_error {
+                indicator.set_enable(true).await;
+                delay.delay_ms(100.0).await;
+                indicator.set_enable(false).await;
+                delay.delay_ms(100.0).await;
+            } else {
+                indicator.set_enable(true).await;
+                delay.delay_ms(50.0).await;
+                indicator.set_enable(false).await;
+                delay.delay_ms(950.0).await;
             }
         }
     };
 
     join!(
+        usb_console_fut,
         sg_reading_ring_writer_fut,
         store_sg_fut,
         led_fut,
