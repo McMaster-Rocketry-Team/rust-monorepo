@@ -1,4 +1,7 @@
-use core::ops::{Deref, DerefMut};
+use core::{
+    array,
+    ops::{Deref, DerefMut},
+};
 
 use embassy_sync::{
     blocking_mutex::raw::RawMutex,
@@ -6,60 +9,40 @@ use embassy_sync::{
     signal::Signal,
 };
 
-#[derive(Debug, Clone, Copy, defmt::Format)]
-enum ReadyValueSelect {
-    One,
-    Two,
+pub struct ZeroCopyChannel<M: RawMutex, T: Default, const N: usize> {
+    ready_value_signal: Signal<M, usize>,
+    values: [Mutex<M, T>; N],
 }
 
-impl ReadyValueSelect {
-    fn next(&self) -> Self {
-        match self {
-            ReadyValueSelect::One => ReadyValueSelect::Two,
-            ReadyValueSelect::Two => ReadyValueSelect::One,
-        }
-    }
-}
-
-pub struct ZeroCopyChannel<M: RawMutex, T> {
-    ready_value_signal: Signal<M, ReadyValueSelect>,
-    value_1: Mutex<M, T>,
-    value_2: Mutex<M, T>,
-}
-
-impl<M: RawMutex, T> ZeroCopyChannel<M, T> {
-    pub const fn new(value_1: T, value_2: T) -> Self {
+impl<M: RawMutex, T: Default, const N: usize> ZeroCopyChannel<M, T, N> {
+    pub fn new() -> Self {
         Self {
             ready_value_signal: Signal::new(),
-            value_1: Mutex::new(value_1),
-            value_2: Mutex::new(value_2),
+            values: array::from_fn(|_| Mutex::new(T::default())),
         }
     }
 
     /// Warning: only one sender per channel is supported
-    pub fn sender(&self) -> ZeroCopyChannelSender<M, T> {
+    pub fn sender(&self) -> ZeroCopyChannelSender<M, T, N> {
         ZeroCopyChannelSender {
             channel: self,
-            curr_ready_value: ReadyValueSelect::One,
+            curr_ready_value: 0,
         }
     }
 
-    pub fn receiver(&self) -> ZeroCopyChannelReceiver<M, T> {
+    pub fn receiver(&self) -> ZeroCopyChannelReceiver<M, T, N> {
         ZeroCopyChannelReceiver { channel: self }
     }
 }
 
-pub struct ZeroCopyChannelSender<'a, M: RawMutex, T> {
-    channel: &'a ZeroCopyChannel<M, T>,
-    curr_ready_value: ReadyValueSelect,
+pub struct ZeroCopyChannelSender<'a, M: RawMutex, T: Default, const N: usize> {
+    channel: &'a ZeroCopyChannel<M, T, N>,
+    curr_ready_value: usize,
 }
 
-impl<'a, M: RawMutex, T> ZeroCopyChannelSender<'a, M, T> {
-    pub fn try_start_send(&mut self) -> Option<ZeroCopyChannelSendGuard<'a, '_, M, T>> {
-        let result = match self.curr_ready_value {
-            ReadyValueSelect::One => self.channel.value_1.try_lock(),
-            ReadyValueSelect::Two => self.channel.value_2.try_lock(),
-        };
+impl<'a, M: RawMutex, T: Default, const N: usize> ZeroCopyChannelSender<'a, M, T, N> {
+    pub fn try_start_send(&mut self) -> Option<ZeroCopyChannelSendGuard<'a, '_, M, T, N>> {
+        let result = self.channel.values[self.curr_ready_value].try_lock();
 
         match result {
             Ok(guard) => Some(ZeroCopyChannelSendGuard {
@@ -70,11 +53,8 @@ impl<'a, M: RawMutex, T> ZeroCopyChannelSender<'a, M, T> {
         }
     }
 
-    pub async fn start_send(&mut self) -> ZeroCopyChannelSendGuard<'a, '_, M, T> {
-        let guard = match self.curr_ready_value {
-            ReadyValueSelect::One => self.channel.value_1.lock().await,
-            ReadyValueSelect::Two => self.channel.value_2.lock().await,
-        };
+    pub async fn start_send(&mut self) -> ZeroCopyChannelSendGuard<'a, '_, M, T, N> {
+        let guard = self.channel.values[self.curr_ready_value].lock().await;
 
         ZeroCopyChannelSendGuard {
             sender: self,
@@ -83,46 +63,52 @@ impl<'a, M: RawMutex, T> ZeroCopyChannelSender<'a, M, T> {
     }
 }
 
-pub struct ZeroCopyChannelSendGuard<'a, 'b, M: RawMutex, T> {
-    sender: &'b mut ZeroCopyChannelSender<'a, M, T>,
+pub struct ZeroCopyChannelSendGuard<'a, 'b, M: RawMutex, T: Default, const N: usize> {
+    sender: &'b mut ZeroCopyChannelSender<'a, M, T, N>,
     guard: Option<MutexGuard<'a, M, T>>,
 }
 
-impl<'a, 'b, M: RawMutex, T> Deref for ZeroCopyChannelSendGuard<'a, 'b, M, T> {
+impl<'a, 'b, M: RawMutex, T: Default, const N: usize> Deref
+    for ZeroCopyChannelSendGuard<'a, 'b, M, T, N>
+{
     type Target = T;
     fn deref(&self) -> &Self::Target {
         self.guard.as_ref().unwrap().deref()
     }
 }
 
-impl<'a, 'b, M: RawMutex, T> DerefMut for ZeroCopyChannelSendGuard<'a, 'b, M, T> {
+impl<'a, 'b, M: RawMutex, T: Default, const N: usize> DerefMut
+    for ZeroCopyChannelSendGuard<'a, 'b, M, T, N>
+{
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.guard.as_mut().unwrap().deref_mut()
     }
 }
 
-impl<'a, 'b, M: RawMutex, T> Drop for ZeroCopyChannelSendGuard<'a, 'b, M, T> {
+impl<'a, 'b, M: RawMutex, T: Default, const N: usize> Drop
+    for ZeroCopyChannelSendGuard<'a, 'b, M, T, N>
+{
     fn drop(&mut self) {
         drop(self.guard.take());
         self.sender
             .channel
             .ready_value_signal
             .signal(self.sender.curr_ready_value);
-        self.sender.curr_ready_value = self.sender.curr_ready_value.next();
+        self.sender.curr_ready_value += 1;
+        if self.sender.curr_ready_value >= N {
+            self.sender.curr_ready_value = 0;
+        }
     }
 }
 
-pub struct ZeroCopyChannelReceiver<'a, M: RawMutex, T> {
-    channel: &'a ZeroCopyChannel<M, T>,
+pub struct ZeroCopyChannelReceiver<'a, M: RawMutex, T: Default, const N: usize> {
+    channel: &'a ZeroCopyChannel<M, T, N>,
 }
 
-impl<'a, M: RawMutex, T> ZeroCopyChannelReceiver<'a, M, T> {
+impl<'a, M: RawMutex, T: Default, const N: usize> ZeroCopyChannelReceiver<'a, M, T, N> {
     pub async fn receive(&self) -> MutexGuard<'a, M, T> {
         let ready_value = self.channel.ready_value_signal.wait().await;
-        let guard = match ready_value {
-            ReadyValueSelect::One => self.channel.value_1.lock().await,
-            ReadyValueSelect::Two => self.channel.value_2.lock().await,
-        };
+        let guard = self.channel.values[ready_value].lock().await;
 
         guard
     }

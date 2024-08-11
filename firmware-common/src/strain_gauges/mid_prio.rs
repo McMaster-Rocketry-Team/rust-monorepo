@@ -12,7 +12,7 @@ use crate::create_serialized_enum;
 use crate::driver::can_bus::can_node_id_from_serial_number;
 use crate::driver::clock::{Clock, VLFSTimerWrapper};
 use crate::driver::delay::Delay;
-use crate::driver::sg_adc::SGAdcController;
+use crate::driver::sg_adc::{RawSGReadingsTrait, SGAdcController};
 use crate::driver::{can_bus::SplitableCanBus, indicator::Indicator};
 use crate::strain_gauges::global_states::SGLEDState;
 
@@ -34,7 +34,7 @@ create_serialized_enum!(
 );
 
 pub async fn sg_mid_prio_main(
-    state: &SGGlobalStates<impl RawMutex>,
+    states: &SGGlobalStates<impl RawMutex, impl RawSGReadingsTrait>,
     device_serial_number: &[u8; 12],
     mut indicator: impl Indicator,
     mut sg_adc_controller: impl SGAdcController,
@@ -75,24 +75,23 @@ pub async fn sg_mid_prio_main(
     // TODO can bus
 
     let store_sg_fut = async {
-        let processed_readings_receiver = state.processed_readings_channel.receiver();
+        let processed_readings_receiver = states.processed_readings_channel.receiver();
         sg_adc_controller.set_enable(true).await; // TODO only do this in dev mode
+
         loop {
-            let readings = processed_readings_receiver.receive().await;
+            let reading = processed_readings_receiver.receive().await;
             let start = clock.now_ms();
 
             let (_, mut writer) = sg_reading_ring_writer.get_writer().await;
-            for reading in readings.iter() {
-                let result = sg_reading_logger
-                    .write(
-                        writer.deref_mut().as_mut().unwrap(),
-                        &SGReadingLog::ProcessedSGReading(reading.clone()),
-                    )
-                    .await;
+            let result = sg_reading_logger
+                .write(
+                    writer.deref_mut().as_mut().unwrap(),
+                    &SGReadingLog::ProcessedSGReading(reading.clone()),
+                )
+                .await;
 
-                if let Err(e) = result {
-                    log_warn!("Write failed, {:?}", e);
-                }
+            if let Err(e) = result {
+                log_warn!("Write failed, {:?}", e);
             }
             drop(writer);
 
@@ -107,7 +106,7 @@ pub async fn sg_mid_prio_main(
 
     let led_fut = async {
         loop {
-            let led_state = state.led_state.lock(|s| s.borrow().clone());
+            let led_state = states.led_state.lock(|s| s.borrow().clone());
             match led_state {
                 SGLEDState {
                     can_bus_error: true,

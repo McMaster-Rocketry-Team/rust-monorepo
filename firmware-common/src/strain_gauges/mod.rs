@@ -2,9 +2,8 @@ use rkyv::{Archive, Deserialize, Serialize};
 
 pub mod global_states;
 pub mod high_prio;
-pub mod mid_prio;
 pub mod low_prio;
-
+pub mod mid_prio;
 
 // Game plan:
 // for each channel:
@@ -18,9 +17,9 @@ pub mod low_prio;
 // total data rate (before any compression): 4150 * 4 = 31.6KiB/s
 // 64MiB flash can store 64MiB / 31.6KiB/s = 34 minutes of data
 
-pub const SAMPLES_PER_READ: usize = 2130;
-pub const READS_PER_SECOND: usize = 20;
-
+pub const BATCH_SIZE: usize = 2130; // one batch every 50ms
+pub const SAMPLES_PER_READ: usize = BATCH_SIZE / 10;
+pub const READS_PER_SECOND: usize = 200;
 
 // one per 200ms per channel
 #[derive(defmt::Format, Debug, Clone, Archive, Deserialize, Serialize)]
@@ -31,11 +30,11 @@ pub struct ProcessedSGReading {
     pub samples: [u8; 80],      // [half::f16; 40]
 }
 
-impl ProcessedSGReading {
-    pub const fn new_const(sg_i: u8) -> Self {
+impl Default for ProcessedSGReading {
+    fn default() -> Self {
         Self {
             start_time: 0.0,
-            sg_i,
+            sg_i: 0,
             amplitudes: [0u8; 1500],
             samples: [0u8; 80],
         }

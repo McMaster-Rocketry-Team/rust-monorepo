@@ -5,7 +5,12 @@ use cmsis_dsp::transform::FloatRealFft;
 use embassy_sync::blocking_mutex::raw::RawMutex;
 use heapless::Vec;
 
-use super::{global_states::SGGlobalStates, ProcessedSGReading, READS_PER_SECOND, SAMPLES_PER_READ};
+use crate::driver::sg_adc::RawSGReadingsTrait;
+
+use super::{
+    global_states::SGGlobalStates, ProcessedSGReading, BATCH_SIZE, READS_PER_SECOND,
+    SAMPLES_PER_READ,
+};
 
 const FFT_SIZE: usize = 2048;
 
@@ -13,6 +18,7 @@ struct SGChannelProcessor<'a> {
     // samples used for fft
     fft_samples_sum: [f32; FFT_SIZE],
     fft_samples_sum_count: usize,
+    fft_i: usize,
     fft: &'a FloatRealFft,
 
     // samples at 200hz, directly stored
@@ -36,6 +42,7 @@ impl<'a> SGChannelProcessor<'a> {
         Self {
             fft_samples_sum: [0.0; FFT_SIZE],
             fft_samples_sum_count: 0,
+            fft_i: 0,
             fft,
 
             samples_list: Vec::new(),
@@ -43,22 +50,25 @@ impl<'a> SGChannelProcessor<'a> {
         }
     }
 
-    fn process(&mut self, raw_readings: &[f32]) {
-        defmt::debug_assert!(raw_readings.len() == SAMPLES_PER_READ);
-
-        for j in 0..10 {
-            for _ in 0..(SAMPLES_PER_READ / 10 - 1) {
-                self.low_pass_filter.run(raw_readings[j]);
+    fn process<'b, T: RawSGReadingsTrait>(&mut self, mut raw_readings_iter: T::Iter<'b>) {
+        let mut skip_fft = false;
+        for i in 0..SAMPLES_PER_READ {
+            let raw_reading = raw_readings_iter.next().unwrap();
+            let low_passed_reading = self.low_pass_filter.run(raw_reading);
+            if i == SAMPLES_PER_READ - 1 {
+                self.samples_list.push(low_passed_reading).unwrap();
             }
-            self.samples_list
-                .push(self.low_pass_filter.run(raw_readings[j]))
-                .unwrap();
-        }
 
-        for i in 0..FFT_SIZE {
-            self.fft_samples_sum[i] += raw_readings[i];
+            if !skip_fft {
+                self.fft_samples_sum[self.fft_i] += raw_reading;
+                self.fft_i += 1;
+                if self.fft_i == FFT_SIZE {
+                    self.fft_i = 0;
+                    self.fft_samples_sum_count += 1;
+                    skip_fft = true;
+                }
+            }
         }
-        self.fft_samples_sum_count += 1;
     }
 
     fn process_fft(
@@ -87,6 +97,7 @@ impl<'a> SGChannelProcessor<'a> {
 
         self.fft_samples_sum = [0.0; FFT_SIZE];
         self.fft_samples_sum_count = 0;
+        self.fft_i = 0;
 
         for i in 0..self.samples_list.len() {
             let sample = half::f16::from_f32(self.samples_list[i]);
@@ -98,48 +109,49 @@ impl<'a> SGChannelProcessor<'a> {
     }
 }
 
-pub async fn low_prio_main(state: &SGGlobalStates<impl RawMutex>) {
-    let raw_readings_receiver = state.raw_readings_channel.receiver();
-    let mut processed_readings_sender = state.processed_readings_channel.sender();
-
+pub async fn sg_low_prio_main<T: RawSGReadingsTrait>(states: &SGGlobalStates<impl RawMutex, T>) {
     let fft = FloatRealFft::new(FFT_SIZE as u16).unwrap();
     let mut fft_out_buffer = [0f32; FFT_SIZE];
 
     let mut sg_processor_list: [SGChannelProcessor; 4] =
         array::from_fn(|_| SGChannelProcessor::new(&fft));
 
+    let raw_readings_receiver = states.raw_readings_channel.receiver();
+    let mut processed_readings_sender = states.processed_readings_channel.sender();
     loop {
         let mut start_time: Option<f64> = None;
 
-        for i in 0..4 {
-            let mut raw_readings = raw_readings_receiver.receive().await;
+        for i in 0..(BATCH_SIZE / SAMPLES_PER_READ * 4) {
+            let raw_readings = raw_readings_receiver.receive().await;
 
             if i == 0 {
-                start_time = Some(raw_readings.start_time);
+                start_time = Some(raw_readings.get_start_time());
             }
 
             // takes 1.5ms
             for sg_i in 0..4 {
                 let processor = &mut sg_processor_list[sg_i];
-                processor.process(&mut raw_readings.sg_readings[sg_i]);
+                let sg_readings_iter = raw_readings.get_sg_readings_iter(sg_i);
+                processor.process::<T>(sg_readings_iter);
             }
 
-            // log_info!(
-            //     "SG readings: {}V {}V {}V {}V",
-            //     sg_processor_list[0].samples_list.last().unwrap(),
-            //     sg_processor_list[1].samples_list.last().unwrap(),
-            //     sg_processor_list[2].samples_list.last().unwrap(),
-            //     sg_processor_list[3].samples_list.last().unwrap(),
-            // );
+            log_info!(
+                "SG readings: {}V {}V {}V {}V",
+                sg_processor_list[0].samples_list.last().unwrap(),
+                sg_processor_list[1].samples_list.last().unwrap(),
+                sg_processor_list[2].samples_list.last().unwrap(),
+                sg_processor_list[3].samples_list.last().unwrap(),
+            );
         }
 
-        let mut processed_readings = processed_readings_sender.start_send().await;
         // takes 11ms
         for sg_i in 0..4 {
+            let mut processed_readings = processed_readings_sender.start_send().await;
+            processed_readings.start_time = start_time.unwrap();
+            processed_readings.sg_i = sg_i as u8;
+
             let processor = &mut sg_processor_list[sg_i];
-            processed_readings[sg_i].start_time = start_time.unwrap();
-            processor.process_fft(&mut fft_out_buffer, &mut processed_readings[sg_i])
+            processor.process_fft(&mut fft_out_buffer, &mut processed_readings);
         }
-        drop(processed_readings)
     }
 }

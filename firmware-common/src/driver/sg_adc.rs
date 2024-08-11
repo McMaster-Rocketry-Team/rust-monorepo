@@ -1,28 +1,24 @@
 use embassy_sync::blocking_mutex::raw::RawMutex;
 
-use crate::{common::zerocopy_channel::ZeroCopyChannelSender, strain_gauges::SAMPLES_PER_READ};
+use crate::common::zerocopy_channel::ZeroCopyChannelSender;
 
-#[derive(Debug, Clone)]
-pub struct RawSGReadings {
-    pub start_time: f64, // boot time in ms
-    pub sg_readings: [[f32; SAMPLES_PER_READ]; 4],
+pub trait RawSGReadingsTrait: Default {
+    type Iter<'a>: Iterator<Item = f32>
+    where
+        Self: 'a;
+
+    fn get_start_time(&self) -> f64;
+
+    /// needs to at least return crate::strain_gauges::SAMPLES_PER_READ number of readings
+    fn get_sg_readings_iter(&self, sg_i: usize) -> Self::Iter<'_>;
 }
 
-impl RawSGReadings {
-    pub const fn new_const() -> Self {
-        Self {
-            start_time: 0.0,
-            sg_readings: [[0.0; SAMPLES_PER_READ]; 4],
-        }
-    }
-}
-
-pub trait SGAdc {
+pub trait SGAdc<T: RawSGReadingsTrait> {
     type Error: defmt::Format + core::fmt::Debug;
 
-    async fn read<'a, M: RawMutex>(
+    async fn read<'a, M: RawMutex, const N: usize>(
         &mut self,
-        sender: &mut ZeroCopyChannelSender<'a, M, RawSGReadings>,
+        sender: &mut ZeroCopyChannelSender<'a, M, T, N>,
     ) -> Result<(), Self::Error>;
 }
 

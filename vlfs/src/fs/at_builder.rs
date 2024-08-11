@@ -49,18 +49,14 @@ where
     'b: 'a,
 {
     pub(crate) async fn new(fs: &'b VLFS<F, C>) -> Result<Self, VLFSError<F::Error>> {
-        log_info!("locking at");
         let mut at = fs.allocation_table.write().await;
         let max_file_id = at.footer.max_file_id;
         let curr_at_address = at.address();
         at.increment_position();
         let new_at_address = at.address();
 
-        log_info!("locking flash");
         let flash = fs.flash.write().await;
-        log_info!("locking sectors_mng");
         let sectors_mng = fs.sectors_mng.write().await;
-        log_info!("done");
 
         let mut builder = Self {
             at,
@@ -250,7 +246,6 @@ where
     }
 
     pub async fn commit(mut self) -> Result<(), VLFSError<F::Error>> {
-        log_info!("commit");
         self.at.footer.file_count = self.file_count;
         self.at.footer.max_file_id = self.max_file_id;
         self.extend_from_slice(&self.at.footer.serialize())
@@ -258,7 +253,7 @@ where
             .map_err(VLFSError::FlashError)?;
         self.flush().await.map_err(VLFSError::FlashError)?;
         self.finished = true;
-        log_info!("committed");
+        log_info!("AT builder committed");
         Ok(())
     }
 }
