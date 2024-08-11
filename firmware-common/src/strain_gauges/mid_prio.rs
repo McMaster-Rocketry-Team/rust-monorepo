@@ -72,22 +72,6 @@ pub async fn sg_mid_prio_main(
     let mut fs = VLFS::new(flash, crc);
     fs.init().await.unwrap();
 
-    let sg_reading_ring_writer = RingFileWriter::new(
-        &fs,
-        RingDeltaLoggerConfig {
-            file_type: SG_READINGS,
-            seconds_per_segment: 5 * 60,
-            first_segment_seconds: 5 * 60,
-            segments_per_ring: 6,
-        },
-        delay.clone(),
-        clock.clone(),
-    )
-    .await
-    .unwrap();
-    let sg_reading_ring_writer_fut = sg_reading_ring_writer.run();
-    let mut sg_reading_logger = SGReadingLogger::new();
-
     log_info!("Initializing CAN Bus");
     let (mut can_tx, mut can_rx) = can.split();
     can_tx.configure_self_node(
@@ -196,64 +180,6 @@ pub async fn sg_mid_prio_main(
         }
     };
 
-    let store_sg_fut = async {
-        if usb_connected {
-            log_info!("USB connected on boot, stopping");
-            states.error_states.lock(|led_state| {
-                led_state.borrow_mut().usb_connected = true;
-            });
-            return;
-        }
-
-        let processed_readings_receiver = states.processed_readings_channel.receiver();
-        // sg_adc_controller.lock().await.set_enable(true).await; // TODO only do this in dev mode
-
-        loop {
-            let reading = processed_readings_receiver.receive().await;
-            let start = clock.now_ms();
-
-            let (new_file, mut writer) = sg_reading_ring_writer.get_writer().await;
-            if let Some(unix_time_log) = unix_timestamp_log_mutex.lock(|m| {
-                let mut m = m.borrow_mut();
-
-                if let Some((unix_time_log, updated)) = m.as_mut() {
-                    if new_file || *updated {
-                        *updated = false;
-                        return Some(unix_time_log.clone());
-                    }
-                }
-                return None;
-            }) {
-                sg_reading_logger
-                    .write(
-                        writer.deref_mut().as_mut().unwrap(),
-                        &SGReadingLog::UnixTimestampLog(unix_time_log),
-                    )
-                    .await
-                    .ok();
-            }
-
-            let result = sg_reading_logger
-                .write(
-                    writer.deref_mut().as_mut().unwrap(),
-                    &SGReadingLog::ProcessedSGReading(reading.clone()),
-                )
-                .await;
-
-            if let Err(e) = result {
-                log_warn!("Write failed, {:?}", e);
-            }
-            drop(writer);
-
-            let end = clock.now_ms();
-            log_info!(
-                "Wrote readings in {}ms, free space: {}KiB",
-                end - start,
-                fs.free().await as f32 / 1024.0
-            );
-        }
-    };
-
     let led_fut = async {
         loop {
             let error_states = states.error_states.lock(|s| s.borrow().clone());
@@ -280,9 +206,86 @@ pub async fn sg_mid_prio_main(
         }
     };
 
+    let store_sg_fut = async {
+        if usb_connected {
+            log_info!("USB connected on boot, stopping");
+            states.error_states.lock(|led_state| {
+                led_state.borrow_mut().usb_connected = true;
+            });
+            return;
+        }
+
+        let sg_reading_ring_writer = RingFileWriter::new(
+            &fs,
+            RingDeltaLoggerConfig {
+                file_type: SG_READINGS,
+                seconds_per_segment: 5 * 60,
+                first_segment_seconds: 5 * 60,
+                segments_per_ring: 6,
+            },
+            delay.clone(),
+            clock.clone(),
+        )
+        .await
+        .unwrap();
+        let sg_reading_ring_writer_fut = sg_reading_ring_writer.run();
+        let mut sg_reading_logger = SGReadingLogger::new();
+
+        let processed_readings_receiver_fut = async {
+            let processed_readings_receiver = states.processed_readings_channel.receiver();
+            // sg_adc_controller.lock().await.set_enable(true).await; // TODO only do this in dev mode
+
+            loop {
+                let reading = processed_readings_receiver.receive().await;
+                let start = clock.now_ms();
+
+                let (new_file, mut writer) = sg_reading_ring_writer.get_writer().await;
+                if let Some(unix_time_log) = unix_timestamp_log_mutex.lock(|m| {
+                    let mut m = m.borrow_mut();
+
+                    if let Some((unix_time_log, updated)) = m.as_mut() {
+                        if new_file || *updated {
+                            *updated = false;
+                            return Some(unix_time_log.clone());
+                        }
+                    }
+                    return None;
+                }) {
+                    sg_reading_logger
+                        .write(
+                            writer.deref_mut().as_mut().unwrap(),
+                            &SGReadingLog::UnixTimestampLog(unix_time_log),
+                        )
+                        .await
+                        .ok();
+                }
+
+                let result = sg_reading_logger
+                    .write(
+                        writer.deref_mut().as_mut().unwrap(),
+                        &SGReadingLog::ProcessedSGReading(reading.clone()),
+                    )
+                    .await;
+
+                if let Err(e) = result {
+                    log_warn!("Write failed, {:?}", e);
+                }
+                drop(writer);
+
+                let end = clock.now_ms();
+                log_info!(
+                    "Wrote readings in {}ms, free space: {}KiB",
+                    end - start,
+                    fs.free().await as f32 / 1024.0
+                );
+            }
+        };
+
+        join!(sg_reading_ring_writer_fut, processed_readings_receiver_fut);
+    };
+
     join!(
         usb_console_fut,
-        sg_reading_ring_writer_fut,
         store_sg_fut,
         led_fut,
         can_rx_fut,
