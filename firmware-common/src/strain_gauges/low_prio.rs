@@ -135,13 +135,13 @@ pub async fn sg_low_prio_main<T: RawSGReadingsTrait>(states: &SGGlobalStates<imp
                 processor.process::<T>(sg_readings_iter);
             }
 
-            log_info!(
-                "SG readings: {}V {}V {}V {}V",
-                sg_processor_list[0].samples_list.last().unwrap(),
-                sg_processor_list[1].samples_list.last().unwrap(),
-                sg_processor_list[2].samples_list.last().unwrap(),
-                sg_processor_list[3].samples_list.last().unwrap(),
-            );
+            // log_info!(
+            //     "SG readings: {}V {}V {}V {}V",
+            //     sg_processor_list[0].samples_list.last().unwrap(),
+            //     sg_processor_list[1].samples_list.last().unwrap(),
+            //     sg_processor_list[2].samples_list.last().unwrap(),
+            //     sg_processor_list[3].samples_list.last().unwrap(),
+            // );
         }
 
         // takes 11ms

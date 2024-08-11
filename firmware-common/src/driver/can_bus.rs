@@ -1,10 +1,9 @@
-use heapless::Vec;
-
 use crate::common::can_bus::message::CanBusMessage;
 
 use super::delay::Delay;
 
 pub trait CanBusRawMessage {
+    fn timestamp(&self) -> f64;
     fn id(&self) -> u32;
     fn rtr(&self) -> bool;
     fn data(&self) -> &[u8];
@@ -20,11 +19,6 @@ pub trait SplitableCanBus {
 
     // TODO split with &self?
     fn split(self) -> (Self::TX, Self::RX);
-}
-
-pub enum CanBusTXFrame {
-    Data { id: u32, data: Vec<u8, 64> },
-    Remote { id: u32, length: usize },
 }
 
 pub trait CanBusTX {
@@ -110,6 +104,10 @@ impl<D: Delay> CanBusRX for DummyCanBus<D> {
 pub struct DummyCanBusMessage;
 
 impl CanBusRawMessage for DummyCanBusMessage {
+    fn timestamp(&self) -> f64 {
+        todo!()
+    }
+
     fn id(&self) -> u32 {
         todo!()
     }
