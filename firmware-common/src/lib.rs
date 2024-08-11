@@ -24,3 +24,7 @@ mod vl_main;
 pub use common::console::rpc::RpcClient;
 pub use common::vl_device_manager::VLDeviceManager;
 pub use vl_main::vl_main;
+pub use strain_gauges::high_prio::sg_high_prio_main;
+pub use strain_gauges::mid_prio::sg_mid_prio_main;
+pub use strain_gauges::low_prio::sg_low_prio_main;
+

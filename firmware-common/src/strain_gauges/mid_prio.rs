@@ -33,20 +33,18 @@ create_serialized_enum!(
     (1, UnixTimestampLog)
 );
 
-pub async fn mid_prio_main(
+pub async fn sg_mid_prio_main(
     state: &SGGlobalStates<impl RawMutex>,
     device_serial_number: &[u8; 12],
     mut indicator: impl Indicator,
     mut sg_adc_controller: impl SGAdcController,
-    flash: impl Flash,
+    mut flash: impl Flash,
     crc: impl Crc,
     mut can: impl SplitableCanBus,
     clock: impl Clock,
     delay: impl Delay,
 ) {
     log_info!("Initializing VLFS");
-    let stat_flash = StatFlash::new();
-    let mut flash = stat_flash.get_flash(flash, VLFSTimerWrapper(clock.clone()));
     flash.reset().await.unwrap();
     let mut fs = VLFS::new(flash, crc);
     fs.init().await.unwrap();
@@ -125,7 +123,9 @@ pub async fn mid_prio_main(
                     ..
                 } => {
                     indicator.set_enable(true).await;
-                    delay.delay_ms(100.0).await;
+                    delay.delay_ms(50.0).await;
+                    indicator.set_enable(false).await;
+                    delay.delay_ms(950.0).await;
                 }
             }
         }

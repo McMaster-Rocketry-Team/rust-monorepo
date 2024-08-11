@@ -1,6 +1,6 @@
 use embassy_sync::blocking_mutex::raw::RawMutex;
 
-use crate::{common::zerocopy_channel::ZeroCopyChannel, strain_gauges::SAMPLES_PER_READ};
+use crate::{common::zerocopy_channel::ZeroCopyChannelSender, strain_gauges::SAMPLES_PER_READ};
 
 #[derive(Debug, Clone)]
 pub struct RawSGReadings {
@@ -20,11 +20,9 @@ impl RawSGReadings {
 pub trait SGAdc {
     type Error: defmt::Format + core::fmt::Debug;
 
-    async fn reset(&mut self) -> Result<(), Self::Error>;
-
-    async fn read<M: RawMutex>(
+    async fn read<'a, M: RawMutex>(
         &mut self,
-        channel: &ZeroCopyChannel<M, RawSGReadings>,
+        sender: &mut ZeroCopyChannelSender<'a, M, RawSGReadings>,
     ) -> Result<(), Self::Error>;
 }
 
