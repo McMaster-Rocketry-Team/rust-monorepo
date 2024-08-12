@@ -6,7 +6,6 @@ use embassy_sync::blocking_mutex::raw::{NoopRawMutex, RawMutex};
 use embassy_sync::blocking_mutex::Mutex as BlockingMutex;
 use embassy_sync::mutex::Mutex;
 use futures::join;
-use rkyv::{Archive, Deserialize, Serialize};
 use vlfs::{Crc, Flash, VLFS};
 
 use crate::common::can_bus::id::CanBusExtendedId;
@@ -18,7 +17,8 @@ use crate::common::can_bus::messages::{
 use crate::common::can_bus::node_types::STRAIN_GAUGES_NODE_TYPE;
 use crate::common::console::sg_rpc::run_rpc_server;
 use crate::common::delta_logger::buffered_logger::BufferedLoggerState;
-use crate::common::delta_logger::prelude::{DeltaLoggerTrait, RingFileWriter};
+use crate::common::delta_logger::delta_logger::{ArchivedUnixTimestampLog, UnixTimestampLog};
+use crate::common::delta_logger::prelude::RingFileWriter;
 use crate::common::delta_logger::ring_delta_logger::{RingDeltaLoggerConfig, RingDeltaLoggerState};
 use crate::common::file_types::{SG_BATTERY_LOGGER, SG_READINGS};
 use crate::common::ticker::Ticker;
@@ -37,12 +37,6 @@ use crate::{create_serialized_enum, fixed_point_factory};
 use super::global_states::SGGlobalStates;
 use super::{ArchivedProcessedSGReading, ProcessedSGReading};
 
-#[derive(defmt::Format, Debug, Clone, Archive, Deserialize, Serialize)]
-pub struct UnixTimestampLog {
-    pub boot_timestamp: f64,
-    pub unix_timestamp: f64,
-}
-
 create_serialized_enum!(
     SGReadingLogger,
     SGReadingLoggerReader,
@@ -51,8 +45,7 @@ create_serialized_enum!(
     (1, UnixTimestampLog)
 );
 
-fixed_point_factory!(BatteryFF1, f64, 99.0, 110.0, 0.5);
-fixed_point_factory!(BatteryFF2, f64, 4999.0, 5010.0, 0.5);
+fixed_point_factory!(BatteryFF, f64, 4999.0, 5010.0, 0.5);
 
 pub async fn sg_mid_prio_main(
     states: &SGGlobalStates<impl RawMutex, impl RawSGReadingsTrait>,
@@ -241,25 +234,26 @@ pub async fn sg_mid_prio_main(
 
         log_info!("Creating battery logger");
         let battery_logger_state =
-            RingDeltaLoggerState::<ADCData<Volt>, _, _, BatteryFF1, _, _>::new(
+            RingDeltaLoggerState::<ADCData<Volt>, _, _, BatteryFF, _, _>::new(
                 &fs,
                 delay.clone(),
                 clock.clone(),
                 RingDeltaLoggerConfig {
                     file_type: SG_BATTERY_LOGGER,
-                    seconds_per_segment: 5 * 60,
-                    first_segment_seconds: 120,
-                    segments_per_ring: 6, // 10 hours // TODO
+                    seconds_per_segment: 1800,
+                    first_segment_seconds: 60,
+                    segments_per_ring: 20, // 10 hours
                 },
             )
             .await
             .unwrap();
         let (battery_logger, mut battery_logger_runner) = battery_logger_state.get_logger_runner();
         let buffered_battery_logger_state = BufferedLoggerState::<_, _, _, 10>::new(battery_logger);
-        let (mut buffered_battery_logger, mut buffered_batter_logger_runner) =
+        let (buffered_battery_logger, mut buffered_batter_logger_runner) =
             buffered_battery_logger_state.get_logger_runner();
 
         let processed_readings_receiver_fut = async {
+            let clock = clock.clone();
             let mut processed_readings_receiver = states.processed_readings_channel.receiver();
             sg_adc_controller.lock().await.set_enable(true).await; // TODO only do this in dev mode
 
@@ -313,8 +307,29 @@ pub async fn sg_mid_prio_main(
         let store_battery_fut = async {
             loop {
                 let battery_reading = battery_adc.read().await.unwrap();
-                log_info!("Battery: {}", battery_reading.data.value);
-                buffered_battery_logger.log(battery_reading).await.ok();
+                buffered_battery_logger.ref_log(battery_reading);
+            }
+        };
+
+        let store_battery_unix_time_fut = async {
+            let mut ticker = Ticker::every(clock.clone(), delay.clone(), 5.0 * 60.0 * 1000.0);
+            let mut last_unix_time_log: Option<UnixTimestampLog> = None;
+
+            loop {
+                ticker.next().await;
+                if let Some((unix_time_log, _)) =
+                    unix_timestamp_log_mutex.lock(|m| m.borrow().clone())
+                {
+                    if let Some(last_unix_time_log) = &mut last_unix_time_log {
+                        if unix_time_log != *last_unix_time_log {
+                            buffered_battery_logger.ref_log_unix_time(unix_time_log.clone());
+                            *last_unix_time_log = unix_time_log;
+                        }
+                    } else {
+                        buffered_battery_logger.ref_log_unix_time(unix_time_log.clone());
+                        last_unix_time_log.replace(unix_time_log);
+                    }
+                }
             }
         };
 
@@ -324,6 +339,7 @@ pub async fn sg_mid_prio_main(
                 sg_reading_ring_writer_fut,
                 processed_readings_receiver_fut,
                 store_battery_fut,
+                store_battery_unix_time_fut,
                 battery_logger_runner.run(),
                 buffered_batter_logger_runner.run()
             );

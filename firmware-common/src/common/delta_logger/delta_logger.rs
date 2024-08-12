@@ -64,7 +64,7 @@ impl Header {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(defmt::Format, Debug, Clone, rkyv::Archive, rkyv::Deserialize, rkyv::Serialize, PartialEq)]
 pub struct UnixTimestampLog {
     pub boot_timestamp: f64,
     pub unix_timestamp: f64,
