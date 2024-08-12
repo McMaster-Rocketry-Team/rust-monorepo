@@ -9,8 +9,7 @@ use core::mem::size_of;
 
 use crate::{
     common::{
-        fixed_point::F64FixedPointFactory,
-        sensor_reading::{SensorData, SensorReading},
+        delta_logger::prelude::DeltaLoggerTrait, fixed_point::F64FixedPointFactory, sensor_reading::{SensorData, SensorReading}
     },
     driver::timestamp::BootTimestamp,
     try_or_warn,
@@ -72,7 +71,7 @@ where
                 }
                 Either::Second(_) => {
                     logger.flush().await.unwrap();
-                    let writer = logger.into_writer();
+                    let writer = logger.into_inner().await.unwrap(); // FIXME
                     writer.close().await.unwrap();
                     break;
                 }

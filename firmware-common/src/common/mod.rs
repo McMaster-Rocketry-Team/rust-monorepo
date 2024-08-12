@@ -25,3 +25,4 @@ pub mod variable_int;
 pub mod vlp;
 pub mod debounced_signal;
 pub mod zerocopy_channel;
+pub mod embedded_error_wrapper;

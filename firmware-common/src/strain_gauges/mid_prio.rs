@@ -17,11 +17,12 @@ use crate::common::can_bus::messages::{
 };
 use crate::common::can_bus::node_types::STRAIN_GAUGES_NODE_TYPE;
 use crate::common::console::sg_rpc::run_rpc_server;
-use crate::common::delta_logger::prelude::{RingDeltaLoggerConfig, RingFileWriter};
-use crate::common::file_types::SG_READINGS;
+use crate::common::delta_logger::buffered_tiered_ring_delta_logger::BufferedTieredRingDeltaLogger;
+use crate::common::delta_logger::prelude::{RingDeltaLoggerConfig, RingFileWriter, TieredRingDeltaLogger};
+use crate::common::file_types::{SG_BATTERY_LOGGER_TIER_1, SG_BATTERY_LOGGER_TIER_2, SG_READINGS};
 use crate::common::ticker::Ticker;
-use crate::create_serialized_enum;
-use crate::driver::adc::{Volt, ADC};
+use crate::{create_serialized_enum, fixed_point_factory};
+use crate::driver::adc::{ADCData, Volt, ADC};
 use crate::driver::can_bus::{
     can_node_id_from_serial_number, CanBusRX, CanBusRawMessage as _, CanBusTX,
 };
@@ -48,6 +49,9 @@ create_serialized_enum!(
     (0, ProcessedSGReading),
     (1, UnixTimestampLog)
 );
+
+fixed_point_factory!(BatteryFF1, f64, 99.0, 110.0, 0.5);
+fixed_point_factory!(BatteryFF2, f64, 4999.0, 5010.0, 0.5);
 
 pub async fn sg_mid_prio_main(
     states: &SGGlobalStates<impl RawMutex, impl RawSGReadingsTrait>,
@@ -217,6 +221,7 @@ pub async fn sg_mid_prio_main(
             // return;
         }
 
+        log_info!("Creating SG logger");
         let sg_reading_ring_writer = RingFileWriter::new(
             &fs,
             RingDeltaLoggerConfig {
@@ -232,6 +237,32 @@ pub async fn sg_mid_prio_main(
         .unwrap();
         let sg_reading_ring_writer_fut = sg_reading_ring_writer.run();
         let mut sg_reading_logger = SGReadingLogger::new();
+
+        log_info!("Creating battery logger");
+        // let battery_logger = BufferedTieredRingDeltaLogger::<ADCData<Volt>, 40>::new();
+        // let battery_logger_fut = battery_logger.run(
+        //     BatteryFF1,
+        //     BatteryFF2,
+        //     TieredRingDeltaLogger::new(
+        //         &fs,
+        //         ( RingDeltaLoggerConfig {
+        //             file_type: SG_BATTERY_LOGGER_TIER_1,
+        //             seconds_per_segment: 5 * 60,
+        //             first_segment_seconds: 25,
+        //             segments_per_ring: 6, // 30 min
+        //         }, RingDeltaLoggerConfig {
+        //             file_type: SG_BATTERY_LOGGER_TIER_2,
+        //             seconds_per_segment: 5 * 60,
+        //             first_segment_seconds: tier_1_first_segment_seconds,
+        //             segments_per_ring: 6, // 10 hours
+        //         }
+        //     ),
+        //         delay.clone(),
+        //         clock.clone(),
+        //     )
+        //     .await
+        //     .unwrap(),
+        // );
 
         let processed_readings_receiver_fut = async {
             let mut processed_readings_receiver = states.processed_readings_channel.receiver();

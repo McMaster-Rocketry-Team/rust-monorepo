@@ -867,6 +867,7 @@ dependencies = [
  "embassy-futures",
  "embassy-sync 0.5.0",
  "embedded-hal-async",
+ "embedded-io",
  "embedded-io-async",
  "eskf",
  "ferraris-calibration",

@@ -27,3 +27,5 @@ pub static VACUUM_TEST_LOG_FILE_TYPE: FileType = FileType(21);
 pub static VACUUM_TEST_BARO_LOGGER_TIER_1: FileType = FileType(22);
 pub static VACUUM_TEST_BARO_LOGGER_TIER_2: FileType = FileType(23);
 pub static SG_READINGS: FileType = FileType(24);
+pub static SG_BATTERY_LOGGER_TIER_1: FileType = FileType(25);
+pub static SG_BATTERY_LOGGER_TIER_2: FileType = FileType(26);

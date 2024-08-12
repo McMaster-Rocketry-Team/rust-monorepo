@@ -4,14 +4,12 @@ use either::Either;
 
 use crate::{
     common::{
-        fixed_point::F64FixedPointFactory,
-        sensor_reading::{SensorData, SensorReading},
-        variable_int::VariableIntTrait,
+        embedded_error_wrapper::EmbeddedErrorWrapper, fixed_point::F64FixedPointFactory, sensor_reading::{SensorData, SensorReading}, variable_int::VariableIntTrait
     },
     driver::timestamp::BootTimestamp,
 };
 use core::mem::size_of;
-use super::bitslice_serialize::{BitArraySerializable, BitSliceReader, BitSliceWriter};
+use super::{bitslice_serialize::{BitArraySerializable, BitSliceReader, BitSliceWriter}, prelude::DeltaLoggerTrait};
 use super::delta_factory::{DeltaFactory, Deltable, UnDeltaFactory};
 use crate::common::delta_logger::bitslice_primitive::BitSlicePrimitive;
 
@@ -124,12 +122,18 @@ where
             unix_time_log_buffer: None,
         }
     }
+}
 
-    /// returns true if the reading was logged
-    pub async fn log(
-        &mut self,
-        reading: SensorReading<BootTimestamp, D>,
-    ) -> Result<bool, W::Error> {
+impl<D, W, FF> DeltaLoggerTrait<D, W> for DeltaLogger<D, W, FF>
+where
+    D: SensorData,
+    W: embedded_io_async::Write,
+    FF: F64FixedPointFactory,
+    [(); size_of::<D>() + 10]:,
+{
+    type Error = EmbeddedErrorWrapper<W::Error>;
+
+    async fn log(&mut self, reading: SensorReading<BootTimestamp, D>) -> Result<bool, Self::Error> {
         if let Some(last_timestamp) = &self.timestamp_factory.last_value {
             let interval = reading.timestamp - last_timestamp.0;
             if interval < FF::min() {
@@ -171,7 +175,7 @@ where
         Ok(true)
     }
 
-    pub async fn log_unix_time(&mut self, log: UnixTimestampLog) -> Result<(), W::Error> {
+    async fn log_unix_time(&mut self, log: UnixTimestampLog) -> Result<(), Self::Error> {
         if self.last_entry_is_unix_time {
             self.unix_time_log_buffer = Some(log);
             return Ok(());
@@ -188,7 +192,7 @@ where
         Ok(())
     }
 
-    pub async fn flush(&mut self) -> Result<(), W::Error> {
+    async fn flush(&mut self) -> Result<(), Self::Error> {
         Header::EndOfByte.serialize(&mut self.bit_writer);
         self.writer
             .write_all(self.bit_writer.view_all_data_slice())
@@ -198,9 +202,8 @@ where
         Ok(())
     }
 
-    /// You need to call flush before calling this method
-    pub fn into_writer(self) -> W {
-        self.writer
+    async fn into_inner(self) -> Result<W, Self::Error> {
+        Ok(self.writer)
     }
 }
 
@@ -417,7 +420,7 @@ mod test {
         }
         logger.flush().await.unwrap();
 
-        let writer = logger.into_writer();
+        let writer = logger.into_inner().await.unwrap();
         let reader = writer.into_reader();
         println!(
             "reader len: {}, avg bits per reading: {}",

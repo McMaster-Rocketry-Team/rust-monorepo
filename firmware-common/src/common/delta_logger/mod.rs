@@ -11,11 +11,15 @@ pub mod buffered_tiered_ring_delta_logger;
 pub mod tiered_ring_delta_logger;
 pub mod buffered_delta_logger;
 pub mod ring_file_writer;
+pub mod buffered_logger;
+pub mod delta_logger_trait;
+pub mod merged_logger;
 
 pub mod prelude {
     pub use super::bitslice_serialize::{BitArraySerializable, BitSliceReader, BitSliceWriter};
     pub use super::delta_factory::Deltable;
     pub use super::ring_file_writer::RingFileWriter;
+    pub use super::delta_logger_trait::DeltaLoggerTrait;
 
     pub use super::bitslice_primitive::BitSlicePrimitive;
     pub use super::delta_logger::{DeltaLogger, DeltaLoggerReader};

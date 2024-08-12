@@ -11,8 +11,7 @@ use crate::{
 };
 
 use super::{
-    delta_logger::UnixTimestampLog,
-    ring_delta_logger::{RingDeltaLogger, RingDeltaLoggerConfig},
+    delta_logger::UnixTimestampLog, prelude::DeltaLoggerTrait, ring_delta_logger::{RingDeltaLogger, RingDeltaLoggerConfig}
 };
 
 pub struct TieredRingDeltaLogger<'a, D, C, F, FF1, FF2, DL, CL>
@@ -61,31 +60,24 @@ where
         &self,
         value: SensorReading<BootTimestamp, D>,
     ) -> Result<(), VLFSError<F::Error>> {
-        let result_1 = self.delta_logger_1.log(value.clone()).await;
-        let result_2 = self.delta_logger_2.log(value).await;
-        result_1?;
-        result_2?;
-        Ok(())
+        todo!()
+        // let result_1 = self.delta_logger_1.log(value.clone()).await;
+        // let result_2 = self.delta_logger_2.log(value).await;
+        // result_1?;
+        // result_2?;
+        // Ok(())
     }
 
     pub async fn log_unix_time(&self, log: UnixTimestampLog) -> Result<(), VLFSError<F::Error>> {
-        let result_1 = self.delta_logger_1.log_unix_time(log.clone()).await;
-        let result_2 = self.delta_logger_2.log_unix_time(log.clone()).await;
-        result_1?;
-        result_2?;
-        Ok(())
+        todo!()
     }
 
     pub fn close(&self) {
-        self.delta_logger_1.close();
-        self.delta_logger_2.close();
+        todo!()
     }
 
     pub async fn run(&self) {
-        let logger_1_fut = self.delta_logger_1.run();
-        let logger_2_fut = self.delta_logger_2.run();
-
-        join!(logger_1_fut, logger_2_fut);
+        todo!()
     }
 
     pub fn log_stats(&self) {

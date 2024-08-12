@@ -3,6 +3,8 @@ use core::mem::replace;
 use core::mem::size_of;
 
 use super::delta_logger::{DeltaLogger, DeltaLoggerReader, UnixTimestampLog};
+use super::delta_logger_trait::BackgroundRunDeltaLoggerTrait;
+use super::prelude::DeltaLoggerTrait;
 use crate::common::delta_logger::bitslice_primitive::BitSlicePrimitive;
 use crate::common::{
     delta_logger::bitslice_serialize::BitArraySerializable, variable_int::VariableIntTrait,
@@ -110,55 +112,6 @@ where
         })
     }
 
-    pub async fn log(
-        &self,
-        value: SensorReading<BootTimestamp, D>,
-    ) -> Result<bool, VLFSError<F::Error>> {
-        let mut delta_logger = self.delta_logger.lock().await;
-        let delta_logger = delta_logger.as_mut().unwrap();
-        let logged = delta_logger.log(value).await?;
-
-        Ok(logged)
-    }
-
-    pub async fn log_unix_time(&self, log: UnixTimestampLog) -> Result<(), VLFSError<F::Error>> {
-        let mut delta_logger = self.delta_logger.lock().await;
-        let delta_logger = delta_logger.as_mut().unwrap();
-        delta_logger.log_unix_time(log).await
-    }
-
-    pub fn close(&self) {
-        self.close_signal.signal(());
-    }
-
-    pub async fn run(&self) -> Result<(), VLFSError<F::Error>> {
-        self.delay
-            .delay_ms(self.config.first_segment_seconds as f64 * 1000.0)
-            .await;
-        self.create_new_segment().await?;
-
-        let mut ticker = Ticker::every(
-            self.clock.clone(),
-            self.delay.clone(),
-            self.config.seconds_per_segment as f64 * 1000.0,
-        );
-        loop {
-            match select(ticker.next(), self.close_signal.wait()).await {
-                Either::First(_) => {
-                    self.create_new_segment().await?;
-                }
-                Either::Second(_) => {
-                    let mut delta_logger = self.delta_logger.lock().await;
-                    let mut delta_logger = delta_logger.take().unwrap();
-                    delta_logger.flush().await?;
-                    let writer = delta_logger.into_writer();
-                    writer.close().await?;
-                    return Ok(());
-                }
-            }
-        }
-    }
-
     async fn create_new_segment(&self) -> Result<(), VLFSError<F::Error>> {
         log_info!("Creating new ring segment");
         let mut builder = self.fs.new_at_builder().await?;
@@ -192,8 +145,8 @@ where
             replace(delta_logger, new_delta_logger)
         };
 
-        old_delta_logger.flush().await?;
-        let old_writer = old_delta_logger.into_writer();
+        old_delta_logger.flush().await.map_err(|e|e.0)?;
+        let old_writer = old_delta_logger.into_inner().await.map_err(|e|e.0)?;
         old_writer.close().await?;
         *self.current_ring_segments.borrow_mut() = new_ring_segments;
 
@@ -218,6 +171,84 @@ where
             segment_size_kb as u32,
             ring_size_kb as u32
         );
+    }
+}
+
+
+impl<'a, D, C, F, FF, DL, CL> DeltaLoggerTrait<D, ()> for &RingDeltaLogger<'a, D, C, F, FF, DL, CL>
+where
+    C: Crc,
+    F: Flash,
+    F::Error: defmt::Format,
+    D: SensorData,
+    FF: F64FixedPointFactory,
+    DL: Delay,
+    CL: Clock,
+    [(); size_of::<D>() + 10]:,
+{
+    type Error = VLFSError<F::Error>;
+
+    async fn log(&mut self, reading: SensorReading<BootTimestamp, D>) -> Result<bool, Self::Error> {
+        let mut delta_logger = self.delta_logger.lock().await;
+        let delta_logger = delta_logger.as_mut().unwrap();
+        delta_logger.log(reading).await.map_err(|e|e.0)
+    }
+
+    async fn log_unix_time(&mut self, log: UnixTimestampLog) -> Result<(), Self::Error> {
+        let mut delta_logger = self.delta_logger.lock().await;
+        let delta_logger = delta_logger.as_mut().unwrap();
+        delta_logger.log_unix_time(log).await.map_err(|e|e.0)
+    }
+
+    async fn flush(&mut self) -> Result<(), Self::Error> {
+        let mut delta_logger = self.delta_logger.lock().await;
+        let delta_logger = delta_logger.as_mut().unwrap();
+        delta_logger.flush().await.map_err(|e|e.0)
+    }
+
+    async fn into_inner(self) -> Result<(), Self::Error> {
+        self.close_signal.signal(());
+        Ok(())
+    }
+}
+
+impl<'a, D, C, F, FF, DL, CL> BackgroundRunDeltaLoggerTrait<D, ()> for &RingDeltaLogger<'a, D, C, F, FF, DL, CL>
+where
+    C: Crc,
+    F: Flash,
+    F::Error: defmt::Format,
+    D: SensorData,
+    FF: F64FixedPointFactory,
+    DL: Delay,
+    CL: Clock,
+    [(); size_of::<D>() + 10]:,
+{
+    async fn run(&mut self) -> Result<(), Self::Error> {
+        self.delay
+            .delay_ms(self.config.first_segment_seconds as f64 * 1000.0)
+            .await;
+        self.create_new_segment().await?;
+
+        let mut ticker = Ticker::every(
+            self.clock.clone(),
+            self.delay.clone(),
+            self.config.seconds_per_segment as f64 * 1000.0,
+        );
+        loop {
+            match select(ticker.next(), self.close_signal.wait()).await {
+                Either::First(_) => {
+                    self.create_new_segment().await?;
+                }
+                Either::Second(_) => {
+                    let mut delta_logger = self.delta_logger.lock().await;
+                    let mut delta_logger = delta_logger.take().unwrap();
+                    delta_logger.flush().await.map_err(|e|e.0)?;
+                    let writer = delta_logger.into_inner().await.map_err(|e|e.0)?;
+                    writer.close().await?;
+                    return Ok(());
+                }
+            }
+        }
     }
 }
 
