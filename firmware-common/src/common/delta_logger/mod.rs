@@ -21,8 +21,10 @@ pub mod prelude {
     pub use super::ring_file_writer::RingFileWriter;
     pub use super::delta_logger_trait::DeltaLoggerTrait;
 
+    // TODO clean up
     pub use super::bitslice_primitive::BitSlicePrimitive;
     pub use super::delta_logger::{DeltaLogger, DeltaLoggerReader};
-    pub use super::ring_delta_logger::{RingDeltaLogger, RingDeltaLoggerReader, RingDeltaLoggerConfig};
+    pub use super::buffered_logger::BufferedLoggerState;
+    pub use super::ring_delta_logger::{RingDeltaLogger, RingDeltaLoggerReader, RingDeltaLoggerConfig, RingDeltaLoggerState};
     pub use super::tiered_ring_delta_logger::TieredRingDeltaLogger;
 }

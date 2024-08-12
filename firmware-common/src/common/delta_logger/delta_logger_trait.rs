@@ -18,7 +18,3 @@ pub trait DeltaLoggerTrait<D: SensorData, I> {
     /// Must call flush before calling this
     async fn into_inner(self) -> Result<I, Self::Error>;
 }
-
-pub trait BackgroundRunDeltaLoggerTrait<D: SensorData, I>: DeltaLoggerTrait<D, I> {
-    async fn run(&mut self) -> Result<(), Self::Error>;
-}

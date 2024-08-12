@@ -15,12 +15,9 @@ use crate::{
     try_or_warn,
 };
 
-use super::{
-    delta_logger::UnixTimestampLog, delta_logger_trait::BackgroundRunDeltaLoggerTrait,
-    prelude::DeltaLoggerTrait,
-};
+use super::{delta_logger::UnixTimestampLog, prelude::DeltaLoggerTrait};
 
-pub struct BufferedLogger<D, I, L, const CAP: usize>
+pub struct BufferedLoggerState<D, I, L, const CAP: usize>
 where
     D: SensorData,
     L: DeltaLoggerTrait<D, I>,
@@ -37,7 +34,42 @@ where
     stop_signal: Signal<NoopRawMutex, ()>,
 }
 
-impl<D, I, L, const CAP: usize> DeltaLoggerTrait<D, L> for &BufferedLogger<D, I, L, CAP>
+impl<D, I, L, const CAP: usize> BufferedLoggerState<D, I, L, CAP>
+where
+    D: SensorData,
+    L: DeltaLoggerTrait<D, I>,
+{
+    pub fn new(logger: L) -> Self {
+        Self {
+            phantom: PhantomData,
+            logger: Mutex::new(Some(logger)),
+            channel: PubSubChannel::new(),
+            stop_signal: Signal::new(),
+        }
+    }
+
+    pub fn get_logger_runner(
+        &self,
+    ) -> (
+        BufferedLogger<'_, D, I, L, CAP>,
+        BufferedLoggerRunner<'_, D, I, L, CAP>,
+    ) {
+        (
+            BufferedLogger { state: self },
+            BufferedLoggerRunner { state: self },
+        )
+    }
+}
+
+pub struct BufferedLogger<'a, D, I, L, const CAP: usize>
+where
+    D: SensorData,
+    L: DeltaLoggerTrait<D, I>,
+{
+    state: &'a BufferedLoggerState<D, I, L, CAP>,
+}
+
+impl<'a, D, I, L, const CAP: usize> DeltaLoggerTrait<D, L> for BufferedLogger<'a, D, I, L, CAP>
 where
     D: SensorData,
     L: DeltaLoggerTrait<D, I>,
@@ -45,13 +77,16 @@ where
     type Error = Infallible;
 
     async fn log(&mut self, reading: SensorReading<BootTimestamp, D>) -> Result<bool, Self::Error> {
-        self.channel
+        self.state
+            .channel
             .publish_immediate(either::Either::Left(reading));
         Ok(true)
     }
 
     async fn log_unix_time(&mut self, log: UnixTimestampLog) -> Result<(), Self::Error> {
-        self.channel.publish_immediate(either::Either::Right(log));
+        self.state
+            .channel
+            .publish_immediate(either::Either::Right(log));
         Ok(())
     }
 
@@ -61,27 +96,34 @@ where
     }
 
     async fn into_inner(self) -> Result<L, Self::Error> {
-        self.stop_signal.signal(());
-        let mut logger = self.logger.lock().await;
+        self.state.stop_signal.signal(());
+        let mut logger = self.state.logger.lock().await;
         Ok(logger.take().unwrap())
     }
 }
 
-impl<D, I, L, const CAP: usize> BackgroundRunDeltaLoggerTrait<D, L>
-    for &BufferedLogger<D, I, L, CAP>
+pub struct BufferedLoggerRunner<'a, D, I, L, const CAP: usize>
 where
     D: SensorData,
     L: DeltaLoggerTrait<D, I>,
 {
-    async fn run(&mut self) -> Result<(), Self::Error> {
-        let mut logger = self.logger.lock().await;
+    state: &'a BufferedLoggerState<D, I, L, CAP>,
+}
+
+impl<'a, D, I, L, const CAP: usize> BufferedLoggerRunner<'a, D, I, L, CAP>
+where
+    D: SensorData,
+    L: DeltaLoggerTrait<D, I>,
+{
+    pub async fn run(&mut self) -> Result<(), L::Error> {
+        let mut logger = self.state.logger.lock().await;
         let logger = logger.as_mut().unwrap();
 
         // log_info!("Buffer size: {}kb", size_of_val(&self.channel) / 1024);
         // log_info!("Buffer duration: {}s", FF::min() * CAP as f64 / 1000.0);
-        let mut sub = self.channel.subscriber().unwrap();
+        let mut sub = self.state.channel.subscriber().unwrap();
         loop {
-            match select(sub.next_message_pure(), self.stop_signal.wait()).await {
+            match select(sub.next_message_pure(), self.state.stop_signal.wait()).await {
                 Either::First(either::Either::Left(value)) => {
                     try_or_warn!(logger.log(value).await);
                 }

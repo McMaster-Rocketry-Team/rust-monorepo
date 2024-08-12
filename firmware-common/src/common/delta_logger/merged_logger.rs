@@ -1,13 +1,11 @@
 use core::{fmt, marker::PhantomData};
 
-use futures::join;
-
 use crate::{
     common::sensor_reading::{SensorData, SensorReading},
     driver::timestamp::BootTimestamp,
 };
 
-use super::{delta_logger_trait::BackgroundRunDeltaLoggerTrait, prelude::DeltaLoggerTrait};
+use super::prelude::DeltaLoggerTrait;
 
 pub struct MergedLogger<D, I1, I2, L1, L2>
 where
@@ -94,21 +92,5 @@ where
 
     async fn into_inner(self) -> Result<(L1, L2), Self::Error> {
         Ok((self.logger_1, self.logger_2))
-    }
-}
-
-impl<D, I1, I2, L1, L2> BackgroundRunDeltaLoggerTrait<D, (L1, L2)>
-    for MergedLogger<D, I1, I2, L1, L2>
-where
-    D: SensorData,
-    L1: BackgroundRunDeltaLoggerTrait<D, I1>,
-    L2: BackgroundRunDeltaLoggerTrait<D, I2>,
-{
-    async fn run(&mut self) -> Result<(), Self::Error> {
-        let logger_1_fut = self.logger_1.run();
-        let logger_2_fut = self.logger_2.run();
-
-        let results = join!(logger_1_fut, logger_2_fut);
-        MergedLoggerError::from_results(results.0, results.1).map(|_| ())
     }
 }

@@ -26,8 +26,8 @@ where
     CL: Clock,
     [(); size_of::<D>() + 10]:,
 {
-    delta_logger_1: RingDeltaLogger<'a, D, C, F, FF1, DL, CL>,
-    delta_logger_2: RingDeltaLogger<'a, D, C, F, FF2, DL, CL>,
+    delta_logger_1: RingDeltaLogger<'a,'a, D, C, F, FF1, DL, CL>,
+    delta_logger_2: RingDeltaLogger<'a,'a, D, C, F, FF2, DL, CL>,
 }
 
 impl<'a, D, C, F, FF1, FF2, DL, CL> TieredRingDeltaLogger<'a, D, C, F, FF1, FF2, DL, CL>
@@ -48,12 +48,7 @@ where
         delay: DL,
         clock: CL,
     ) -> Result<Self, VLFSError<F::Error>> {
-        Ok(Self {
-            delta_logger_1: RingDeltaLogger::new(fs, delay.clone(), clock.clone(), configs.0)
-                .await?,
-            delta_logger_2: RingDeltaLogger::new(fs, delay.clone(), clock.clone(), configs.1)
-                .await?,
-        })
+        todo!()
     }
 
     pub async fn log(
@@ -82,8 +77,8 @@ where
 
     pub fn log_stats(&self) {
         log_info!("Tier 1:");
-        self.delta_logger_1.log_stats();
+        // self.delta_logger_1.log_stats();
         log_info!("Tier 2:");
-        self.delta_logger_2.log_stats();
+        // self.delta_logger_2.log_stats();
     }
 }

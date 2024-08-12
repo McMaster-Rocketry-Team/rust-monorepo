@@ -17,11 +17,12 @@ use crate::common::can_bus::messages::{
 };
 use crate::common::can_bus::node_types::STRAIN_GAUGES_NODE_TYPE;
 use crate::common::console::sg_rpc::run_rpc_server;
-use crate::common::delta_logger::buffered_tiered_ring_delta_logger::BufferedTieredRingDeltaLogger;
-use crate::common::delta_logger::prelude::{RingDeltaLoggerConfig, RingFileWriter, TieredRingDeltaLogger};
-use crate::common::file_types::{SG_BATTERY_LOGGER_TIER_1, SG_BATTERY_LOGGER_TIER_2, SG_READINGS};
+use crate::common::delta_logger::prelude::{
+    BufferedLoggerState, DeltaLoggerTrait, RingDeltaLoggerConfig, RingDeltaLoggerState,
+    RingFileWriter,
+};
+use crate::common::file_types::{SG_BATTERY_LOGGER, SG_READINGS};
 use crate::common::ticker::Ticker;
-use crate::{create_serialized_enum, fixed_point_factory};
 use crate::driver::adc::{ADCData, Volt, ADC};
 use crate::driver::can_bus::{
     can_node_id_from_serial_number, CanBusRX, CanBusRawMessage as _, CanBusTX,
@@ -32,6 +33,7 @@ use crate::driver::sg_adc::{RawSGReadingsTrait, SGAdcController};
 use crate::driver::sys_reset::SysReset;
 use crate::driver::usb::SplitableUSB;
 use crate::driver::{can_bus::SplitableCanBus, indicator::Indicator};
+use crate::{create_serialized_enum, fixed_point_factory};
 
 use super::global_states::SGGlobalStates;
 use super::{ArchivedProcessedSGReading, ProcessedSGReading};
@@ -239,30 +241,24 @@ pub async fn sg_mid_prio_main(
         let mut sg_reading_logger = SGReadingLogger::new();
 
         log_info!("Creating battery logger");
-        // let battery_logger = BufferedTieredRingDeltaLogger::<ADCData<Volt>, 40>::new();
-        // let battery_logger_fut = battery_logger.run(
-        //     BatteryFF1,
-        //     BatteryFF2,
-        //     TieredRingDeltaLogger::new(
-        //         &fs,
-        //         ( RingDeltaLoggerConfig {
-        //             file_type: SG_BATTERY_LOGGER_TIER_1,
-        //             seconds_per_segment: 5 * 60,
-        //             first_segment_seconds: 25,
-        //             segments_per_ring: 6, // 30 min
-        //         }, RingDeltaLoggerConfig {
-        //             file_type: SG_BATTERY_LOGGER_TIER_2,
-        //             seconds_per_segment: 5 * 60,
-        //             first_segment_seconds: tier_1_first_segment_seconds,
-        //             segments_per_ring: 6, // 10 hours
-        //         }
-        //     ),
-        //         delay.clone(),
-        //         clock.clone(),
-        //     )
-        //     .await
-        //     .unwrap(),
-        // );
+        let battery_logger_state =
+            RingDeltaLoggerState::<ADCData<Volt>, _, _, BatteryFF1, _, _>::new(
+                &fs,
+                delay.clone(),
+                clock.clone(),
+                RingDeltaLoggerConfig {
+                    file_type: SG_BATTERY_LOGGER,
+                    seconds_per_segment: 5 * 60,
+                    first_segment_seconds: 120,
+                    segments_per_ring: 6, // 10 hours
+                },
+            )
+            .await
+            .unwrap();
+        let (battery_logger, mut battery_logger_runner) = battery_logger_state.get_logger_runner();
+        let buffered_battery_logger_state = BufferedLoggerState::<_, _, _, 10>::new(battery_logger);
+        let (mut buffered_battery_logger, mut buffered_batter_logger_runner) =
+            buffered_battery_logger_state.get_logger_runner();
 
         let processed_readings_receiver_fut = async {
             let mut processed_readings_receiver = states.processed_readings_channel.receiver();
@@ -315,7 +311,24 @@ pub async fn sg_mid_prio_main(
             }
         };
 
-        join!(sg_reading_ring_writer_fut, processed_readings_receiver_fut);
+        let store_battery_fut = async {
+            loop {
+                let battery_reading = battery_adc.read().await.unwrap();
+                log_info!("Battery: {}", battery_reading.data.value);
+                buffered_battery_logger.log(battery_reading).await.ok();
+            }
+        };
+
+        #[allow(unused_must_use)]
+        {
+            join!(
+                sg_reading_ring_writer_fut,
+                processed_readings_receiver_fut,
+                store_battery_fut,
+                battery_logger_runner.run(),
+                buffered_batter_logger_runner.run()
+            );
+        }
     };
 
     join!(
