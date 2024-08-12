@@ -6,18 +6,18 @@ use core::{
 use embassy_sync::{
     blocking_mutex::raw::RawMutex,
     mutex::{Mutex, MutexGuard},
-    signal::Signal,
+    pubsub::{PubSubBehavior, PubSubChannel, Subscriber},
 };
 
 pub struct ZeroCopyChannel<M: RawMutex, T: Default, const N: usize> {
-    ready_value_signal: Signal<M, usize>,
+    ready_value_idx: PubSubChannel<M, usize, N, 1, 1>,
     values: [Mutex<M, T>; N],
 }
 
 impl<M: RawMutex, T: Default, const N: usize> ZeroCopyChannel<M, T, N> {
     pub fn new() -> Self {
         Self {
-            ready_value_signal: Signal::new(),
+            ready_value_idx: PubSubChannel::new(),
             values: array::from_fn(|_| Mutex::new(T::default())),
         }
     }
@@ -31,7 +31,10 @@ impl<M: RawMutex, T: Default, const N: usize> ZeroCopyChannel<M, T, N> {
     }
 
     pub fn receiver(&self) -> ZeroCopyChannelReceiver<M, T, N> {
-        ZeroCopyChannelReceiver { channel: self }
+        ZeroCopyChannelReceiver {
+            channel: self,
+            idx_sub: self.ready_value_idx.subscriber().unwrap(),
+        }
     }
 }
 
@@ -92,8 +95,8 @@ impl<'a, 'b, M: RawMutex, T: Default, const N: usize> Drop
         drop(self.guard.take());
         self.sender
             .channel
-            .ready_value_signal
-            .signal(self.sender.curr_ready_value);
+            .ready_value_idx
+            .publish_immediate(self.sender.curr_ready_value);
         self.sender.curr_ready_value += 1;
         if self.sender.curr_ready_value >= N {
             self.sender.curr_ready_value = 0;
@@ -103,11 +106,12 @@ impl<'a, 'b, M: RawMutex, T: Default, const N: usize> Drop
 
 pub struct ZeroCopyChannelReceiver<'a, M: RawMutex, T: Default, const N: usize> {
     channel: &'a ZeroCopyChannel<M, T, N>,
+    idx_sub: Subscriber<'a, M, usize, N, 1, 1>,
 }
 
 impl<'a, M: RawMutex, T: Default, const N: usize> ZeroCopyChannelReceiver<'a, M, T, N> {
-    pub async fn receive(&self) -> MutexGuard<'a, M, T> {
-        let ready_value = self.channel.ready_value_signal.wait().await;
+    pub async fn receive(&mut self) -> MutexGuard<'a, M, T> {
+        let ready_value = self.idx_sub.next_message_pure().await;
         let guard = self.channel.values[ready_value].lock().await;
 
         guard

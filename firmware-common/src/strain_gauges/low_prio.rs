@@ -116,7 +116,7 @@ pub async fn sg_low_prio_main<T: RawSGReadingsTrait>(states: &SGGlobalStates<imp
     let mut sg_processor_list: [SGChannelProcessor; 4] =
         array::from_fn(|_| SGChannelProcessor::new(&fft));
 
-    let raw_readings_receiver = states.raw_readings_channel.receiver();
+    let mut raw_readings_receiver = states.raw_readings_channel.receiver();
     let mut processed_readings_sender = states.processed_readings_channel.sender();
     loop {
         let mut start_time: Option<f64> = None;

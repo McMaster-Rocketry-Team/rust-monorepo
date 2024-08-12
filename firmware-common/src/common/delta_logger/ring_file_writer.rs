@@ -138,6 +138,7 @@ where
         }
     }
 
+    // TODO don't create new segment if existing segment is smaller than threshold
     async fn create_new_segment(&self) -> Result<(), VLFSError<F::Error>> {
         if self.current_writer_dirty.lock(|c| !c.borrow().clone()) {
             log_info!("No new data, skipping segment creation");

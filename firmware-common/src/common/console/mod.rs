@@ -11,7 +11,7 @@ pub enum DeviceType {
 }
 
 #[derive(Archive, Deserialize, Serialize, Debug, Clone, PartialEq, defmt::Format)]
-enum OpenFileStatus {
+pub enum OpenFileStatus {
     Sucess,
     DoesNotExist,
     Error,

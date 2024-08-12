@@ -21,6 +21,7 @@ use crate::common::delta_logger::prelude::{RingDeltaLoggerConfig, RingFileWriter
 use crate::common::file_types::SG_READINGS;
 use crate::common::ticker::Ticker;
 use crate::create_serialized_enum;
+use crate::driver::adc::{Volt, ADC};
 use crate::driver::can_bus::{
     can_node_id_from_serial_number, CanBusRX, CanBusRawMessage as _, CanBusTX,
 };
@@ -60,6 +61,7 @@ pub async fn sg_mid_prio_main(
     delay: impl Delay,
     sys_reset: impl SysReset,
     mut usb: impl SplitableUSB,
+    mut battery_adc: impl ADC<Volt>,
 ) {
     let sg_adc_controller = Mutex::<NoopRawMutex, _>::new(sg_adc_controller);
     let unix_timestamp_log_mutex = BlockingMutex::<
@@ -212,7 +214,7 @@ pub async fn sg_mid_prio_main(
             states.error_states.lock(|led_state| {
                 led_state.borrow_mut().usb_connected = true;
             });
-            return;
+            // return;
         }
 
         let sg_reading_ring_writer = RingFileWriter::new(
@@ -232,8 +234,8 @@ pub async fn sg_mid_prio_main(
         let mut sg_reading_logger = SGReadingLogger::new();
 
         let processed_readings_receiver_fut = async {
-            let processed_readings_receiver = states.processed_readings_channel.receiver();
-            // sg_adc_controller.lock().await.set_enable(true).await; // TODO only do this in dev mode
+            let mut processed_readings_receiver = states.processed_readings_channel.receiver();
+            sg_adc_controller.lock().await.set_enable(true).await; // TODO only do this in dev mode
 
             loop {
                 let reading = processed_readings_receiver.receive().await;
@@ -274,7 +276,8 @@ pub async fn sg_mid_prio_main(
 
                 let end = clock.now_ms();
                 log_info!(
-                    "Wrote readings in {}ms, free space: {}KiB",
+                    "Wrote sg {} readings in {}ms, free space: {}KiB",
+                    reading.sg_i,
                     end - start,
                     fs.free().await as f32 / 1024.0
                 );
