@@ -250,7 +250,7 @@ pub async fn sg_mid_prio_main(
                     file_type: SG_BATTERY_LOGGER,
                     seconds_per_segment: 5 * 60,
                     first_segment_seconds: 120,
-                    segments_per_ring: 6, // 10 hours
+                    segments_per_ring: 6, // 10 hours // TODO
                 },
             )
             .await

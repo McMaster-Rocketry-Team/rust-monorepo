@@ -4,20 +4,20 @@ use crate::{
     avionics::{arming_state::ArmingStateManager, flight_profile::PyroSelection},
     claim_devices,
     common::{
-        delta_logger::{buffered_delta_logger::BufferedDeltaLogger, prelude::DeltaLogger},
+        delta_logger::prelude::{BufferedLoggerState, DeltaLogger, DeltaLoggerTrait},
         device_config::{DeviceConfig, DeviceModeConfig},
-        vl_device_manager::prelude::*,
         file_types::{GROUND_TEST_BARO_FILE_TYPE, GROUND_TEST_LOG_FILE_TYPE},
         ticker::Ticker,
+        vl_device_manager::prelude::*,
         vlp::{
             packet::{GroundTestDeployPacket, VLPDownlinkPacket, VLPUplinkPacket},
             telemetry_packet::TelemetryPacketBuilder,
             uplink_client::VLPUplinkClient,
         },
     },
-    create_serialized_enum, vl_device_manager_type,
+    create_serialized_enum,
     driver::{barometer::BaroData, indicator::Indicator},
-    fixed_point_factory, pyro,
+    fixed_point_factory, pyro, try_or_warn, vl_device_manager_type,
 };
 use embassy_sync::blocking_mutex::{raw::NoopRawMutex, Mutex as BlockingMutex};
 use futures::join;
@@ -68,8 +68,10 @@ pub async fn ground_test_avionics(
         .create_file_and_open_for_write(GROUND_TEST_BARO_FILE_TYPE)
         .await
         .unwrap();
-    let baro_logger = BufferedDeltaLogger::<BaroData, 400>::new();
-    let baro_logger_fut = baro_logger.run(BaroFF, DeltaLogger::new(baro_log_file_writer));
+    let baro_logger = DeltaLogger::<BaroData, _, BaroFF>::new(baro_log_file_writer);
+    let buffered_baro_logger_state = BufferedLoggerState::<_, _, _, 100>::new(baro_logger);
+    let (mut buffered_baro_logger, mut buffered_baro_logger_runner) =
+        buffered_baro_logger_state.get_logger_runner();
 
     log_info!("resetting barometer");
     barometer.reset().await.unwrap();
@@ -110,9 +112,11 @@ pub async fn ground_test_avionics(
                     while !finished.lock(|s| *s.borrow()) {
                         baro_ticker.next().await;
                         if let Ok(reading) = barometer.read().await {
-                            baro_logger.log(reading);
+                            try_or_warn!(buffered_baro_logger.log(reading).await);
                         }
                     }
+
+                    try_or_warn!(buffered_baro_logger.flush().await);
                 };
 
                 let buzzer_queue = &services.buzzer_queue;
@@ -157,7 +161,7 @@ pub async fn ground_test_avionics(
                         .unwrap();
                     services.delay.delay_ms(10000.0).await;
                     finished.lock(|s| *s.borrow_mut() = true);
-                    log_file_writer.flush().await.unwrap();
+                    try_or_warn!(log_file_writer.flush().await);
                 };
 
                 join!(log_baro_fut, fire_fut);
@@ -251,17 +255,20 @@ pub async fn ground_test_avionics(
         }
     };
 
-    join!(
-        indicator_fut,
-        vlp_tx_fut,
-        vlp_rx_fut,
-        vlp_fut,
-        pyro_main_cont_fut,
-        pyro_drogue_cont_fut,
-        arming_switch_fut,
-        baro_logger_fut,
-        arming_state_debounce_fut,
-        hardware_arming_beep_fut,
-    );
+    #[allow(unused_must_use)]
+    {
+        join!(
+            indicator_fut,
+            vlp_tx_fut,
+            vlp_rx_fut,
+            vlp_fut,
+            pyro_main_cont_fut,
+            pyro_drogue_cont_fut,
+            arming_switch_fut,
+            buffered_baro_logger_runner.run(),
+            arming_state_debounce_fut,
+            hardware_arming_beep_fut,
+        );
+    }
     log_unreachable!()
 }
