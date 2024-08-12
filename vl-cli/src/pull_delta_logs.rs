@@ -5,7 +5,7 @@ use either::Either;
 use embedded_hal_async::delay::DelayNs;
 use firmware_common::{
     common::{
-        delta_logger::{delta_logger::UnixTimestampLog, prelude::DeltaLoggerReader},
+        delta_logger::delta_logger::{DeltaLoggerReader, UnixTimestampLog},
         fixed_point::F64FixedPointFactory,
         sensor_reading::{SensorData, SensorReading},
     },

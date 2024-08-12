@@ -1,7 +1,7 @@
 use core::convert::Infallible;
 use core::marker::PhantomData;
 
-use embassy_futures::select::{select, select3, Either, Either3};
+use embassy_futures::select::{select3, Either3};
 use embassy_sync::{
     blocking_mutex::raw::NoopRawMutex,
     mutex::Mutex,
@@ -73,6 +73,25 @@ where
     flush_rpc_client: RpcChannelClient<'a, NoopRawMutex, (),()>
 }
 
+impl<'a, D, I, L, const CAP: usize> BufferedLogger<'a, D, I, L, CAP>
+where
+    D: SensorData,
+    L: DeltaLoggerTrait<D, I>,
+{
+    pub fn ref_log(&self, reading: SensorReading<BootTimestamp, D>) {
+        self.state
+            .channel
+            .publish_immediate(either::Either::Left(reading));
+    }
+
+    pub fn ref_log_unix_time(&self, log: UnixTimestampLog) {
+        self.state
+            .channel
+            .publish_immediate(either::Either::Right(log));
+    }
+
+}
+
 impl<'a, D, I, L, const CAP: usize> DeltaLoggerTrait<D, L> for BufferedLogger<'a, D, I, L, CAP>
 where
     D: SensorData,
@@ -81,16 +100,12 @@ where
     type Error = Infallible;
 
     async fn log(&mut self, reading: SensorReading<BootTimestamp, D>) -> Result<bool, Self::Error> {
-        self.state
-            .channel
-            .publish_immediate(either::Either::Left(reading));
+        self.ref_log(reading);
         Ok(true)
     }
 
     async fn log_unix_time(&mut self, log: UnixTimestampLog) -> Result<(), Self::Error> {
-        self.state
-            .channel
-            .publish_immediate(either::Either::Right(log));
+        self.ref_log_unix_time(log);
         Ok(())
     }
 

@@ -4,16 +4,11 @@ use crate::{
     avionics::{arming_state::ArmingStateManager, flight_profile::PyroSelection},
     claim_devices,
     common::{
-        delta_logger::prelude::{BufferedLoggerState, DeltaLogger, DeltaLoggerTrait},
-        device_config::{DeviceConfig, DeviceModeConfig},
-        file_types::{GROUND_TEST_BARO_FILE_TYPE, GROUND_TEST_LOG_FILE_TYPE},
-        ticker::Ticker,
-        vl_device_manager::prelude::*,
-        vlp::{
+        delta_logger::{buffered_logger::BufferedLoggerState, delta_logger::DeltaLogger, prelude::DeltaLoggerTrait}, device_config::{DeviceConfig, DeviceModeConfig}, file_types::{GROUND_TEST_BARO_FILE_TYPE, GROUND_TEST_LOG_FILE_TYPE}, ticker::Ticker, vl_device_manager::prelude::*, vlp::{
             packet::{GroundTestDeployPacket, VLPDownlinkPacket, VLPUplinkPacket},
             telemetry_packet::TelemetryPacketBuilder,
             uplink_client::VLPUplinkClient,
-        },
+        }
     },
     create_serialized_enum,
     driver::{barometer::BaroData, indicator::Indicator},

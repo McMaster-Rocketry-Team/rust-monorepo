@@ -17,10 +17,9 @@ use crate::common::can_bus::messages::{
 };
 use crate::common::can_bus::node_types::STRAIN_GAUGES_NODE_TYPE;
 use crate::common::console::sg_rpc::run_rpc_server;
-use crate::common::delta_logger::prelude::{
-    BufferedLoggerState, DeltaLoggerTrait, RingDeltaLoggerConfig, RingDeltaLoggerState,
-    RingFileWriter,
-};
+use crate::common::delta_logger::buffered_logger::BufferedLoggerState;
+use crate::common::delta_logger::prelude::{DeltaLoggerTrait, RingFileWriter};
+use crate::common::delta_logger::ring_delta_logger::{RingDeltaLoggerConfig, RingDeltaLoggerState};
 use crate::common::file_types::{SG_BATTERY_LOGGER, SG_READINGS};
 use crate::common::ticker::Ticker;
 use crate::driver::adc::{ADCData, Volt, ADC};

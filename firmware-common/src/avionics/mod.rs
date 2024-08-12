@@ -1,7 +1,7 @@
 use arming_state::ArmingStateManager;
 use backup_flight_core::BackupFlightCore;
 use core::cell::RefCell;
-use embassy_futures::select::select;
+use embassy_futures::{join::join3, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex, signal::Signal};
 use flight_core_event::FlightCoreState;
 use flight_core_event_channel::{FlightCoreEventChannel, FlightCoreEventChannelPublisher};
@@ -10,27 +10,42 @@ use futures::join;
 use imu_calibration_info::IMUCalibrationInfo;
 use libm::fabsf;
 use nalgebra::Vector3;
-use vlfs::{Crc, FileType, Flash};
+use vlfs::{Crc, Flash};
 
+use crate::common::delta_logger::buffered_logger::BufferedLoggerState;
+use crate::common::delta_logger::ring_delta_logger::RingDeltaLoggerConfig;
+use crate::common::delta_logger::ring_delta_logger::RingDeltaLoggerState;
 use crate::{
     avionics::{
         flight_core::{FlightCore, Variances},
         flight_core_event::FlightCoreEvent,
-    }, claim_devices, common::{
-        can_bus::messages::ResetMessage, delta_logger::{
-            buffered_tiered_ring_delta_logger::BufferedTieredRingDeltaLogger,
-            delta_logger::UnixTimestampLog,
-        }, sensor_reading::SensorReading, sensor_snapshot::PartialSensorSnapshot, ticker::Ticker, vl_device_manager::prelude::*, vlp::packet::VLPDownlinkPacket
-    }, driver::{
-        adc::ADCData, barometer::BaroData, can_bus::can_node_id_from_serial_number, gps::{GPSData, GPS}, imu::IMUData, indicator::Indicator, mag::MagData
-    }, fixed_point_factory, pyro, vl_device_manager_type
+    },
+    claim_devices,
+    common::{
+        can_bus::messages::ResetMessage,
+        delta_logger::{delta_logger::UnixTimestampLog, merged_logger::MergedLogger},
+        sensor_reading::SensorReading,
+        sensor_snapshot::PartialSensorSnapshot,
+        ticker::Ticker,
+        vl_device_manager::prelude::*,
+        vlp::packet::VLPDownlinkPacket,
+    },
+    driver::{
+        adc::ADCData,
+        barometer::BaroData,
+        can_bus::can_node_id_from_serial_number,
+        gps::{GPSData, GPS},
+        imu::IMUData,
+        indicator::Indicator,
+        mag::MagData,
+    },
+    fixed_point_factory, pyro, vl_device_manager_type,
 };
 use crate::{common::can_bus::node_types::VOID_LAKE_NODE_TYPE, driver::can_bus::CanBusTX};
 use crate::{
     common::{
         can_bus::messages::{self as can_messages},
         config_file::ConfigFile,
-        delta_logger::prelude::{RingDeltaLoggerConfig, TieredRingDeltaLogger},
         device_config::DeviceConfig,
         file_types::*,
         vlp::{
@@ -41,6 +56,7 @@ use crate::{
     },
     driver::timestamp::BootTimestamp,
 };
+use paste::paste;
 use self_test::{self_test, SelfTestResult};
 
 pub mod arming_state;
@@ -53,6 +69,54 @@ pub mod flight_profile;
 mod imu_calibration_info;
 mod self_test;
 pub mod vertical_speed_filter;
+
+macro_rules! create_buffered_tiered_logger {
+    (
+        $logger_name: ident, $logger_fut_name: ident, $sensor_data_type: ty, $buffer_length: literal, $services: ident,
+        $tier_1_ff: ty: $tier_1_file_type: ident, $tier_1_first_segment_seconds: expr,
+        $tier_2_ff: ty: $tier_2_file_type: ident, $tier_2_first_segment_seconds: expr,
+    ) => {
+        paste! {
+            let [< $logger_name _tier_1_state >] = RingDeltaLoggerState::<$sensor_data_type, _, _, $tier_1_ff, _, _>::new(
+                $services.fs,
+                $services.delay.clone(),
+                $services.clock.clone(),
+                RingDeltaLoggerConfig {
+                    file_type: $tier_1_file_type,
+                    seconds_per_segment: 5 * 60,
+                    first_segment_seconds: $tier_1_first_segment_seconds,
+                    segments_per_ring: 6, // 30 min
+                },
+            )
+            .await
+            .unwrap();
+            let ([< $logger_name _tier_1 >], mut [< $logger_name _tier_1_runner >]) = [< $logger_name _tier_1_state >].get_logger_runner();
+
+
+            let [< $logger_name _tier_2_state >] = RingDeltaLoggerState::<$sensor_data_type, _, _, $tier_2_ff, _, _>::new(
+                $services.fs,
+                $services.delay.clone(),
+                $services.clock.clone(),
+                RingDeltaLoggerConfig {
+                    file_type: $tier_2_file_type,
+                    seconds_per_segment: 30 * 60,
+                    first_segment_seconds: $tier_2_first_segment_seconds,
+                    segments_per_ring: 10, // 5 hours
+                },
+            )
+            .await
+            .unwrap();
+            let ([< $logger_name _tier_2 >], mut [< $logger_name _tier_2_runner >]) = [< $logger_name _tier_2_state >].get_logger_runner();
+
+            let [< $logger_name _merged >] = MergedLogger::new([< $logger_name _tier_1 >], [< $logger_name _tier_2 >]);
+
+            let [< $logger_name _buffered_state >] = BufferedLoggerState::<_, _, _, $buffer_length>::new([< $logger_name _merged >]);
+            let ($logger_name, mut [< $logger_name _buffered_runner >]) = [< $logger_name _buffered_state >].get_logger_runner();
+
+            let $logger_fut_name = join3([< $logger_name _tier_1_runner >].run(), [< $logger_name _tier_2_runner >].run(), [< $logger_name _buffered_runner >].run());
+        }
+    };
+}
 
 #[inline(never)]
 pub async fn avionics_main(
@@ -103,154 +167,56 @@ pub async fn avionics_main(
         }
     }
 
-    let get_logger_config = |tier_1_file_type: FileType,
-                             tier_1_first_segment_seconds: u32,
-                             tier_2_file_type: FileType,
-                             tier_2_first_segment_seconds: u32| {
-        let tier_1_config = RingDeltaLoggerConfig {
-            file_type: tier_1_file_type,
-            seconds_per_segment: 5 * 60,
-            first_segment_seconds: tier_1_first_segment_seconds,
-            segments_per_ring: 6, // 30 min
-        };
-        let tier_2_config = RingDeltaLoggerConfig {
-            file_type: tier_2_file_type,
-            seconds_per_segment: 30 * 60,
-            first_segment_seconds: tier_2_first_segment_seconds,
-            segments_per_ring: 10, // 5 hours
-        };
-
-        (tier_1_config, tier_2_config)
-    };
-
     log_info!("Creating GPS logger");
-    let gps_logger = BufferedTieredRingDeltaLogger::<GPSData, 40>::new();
     fixed_point_factory!(GPSFF1, f64, 99.0, 110.0, 0.5);
     fixed_point_factory!(GPSFF2, f64, 4999.0, 5010.0, 0.5);
-    let gps_logger_fut = gps_logger.run(
-        GPSFF1,
-        GPSFF2,
-        TieredRingDeltaLogger::new(
-            services.fs,
-            get_logger_config(
-                AVIONICS_GPS_LOGGER_TIER_1,
-                25 * 1,
-                AVIONICS_GPS_LOGGER_TIER_2,
-                25 * 2,
-            ),
-            services.delay.clone(),
-            services.clock.clone(),
-        )
-        .await
-        .unwrap(),
+    create_buffered_tiered_logger!(
+        gps_logger, gps_logger_fut, GPSData, 10, services,
+        GPSFF1: AVIONICS_GPS_LOGGER_TIER_1, 25 * 1,
+        GPSFF2: AVIONICS_GPS_LOGGER_TIER_2, 25 * 2,
     );
 
     fixed_point_factory!(SensorsFF1, f64, 4.9, 7.0, 0.05);
     fixed_point_factory!(SensorsFF2, f64, 199.0, 210.0, 0.5);
 
     log_info!("Creating low G IMU logger");
-    let low_g_imu_logger = BufferedTieredRingDeltaLogger::<IMUData, 40>::new();
-    let low_g_imu_logger_fut = low_g_imu_logger.run(
-        SensorsFF1,
-        SensorsFF2,
-        TieredRingDeltaLogger::new(
-            services.fs,
-            get_logger_config(
-                AVIONICS_LOW_G_IMU_LOGGER_TIER_1,
-                25 * 3,
-                AVIONICS_LOW_G_IMU_LOGGER_TIER_2,
-                25 * 4,
-            ),
-            services.delay.clone(),
-            services.clock.clone(),
-        )
-        .await
-        .unwrap(),
+    create_buffered_tiered_logger!(
+        low_g_imu_logger, low_g_imu_logger_fut, IMUData, 40, services,
+        SensorsFF1: AVIONICS_LOW_G_IMU_LOGGER_TIER_1, 25 * 3,
+        SensorsFF2: AVIONICS_LOW_G_IMU_LOGGER_TIER_2, 25 * 4,
     );
 
     log_info!("Creating High G IMU logger");
-    let high_g_imu_logger = BufferedTieredRingDeltaLogger::<IMUData, 40>::new();
-    let high_g_imu_logger_fut = high_g_imu_logger.run(
-        SensorsFF1,
-        SensorsFF2,
-        TieredRingDeltaLogger::new(
-            services.fs,
-            get_logger_config(
-                AVIONICS_HIGH_G_IMU_LOGGER_TIER_1,
-                25 * 5,
-                AVIONICS_HIGH_G_IMU_LOGGER_TIER_2,
-                25 * 6,
-            ),
-            services.delay.clone(),
-            services.clock.clone(),
-        )
-        .await
-        .unwrap(),
+    create_buffered_tiered_logger!(
+        high_g_imu_logger, high_g_imu_logger_fut, IMUData, 40, services,
+        SensorsFF1: AVIONICS_HIGH_G_IMU_LOGGER_TIER_1, 25 * 5,
+        SensorsFF2: AVIONICS_HIGH_G_IMU_LOGGER_TIER_2, 25 * 6,
     );
 
     log_info!("Creating baro logger");
-    let baro_logger = BufferedTieredRingDeltaLogger::<BaroData, 40>::new();
-    let baro_logger_fut = baro_logger.run(
-        SensorsFF1,
-        SensorsFF2,
-        TieredRingDeltaLogger::new(
-            services.fs,
-            get_logger_config(
-                AVIONICS_BARO_LOGGER_TIER_1,
-                25 * 7,
-                AVIONICS_BARO_LOGGER_TIER_2,
-                25 * 8,
-            ),
-            services.delay.clone(),
-            services.clock.clone(),
-        )
-        .await
-        .unwrap(),
+    create_buffered_tiered_logger!(
+        baro_logger, baro_logger_fut, BaroData, 40, services,
+        SensorsFF1: AVIONICS_BARO_LOGGER_TIER_1, 25 * 7,
+        SensorsFF2: AVIONICS_BARO_LOGGER_TIER_2, 25 * 8,
     );
 
+    log_info!("Creating mag logger");
     fixed_point_factory!(MagFF1, f64, 49.9, 55.0, 0.05);
-    log_info!("Creating Mag logger");
-    let mag_logger = BufferedTieredRingDeltaLogger::<MagData, 40>::new();
-    let mag_logger_fut = mag_logger.run(
-        MagFF1,
-        SensorsFF2,
-        TieredRingDeltaLogger::new(
-            services.fs,
-            get_logger_config(
-                AVIONICS_MAG_LOGGER_TIER_1,
-                25 * 9,
-                AVIONICS_MAG_LOGGER_TIER_2,
-                25 * 10,
-            ),
-            services.delay.clone(),
-            services.clock.clone(),
-        )
-        .await
-        .unwrap(),
+    create_buffered_tiered_logger!(
+        mag_logger, mag_logger_fut, MagData, 40, services,
+        MagFF1: AVIONICS_MAG_LOGGER_TIER_1, 25 * 9,
+        SensorsFF2: AVIONICS_MAG_LOGGER_TIER_2, 25 * 10,
     );
 
     log_info!("Creating battery logger");
-    let battery_logger = BufferedTieredRingDeltaLogger::<ADCData<Volt>, 40>::new();
-    let battery_logger_fut = battery_logger.run(
-        SensorsFF1,
-        SensorsFF2,
-        TieredRingDeltaLogger::new(
-            services.fs,
-            get_logger_config(
-                AVIONICS_BATTERY_LOGGER_TIER_1,
-                25 * 11,
-                AVIONICS_BATTERY_LOGGER_TIER_2,
-                25 * 12,
-            ),
-            services.delay.clone(),
-            services.clock.clone(),
-        )
-        .await
-        .unwrap(),
+    create_buffered_tiered_logger!(
+        battery_logger, battery_logger_fut, ADCData<Volt>, 40, services,
+        SensorsFF1: AVIONICS_BATTERY_LOGGER_TIER_1, 25 * 11,
+        SensorsFF2: AVIONICS_BATTERY_LOGGER_TIER_2, 25 * 12,
     );
 
     log_info!(
-        "Loggers created, free size: {}MB",
+        "Loggers created, free space: {}MB",
         services.fs.free().await / 1024 / 1024
     );
 
@@ -539,9 +505,9 @@ pub async fn avionics_main(
             let baro_reading = baro_result.unwrap();
 
             if !*storage_full.borrow() {
-                low_g_imu_logger.log(low_g_imu_reading.clone());
-                high_g_imu_logger.log(high_g_imu_reading.clone());
-                baro_logger.log(baro_reading.clone());
+                low_g_imu_logger.ref_log(low_g_imu_reading.clone());
+                high_g_imu_logger.ref_log(high_g_imu_reading.clone());
+                baro_logger.ref_log(baro_reading.clone());
             }
 
             imu_baro_signal.signal((low_g_imu_reading, high_g_imu_reading, baro_reading));
@@ -553,7 +519,7 @@ pub async fn avionics_main(
         loop {
             let gps_location = gps_sub.next_message_pure().await;
             if !*storage_full.borrow() {
-                gps_logger.log(gps_location.clone());
+                gps_logger.ref_log(gps_location.clone());
             }
             telemetry_packet_builder.update(|b| {
                 b.gps_location = Some(gps_location.data);
@@ -571,7 +537,7 @@ pub async fn avionics_main(
             let mag_reading = mag.read().await.unwrap();
 
             if !*storage_full.borrow() {
-                mag_logger.log(mag_reading.clone());
+                mag_logger.ref_log(mag_reading.clone());
             }
         }
     };
@@ -581,7 +547,7 @@ pub async fn avionics_main(
         loop {
             let battery_v = batt_voltmeter.read().await.unwrap();
             if !*storage_full.borrow() {
-                battery_logger.log(battery_v.clone());
+                battery_logger.ref_log(battery_v.clone());
             }
             telemetry_packet_builder.update(|b| {
                 b.battery_v = battery_v.data.value;
@@ -599,12 +565,12 @@ pub async fn avionics_main(
                 unix_timestamp,
                 boot_timestamp,
             };
-            gps_logger.log_unix_time(log.clone());
-            low_g_imu_logger.log_unix_time(log.clone());
-            high_g_imu_logger.log_unix_time(log.clone());
-            baro_logger.log_unix_time(log.clone());
-            mag_logger.log_unix_time(log.clone());
-            battery_logger.log_unix_time(log.clone());
+            gps_logger.ref_log_unix_time(log.clone());
+            low_g_imu_logger.ref_log_unix_time(log.clone());
+            high_g_imu_logger.ref_log_unix_time(log.clone());
+            baro_logger.ref_log_unix_time(log.clone());
+            mag_logger.ref_log_unix_time(log.clone());
+            battery_logger.ref_log_unix_time(log.clone());
         }
     };
 
@@ -829,37 +795,40 @@ pub async fn avionics_main(
         }
     };
 
-    join!(
-        gps_logger_fut,
-        low_g_imu_logger_fut,
-        high_g_imu_logger_fut,
-        baro_logger_fut,
-        mag_logger_fut,
-        battery_logger_fut,
-        vlp_tx_fut,
-        vlp_rx_fut,
-        vlp_fut,
-        hardware_arming_fut,
-        hardware_arming_beep_fut,
-        setup_flight_core_fut,
-        pyro_main_cont_fut,
-        pyro_drogue_cont_fut,
-        imu_baro_fut,
-        gps_fut,
-        mag_fut,
-        bat_fut,
-        flight_core_tick_fut,
-        pyro_main_ctrl_fut,
-        pyro_drogue_ctrl_fut,
-        flight_core_event_consumer,
-        can_tx_flight_event_fut,
-        camera_ctrl_fut,
-        can_tx_avionics_status_fut,
-        can_tx_unix_time_fut,
-        indicators_fut,
-        storage_full_detection_fut,
-        arming_state_debounce_fut,
-        loggers_unix_time_log_fut,
-    );
+    #[allow(unused_must_use)]
+    {
+        join!(
+            gps_logger_fut,
+            low_g_imu_logger_fut,
+            high_g_imu_logger_fut,
+            baro_logger_fut,
+            mag_logger_fut,
+            battery_logger_fut,
+            vlp_tx_fut,
+            vlp_rx_fut,
+            vlp_fut,
+            hardware_arming_fut,
+            hardware_arming_beep_fut,
+            setup_flight_core_fut,
+            pyro_main_cont_fut,
+            pyro_drogue_cont_fut,
+            imu_baro_fut,
+            gps_fut,
+            mag_fut,
+            bat_fut,
+            flight_core_tick_fut,
+            pyro_main_ctrl_fut,
+            pyro_drogue_ctrl_fut,
+            flight_core_event_consumer,
+            can_tx_flight_event_fut,
+            camera_ctrl_fut,
+            can_tx_avionics_status_fut,
+            can_tx_unix_time_fut,
+            indicators_fut,
+            storage_full_detection_fut,
+            arming_state_debounce_fut,
+            loggers_unix_time_log_fut,
+        );
+    }
     log_unreachable!();
 }

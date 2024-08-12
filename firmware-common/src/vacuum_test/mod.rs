@@ -8,17 +8,16 @@ use crate::avionics::backup_flight_core::BackupFlightCore;
 use crate::avionics::flight_core_event::{FlightCoreEvent, FlightCoreState};
 use crate::avionics::flight_profile::FlightProfile;
 use crate::common::config_file::ConfigFile;
-use crate::common::delta_logger::buffered_tiered_ring_delta_logger::BufferedTieredRingDeltaLogger;
-use crate::common::delta_logger::prelude::{RingDeltaLoggerConfig, TieredRingDeltaLogger};
-use crate::common::vl_device_manager::prelude::*;
+use crate::common::delta_logger::buffered_logger::BufferedLoggerState;
+use crate::common::delta_logger::ring_delta_logger::{RingDeltaLoggerConfig, RingDeltaLoggerState};
 use crate::common::file_types::{
-    FLIGHT_PROFILE_FILE_TYPE, VACUUM_TEST_BARO_LOGGER_TIER_1, VACUUM_TEST_BARO_LOGGER_TIER_2,
-    VACUUM_TEST_LOG_FILE_TYPE,
+    FLIGHT_PROFILE_FILE_TYPE, VACUUM_TEST_BARO_LOGGER, VACUUM_TEST_LOG_FILE_TYPE,
 };
 use crate::common::ticker::Ticker;
+use crate::common::vl_device_manager::prelude::*;
 use crate::driver::barometer::BaroData;
 use crate::{claim_devices, create_serialized_enum, fixed_point_factory};
-use crate::{vl_device_manager_type, system_services_type};
+use crate::{system_services_type, vl_device_manager_type};
 
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Debug, Clone, defmt::Format)]
 pub struct FlightCoreEventLog {
@@ -34,7 +33,6 @@ create_serialized_enum!(
 );
 
 fixed_point_factory!(SensorsFF1, f64, 4.0, 7.0, 0.05);
-fixed_point_factory!(SensorsFF2, f64, 199.0, 210.0, 0.5);
 
 #[inline(never)]
 pub async fn vacuum_test_main(
@@ -66,32 +64,23 @@ pub async fn vacuum_test_main(
     let mut logger = VacuumTestLogger::new();
 
     log_info!("Creating baro logger");
-    let baro_logger = BufferedTieredRingDeltaLogger::<BaroData, 200>::new();
-    let baro_logger_fut = baro_logger.run(
-        SensorsFF1,
-        SensorsFF2,
-        TieredRingDeltaLogger::new(
-            services.fs,
-            (
-                RingDeltaLoggerConfig {
-                    file_type: VACUUM_TEST_BARO_LOGGER_TIER_1,
-                    seconds_per_segment: 60,
-                    first_segment_seconds: 30,
-                    segments_per_ring: 30, // 30 min
-                },
-                RingDeltaLoggerConfig {
-                    file_type: VACUUM_TEST_BARO_LOGGER_TIER_2,
-                    seconds_per_segment: 30 * 60,
-                    first_segment_seconds: 45,
-                    segments_per_ring: 10, // 5 hours
-                },
-            ),
-            services.delay.clone(),
-            services.clock.clone(),
-        )
-        .await
-        .unwrap(),
-    );
+    let baro_logger_state = RingDeltaLoggerState::<BaroData, _, _, SensorsFF1, _, _>::new(
+        services.fs,
+        services.delay.clone(),
+        services.clock.clone(),
+        RingDeltaLoggerConfig {
+            file_type: VACUUM_TEST_BARO_LOGGER,
+            seconds_per_segment: 60,
+            first_segment_seconds: 30,
+            segments_per_ring: 30, // 30 min
+        },
+    )
+    .await
+    .unwrap();
+    let (baro_logger, mut baro_logger_runner) = baro_logger_state.get_logger_runner();
+    let buffered_baro_logger_state = BufferedLoggerState::<_, _, _, 10>::new(baro_logger);
+    let (baro_logger, mut baro_logger_buffered_runner) =
+        buffered_baro_logger_state.get_logger_runner();
 
     let flight_core_events = PubSubChannel::<NoopRawMutex, FlightCoreEvent, 3, 1, 1>::new();
     let mut flight_core =
@@ -103,7 +92,7 @@ pub async fn vacuum_test_main(
             baro_ticker.next().await;
             let baro_reading = barometer.read().await.unwrap();
             flight_core.tick(&baro_reading);
-            baro_logger.log(baro_reading);
+            baro_logger.ref_log(baro_reading);
         }
     };
 
@@ -122,10 +111,13 @@ pub async fn vacuum_test_main(
                         services.buzzer_queue.publish(2700, 2000, 150);
                     }
                     logger
-                        .write(&mut log_file_writer, &VacuumTestLog::FlightCoreEventLog(FlightCoreEventLog {
-                            timestamp: services.clock().now_ms(),
-                            event: event.clone(),
-                        }))
+                        .write(
+                            &mut log_file_writer,
+                            &VacuumTestLog::FlightCoreEventLog(FlightCoreEventLog {
+                                timestamp: services.clock().now_ms(),
+                                event: event.clone(),
+                            }),
+                        )
                         .await
                         .unwrap();
                     log_file_writer.flush().await.unwrap();
@@ -160,10 +152,10 @@ pub async fn vacuum_test_main(
             let wait_signal_fut = flight_core_state_signal.wait();
 
             match select(indicator_fut, wait_signal_fut).await {
-                Either::First(_) => {},
+                Either::First(_) => {}
                 Either::Second(new_state) => {
                     state = new_state;
-                },
+                }
             };
         }
     };
@@ -171,11 +163,15 @@ pub async fn vacuum_test_main(
     services.buzzer_queue.publish(2000, 50, 150);
     services.buzzer_queue.publish(2000, 50, 150);
 
-    join!(
-        baro_logger_fut,
-        baro_fut,
-        flight_core_events_sub_fut,
-        indicators_fut
-    );
+    #[allow(unused_must_use)]
+    {
+        join!(
+            baro_logger_runner.run(),
+            baro_logger_buffered_runner.run(),
+            baro_fut,
+            flight_core_events_sub_fut,
+            indicators_fut
+        );
+    }
     log_unreachable!();
 }

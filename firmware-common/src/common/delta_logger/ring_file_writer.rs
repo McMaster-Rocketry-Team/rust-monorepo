@@ -13,7 +13,7 @@ use crate::common::ticker::Ticker;
 use crate::driver::clock::Clock;
 use crate::driver::delay::Delay;
 
-use super::prelude::RingDeltaLoggerConfig;
+use super::ring_delta_logger::RingDeltaLoggerConfig;
 
 pub struct RingFileWriter<'a, F, C, DL, CL>
 where
