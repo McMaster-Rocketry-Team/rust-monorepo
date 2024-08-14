@@ -1,18 +1,14 @@
 #![feature(generic_const_exprs)]
 
+use std::cmp::Ordering;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use crate::list_files::list_files;
-use crate::pull_file::pull_file;
-use crate::pull_vacuum_test::pull_vacuum_test;
 use anyhow::anyhow;
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use clap_num::maybe_hex;
-use device_config::format_lora_key;
-use device_config::gen_lora_key;
-use device_config::read_device_config;
+use create_serial::create_serial;
 use embedded_hal_async::delay::DelayNs;
 use firmware_common::common::console::vl_rpc::GCMPollDownlinkPacketResponse;
 use firmware_common::common::vlp::packet::DeleteLogsPacket;
@@ -21,25 +17,27 @@ use firmware_common::common::vlp::packet::ResetPacket;
 use firmware_common::common::vlp::packet::SoftArmPacket;
 use firmware_common::common::vlp::packet::VLPUplinkPacket;
 use firmware_common::common::vlp::packet::VerticalCalibrationPacket;
-use firmware_common::{driver::serial::SplitableSerialWrapper, vl_rpc::RpcClient};
-use flight_profile::read_flight_profile;
+use firmware_common::driver::serial::SplitableSerialWrapper;
+use firmware_common::sg_rpc;
+use firmware_common::vl_rpc;
 use log::LevelFilter;
+use tokio::fs::read_to_string;
 use tokio::io::{split, AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::time::sleep;
 use tokio_serial::available_ports;
 use tokio_serial::{SerialPortBuilderExt, SerialStream};
+use vl_host_lib::common::list_files;
+use vl_host_lib::common::probe_device_type;
+use vl_host_lib::common::pull_file;
+use vl_host_lib::vl::format_lora_key;
+use vl_host_lib::vl::gen_lora_key;
+use vl_host_lib::vl::json_to_device_config;
+use vl_host_lib::vl::json_to_flight_profile;
+use vl_host_lib::vl::pull_vacuum_test;
 use vlfs::FileID;
 use vlfs::FileType;
 
-mod device_config;
-mod flight_profile;
-mod list_files;
-mod pull_delta_logs;
-mod pull_file;
-mod pull_logs;
-mod pull_vacuum_test;
-mod reader;
-
+mod create_serial;
 struct Delay;
 
 impl DelayNs for Delay {
@@ -65,7 +63,7 @@ enum ModeSelect {
     VL(VLCli),
 
     #[command(about = "OZYS specific commands")]
-    OZYS(SGCli),
+    OZYS(OZYSCli),
 
     #[command(about = "Generate a new Lora key")]
     GenLoraKey,
@@ -73,15 +71,15 @@ enum ModeSelect {
 
 #[derive(Parser)]
 struct VLCli {
-    serial: PathBuf,
+    serial: String,
 
     #[clap(subcommand)]
     command: VLCommands,
 }
 
 #[derive(Parser)]
-struct SGCli {
-    serial: PathBuf,
+struct OZYSCli {
+    serial: String,
 
     #[clap(subcommand)]
     command: SGCommands,
@@ -101,7 +99,8 @@ enum SGCommands {
 
 #[derive(Subcommand)]
 enum VLCommands {
-    GCMSendUplink(SendUplinkArgs),
+    #[clap(subcommand)]
+    GCMSendUplink(GCMUplinkPacket),
     GCMListen(GCMArgs),
     SetFlightProfile(FlightProfileArgs),
     SetDeviceConfig(DeviceConfigArgs),
@@ -120,6 +119,17 @@ enum VLCommands {
 
     #[command(about = "Reset device")]
     Reset,
+}
+
+#[derive(Subcommand)]
+enum GCMUplinkPacket {
+    VerticalCalibration,
+    SoftArm,
+    SoftDisarm,
+    LowPowerModeOn,
+    LowPowerModeOff,
+    Reset,
+    DeleteLogs,
 }
 
 fn file_type_parser(s: &str) -> Result<FileType, String> {
@@ -146,12 +156,6 @@ struct PullArgs {
 }
 
 #[derive(clap::Args)]
-#[command(about = "Send VLP Uplink packet")]
-struct SendUplinkArgs {
-    command: String,
-}
-
-#[derive(clap::Args)]
 #[command(about = "Listen on VLP Downlink packet")]
 struct GCMArgs {}
 
@@ -169,7 +173,7 @@ struct DeviceConfigArgs {
 
 #[derive(clap::Args)]
 struct PullDataArgs {
-    save_path: std::path::PathBuf,
+    save_folder: std::path::PathBuf,
 }
 
 #[tokio::main]
@@ -180,149 +184,148 @@ async fn main() -> Result<()> {
 
     let args = Cli::parse();
 
-    // if matches!(args.command, VLCommands::Detect) {
-    //     for port in available_ports().unwrap() {
-    //         println!("{:?}", port);
-    //     }
-    //     return Ok(());
-    // }
+    match args.mode {
+        ModeSelect::Detect => {
+            let mut results = vec![];
+            for port in available_ports().unwrap() {
+                let probe_result = probe_device_type(port.port_name.clone()).await;
+                results.push((port.port_name, probe_result));
+            }
+            results.sort_by(|a, b| match (&a.1, &b.1) {
+                (Ok(_), Ok(_)) => Ordering::Equal,
+                (Ok(_), _) => Ordering::Less,
+                (_, Ok(_)) => Ordering::Greater,
+                (_, _) => Ordering::Equal,
+            });
+            for (port_name, result) in results {
+                match result {
+                    Ok(device_type) => println!("{}: {:?}", port_name, device_type),
+                    Err(e) => println!("{}: {:?}", port_name, e),
+                }
+            }
+        }
+        ModeSelect::VL(VLCli { serial, command }) => {
+            let mut serial = create_serial(serial)?;
+            let mut client = vl_rpc::RpcClient::new(&mut serial, Delay);
+            client.reset().await.map_err(|_| anyhow!("reset Error"))?;
 
-    // if args.serial.is_none() {
-    //     eprintln!("No serial port specified");
-    //     return Ok(());
-    // }
-    // let serial: tokio_serial::SerialStream =
-    //     tokio_serial::new(args.serial.unwrap(), 9600).open_native_async()?;
-    // let (rx, tx) = split(serial);
-    // let mut serial = SplitableSerialWrapper::new(SerialTXWrapper(tx), SerialRXWrapper(rx));
-    // let mut client = RpcClient::new(&mut serial, Delay);
-    // client.reset().await.map_err(|_| anyhow!("reset Error"))?;
+            let timestamp = chrono::Utc::now().timestamp_micros() as f64 / 1000.0;
+            match command {
+                VLCommands::GCMSendUplink(uplink_packet) => {
+                    let packet: VLPUplinkPacket = match uplink_packet {
+                        GCMUplinkPacket::VerticalCalibration => {
+                            VerticalCalibrationPacket { timestamp }.into()
+                        }
+                        GCMUplinkPacket::SoftArm => SoftArmPacket {
+                            timestamp,
+                            armed: true,
+                        }
+                        .into(),
+                        GCMUplinkPacket::SoftDisarm => SoftArmPacket {
+                            timestamp,
+                            armed: false,
+                        }
+                        .into(),
+                        GCMUplinkPacket::LowPowerModeOn => LowPowerModePacket {
+                            timestamp,
+                            enabled: true,
+                        }
+                        .into(),
+                        GCMUplinkPacket::LowPowerModeOff => LowPowerModePacket {
+                            timestamp,
+                            enabled: false,
+                        }
+                        .into(),
+                        GCMUplinkPacket::Reset => ResetPacket { timestamp }.into(),
+                        GCMUplinkPacket::DeleteLogs => DeleteLogsPacket { timestamp }.into(),
+                    };
 
-    // let who_am_i = client.who_am_i().await.unwrap();
-    // println!("Connected to {:?}", who_am_i.serial_number);
+                    let result = client.g_c_m_send_uplink_packet(packet).await.unwrap();
+                    println!("{:?}", result);
+                    loop {
+                        match client.g_c_m_poll_downlink_packet().await {
+                            Ok(GCMPollDownlinkPacketResponse {
+                                packet: Some((packet, status)),
+                            }) => {
+                                println!("{:?} {:?}", packet, status);
+                            }
+                            Err(e) => {
+                                println!("{:?}", e);
+                            }
+                            _ => {}
+                        }
+                        sleep(Duration::from_millis(100)).await;
+                    }
+                }
+                VLCommands::GCMListen(_) => loop {
+                    match client.g_c_m_poll_downlink_packet().await {
+                        Ok(GCMPollDownlinkPacketResponse {
+                            packet: Some((packet, status)),
+                        }) => {
+                            println!("{:?} {:?}", packet, status);
+                        }
+                        Err(e) => {
+                            println!("{:?}", e);
+                        }
+                        _ => {}
+                    }
+                    sleep(Duration::from_millis(100)).await;
+                },
+                VLCommands::SetFlightProfile(args) => {
+                    let json = read_to_string(args.profile_path).await?;
+                    let profile = json_to_flight_profile(json)?;
+                    client.set_flight_profile(profile).await.unwrap();
+                }
+                VLCommands::SetDeviceConfig(args) => {
+                    let json = read_to_string(args.config_path).await?;
+                    let device_config = json_to_device_config(json)?;
+                    client.set_device_config(device_config).await.unwrap();
+                }
+                VLCommands::PullFlight(_) => todo!(),
+                VLCommands::PullVacuumTest(args) => {
+                    pull_vacuum_test(&mut client, args.save_folder)
+                        .await
+                        .unwrap();
+                }
+                VLCommands::PullGroundTest(_) => todo!(),
+                VLCommands::LS(args) => {
+                    list_files(&mut client, args.file_type).await.unwrap();
+                }
+                VLCommands::PullFile(args) => {
+                    pull_file(&mut client, args.file_id, args.host_path)
+                        .await
+                        .unwrap();
+                }
+                VLCommands::Reset => {
+                    client.reset_device().await.unwrap();
+                }
+            }
+        }
+        ModeSelect::OZYS(OZYSCli { serial, command }) => {
+            let mut serial = create_serial(serial)?;
+            let mut client = sg_rpc::RpcClient::new(&mut serial, Delay);
+            client.reset().await.map_err(|_| anyhow!("reset Error"))?;
 
-    // match args.command {
-    //     VLCommands::LS(args) => {
-    //         client.start_list_files(args.file_type).await.unwrap();
-    //         println!("Files:");
-    //         let file_ids = list_files(&mut client, args).await.unwrap();
-    //         for file_id in file_ids {
-    //             println!("File: {:?}", file_id);
-    //         }
-    //     }
-    //     VLCommands::Pull(args) => {
-    //         pull_file(&mut client, args).await.unwrap();
-    //     }
-    //     VLCommands::Detect => todo!(),
-    //     VLCommands::SendUplink(SendUplinkArgs { command }) => {
-    //         let packet: VLPUplinkPacket = match command.as_str() {
-    //             "vertical_calibration" => VerticalCalibrationPacket { timestamp: 0.0 }.into(),
-    //             "soft_arm" => SoftArmPacket {
-    //                 timestamp: 0.0,
-    //                 armed: true,
-    //             }
-    //             .into(),
+            match command {
+                SGCommands::PullData(_) => todo!(),
+                SGCommands::LS(args) => {
+                    list_files(&mut client, args.file_type).await.unwrap();
+                }
+                SGCommands::PullFile(args) => {
+                    pull_file(&mut client, args.file_id, args.host_path)
+                        .await
+                        .unwrap();
+                }
+                SGCommands::Reset => {
+                    client.reset_device().await.unwrap();
+                }
+            }
+        }
+        ModeSelect::GenLoraKey => {
+            let key = gen_lora_key();
+            println!("{}", format_lora_key(&key));
+        }
+    }
 
-    //             "soft_disarm" => SoftArmPacket {
-    //                 timestamp: 0.0,
-    //                 armed: false,
-    //             }
-    //             .into(),
-    //             "low_power_mode_on" => LowPowerModePacket {
-    //                 timestamp: 0.0,
-    //                 enabled: true,
-    //             }
-    //             .into(),
-    //             "low_power_mode_off" => LowPowerModePacket {
-    //                 timestamp: 0.0,
-    //                 enabled: false,
-    //             }
-    //             .into(),
-    //             "reset" => ResetPacket { timestamp: 0.0 }.into(),
-    //             "delete_logs" => DeleteLogsPacket { timestamp: 0.0 }.into(),
-    //             _ => {
-    //                 return Err(anyhow!("Invalid command"));
-    //             }
-    //         };
-    //         let result = client.g_c_m_send_uplink_packet(packet).await.unwrap();
-    //         println!("{:?}", result);
-    //         loop {
-    //             match client.g_c_m_poll_downlink_packet().await {
-    //                 Ok(GCMPollDownlinkPacketResponse {
-    //                     packet: Some((packet, status)),
-    //                 }) => {
-    //                     println!("{:?} {:?}", packet, status);
-    //                 }
-    //                 Err(e) => {
-    //                     println!("{:?}", e);
-    //                 }
-    //                 _ => {}
-    //             }
-    //             sleep(Duration::from_millis(100)).await;
-    //         }
-    //     }
-    //     VLCommands::GCM(_) => loop {
-    //         match client.g_c_m_poll_downlink_packet().await {
-    //             Ok(GCMPollDownlinkPacketResponse {
-    //                 packet: Some((packet, status)),
-    //             }) => {
-    //                 println!("{:?} {:?}", packet, status);
-    //             }
-    //             Err(e) => {
-    //                 println!("{:?}", e);
-    //             }
-    //             _ => {}
-    //         }
-    //         sleep(Duration::from_millis(100)).await;
-    //     },
-    //     VLCommands::FlightProfile(args) => {
-    //         let profile = read_flight_profile(args.profile_path).unwrap();
-    //         client.set_flight_profile(profile).await.unwrap();
-    //     }
-    //     VLCommands::DeviceConfig(args) => {
-    //         let config = read_device_config(args.config_path).unwrap();
-    //         client.set_device_config(config).await.unwrap();
-    //     }
-    //     VLCommands::GenLoraKey => {
-    //         let key = gen_lora_key();
-    //         println!("{}", format_lora_key(&key));
-    //     }
-    //     VLCommands::PullVacuumTest(args) => {
-    //         pull_vacuum_test(&mut client, args).await.unwrap();
-    //     }
-    // }
     Ok(())
-}
-
-#[derive(defmt::Format, Debug)]
-struct SerialErrorWrapper(#[defmt(Debug2Format)] std::io::Error);
-
-impl embedded_io_async::Error for SerialErrorWrapper {
-    fn kind(&self) -> embedded_io_async::ErrorKind {
-        embedded_io_async::ErrorKind::Other
-    }
-}
-
-struct SerialRXWrapper(ReadHalf<SerialStream>);
-
-impl embedded_io_async::ErrorType for SerialRXWrapper {
-    type Error = SerialErrorWrapper;
-}
-
-impl embedded_io_async::Read for SerialRXWrapper {
-    async fn read(&mut self, buf: &mut [u8]) -> std::result::Result<usize, Self::Error> {
-        self.0.read(buf).await.map_err(SerialErrorWrapper)
-    }
-}
-
-struct SerialTXWrapper(WriteHalf<SerialStream>);
-
-impl embedded_io_async::ErrorType for SerialTXWrapper {
-    type Error = SerialErrorWrapper;
-}
-
-impl embedded_io_async::Write for SerialTXWrapper {
-    async fn write(&mut self, buf: &[u8]) -> std::result::Result<usize, Self::Error> {
-        self.0.write(buf).await.map_err(SerialErrorWrapper)
-    }
 }

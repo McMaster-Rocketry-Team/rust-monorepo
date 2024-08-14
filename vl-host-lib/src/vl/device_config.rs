@@ -1,14 +1,11 @@
-use std::{fs::read_to_string, path::Path};
-
 use anyhow::Result;
 use firmware_common::common::{
     device_config::{DeviceConfig, DeviceModeConfig, LoraConfig},
     rkyv_structs::RkyvString,
 };
-use rand::Rng;
 use serde::{Deserialize, Serialize};
 
-use crate::flight_profile::PyroSelectionSerde;
+use super::flight_profile::PyroSelectionSerde;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DeviceConfigSerde {
@@ -83,46 +80,7 @@ impl Into<DeviceModeConfig> for DeviceModeConfigSerde {
     }
 }
 
-pub fn read_device_config<P: AsRef<Path>>(path: P) -> Result<DeviceConfig> {
-    let config = read_to_string(path)?;
-    let config: DeviceConfigSerde = serde_json::from_str(&config)?;
+pub fn json_to_device_config(json: String) -> Result<DeviceConfig> {
+    let config: DeviceConfigSerde = serde_json::from_str(&json)?;
     Ok(config.into())
-}
-
-pub fn gen_lora_key() -> [u8; 32] {
-    let mut rng = rand::thread_rng();
-    let mut key = [0u8; 32];
-    rng.fill(&mut key);
-    key
-}
-
-pub fn format_lora_key(key: &[u8; 32]) -> String {
-    let mut formatted = String::new();
-    formatted.push('[');
-    for (i, byte) in key.iter().enumerate() {
-        formatted.push_str(&format!("{}", byte));
-        if i < key.len() - 1 {
-            formatted.push(',');
-            formatted.push(' ');
-        }
-    }
-    formatted.push(']');
-    formatted
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn test_read_config() {
-        let config = read_device_config("./test-configs/vacuum-test.json").unwrap();
-        println!("{:?}", config);
-    }
-
-    #[test]
-    fn print_lora_key() {
-        let key = gen_lora_key();
-        println!("{}", format_lora_key(&key));
-    }
 }

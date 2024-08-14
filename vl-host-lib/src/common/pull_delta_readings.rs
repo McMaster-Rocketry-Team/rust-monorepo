@@ -15,9 +15,9 @@ use map_range::MapRange;
 use tokio::{fs::File, io::BufReader};
 use vlfs::FileID;
 
-use crate::{pull_file::pull_file, reader::BufReaderWrapper, PullArgs};
+use super::{pull_file, readers::BufReaderWrapper};
 
-pub async fn pull_delta_logs<S: SplitableSerial, D: SensorData, FF: F64FixedPointFactory>(
+pub async fn pull_delta_readings<S: SplitableSerial, D: SensorData, FF: F64FixedPointFactory>(
     rpc: &mut impl CommonRPCTrait<S>,
     save_folder: PathBuf,
     file_id: FileID,
@@ -29,22 +29,15 @@ pub async fn pull_delta_logs<S: SplitableSerial, D: SensorData, FF: F64FixedPoin
 where
     [(); size_of::<D>() + 10]:,
 {
-    // VLDL: void lake delta log
-    let mut vldl_path = save_folder.clone();
-    
-    vldl_path.push(format!("{}.{}.vldl", file_id.0, file_type_name));
-    pull_file(
-        rpc,
-        PullArgs {
-            file_id,
-            host_path: vldl_path.clone(),
-        },
-    )
-    .await?;
+    // VLDR: void lake delta readings
+    let mut vldr_path = save_folder.clone();
+
+    vldr_path.push(format!("{}.{}.vldr", file_id.0, file_type_name));
+    pull_file(rpc, file_id, vldr_path.clone()).await?;
 
     let mut csv_path = save_folder.clone();
     csv_path.push(format!("{}.{}.csv", file_id.0, file_type_name));
-    let reader = BufReader::new(File::open(vldl_path).await?);
+    let reader = BufReader::new(File::open(vldr_path).await?);
     let reader = BufReaderWrapper(reader);
     let mut reader = DeltaLoggerReader::<D, _, FF>::new(reader);
     let mut csv_writer = csv::Writer::from_path(&csv_path)?;

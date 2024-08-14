@@ -1,6 +1,6 @@
+use std::path::PathBuf;
 use std::time::Instant;
 
-use crate::PullArgs;
 use anyhow::anyhow;
 use anyhow::Result;
 use firmware_common::{
@@ -9,21 +9,24 @@ use firmware_common::{
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
 use tokio::io::BufWriter;
+use vlfs::FileID;
 
 pub async fn pull_file<S: SplitableSerial>(
     rpc: &mut impl CommonRPCTrait<S>,
-    args: PullArgs,
+    file_id: FileID,
+    host_path: PathBuf,
 ) -> Result<()> {
-    println!("Pulling file {}", args.file_id.0);
-    let open_status = rpc.open_file(args.file_id).await.unwrap();
+    println!("Pulling file {}", file_id.0);
+    let open_status = rpc.open_file(file_id).await.unwrap();
     if open_status != OpenFileStatus::Sucess {
         return Err(anyhow!("Failed to open file"));
     }
 
-    let file = fs::File::create(&args.host_path).await?;
+    let file = fs::File::create(&host_path).await?;
     let mut writer = BufWriter::new(file);
     let mut length = 0;
     let start_time = Instant::now();
+    // TODO ignore corrupted chunk if its the last chunk
     // let mut i = 0;
     loop {
         // println!("Reading chunk {}", i);

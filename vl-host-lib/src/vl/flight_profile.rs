@@ -1,5 +1,3 @@
-use std::{fs::read_to_string, path::Path};
-
 use anyhow::Result;
 use firmware_common::avionics::flight_profile::{FlightProfile, PyroSelection};
 use serde::{Deserialize, Serialize};
@@ -46,19 +44,7 @@ impl Into<PyroSelection> for PyroSelectionSerde {
     }
 }
 
-pub fn read_flight_profile<P: AsRef<Path>>(path: P) -> Result<FlightProfile> {
-    let profile = read_to_string(path)?;
-    let profile: FlightProfileSerde = serde_json::from_str(&profile)?;
+pub fn json_to_flight_profile(json: String) -> Result<FlightProfile> {
+    let profile: FlightProfileSerde = serde_json::from_str(&json)?;
     Ok(profile.into())
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn test_read_flight_profile() {
-        let profile = read_flight_profile("./test-configs/flight-profile.json").unwrap();
-        println!("{:?}", profile);
-    }
 }
