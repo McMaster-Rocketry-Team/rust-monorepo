@@ -1,20 +1,22 @@
 use crate::avionics::flight_profile::FlightProfile;
-use crate::common::vl_device_manager::prelude::*;
+use crate::common::config_file::ConfigFile;
+use crate::common::console::DeviceType;
+use crate::common::console::OpenFileStatus;
+use crate::common::console::ReadFileResult;
+use crate::common::device_config::DeviceConfig;
 use crate::common::file_types::{DEVICE_CONFIG_FILE_TYPE, FLIGHT_PROFILE_FILE_TYPE};
 use crate::common::rkyv_structs::RkyvString;
 use crate::common::rpc_channel::RpcChannelClient;
+use crate::common::vl_device_manager::prelude::*;
 use crate::common::vlp::packet::VLPDownlinkPacket;
 use crate::common::vlp::packet::VLPUplinkPacket;
 use crate::create_rpc;
+use crate::impl_common_rpc_trait;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, channel::Receiver};
 use lora_phy::mod_params::PacketStatus;
 use rkyv::{Archive, Deserialize, Serialize};
 use vlfs::ConcurrentFilesIterator;
 use vlfs::{AsyncReader, Crc, FileID, FileReader, FileType, Flash, VLFSError, VLFSReadStatus};
-use crate::common::device_config::DeviceConfig;
-use crate::common::config_file::ConfigFile;
-use crate::common::console::DeviceType;
-use crate::common::console::OpenFileStatus;
 
 #[derive(defmt::Format, Debug, Clone, Archive, Deserialize, Serialize)]
 pub struct RpcPacketStatus {
@@ -79,29 +81,35 @@ create_rpc! {
         };
         OpenFileResponse { status }
     }
-    rpc 3 ReadFile | | -> (data: [u8; 128], length: u8, corrupted: bool) {
+    rpc 3 ReadFile | | -> (result: ReadFileResult) {
         let response = if let Some(reader) = reader.as_mut() {
             let mut buffer = [0u8; 128];
             match reader.read_all(&mut buffer).await {
                 Ok((read_buffer, read_status)) => ReadFileResponse {
-                    length: read_buffer.len() as u8,
-                    data: buffer,
-                    corrupted: matches!(read_status, VLFSReadStatus::CorruptedPage { .. }),
+                    result: ReadFileResult{
+                        length: read_buffer.len() as u8,
+                        data: buffer,
+                        corrupted: matches!(read_status, VLFSReadStatus::CorruptedPage { .. }),
+                    }
                 },
                 Err(e) => {
                     log_warn!("Error reading file: {:?}", e);
                     ReadFileResponse {
-                        length: 0,
-                        data: buffer,
-                        corrupted: true,
+                        result: ReadFileResult{
+                            length: 0,
+                            data: buffer,
+                            corrupted: true,
+                        }
                     }
                 }
             }
         } else {
             ReadFileResponse {
-                length: 0,
-                data: [0u8; 128],
-                corrupted: false,
+                result: ReadFileResult{
+                    length: 0,
+                    data: [0u8; 128],
+                    corrupted: false,
+                }
             }
         };
         response
@@ -166,3 +174,5 @@ create_rpc! {
         ResetDeviceResponse {}
     }
 }
+
+impl_common_rpc_trait!(RpcClient);

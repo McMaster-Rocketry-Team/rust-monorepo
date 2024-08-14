@@ -122,23 +122,6 @@ pub fn get_dummy_serial(delay: impl DelayNs) -> impl SplitableSerial {
     SplitableSerialWrapper::new(DummyTX, DummyRX { delay })
 }
 
-pub enum RpcClientError<S: crate::driver::serial::SplitableSerial> {
-    Timeout,
-    UnexpectedEof,
-    Serial(S::Error),
-}
-
-impl<S: crate::driver::serial::SplitableSerial> From<ReadExactError<S::Error>>
-    for RpcClientError<S>
-{
-    fn from(value: ReadExactError<S::Error>) -> Self {
-        match value {
-            ReadExactError::Other(e) => RpcClientError::Serial(e),
-            ReadExactError::UnexpectedEof => RpcClientError::UnexpectedEof,
-        }
-    }
-}
-
 #[derive(Debug, defmt::Format)]
 struct DummySerialError;
 

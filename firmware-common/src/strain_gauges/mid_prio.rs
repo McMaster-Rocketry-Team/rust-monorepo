@@ -32,7 +32,7 @@ use crate::driver::sg_adc::{RawSGReadingsTrait, SGAdcController};
 use crate::driver::sys_reset::SysReset;
 use crate::driver::usb::SplitableUSB;
 use crate::driver::{can_bus::SplitableCanBus, indicator::Indicator};
-use crate::{create_serialized_enum, fixed_point_factory};
+use crate::{create_serialized_enum, fixed_point_factory, try_or_warn};
 
 use super::global_states::SGGlobalStates;
 use super::{ArchivedProcessedSGReading, ProcessedSGReading};
@@ -275,25 +275,24 @@ pub async fn sg_mid_prio_main(
                     }
                     return None;
                 }) {
+                    try_or_warn!(
+                        sg_reading_logger
+                            .write(
+                                writer.deref_mut().as_mut().unwrap(),
+                                &SGReadingLog::UnixTimestampLog(unix_time_log),
+                            )
+                            .await
+                    );
+                }
+
+                try_or_warn!(
                     sg_reading_logger
                         .write(
                             writer.deref_mut().as_mut().unwrap(),
-                            &SGReadingLog::UnixTimestampLog(unix_time_log),
+                            &SGReadingLog::ProcessedSGReading(reading.clone()),
                         )
                         .await
-                        .ok();
-                }
-
-                let result = sg_reading_logger
-                    .write(
-                        writer.deref_mut().as_mut().unwrap(),
-                        &SGReadingLog::ProcessedSGReading(reading.clone()),
-                    )
-                    .await;
-
-                if let Err(e) = result {
-                    log_warn!("Write failed, {:?}", e);
-                }
+                );
                 drop(writer);
 
                 let end = clock.now_ms();

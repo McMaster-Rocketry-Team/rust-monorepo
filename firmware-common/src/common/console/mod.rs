@@ -1,6 +1,7 @@
 use rkyv::{Archive, Deserialize, Serialize};
 
 pub mod create_rpc;
+pub mod common_rpc_trait;
 pub mod vl_rpc;
 pub mod sg_rpc;
 
@@ -15,4 +16,11 @@ pub enum OpenFileStatus {
     Sucess,
     DoesNotExist,
     Error,
+}
+
+#[derive(Archive, Deserialize, Serialize, Debug, Clone, PartialEq, defmt::Format)]
+pub struct ReadFileResult {
+    data: [u8; 128],
+    length: u8,
+    corrupted: bool,
 }

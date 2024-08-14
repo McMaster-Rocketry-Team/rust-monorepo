@@ -1,11 +1,24 @@
 #![allow(warnings, unused)]
 
+use embedded_io::ReadExactError;
+
+use crate::driver::serial::SplitableSerial;
+
 #[derive(defmt::Format, core::fmt::Debug)]
-pub enum RpcClientError {
+pub enum RpcClientError<S:SplitableSerial> {
     Timeout,
     ECCMismatch,
     UnexpectedEof,
-    Serial,
+    Serial(S::Error),
+}
+
+impl<S:SplitableSerial> From<ReadExactError<S::Error>> for RpcClientError<S>{
+    fn from(e: ReadExactError<S::Error>) -> Self {
+        match e {
+            ReadExactError::UnexpectedEof => RpcClientError::UnexpectedEof,
+            ReadExactError::Other(e) => RpcClientError::Serial(e),
+        }
+    }
 }
 
 #[macro_export]
@@ -195,7 +208,7 @@ macro_rules! create_rpc {
                     run_with_timeout(delay, 100.0, read_fut).await.ok();
                 }
 
-                pub async fn reset(&mut self) ->  Result<bool, crate::common::console::create_rpc::RpcClientError> {
+                pub async fn reset(&mut self) ->  Result<bool, crate::common::console::create_rpc::RpcClientError<S>> {
                     use embedded_io_async::Write;
                     use embedded_io_async::Read;
                     use crate::common::console::create_rpc::RpcClientError;
@@ -204,16 +217,16 @@ macro_rules! create_rpc {
                     let (mut tx, mut rx) = self.serial.split();
 
                     // flush the serial buffer
-                    tx.write_all(&[255; size_of::<<RequestEnum as rkyv::Archive>::Archived>() + 1]).await.map_err(|_|RpcClientError::Serial)?;
+                    tx.write_all(&[255; size_of::<<RequestEnum as rkyv::Archive>::Archived>() + 1]).await.map_err(RpcClientError::Serial)?;
                     Self::clear_read_buffer(&mut self.delay, &mut rx).await;
 
                     // TODO clear rx read buffer
 
                     // send reset command
-                    tx.write_all(&[255]).await.map_err(|_|RpcClientError::Serial)?;
+                    tx.write_all(&[255]).await.map_err(RpcClientError::Serial)?;
 
                     let mut buffer = [0u8; 2];
-                    rx.read_exact(&mut buffer).await.map_err(|_|RpcClientError::Serial)?;
+                    rx.read_exact(&mut buffer).await?;
                     if buffer == [255, 0x69] {
                         Ok(true)
                     } else {
@@ -222,7 +235,7 @@ macro_rules! create_rpc {
                 }
 
                 $(
-                    pub async fn [< $name:snake >](&mut self, $($req_var_name: $req_var_type, )*) -> Result<[< $name Response >], crate::common::console::create_rpc::RpcClientError> {
+                    pub async fn [< $name:snake >](&mut self, $($req_var_name: $req_var_type, )*) -> Result<[< $name Response >], crate::common::console::create_rpc::RpcClientError<S>> {
                         use core::mem::size_of;
                         use rkyv::ser::Serializer;
                         use rkyv::{ser::serializers::BufferSerializer};
@@ -250,9 +263,9 @@ macro_rules! create_rpc {
                         drop(request_serializer);
 
                         let tx_fut = async {
-                            let result: Result<(), RpcClientError> = try {
-                                tx.write_all(&request_buffer).await.map_err(|_|RpcClientError::Serial)?;
-                                tx.write_all(&[crc.checksum(&request_buffer)]).await.map_err(|_|RpcClientError::Serial)?;
+                            let result: Result<(), RpcClientError<S>> = try {
+                                tx.write_all(&request_buffer).await.map_err(RpcClientError::Serial)?;
+                                tx.write_all(&[crc.checksum(&request_buffer)]).await.map_err(RpcClientError::Serial)?;
                             };
                             result
                         };
@@ -261,15 +274,15 @@ macro_rules! create_rpc {
                         let mut response_buffer: AlignedBytes<{size_of::<<[< $name Response >] as rkyv::Archive>::Archived>() + 1}> = Default::default();
 
                         let rx_fut = async {
-                            let result: Result<[< $name Response >], RpcClientError> = try {
+                            let result: Result<[< $name Response >], RpcClientError<S>> = try {
                                 // log_debug!("trying to read response {}", response_buffer.len());
-                                match run_with_timeout(&mut self.delay, 5000.0, rx.read_exact(response_buffer.as_mut_slice())).await{
+                                match run_with_timeout(&mut self.delay, 5000.0, rx.read_exact(response_buffer.as_mut_slice())).await {
                                     Ok(Ok(_))=>{}
-                                    Ok(Err(_))=>{
-                                        return Err(RpcClientError::Serial);
+                                    Ok(Err(e))=>{
+                                        Err(RpcClientError::from(e))?;
                                     }
                                     Err(_)=>{
-                                        return Err(RpcClientError::Timeout);
+                                        Err(RpcClientError::Timeout)?;
                                     }
                                 }
                                 
