@@ -13,13 +13,14 @@ use firmware_common::{
 };
 use map_range::MapRange;
 use tokio::{fs::File, io::BufReader};
+use vlfs::FileID;
 
 use crate::{pull_file::pull_file, reader::BufReaderWrapper, PullArgs};
 
 pub async fn pull_delta_logs<S: SplitableSerial, D: SensorData, FF: F64FixedPointFactory>(
     rpc: &mut impl CommonRPCTrait<S>,
     save_folder: PathBuf,
-    file_id: u64,
+    file_id: FileID,
     file_type_name: &str,
     row_titles: Vec<String>,
     row_data_getter: impl Fn(D) -> Vec<String>,
@@ -31,7 +32,7 @@ where
     // VLDL: void lake delta log
     let mut vldl_path = save_folder.clone();
     
-    vldl_path.push(format!("{}.{}.vldl", file_id, file_type_name));
+    vldl_path.push(format!("{}.{}.vldl", file_id.0, file_type_name));
     pull_file(
         rpc,
         PullArgs {
@@ -42,7 +43,7 @@ where
     .await?;
 
     let mut csv_path = save_folder.clone();
-    csv_path.push(format!("{}.{}.csv", file_id, file_type_name));
+    csv_path.push(format!("{}.{}.csv", file_id.0, file_type_name));
     let reader = BufReader::new(File::open(vldl_path).await?);
     let reader = BufReaderWrapper(reader);
     let mut reader = DeltaLoggerReader::<D, _, FF>::new(reader);

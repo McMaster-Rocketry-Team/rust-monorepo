@@ -1,6 +1,6 @@
 use crate::{
     list_files::list_files, pull_delta_logs::pull_delta_logs, pull_logs::pull_logs,
-    reader::BufReaderWrapper, LSArgs, PullVacuumTestArgs,
+    reader::BufReaderWrapper, LSArgs, PullDataArgs,
 };
 use anyhow::Result;
 use embedded_hal_async::delay::DelayNs;
@@ -16,14 +16,14 @@ use tokio::fs::File;
 
 pub async fn pull_vacuum_test<S: SplitableSerial>(
     rpc: &mut impl CommonRPCTrait<S>,
-    args: PullVacuumTestArgs,
+    args: PullDataArgs,
 ) -> Result<()> {
     fs::create_dir_all(&args.save_path)?;
 
     let log_files = list_files(
         rpc,
         LSArgs {
-            file_type: Some(VACUUM_TEST_LOG_FILE_TYPE.0),
+            file_type: Some(VACUUM_TEST_LOG_FILE_TYPE),
         },
     )
     .await?;
@@ -31,7 +31,7 @@ pub async fn pull_vacuum_test<S: SplitableSerial>(
     let baro_files = list_files(
         rpc,
         LSArgs {
-            file_type: Some(VACUUM_TEST_BARO_LOGGER.0),
+            file_type: Some(VACUUM_TEST_BARO_LOGGER),
         },
     )
     .await?;
@@ -44,7 +44,7 @@ pub async fn pull_vacuum_test<S: SplitableSerial>(
         pull_logs::<_,VacuumTestLoggerReader<BufReaderWrapper<File>>>(
             rpc,
             args.save_path.clone(),
-            file_id.0,
+            file_id,
             "vacuum_test_log",
             &mut combined_logs_writer,
         )
@@ -66,7 +66,7 @@ pub async fn pull_vacuum_test<S: SplitableSerial>(
         pull_delta_logs::<_,BaroData, SensorsFF1>(
             rpc,
             args.save_path.clone(),
-            file_id.0,
+            file_id,
             "baro_tier_1",
             vec!["pressure".into(), "altitude".into(), "temperature".into()],
             |data| {
