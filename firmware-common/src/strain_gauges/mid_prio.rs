@@ -212,7 +212,8 @@ pub async fn sg_mid_prio_main(
             states.error_states.lock(|led_state| {
                 led_state.borrow_mut().usb_connected = true;
             });
-            // return;
+            #[cfg(not(debug_assertions))]
+            return;
         }
 
         log_info!("Creating SG logger");
@@ -220,9 +221,9 @@ pub async fn sg_mid_prio_main(
             &fs,
             RingDeltaLoggerConfig {
                 file_type: SG_READINGS,
-                seconds_per_segment: 5 * 60,
-                first_segment_seconds: 5 * 60,
-                segments_per_ring: 6,
+                seconds_per_segment: 120,
+                first_segment_seconds: 120,
+                segments_per_ring: 15, // 30 mins of data
             },
             delay.clone(),
             clock.clone(),
@@ -255,7 +256,8 @@ pub async fn sg_mid_prio_main(
         let processed_readings_receiver_fut = async {
             let clock = clock.clone();
             let mut processed_readings_receiver = states.processed_readings_channel.receiver();
-            sg_adc_controller.lock().await.set_enable(true).await; // TODO only do this in dev mode
+            #[cfg(debug_assertions)]
+            sg_adc_controller.lock().await.set_enable(true).await;
 
             loop {
                 let reading = processed_readings_receiver.receive().await;
