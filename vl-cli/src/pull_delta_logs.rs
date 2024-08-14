@@ -2,7 +2,6 @@ use std::{ops::Range, path::PathBuf};
 
 use anyhow::Result;
 use either::Either;
-use embedded_hal_async::delay::DelayNs;
 use firmware_common::{
     common::{
         delta_logger::delta_logger::{DeltaLoggerReader, UnixTimestampLog},
@@ -10,15 +9,15 @@ use firmware_common::{
         sensor_reading::{SensorData, SensorReading},
     },
     driver::{serial::SplitableSerial, timestamp::BootTimestamp},
-    RpcClient,
+    CommonRPCTrait,
 };
 use map_range::MapRange;
 use tokio::{fs::File, io::BufReader};
 
 use crate::{pull_file::pull_file, reader::BufReaderWrapper, PullArgs};
 
-pub async fn pull_delta_logs<D: SensorData, FF: F64FixedPointFactory>(
-    rpc: &mut RpcClient<'_, impl SplitableSerial, impl DelayNs>,
+pub async fn pull_delta_logs<S: SplitableSerial, D: SensorData, FF: F64FixedPointFactory>(
+    rpc: &mut impl CommonRPCTrait<S>,
     save_folder: PathBuf,
     file_id: u64,
     file_type_name: &str,

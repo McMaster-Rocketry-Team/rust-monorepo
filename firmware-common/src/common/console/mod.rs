@@ -20,7 +20,7 @@ pub enum OpenFileStatus {
 
 #[derive(Archive, Deserialize, Serialize, Debug, Clone, PartialEq, defmt::Format)]
 pub struct ReadFileResult {
-    data: [u8; 128],
-    length: u8,
-    corrupted: bool,
+    pub data: [u8; 128],
+    pub length: u8,
+    pub corrupted: bool,
 }

@@ -5,14 +5,14 @@ use embedded_io::ReadExactError;
 use crate::driver::serial::SplitableSerial;
 
 #[derive(defmt::Format, core::fmt::Debug)]
-pub enum RpcClientError<S:SplitableSerial> {
+pub enum RpcClientError<S: SplitableSerial> {
     Timeout,
     ECCMismatch,
     UnexpectedEof,
     Serial(S::Error),
 }
 
-impl<S:SplitableSerial> From<ReadExactError<S::Error>> for RpcClientError<S>{
+impl<S: SplitableSerial> From<ReadExactError<S::Error>> for RpcClientError<S> {
     fn from(e: ReadExactError<S::Error>) -> Self {
         match e {
             ReadExactError::UnexpectedEof => RpcClientError::UnexpectedEof,
@@ -86,7 +86,7 @@ macro_rules! create_rpc {
 
         paste::paste! {
             pub async fn run_rpc_server<
-                S: crate::driver::serial::SplitableSerial, 
+                S: crate::driver::serial::SplitableSerial,
                 $(
                     $generics_name: $generics_type,
                 )*
@@ -213,7 +213,7 @@ macro_rules! create_rpc {
                     use embedded_io_async::Read;
                     use crate::common::console::create_rpc::RpcClientError;
                     use core::mem::size_of;
-                    
+
                     let (mut tx, mut rx) = self.serial.split();
 
                     // flush the serial buffer
@@ -285,7 +285,7 @@ macro_rules! create_rpc {
                                         Err(RpcClientError::Timeout)?;
                                     }
                                 }
-                                
+
                                 let calculated_crc = crc.checksum(&response_buffer[..response_size]);
                                 let received_crc = response_buffer[response_size];
                                 if calculated_crc != received_crc {
@@ -293,19 +293,19 @@ macro_rules! create_rpc {
                                     return Err(RpcClientError::ECCMismatch);
                                 }
                                 // log_debug!("Response CRC matched.");
-        
+
                                 let archived = unsafe { archived_root::<[< $name Response >]>(&response_buffer[..response_size]) };
                                 let deserialized = <[<Archived $name Response>] as rkyv::Deserialize<[< $name Response >], rkyv::Infallible>>::deserialize(archived, &mut rkyv::Infallible).unwrap();
                                 deserialized
                             };
                             result
                         };
-                        
+
                         let (tx_result, rx_result) = join!(tx_fut, rx_fut);
                         if tx_result.is_err() {
                             return Err(tx_result.unwrap_err());
                         }
-                        
+
                         rx_result
                     }
                 )*

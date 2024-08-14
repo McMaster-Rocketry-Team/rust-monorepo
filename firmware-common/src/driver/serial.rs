@@ -1,10 +1,10 @@
 use core::cell::RefCell;
+use core::fmt;
 use core::marker::PhantomData;
 use embedded_hal_async::delay::DelayNs;
-use embedded_io_async::ReadExactError;
 
-pub trait SplitableSerial {
-    type Error: defmt::Format + embedded_io_async::Error;
+pub trait SplitableSerial: fmt::Debug {
+    type Error: defmt::Format + embedded_io_async::Error + fmt::Debug;
     type TX<'a>: embedded_io_async::Write<Error = Self::Error>
     where
         Self: 'a;
@@ -24,6 +24,17 @@ pub struct SplitableSerialWrapper<
     _phantom_data: PhantomData<E>,
     tx: RefCell<T>,
     rx: RefCell<R>,
+}
+
+impl<
+        E: defmt::Format + embedded_io_async::Error,
+        T: embedded_io_async::Write<Error = E>,
+        R: embedded_io_async::Read<Error = E>,
+    > fmt::Debug for SplitableSerialWrapper<E, T, R>
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "SplitableSerialWrapper")
+    }
 }
 
 impl<

@@ -3,20 +3,20 @@ use std::time::Instant;
 use crate::PullArgs;
 use anyhow::anyhow;
 use anyhow::Result;
-use embedded_hal_async::delay::DelayNs;
 use firmware_common::{
-    common::console::OpenFileStatus, driver::serial::SplitableSerial, RpcClient,
+    common::console::OpenFileStatus, driver::serial::SplitableSerial, CommonRPCTrait,
 };
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
 use tokio::io::BufWriter;
+use vlfs::FileID;
 
-pub async fn pull_file(
-    rpc: &mut RpcClient<'_, impl SplitableSerial, impl DelayNs>,
+pub async fn pull_file<S: SplitableSerial>(
+    rpc: &mut impl CommonRPCTrait<S>,
     args: PullArgs,
 ) -> Result<()> {
     println!("Pulling file {}", args.file_id);
-    let open_status = rpc.open_file(args.file_id).await.unwrap().status;
+    let open_status = rpc.open_file(FileID(args.file_id)).await.unwrap();
     if open_status != OpenFileStatus::Sucess {
         return Err(anyhow!("Failed to open file"));
     }

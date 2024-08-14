@@ -1,18 +1,18 @@
 use crate::LSArgs;
 use anyhow::Result;
-use embedded_hal_async::delay::DelayNs;
-use firmware_common::{driver::serial::SplitableSerial, RpcClient};
+use firmware_common::{driver::serial::SplitableSerial, CommonRPCTrait};
+use vlfs::{FileID, FileType};
 
-pub async fn list_files(
-    rpc: &mut RpcClient<'_, impl SplitableSerial, impl DelayNs>,
+pub async fn list_files<S: SplitableSerial>(
+    rpc: &mut impl CommonRPCTrait<S>,
     args: LSArgs,
-) -> Result<Vec<u64>> {
+) -> Result<Vec<FileID>> {
     let mut result = Vec::new();
 
-    rpc.start_list_files(args.file_type).await.unwrap();
+    rpc.start_list_files(args.file_type.map(FileType)).await.unwrap();
     loop {
         let response = rpc.get_listed_file().await.unwrap();
-        if let Some(file_id) = response.file_id {
+        if let Some(file_id) = response {
             result.push(file_id);
         } else {
             break;

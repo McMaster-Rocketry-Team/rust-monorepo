@@ -21,7 +21,9 @@ pub mod strain_gauges;
 pub mod vacuum_test;
 mod vl_main;
 
-pub use common::console::vl_rpc::RpcClient;
+pub use common::console::vl_rpc;
+pub use common::console::sg_rpc;
+pub use common::console::common_rpc_trait::CommonRPCTrait;
 pub use common::vl_device_manager::VLDeviceManager;
 pub use vl_main::vl_main;
 pub use strain_gauges::high_prio::sg_high_prio_main;
