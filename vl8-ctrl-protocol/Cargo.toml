@@ -12,7 +12,7 @@ rkyv = { version = "0.7.39", default-features = false, features = [
 heapless = { version = "0.8.0", features = ["defmt-03"], default-features = false }
 defmt = "0.3"
 firmware-common = { path = "../firmware-common" }
-embassy-sync = { version = "0.5.0", default-features = false }
+embassy-sync = { version = "0.6.0", default-features = false }
 futures = { version = "0.3.17", default-features = false, features = [
     "async-await",
 ] }

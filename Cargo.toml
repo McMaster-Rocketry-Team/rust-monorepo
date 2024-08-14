@@ -8,7 +8,7 @@ members = [
     # "vl8-ctrl-protocol", 
     "vl-cli",
     # "vl-simulink-bridge", 
-    "calculate-required-bits",
+    "calculate-required-bits", "vl-host-lib",
     # "launch-simulator",
 ]
 resolver = "2"
