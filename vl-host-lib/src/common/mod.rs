@@ -1,7 +1,7 @@
 mod list_files;
 mod probe_device_type;
-pub(crate) mod pull_delta_readings;
-mod pull_file;
+pub(crate) mod read_delta_readings;
+pub(crate) mod pull_file;
 pub(crate) mod pull_serialized_enums;
 pub(crate) mod readers;
 pub(crate) mod sensor_reading_csv_writer;

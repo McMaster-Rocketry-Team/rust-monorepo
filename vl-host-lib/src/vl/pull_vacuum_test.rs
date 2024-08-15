@@ -8,11 +8,11 @@ use firmware_common::{
 use futures_util::{pin_mut, StreamExt};
 use std::vec;
 use std::{fs, path::PathBuf};
-use tokio::fs::File;
+use tokio::{fs::File, io::AsyncWriteExt};
 
 use crate::common::{
-    extend_path, list_files, pull_delta_readings::pull_delta_readings,
-    pull_serialized_enums::pull_serialized_enums, readers::BufReaderWrapper,
+    extend_path, pull_file::pull_files, pull_serialized_enums::read_serialized_enums,
+    read_delta_readings::read_delta_readings, readers::BufReaderWrapper,
     sensor_reading_csv_writer::SensorReadingCSVWriter,
 };
 
@@ -22,30 +22,32 @@ pub async fn pull_vacuum_test<S: SplitableSerial>(
 ) -> Result<()> {
     fs::create_dir_all(&save_folder)?;
 
-    let log_files = list_files(rpc, Some(VACUUM_TEST_LOG_FILE_TYPE)).await?;
-
-    let mut combined_logs_path = save_folder.clone();
-    combined_logs_path.push("combined.vacuum_test_log.log");
-    let mut combined_logs_writer =
-        tokio::io::BufWriter::new(File::create(combined_logs_path).await?);
-    for file_id in log_files {
-        pull_serialized_enums::<_, VacuumTestLoggerReader<BufReaderWrapper<File>>>(
-            rpc,
-            save_folder.clone(),
-            file_id,
-            "vacuum_test_log",
-            &mut combined_logs_writer,
-        )
-        .await?;
-    }
-
-    let stream = pull_delta_readings::<_, BaroData, SensorsFF1>(
+    // logs
+    let log_files = pull_files(
         rpc,
-        save_folder.clone(),
-        VACUUM_TEST_BARO_LOGGER,
-        "baro",
+        VACUUM_TEST_LOG_FILE_TYPE,
+        "vacuum_test_log",
+        "vle",
+        &save_folder,
     )
     .await?;
+    let stream =
+        read_serialized_enums::<VacuumTestLoggerReader<BufReaderWrapper<File>>>(log_files).await?;
+    pin_mut!(stream);
+
+    let mut logs_writer = tokio::io::BufWriter::new(
+        File::create(extend_path(&save_folder, "vacuum_test_log.log")).await?,
+    );
+    while let Some(log) = stream.next().await {
+        logs_writer
+            .write_all(format!("{:?}\n", log).as_bytes())
+            .await?;
+    }
+    logs_writer.flush().await?;
+
+    // baro readings
+    let baro_files = pull_files(rpc, VACUUM_TEST_BARO_LOGGER, "baro", "vldr", &save_folder).await?;
+    let stream = read_delta_readings::<BaroData, SensorsFF1>(baro_files).await?;
 
     let mut csv_writer = SensorReadingCSVWriter::new(
         &extend_path(&save_folder, "baro.csv"),

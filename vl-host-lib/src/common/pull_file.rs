@@ -10,6 +10,9 @@ use tokio::fs;
 use tokio::io::AsyncWriteExt;
 use tokio::io::BufWriter;
 use vlfs::FileID;
+use vlfs::FileType;
+
+use super::list_files;
 
 pub async fn pull_file<S: SplitableSerial>(
     rpc: &mut impl CommonRPCTrait<S>,
@@ -54,4 +57,27 @@ pub async fn pull_file<S: SplitableSerial>(
     rpc.close_file().await.unwrap();
 
     Ok(())
+}
+
+pub async fn pull_files<S: SplitableSerial>(
+    rpc: &mut impl CommonRPCTrait<S>,
+    file_type: FileType,
+    file_type_name: &str,
+    file_type_extension: &str,
+    save_folder: &PathBuf,
+) -> Result<Vec<PathBuf>> {
+    let file_ids = list_files(rpc, Some(file_type)).await?;
+    let mut pulled_file_paths = vec![];
+
+    for file_id in file_ids {
+        let mut file_path = save_folder.clone();
+        file_path.push(format!(
+            "{}.{}.{}",
+            file_id.0, file_type_name, file_type_extension
+        ));
+        pulled_file_paths.push(file_path.clone());
+        pull_file(rpc, file_id, file_path).await?;
+    }
+
+    Ok(pulled_file_paths)
 }
