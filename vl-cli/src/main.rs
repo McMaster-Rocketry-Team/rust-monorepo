@@ -7,7 +7,6 @@ use anyhow::anyhow;
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use clap_num::maybe_hex;
-use create_serial::create_serial;
 use embedded_hal_async::delay::DelayNs;
 use firmware_common::common::console::vl_rpc::GCMPollDownlinkPacketResponse;
 use firmware_common::common::vlp::packet::DeleteLogsPacket;
@@ -25,6 +24,7 @@ use tokio_serial::available_ports;
 use vl_host_lib::common::list_files;
 use vl_host_lib::common::probe_device_type;
 use vl_host_lib::common::pull_file;
+use vl_host_lib::create_serial;
 use vl_host_lib::ozys::pull_ozys_data;
 use vl_host_lib::vl::format_lora_key;
 use vl_host_lib::vl::gen_lora_key;
@@ -34,7 +34,6 @@ use vl_host_lib::vl::pull_vacuum_test;
 use vlfs::FileID;
 use vlfs::FileType;
 
-mod create_serial;
 struct Delay;
 
 impl DelayNs for Delay {

@@ -220,8 +220,6 @@ macro_rules! create_rpc {
                     tx.write_all(&[255; size_of::<<RequestEnum as rkyv::Archive>::Archived>() + 1]).await.map_err(RpcClientError::Serial)?;
                     Self::clear_read_buffer(&mut self.delay, &mut rx).await;
 
-                    // TODO clear rx read buffer
-
                     // send reset command
                     tx.write_all(&[255]).await.map_err(RpcClientError::Serial)?;
 
