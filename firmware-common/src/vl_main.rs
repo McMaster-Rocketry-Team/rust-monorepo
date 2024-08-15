@@ -1,3 +1,4 @@
+use crate::avionics::avionics_main;
 use crate::claim_devices;
 use crate::common::config_file::ConfigFile;
 use crate::common::console::vl_rpc::run_rpc_server;
@@ -9,13 +10,13 @@ use crate::common::{buzzer_queue::BuzzerQueueRunner, unix_clock::UnixClockTask};
 use crate::driver::clock::VLFSTimerWrapper;
 use crate::driver::gps::GPSData;
 use crate::driver::timestamp::BootTimestamp;
+use crate::vacuum_test::vacuum_test_main;
 use embassy_futures::select::{select, Either};
 use embassy_futures::yield_now;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_sync::pubsub::{PubSubBehavior, PubSubChannel};
 use futures::join;
-use crate::vacuum_test::vacuum_test_main;
 
 use crate::common::vl_device_manager::prelude::*;
 use vlfs::{StatFlash, VLFS};
@@ -197,7 +198,13 @@ pub async fn vl_main(
             }
             DeviceModeConfig::GroundTestAvionics { .. } => {
                 stop_if_usb_connected().await;
-                ground_test_avionics(device_manager, &services, &device_config).await
+                ground_test_avionics(
+                    device_manager,
+                    &services,
+                    &device_config,
+                    device_serial_number,
+                )
+                .await
             }
             DeviceModeConfig::VacuumTest => {
                 stop_if_usb_connected().await;

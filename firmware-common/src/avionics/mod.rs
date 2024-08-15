@@ -45,7 +45,7 @@ use crate::{
 use crate::{common::can_bus::node_types::VOID_LAKE_NODE_TYPE, driver::can_bus::CanBusTX};
 use crate::{
     common::{
-        can_bus::messages::{self as can_messages},
+        can_bus::messages as can_messages,
         config_file::ConfigFile,
         device_config::DeviceConfig,
         file_types::*,

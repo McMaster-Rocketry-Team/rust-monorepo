@@ -4,17 +4,17 @@ use crate::{
     avionics::{arming_state::ArmingStateManager, flight_profile::PyroSelection},
     claim_devices,
     common::{
-        delta_logger::{buffered_logger::BufferedLoggerState, delta_logger::DeltaLogger, prelude::DeltaLoggerTrait}, device_config::{DeviceConfig, DeviceModeConfig}, file_types::{GROUND_TEST_BARO_FILE_TYPE, GROUND_TEST_LOG_FILE_TYPE}, ticker::Ticker, vl_device_manager::prelude::*, vlp::{
+        can_bus::{messages as can_messages, node_types::VOID_LAKE_NODE_TYPE}, delta_logger::{buffered_logger::BufferedLoggerState, delta_logger::DeltaLogger, prelude::DeltaLoggerTrait}, device_config::{DeviceConfig, DeviceModeConfig}, file_types::{GROUND_TEST_BARO_FILE_TYPE, GROUND_TEST_LOG_FILE_TYPE}, ticker::Ticker, vl_device_manager::prelude::*, vlp::{
             packet::{GroundTestDeployPacket, VLPDownlinkPacket, VLPUplinkPacket},
             telemetry_packet::TelemetryPacketBuilder,
             uplink_client::VLPUplinkClient,
         }
     },
     create_serialized_enum,
-    driver::{barometer::BaroData, indicator::Indicator},
+    driver::{barometer::BaroData, can_bus::{can_node_id_from_serial_number, CanBusTX}, indicator::Indicator},
     fixed_point_factory, pyro, try_or_warn, vl_device_manager_type,
 };
-use embassy_sync::blocking_mutex::{raw::NoopRawMutex, Mutex as BlockingMutex};
+use embassy_sync::{blocking_mutex::{raw::NoopRawMutex, Mutex as BlockingMutex}, mutex::Mutex};
 use futures::join;
 use rkyv::{Archive, Deserialize, Serialize};
 
@@ -35,6 +35,7 @@ pub async fn ground_test_avionics(
     device_manager: vl_device_manager_type!(),
     services: system_services_type!(),
     config: &DeviceConfig,
+    device_serial_number: &[u8; 12],
 ) -> ! {
     let (drogue_pyro, main_pyro) = if let DeviceModeConfig::GroundTestAvionics {
         drogue_pyro,
@@ -46,7 +47,7 @@ pub async fn ground_test_avionics(
         log_unreachable!()
     };
 
-    claim_devices!(device_manager, lora, barometer, arming_switch, indicators);
+    claim_devices!(device_manager, lora, barometer, arming_switch, indicators, can_bus);
 
     log_info!("Creating logger");
     let mut log_file_writer = services
@@ -76,6 +77,43 @@ pub async fn ground_test_avionics(
     let arming_state_debounce_fut = arming_state.run_debounce(services.delay.clone());
 
     let indicator_fut = indicators.run([], [50, 2000], []);
+
+    let mut can_bus = can_bus.take().unwrap();
+    let (mut can_tx, _) = can_bus.split();
+    can_tx.configure_self_node(
+        VOID_LAKE_NODE_TYPE,
+        can_node_id_from_serial_number(device_serial_number),
+    );
+
+    let can_tx = Mutex::<NoopRawMutex, _>::new(can_tx);
+
+    let can_tx_avionics_status_fut = async {
+        let mut ticker = Ticker::every(services.clock(), services.delay(), 2000.0);
+        loop {
+            let message = can_messages::AvionicsStatusMessage {
+                low_power: false,
+                armed: arming_state.is_armed(),
+            };
+            let mut can_tx = can_tx.lock().await;
+            can_tx.send(&message, 3).await.ok();
+            drop(can_tx);
+
+            ticker.next().await;
+        }
+    };
+
+    let can_tx_unix_time_fut = async {
+        let mut unix_clock_sub = services.unix_clock.subscribe_unix_clock_update();
+        loop {
+            let unix_timestamp = unix_clock_sub.next_message_pure().await;
+            let mut can_tx = can_tx.lock().await;
+            let message = can_messages::UnixTimeMessage {
+                timestamp: (unix_timestamp as u64).into(),
+            };
+            can_tx.send(&message, 2).await.ok();
+            drop(can_tx);
+        }
+    };
 
     let telemetry_packet_builder = TelemetryPacketBuilder::new(services.unix_clock());
     let vlp = VLPUplinkClient::new();
@@ -263,6 +301,8 @@ pub async fn ground_test_avionics(
             buffered_baro_logger_runner.run(),
             arming_state_debounce_fut,
             hardware_arming_beep_fut,
+            can_tx_avionics_status_fut,
+            can_tx_unix_time_fut
         );
     }
     log_unreachable!()
