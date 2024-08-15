@@ -21,8 +21,6 @@ pub async fn pull_vacuum_test<S: SplitableSerial>(
 
     let log_files = list_files(rpc, Some(VACUUM_TEST_LOG_FILE_TYPE)).await?;
 
-    let baro_files = list_files(rpc, Some(VACUUM_TEST_BARO_LOGGER)).await?;
-
     let mut combined_logs_path = save_folder.clone();
     combined_logs_path.push("combined.vacuum_test_log.log");
     let mut combined_logs_writer =
@@ -38,35 +36,21 @@ pub async fn pull_vacuum_test<S: SplitableSerial>(
         .await?;
     }
 
-    let mut combined_baro_tier_1_csv_path = save_folder.clone();
-    combined_baro_tier_1_csv_path.push(format!("combined.baro_tier_1.csv"));
-    let mut combined_baro_tier_1_csv_writer =
-        csv::Writer::from_path(&combined_baro_tier_1_csv_path)?;
-    combined_baro_tier_1_csv_writer.write_record(&[
-        "boot timestamp",
-        "unix timestamp",
-        "pressure",
-        "altitude",
-        "temperature",
-    ])?;
-    for file_id in baro_files {
-        pull_delta_readings::<_, BaroData, SensorsFF1>(
-            rpc,
-            save_folder.clone(),
-            file_id,
-            "baro_tier_1",
-            vec!["pressure".into(), "altitude".into(), "temperature".into()],
-            |data| {
-                vec![
-                    format!("{}", data.pressure),
-                    format!("{}", data.altitude()),
-                    format!("{}", data.temperature),
-                ]
-            },
-            &mut combined_baro_tier_1_csv_writer,
-        )
-        .await?;
-    }
+    pull_delta_readings::<_, BaroData, SensorsFF1>(
+        rpc,
+        save_folder.clone(),
+        VACUUM_TEST_BARO_LOGGER,
+        "baro",
+        vec!["pressure".into(), "altitude".into(), "temperature".into()],
+        |data| {
+            vec![
+                format!("{}", data.pressure),
+                format!("{}", data.altitude()),
+                format!("{}", data.temperature),
+            ]
+        },
+    )
+    .await?;
 
     Ok(())
 }
