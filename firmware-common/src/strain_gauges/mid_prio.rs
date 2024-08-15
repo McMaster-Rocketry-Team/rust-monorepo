@@ -99,7 +99,7 @@ pub async fn sg_mid_prio_main(
     let usb_console_fut = async {
         loop {
             usb.wait_connection().await;
-            run_rpc_server(&mut usb, &fs, &sys_reset, device_serial_number).await;
+            run_rpc_server(&mut usb, &fs, &sys_reset, device_serial_number, &sg_adc_controller, states).await;
         }
     };
 

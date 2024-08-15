@@ -6,13 +6,22 @@ use crate::create_rpc;
 use crate::impl_common_rpc_trait;
 use vlfs::{AsyncReader, Crc, FileID, FileReader, FileType, Flash, VLFSError, VLFSReadStatus};
 use vlfs::{ConcurrentFilesIterator, VLFS};
+use crate::strain_gauges::global_states::SGGlobalStates;
+use embassy_sync::blocking_mutex::raw::RawMutex;
+use crate::driver::sg_adc::RawSGReadingsTrait;
+use crate::driver::sg_adc::SGAdcController;
+use embassy_sync::blocking_mutex::raw::NoopRawMutex;
+use embassy_sync::mutex::Mutex;
 
 create_rpc! {
     state<F: Flash, C: Crc, D: SysReset>(
         fs: &VLFS<F, C>,
         sys_reset: &D,
-        device_serial_number: &[u8; 12]
+        device_serial_number: &[u8; 12],
+        sg_adc_controller: &Mutex::<NoopRawMutex, impl SGAdcController>,
+        states: &SGGlobalStates<impl RawMutex, impl RawSGReadingsTrait>
     ) {
+        let mut realtime_sample_sub = states.realtime_sample_pubsub.subscriber().unwrap();
         let mut reader: Option<FileReader<F, C>> = None;
         let mut file_iter: Option<ConcurrentFilesIterator<F, C, Option<FileType>>> = None;
     }
@@ -111,6 +120,19 @@ create_rpc! {
     rpc 8 ClearData | | -> () {
         fs.remove_files(()).await.ok();
         ClearDataResponse {}
+    }
+    rpc 9 SetAdcEnable |enabled: bool| -> () {
+        sg_adc_controller
+            .lock()
+            .await
+            .set_enable(enabled)
+            .await;
+        SetAdcEnableResponse {}
+    }
+    rpc 10 GetRealTime | | -> (sample: Option<[f32; 4]>) {
+        GetRealTimeResponse { 
+            sample: realtime_sample_sub.try_next_message_pure()
+        }
     }
 }
 

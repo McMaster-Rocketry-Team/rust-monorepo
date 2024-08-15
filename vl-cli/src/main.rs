@@ -89,6 +89,9 @@ enum SGCommands {
     #[command(about = "Clear all the data on the device")]
     ClearData,
 
+    #[command(about = "Output realtime readings from the device")]
+    RealTime,
+
     LS(LSArgs),
     PullFile(PullArgs),
 
@@ -316,6 +319,15 @@ async fn main() -> Result<()> {
                 }
                 SGCommands::ClearData => {
                     client.clear_data().await.unwrap();
+                }
+                SGCommands::RealTime=>{
+                    client.set_adc_enable(true).await.unwrap();
+                    loop {
+                        let reading = client.get_real_time().await.unwrap();
+                        if let Some(sample) = reading.sample {
+                            println!("{} {} {} {}", sample[0], sample[1], sample[2], sample[3]);
+                        }
+                    }
                 }
                 SGCommands::LS(args) => {
                     let files = list_files(&mut client, args.file_type).await.unwrap();

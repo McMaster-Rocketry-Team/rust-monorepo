@@ -137,6 +137,7 @@ impl<'a> SGChannelProcessor<'a> {
 }
 
 pub async fn sg_low_prio_main<T: RawSGReadingsTrait>(states: &SGGlobalStates<impl RawMutex, T>) {
+    let realtime_pub = states.realtime_sample_pubsub.publisher().unwrap();
     let fft = FloatRealFft::new(FFT_SIZE as u16).unwrap();
     let mut fft_out_buffer = [0f32; FFT_SIZE];
 
@@ -162,6 +163,12 @@ pub async fn sg_low_prio_main<T: RawSGReadingsTrait>(states: &SGGlobalStates<imp
                 processor.process::<T>(sg_readings_iter);
             }
 
+            realtime_pub.publish_immediate([
+                *sg_processor_list[0].samples_list.last().unwrap(),
+                *sg_processor_list[1].samples_list.last().unwrap(),
+                *sg_processor_list[2].samples_list.last().unwrap(),
+                *sg_processor_list[3].samples_list.last().unwrap(),
+            ]);
             // log_info!(
             //     "SG readings: {}V {}V {}V {}V",
             //     sg_processor_list[0].samples_list.last().unwrap(),
