@@ -57,9 +57,8 @@ create_rpc! {
             device_type: DeviceType::VoidLake,
         }
     }
-    rpc 1 WhoAmI | | -> (device_type: DeviceType, name: Option<RkyvString<64>>, serial_number: [u8; 12]) {
+    rpc 1 WhoAmI | | -> (name: Option<RkyvString<64>>, serial_number: [u8; 12]) {
         WhoAmIResponse {
-            device_type: DeviceType::VoidLake,
             name: config.as_ref().map(|config| config.name.clone()),
             serial_number: device_serial_number.clone(),
         }

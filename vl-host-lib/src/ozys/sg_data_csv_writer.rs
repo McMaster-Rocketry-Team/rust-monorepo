@@ -43,7 +43,7 @@ impl SGCSVWriter {
         assert_eq!(reading.amplitudes.len(), 400);
 
         // samples
-        for i in 0..reading.samples.len() {
+        for i in 0..(reading.samples.len() / 2) {
             let timestamp = reading.start_time + 5f64 * i as f64;
             let unix_timestamp = unix_timestamp.map(|t| t + 5f64 * i as f64);
             let sample =
@@ -60,7 +60,7 @@ impl SGCSVWriter {
         let mut row = Vec::<String>::new();
         row.push(format!("{}", reading.start_time));
         row.push(unix_timestamp.map_or("".into(), |t| format!("{}", t)));
-        for i in 0..200 {
+        for i in 0..(reading.amplitudes.len() / 2) {
             let amplitude = half::f16::from_le_bytes([
                 reading.amplitudes[i * 2],
                 reading.amplitudes[i * 2 + 1],

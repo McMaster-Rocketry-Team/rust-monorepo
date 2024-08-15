@@ -178,7 +178,7 @@ struct PullDataArgs {
 #[tokio::main]
 async fn main() -> Result<()> {
     let _ = env_logger::builder()
-        .filter_level(LevelFilter::Trace)
+        .filter_level(LevelFilter::Info)
         .try_init();
 
     let args = Cli::parse();
@@ -196,12 +196,14 @@ async fn main() -> Result<()> {
                 (_, Ok(_)) => Ordering::Greater,
                 (_, _) => Ordering::Equal,
             });
-            for (port_name, result) in results {
-                match result {
-                    Ok(device_type) => println!("{}: {:?}", port_name, device_type),
-                    Err(e) => println!("{}: {:?}", port_name, e),
+            let mut count = 0;
+            for (port_name, result) in &results {
+                if let Ok(device_type) = result {
+                    println!("{}: {}", port_name, device_type);
+                    count += 1;
                 }
             }
+            println!("{} devices found", count);
         }
         ModeSelect::VL(VLCli { serial, command }) => {
             let mut serial = create_serial(serial)?;
@@ -288,7 +290,10 @@ async fn main() -> Result<()> {
                 }
                 VLCommands::PullGroundTest(_) => todo!(),
                 VLCommands::LS(args) => {
-                    list_files(&mut client, args.file_type).await.unwrap();
+                    let files = list_files(&mut client, args.file_type).await.unwrap();
+                    for file in files {
+                        println!("{:?}", file);
+                    }
                 }
                 VLCommands::PullFile(args) => {
                     pull_file(&mut client, args.file_id, args.host_path)
@@ -313,7 +318,10 @@ async fn main() -> Result<()> {
                     client.clear_data().await.unwrap();
                 }
                 SGCommands::LS(args) => {
-                    list_files(&mut client, args.file_type).await.unwrap();
+                    let files = list_files(&mut client, args.file_type).await.unwrap();
+                    for file in files {
+                        println!("{:?}", file);
+                    }
                 }
                 SGCommands::PullFile(args) => {
                     pull_file(&mut client, args.file_id, args.host_path)

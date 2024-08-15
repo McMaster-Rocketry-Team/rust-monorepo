@@ -18,7 +18,7 @@ create_rpc! {
     }
     rpc 0 GetDeviceType | | -> (device_type: DeviceType) {
         GetDeviceTypeResponse {
-            device_type: DeviceType::VoidLake,
+            device_type: DeviceType::OZYS,
         }
     }
     rpc 1 WhoAmI | | -> (serial_number: [u8; 12]) {
