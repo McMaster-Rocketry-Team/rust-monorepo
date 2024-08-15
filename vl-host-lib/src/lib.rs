@@ -1,8 +1,7 @@
 #![feature(generic_const_exprs)]
 
-
-mod create_serial;
 pub mod common;
+mod create_serial;
 pub mod ozys;
 pub mod vl;
 
