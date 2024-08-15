@@ -10,7 +10,7 @@ use std::{fs, path::PathBuf};
 use tokio::fs::File;
 
 use crate::common::{
-    list_files, pull_delta_readings, pull_serialized_enums, readers::BufReaderWrapper,
+    list_files, pull_serialized_enums, readers::BufReaderWrapper,
 };
 
 pub async fn pull_sg_data<S: SplitableSerial>(

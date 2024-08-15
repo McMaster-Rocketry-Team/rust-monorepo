@@ -5,12 +5,15 @@ use firmware_common::{
     vacuum_test::{SensorsFF1, VacuumTestLoggerReader},
     CommonRPCTrait,
 };
+use futures_util::{pin_mut, StreamExt};
 use std::vec;
 use std::{fs, path::PathBuf};
 use tokio::fs::File;
 
 use crate::common::{
-    list_files, pull_delta_readings, pull_serialized_enums, readers::BufReaderWrapper,
+    extend_path, list_files, pull_delta_readings::pull_delta_readings,
+    pull_serialized_enums::pull_serialized_enums, readers::BufReaderWrapper,
+    sensor_reading_csv_writer::SensorReadingCSVWriter,
 };
 
 pub async fn pull_vacuum_test<S: SplitableSerial>(
@@ -36,13 +39,18 @@ pub async fn pull_vacuum_test<S: SplitableSerial>(
         .await?;
     }
 
-    pull_delta_readings::<_, BaroData, SensorsFF1>(
+    let stream = pull_delta_readings::<_, BaroData, SensorsFF1>(
         rpc,
         save_folder.clone(),
         VACUUM_TEST_BARO_LOGGER,
         "baro",
-        vec!["pressure".into(), "altitude".into(), "temperature".into()],
-        |data| {
+    )
+    .await?;
+
+    let mut csv_writer = SensorReadingCSVWriter::new(
+        &extend_path(&save_folder, "baro.csv"),
+        &["pressure", "altitude", "temperature"],
+        |data: BaroData| {
             vec![
                 format!("{}", data.pressure),
                 format!("{}", data.altitude()),
@@ -50,7 +58,9 @@ pub async fn pull_vacuum_test<S: SplitableSerial>(
             ]
         },
     )
-    .await?;
+    .unwrap();
+    csv_writer.write_all(stream).await?;
+    csv_writer.flush()?;
 
     Ok(())
 }

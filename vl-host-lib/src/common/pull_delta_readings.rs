@@ -4,10 +4,11 @@ use anyhow::Result;
 use either::Either;
 use firmware_common::{
     common::{
-        delta_logger::delta_logger::DeltaLoggerReader, fixed_point::F64FixedPointFactory,
-        sensor_reading::SensorData,
+        delta_logger::delta_logger::DeltaLoggerReader,
+        fixed_point::F64FixedPointFactory,
+        sensor_reading::{SensorData, SensorReading},
     },
-    driver::serial::SplitableSerial,
+    driver::{serial::SplitableSerial, timestamp::BootTimestamp},
     CommonRPCTrait,
 };
 use tokio::{fs::File, io::BufReader};
@@ -16,15 +17,15 @@ use vlfs::FileType;
 use super::{
     list_files, pull_file, readers::BufReaderWrapper, unix_timestamp_lut::UnixTimestampLUT,
 };
+use async_stream::stream;
+use futures_core::stream::Stream;
 
 pub async fn pull_delta_readings<S: SplitableSerial, D: SensorData, FF: F64FixedPointFactory>(
     rpc: &mut impl CommonRPCTrait<S>,
     save_folder: PathBuf,
     file_type: FileType,
     file_type_name: &str,
-    row_titles: Vec<String>,
-    row_data_getter: impl Fn(D) -> Vec<String>,
-) -> Result<()>
+) -> Result<impl Stream<Item = (SensorReading<BootTimestamp, D>, Option<f64>)>>
 where
     [(); size_of::<D>() + 10]:,
 {
@@ -56,34 +57,20 @@ where
     // sort just in case
     timestamp_lut.sort_timestamps();
 
-    // Pass 2: write to CSV
-    let mut csv_path = save_folder.clone();
-    csv_path.push(format!("{}.csv", file_type_name));
-    let mut csv_writer = csv::Writer::from_path(&csv_path)?;
-    let mut title_row = Vec::<String>::new();
-    title_row.push("boot timestamp".into());
-    title_row.push("unix timestamp".into());
-    title_row.extend(row_titles);
-    csv_writer.write_record(&title_row)?;
+    // Pass 2: read all the readings and convert timestamps
+    let stream = stream! {
+        for file_path in &pulled_file_paths {
+            let reader = BufReader::new(File::open(file_path).await.unwrap());
+            let reader = BufReaderWrapper(reader);
+            let mut reader = DeltaLoggerReader::<D, _, FF>::new(reader);
+            while let Some(reading) = reader.read().await.unwrap() {
+                if let Either::Left(reading) = reading {
+                    let unix_timestamp = timestamp_lut.get_unix_timestamp(reading.timestamp);
 
-    for file_path in &pulled_file_paths {
-        let reader = BufReader::new(File::open(file_path).await?);
-        let reader = BufReaderWrapper(reader);
-        let mut reader = DeltaLoggerReader::<D, _, FF>::new(reader);
-        while let Some(reading) = reader.read().await.unwrap() {
-            if let Either::Left(reading) = reading {
-                let unix_timestamp = timestamp_lut.get_unix_timestamp(reading.timestamp);
-
-                let mut row = Vec::<String>::new();
-                row.push(format!("{}", reading.timestamp));
-                row.push(unix_timestamp.map_or("".into(), |t| format!("{}", t)));
-                row.extend(row_data_getter(reading.data.clone()));
-                csv_writer.write_record(&row)?;
+                    yield (reading.clone(), unix_timestamp);
+                }
             }
         }
-    }
-
-    csv_writer.flush()?;
-
-    Ok(())
+    };
+    Ok(stream)
 }
