@@ -223,7 +223,7 @@ pub async fn sg_mid_prio_main(
                 file_type: SG_READINGS,
                 seconds_per_segment: 120,
                 first_segment_seconds: 120,
-                segments_per_ring: 15, // 30 mins of data
+                segments_per_ring: 45, // 90 mins of data
             },
             delay.clone(),
             clock.clone(),
@@ -243,7 +243,7 @@ pub async fn sg_mid_prio_main(
                     file_type: SG_BATTERY_LOGGER,
                     seconds_per_segment: 1800,
                     first_segment_seconds: 60,
-                    segments_per_ring: 20, // 10 hours
+                    segments_per_ring: 40, // 20 hours
                 },
             )
             .await
@@ -261,6 +261,7 @@ pub async fn sg_mid_prio_main(
 
             loop {
                 let reading = processed_readings_receiver.receive().await;
+
                 let start = clock.now_ms();
 
                 let (new_file, mut writer) = sg_reading_ring_writer.get_writer().await;

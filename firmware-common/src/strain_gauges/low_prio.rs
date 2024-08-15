@@ -15,6 +15,8 @@ use super::{
 const FFT_SIZE: usize = 2048;
 
 struct SGChannelProcessor<'a> {
+    sg_i: u8,
+
     // samples used for fft
     fft_samples_sum: [f32; FFT_SIZE],
     fft_samples_sum_count: usize,
@@ -27,7 +29,7 @@ struct SGChannelProcessor<'a> {
 }
 
 impl<'a> SGChannelProcessor<'a> {
-    fn new(fft: &'a FloatRealFft) -> Self {
+    fn new(sg_i: u8, fft: &'a FloatRealFft) -> Self {
         let cutoff_freq = 100.hz();
         let sampling_freq = ((SAMPLES_PER_READ * READS_PER_SECOND) as u32).hz();
 
@@ -40,6 +42,8 @@ impl<'a> SGChannelProcessor<'a> {
         .unwrap();
         let low_pass_filter = DirectForm2Transposed::<f32>::new(coeffs);
         Self {
+            sg_i,
+
             fft_samples_sum: [0.0; FFT_SIZE],
             fft_samples_sum_count: 0,
             fft_i: 0,
@@ -82,18 +86,41 @@ impl<'a> SGChannelProcessor<'a> {
         // since the real-valued coefficient at the Nyquist frequency is packed into the
         // imaginary part of the DC bin, it must be cleared before computing the amplitudes
         fft_out_buffer[1] = 0.0;
-        for i in 0..750 {
+
+        // let mut max_amplitudes = [(0usize, half::f16::from_f32_const(0.0)); 5];
+
+        for i in 0..200 {
             let amplitude = half::f16::from_f32(unsafe {
                 intrinsics::sqrtf32(
                     fft_out_buffer[i * 2] * fft_out_buffer[i * 2]
                         + fft_out_buffer[i * 2 + 1] * fft_out_buffer[i * 2 + 1],
-                ) / 750f32
+                ) / (FFT_SIZE as f32)
                     / self.fft_samples_sum_count as f32
             });
+
+            // if self.sg_i == 1 {
+            //     let frequency = i * 20 + 10;
+            //     for j in 0..max_amplitudes.len() {
+            //         if amplitude > max_amplitudes[j].1 {
+            //             (&mut max_amplitudes[j..]).rotate_right(1);
+            //             max_amplitudes[j] = (frequency, amplitude);
+            //             break;
+            //         }
+            //     }
+            // }
+
             let amplitude_bytes = amplitude.to_le_bytes();
             processed_reading.amplitudes[i * 2] = amplitude_bytes[0];
             processed_reading.amplitudes[i * 2 + 1] = amplitude_bytes[1];
         }
+
+        // if self.sg_i == 1 {
+        //     for i in 0..max_amplitudes.len() {
+        //         let (frequency, amplitude) = max_amplitudes[i];
+        //         log_info!("SG{}: {}Hz {}", self.sg_i, frequency, amplitude.to_f32());
+        //     }
+        //     log_info!("=====================");
+        // }
 
         self.fft_samples_sum = [0.0; FFT_SIZE];
         self.fft_samples_sum_count = 0;
@@ -114,7 +141,7 @@ pub async fn sg_low_prio_main<T: RawSGReadingsTrait>(states: &SGGlobalStates<imp
     let mut fft_out_buffer = [0f32; FFT_SIZE];
 
     let mut sg_processor_list: [SGChannelProcessor; 4] =
-        array::from_fn(|_| SGChannelProcessor::new(&fft));
+        array::from_fn(|i| SGChannelProcessor::new(i as u8, &fft));
 
     let mut raw_readings_receiver = states.raw_readings_channel.receiver();
     let mut processed_readings_sender = states.processed_readings_channel.sender();

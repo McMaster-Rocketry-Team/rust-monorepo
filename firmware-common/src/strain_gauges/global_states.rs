@@ -10,7 +10,7 @@ use super::ProcessedSGReading;
 
 pub struct SGGlobalStates<M: RawMutex, T: RawSGReadingsTrait> {
     pub(crate) raw_readings_channel: ZeroCopyChannel<M, T,20>,
-    pub(crate) processed_readings_channel:  ZeroCopyChannel<M, ProcessedSGReading,4>,
+    pub(crate) processed_readings_channel:  ZeroCopyChannel<M, ProcessedSGReading,8>,
     pub(crate) error_states: BlockingMutex<M, RefCell<SGLEDState>>,
 }
 
