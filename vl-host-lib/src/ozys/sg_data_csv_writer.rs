@@ -1,7 +1,5 @@
 use anyhow::Result;
 use firmware_common::strain_gauges::ProcessedSGReading;
-use futures_core::Stream;
-use futures_util::{pin_mut, StreamExt};
 use std::path::PathBuf;
 
 use crate::common::extend_path;

@@ -2,7 +2,7 @@ mod list_files;
 pub(crate) mod parse_serialized_enums;
 mod probe_device_type;
 pub(crate) mod pull_file;
-pub(crate) mod read_delta_readings;
+pub(crate) mod parse_delta_readings;
 pub(crate) mod readers;
 mod sensor_reading_csv_writer;
 pub(crate) mod unix_timestamp_lut;

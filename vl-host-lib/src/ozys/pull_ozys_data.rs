@@ -13,7 +13,7 @@ use std::{array, vec};
 use std::{fs, path::PathBuf};
 
 use crate::common::{
-    extend_path, pull_file::pull_files, read_delta_readings::read_delta_readings,
+    extend_path, pull_file::pull_files, parse_delta_readings::parse_delta_readings,
     SensorReadingCSVWriter,
 };
 
@@ -27,14 +27,16 @@ pub async fn pull_ozys_data<S: SplitableSerial>(
 
     // battery readings
     let battery_files = pull_files(rpc, SG_BATTERY_LOGGER, "battery", "vldr", &save_folder).await?;
-    let stream = read_delta_readings::<ADCData<Volt>, BatteryFF>(battery_files).await?;
     let mut csv_writer = SensorReadingCSVWriter::new(
         &extend_path(&save_folder, "battery.csv"),
         &["voltage"],
         |data: ADCData<Volt>| vec![format!("{}", data.value)],
     )
     .unwrap();
-    csv_writer.write_all(stream).await?;
+    for file_path in battery_files {
+        let stream = parse_delta_readings::<ADCData<Volt>, BatteryFF>(file_path).await?;
+        csv_writer.write_all(stream).await?;
+    }
     csv_writer.flush()?;
 
     // sg readings

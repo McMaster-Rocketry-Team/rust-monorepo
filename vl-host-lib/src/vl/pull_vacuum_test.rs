@@ -11,8 +11,9 @@ use std::{fs, path::PathBuf};
 use tokio::{fs::File, io::AsyncWriteExt};
 
 use crate::common::{
-    extend_path, parse_serialized_enums::parse_serialized_enums, pull_file::pull_files,
-    read_delta_readings::read_delta_readings, readers::BufReaderWrapper, SensorReadingCSVWriter,
+    extend_path, parse_delta_readings::parse_delta_readings,
+    parse_serialized_enums::parse_serialized_enums, pull_file::pull_files,
+    readers::BufReaderWrapper, SensorReadingCSVWriter,
 };
 
 pub async fn pull_vacuum_test<S: SplitableSerial>(
@@ -50,7 +51,6 @@ pub async fn pull_vacuum_test<S: SplitableSerial>(
 
     // baro readings
     let baro_files = pull_files(rpc, VACUUM_TEST_BARO_LOGGER, "baro", "vldr", &save_folder).await?;
-    let stream = read_delta_readings::<BaroData, SensorsFF1>(baro_files).await?;
 
     let mut csv_writer = SensorReadingCSVWriter::new(
         &extend_path(&save_folder, "baro.csv"),
@@ -64,7 +64,10 @@ pub async fn pull_vacuum_test<S: SplitableSerial>(
         },
     )
     .unwrap();
-    csv_writer.write_all(stream).await?;
+    for file_path in baro_files {
+        let stream = parse_delta_readings::<BaroData, SensorsFF1>(file_path).await?;
+        csv_writer.write_all(stream).await?;
+    }
     csv_writer.flush()?;
 
     Ok(())
