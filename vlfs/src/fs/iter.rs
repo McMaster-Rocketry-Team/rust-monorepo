@@ -24,6 +24,12 @@ where
     }
 }
 
+impl FileEntryFilter for FileID {
+    fn check(&mut self, file_entry: &FileEntry) -> bool {
+        file_entry.id == *self
+    }
+}
+
 impl FileEntryFilter for FileType {
     fn check(&mut self, file_entry: &FileEntry) -> bool {
         file_entry.typ == *self

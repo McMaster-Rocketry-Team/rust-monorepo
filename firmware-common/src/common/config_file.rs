@@ -71,7 +71,7 @@ where
     }
 
     pub async fn write(&self, config: &T) -> Result<(), VLFSError<F::Error>> {
-        self.fs.remove_files_with_type(self.file_type).await?;
+        self.fs.remove_files(self.file_type).await?;
 
         let file = self.fs.create_file(self.file_type).await?;
         let mut writer = self.fs.open_file_for_write(file.id).await?;

@@ -1,7 +1,6 @@
 #![feature(generic_const_exprs)]
 
 use std::cmp::Ordering;
-use std::path::PathBuf;
 use std::time::Duration;
 
 use anyhow::anyhow;
@@ -17,15 +16,12 @@ use firmware_common::common::vlp::packet::ResetPacket;
 use firmware_common::common::vlp::packet::SoftArmPacket;
 use firmware_common::common::vlp::packet::VLPUplinkPacket;
 use firmware_common::common::vlp::packet::VerticalCalibrationPacket;
-use firmware_common::driver::serial::SplitableSerialWrapper;
 use firmware_common::sg_rpc;
 use firmware_common::vl_rpc;
 use log::LevelFilter;
 use tokio::fs::read_to_string;
-use tokio::io::{split, AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::time::sleep;
 use tokio_serial::available_ports;
-use tokio_serial::{SerialPortBuilderExt, SerialStream};
 use vl_host_lib::common::list_files;
 use vl_host_lib::common::probe_device_type;
 use vl_host_lib::common::pull_file;
@@ -89,6 +85,9 @@ struct OZYSCli {
 enum SGCommands {
     #[command(about = "Pull all the strain gauges readings from device")]
     PullData(PullDataArgs),
+    
+    #[command(about = "Clear all the data on the device")]
+    ClearData,
 
     LS(LSArgs),
     PullFile(PullArgs),
@@ -307,7 +306,10 @@ async fn main() -> Result<()> {
             client.reset().await.map_err(|_| anyhow!("reset Error"))?;
 
             match command {
-                SGCommands::PullData(_) => todo!(),
+                SGCommands::PullData(args) => todo!(),
+                SGCommands::ClearData => {
+                    client.clear_data().await.unwrap();
+                },
                 SGCommands::LS(args) => {
                     list_files(&mut client, args.file_type).await.unwrap();
                 }
@@ -327,5 +329,6 @@ async fn main() -> Result<()> {
         }
     }
 
+    println!("Done");
     Ok(())
 }

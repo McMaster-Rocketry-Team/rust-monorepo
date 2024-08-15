@@ -6,6 +6,7 @@ use bitvec::prelude::*;
 use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use embassy_sync::blocking_mutex::Mutex as BlockingMutex;
 use embassy_sync::mutex::Mutex;
+use iter::FileEntryFilter;
 use rand::rngs::SmallRng;
 use rand::{RngCore, SeedableRng};
 
@@ -92,7 +93,7 @@ where
 
     pub async fn remove_file(&self, file_id: FileID) -> Result<(), VLFSError<F::Error>> {
         let (number_of_removed_files, number_of_opened_files_cant_be_removed) = self
-            .remove_files(|file_entry| file_entry.id == file_id)
+            .remove_files(file_id)
             .await?;
         if number_of_removed_files == 1 {
             return Ok(());
@@ -104,16 +105,16 @@ where
     }
 
     /// returns (number_of_removed_files, number_of_opened_files_cant_be_removed)
-    pub async fn remove_files(
+    pub async fn remove_files<P: FileEntryFilter>(
         &self,
-        mut predicate: impl FnMut(&FileEntry) -> bool,
+        mut filter: P,
     ) -> Result<(u16, u16), VLFSError<F::Error>> {
         let mut number_of_removed_files = 0u16;
         let mut unremoved_open_files = 0u16;
         let mut builder = self.new_at_builder().await?;
 
         while let Some(file_entry) = builder.read_next().await? {
-            if predicate(&file_entry) {
+            if filter.check(&file_entry) {
                 if builder.is_file_opened(file_entry.id) {
                     unremoved_open_files += 1;
                     builder.write(&file_entry).await?;
@@ -128,15 +129,6 @@ where
 
         builder.commit().await?;
         Ok((number_of_removed_files, unremoved_open_files))
-    }
-
-    /// returns (number_of_removed_files, number_of_opened_files_cant_be_removed)
-    pub async fn remove_files_with_type(
-        &self,
-        file_type: FileType,
-    ) -> Result<(u16, u16), VLFSError<F::Error>> {
-        self.remove_files(|file_entry| file_entry.typ == file_type)
-            .await
     }
 
     pub async fn get_file_size(

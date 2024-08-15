@@ -1,5 +1,6 @@
 use arming_state::ArmingStateManager;
 use backup_flight_core::BackupFlightCore;
+use vlfs::FileEntry;
 use core::cell::RefCell;
 use embassy_futures::{join::join3, select::select};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex, signal::Signal};
@@ -379,7 +380,7 @@ pub async fn avionics_main(
                 VLPUplinkPacket::DeleteLogsPacket(_) => {
                     services
                         .fs
-                        .remove_files(|file_entry| {
+                        .remove_files(|file_entry: &FileEntry| {
                             let typ = file_entry.typ;
                             return typ == BENCHMARK_FILE_TYPE
                                 || typ == AVIONICS_SENSORS_FILE_TYPE

@@ -237,7 +237,7 @@ impl VLFSTestingHarness {
 
     pub async fn remove_files(&mut self, predicate: impl Fn(&FileID) -> bool) {
         self.vlfs
-            .remove_files(|file_entry| predicate(&file_entry.id))
+            .remove_files(|file_entry: &FileEntry| predicate(&file_entry.id))
             .await
             .unwrap();
         let mut files = self.files.lock().await;

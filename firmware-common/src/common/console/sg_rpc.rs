@@ -108,6 +108,10 @@ create_rpc! {
         sys_reset.reset();
         ResetDeviceResponse {}
     }
+    rpc 8 ClearData | | -> () {
+        fs.remove_files(()).await.ok();
+        ClearDataResponse {}
+    }
 }
 
 impl_common_rpc_trait!(RpcClient);
