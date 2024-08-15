@@ -256,7 +256,7 @@ pub async fn sg_mid_prio_main(
         let processed_readings_receiver_fut = async {
             let clock = clock.clone();
             let mut processed_readings_receiver = states.processed_readings_channel.receiver();
-            #[cfg(debug_assertions)]
+            // #[cfg(debug_assertions)]
             sg_adc_controller.lock().await.set_enable(true).await;
 
             loop {
