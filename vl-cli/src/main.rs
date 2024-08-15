@@ -25,6 +25,7 @@ use tokio_serial::available_ports;
 use vl_host_lib::common::list_files;
 use vl_host_lib::common::probe_device_type;
 use vl_host_lib::common::pull_file;
+use vl_host_lib::ozys::pull_sg_data;
 use vl_host_lib::vl::format_lora_key;
 use vl_host_lib::vl::gen_lora_key;
 use vl_host_lib::vl::json_to_device_config;
@@ -85,7 +86,7 @@ struct OZYSCli {
 enum SGCommands {
     #[command(about = "Pull all the strain gauges readings from device")]
     PullData(PullDataArgs),
-    
+
     #[command(about = "Clear all the data on the device")]
     ClearData,
 
@@ -282,7 +283,7 @@ async fn main() -> Result<()> {
                 }
                 VLCommands::PullFlight(_) => todo!(),
                 VLCommands::PullVacuumTest(args) => {
-                    pull_vacuum_test(&mut client, args.save_folder)
+                    pull_vacuum_test(&mut client, &args.save_folder)
                         .await
                         .unwrap();
                 }
@@ -306,10 +307,12 @@ async fn main() -> Result<()> {
             client.reset().await.map_err(|_| anyhow!("reset Error"))?;
 
             match command {
-                SGCommands::PullData(args) => todo!(),
+                SGCommands::PullData(args) => {
+                    pull_sg_data(&mut client, &args.save_folder).await.unwrap();
+                }
                 SGCommands::ClearData => {
                     client.clear_data().await.unwrap();
-                },
+                }
                 SGCommands::LS(args) => {
                     list_files(&mut client, args.file_type).await.unwrap();
                 }

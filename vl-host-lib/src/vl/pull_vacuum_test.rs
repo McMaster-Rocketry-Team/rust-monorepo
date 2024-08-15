@@ -18,7 +18,7 @@ use crate::common::{
 
 pub async fn pull_vacuum_test<S: SplitableSerial>(
     rpc: &mut impl CommonRPCTrait<S>,
-    save_folder: PathBuf,
+    save_folder: &PathBuf,
 ) -> Result<()> {
     fs::create_dir_all(&save_folder)?;
 

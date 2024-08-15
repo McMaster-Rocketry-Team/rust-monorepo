@@ -2876,6 +2876,7 @@ dependencies = [
  "firmware-common",
  "futures-core",
  "futures-util",
+ "half",
  "log",
  "map-range",
  "rand",
