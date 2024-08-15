@@ -25,7 +25,7 @@ use tokio_serial::available_ports;
 use vl_host_lib::common::list_files;
 use vl_host_lib::common::probe_device_type;
 use vl_host_lib::common::pull_file;
-use vl_host_lib::ozys::pull_sg_data;
+use vl_host_lib::ozys::pull_ozys_data;
 use vl_host_lib::vl::format_lora_key;
 use vl_host_lib::vl::gen_lora_key;
 use vl_host_lib::vl::json_to_device_config;
@@ -308,7 +308,7 @@ async fn main() -> Result<()> {
 
             match command {
                 SGCommands::PullData(args) => {
-                    pull_sg_data(&mut client, &args.save_folder).await.unwrap();
+                    pull_ozys_data(&mut client, &args.save_folder).await.unwrap();
                 }
                 SGCommands::ClearData => {
                     client.clear_data().await.unwrap();

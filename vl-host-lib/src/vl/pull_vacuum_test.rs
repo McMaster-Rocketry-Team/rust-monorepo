@@ -11,9 +11,8 @@ use std::{fs, path::PathBuf};
 use tokio::{fs::File, io::AsyncWriteExt};
 
 use crate::common::{
-    extend_path, pull_file::pull_files, pull_serialized_enums::read_serialized_enums,
-    read_delta_readings::read_delta_readings, readers::BufReaderWrapper,
-    sensor_reading_csv_writer::SensorReadingCSVWriter,
+    extend_path, parse_serialized_enums::parse_serialized_enums, pull_file::pull_files,
+    read_delta_readings::read_delta_readings, readers::BufReaderWrapper, SensorReadingCSVWriter,
 };
 
 pub async fn pull_vacuum_test<S: SplitableSerial>(
@@ -31,17 +30,21 @@ pub async fn pull_vacuum_test<S: SplitableSerial>(
         &save_folder,
     )
     .await?;
-    let stream =
-        read_serialized_enums::<VacuumTestLoggerReader<BufReaderWrapper<File>>>(log_files).await?;
-    pin_mut!(stream);
 
     let mut logs_writer = tokio::io::BufWriter::new(
         File::create(extend_path(&save_folder, "vacuum_test_log.log")).await?,
     );
-    while let Some(log) = stream.next().await {
-        logs_writer
-            .write_all(format!("{:?}\n", log).as_bytes())
-            .await?;
+    for file_path in log_files {
+        let stream =
+            parse_serialized_enums::<VacuumTestLoggerReader<BufReaderWrapper<File>>>(file_path)
+                .await?;
+        pin_mut!(stream);
+
+        while let Some(log) = stream.next().await {
+            logs_writer
+                .write_all(format!("{:?}\n", log).as_bytes())
+                .await?;
+        }
     }
     logs_writer.flush().await?;
 
