@@ -500,7 +500,7 @@ pub async fn avionics_main(
             }
 
             let (low_g_imu_result, high_g_imu_result, baro_result) =
-                join!(low_g_imu.read(), high_g_imu.read(), barometer.read(),);
+                join!(low_g_imu.read(), high_g_imu.read(), barometer.read());
             let low_g_imu_reading = low_g_imu_result.unwrap();
             let high_g_imu_reading = high_g_imu_result.unwrap();
             let baro_reading = baro_result.unwrap();

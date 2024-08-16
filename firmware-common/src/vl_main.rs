@@ -177,14 +177,14 @@ pub async fn vl_main(
         log_info!("Starting in mode {:?}", device_config);
         match device_config.mode {
             DeviceModeConfig::Avionics { .. } => {
-                // stop_if_usb_connected().await;
-                // avionics_main(
-                //     device_manager,
-                //     &services,
-                //     &device_config,
-                //     device_serial_number,
-                // )
-                // .await
+                stop_if_usb_connected().await;
+                avionics_main(
+                    device_manager,
+                    &services,
+                    &device_config,
+                    device_serial_number,
+                )
+                .await
             }
             DeviceModeConfig::GCM { .. } => {
                 gcm_main(
