@@ -90,7 +90,7 @@ enum SGCommands {
     ClearData,
 
     #[command(about = "Output realtime readings from the device")]
-    RealTime,
+    RealTime(RealTimeArgs),
 
     LS(LSArgs),
     PullFile(PullArgs),
@@ -176,6 +176,11 @@ struct DeviceConfigArgs {
 #[derive(clap::Args)]
 struct PullDataArgs {
     save_folder: std::path::PathBuf,
+}
+
+#[derive(clap::Args)]
+struct RealTimeArgs {
+    channel: Option<usize>,
 }
 
 #[tokio::main]
@@ -315,17 +320,23 @@ async fn main() -> Result<()> {
 
             match command {
                 SGCommands::PullData(args) => {
-                    pull_ozys_data(&mut client, &args.save_folder).await.unwrap();
+                    pull_ozys_data(&mut client, &args.save_folder)
+                        .await
+                        .unwrap();
                 }
                 SGCommands::ClearData => {
                     client.clear_data().await.unwrap();
                 }
-                SGCommands::RealTime=>{
+                SGCommands::RealTime(args) => {
                     client.set_adc_enable(true).await.unwrap();
                     loop {
                         let reading = client.get_real_time().await.unwrap();
                         if let Some(sample) = reading.sample {
-                            println!("{} {} {} {}", sample[0], sample[1], sample[2], sample[3]);
+                            if let Some(channel) = args.channel {
+                                println!("{}", sample[channel - 1]);
+                            } else {
+                                println!("{} {} {} {}", sample[0], sample[1], sample[2], sample[3]);
+                            }
                         }
                     }
                 }

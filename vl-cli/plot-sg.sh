@@ -1,3 +1,3 @@
 #! /bin/bash
 
-cargo run -- ozys /dev/ttyACM0 real-time | stdbuf -o0 awk '{print $1}' | ttyplot -M 1.5 -m 1.6 -t "Voltage" -u "V"
+cargo run -q -- ozys "$1" real-time $2 2> /dev/null | stdbuf -oL -eL ttyplot -M 1.604 -m 1.614 -t "Voltage" -u "V"
