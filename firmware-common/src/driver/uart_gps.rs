@@ -1,11 +1,11 @@
-use crate::common::sensor_reading::SensorReading;
+use crate::common::{debug2defmt_wrapper::Debug2DefmtWrapper, sensor_reading::SensorReading};
 
 use super::{
     clock::Clock, gps::{GPSData, GPS}, timestamp::BootTimestamp
 };
 use embassy_futures::yield_now;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
-use embedded_io_async::{Error, Read};
+use embedded_io_async::Read;
 use heapless::String;
 use nmea::Nmea;
 
@@ -48,7 +48,7 @@ impl UARTGPS {
                     }
                 }
                 Err(e) => {
-                    log_error!("Error reading from UART: {:?}", e.kind());
+                    log_error!("Error reading from UART: {:?}", Debug2DefmtWrapper(e));
                     yield_now().await;
                 }
             }

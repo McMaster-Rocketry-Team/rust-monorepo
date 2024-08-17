@@ -26,3 +26,4 @@ pub mod vlp;
 pub mod debounced_signal;
 pub mod zerocopy_channel;
 pub mod embedded_error_wrapper;
+pub mod debug2defmt_wrapper;
