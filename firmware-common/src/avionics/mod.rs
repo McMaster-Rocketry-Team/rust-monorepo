@@ -201,20 +201,20 @@ pub async fn avionics_main(
         SensorsFF2: AVIONICS_BARO_LOGGER_TIER_2, 25 * 8,
     );
 
-    log_info!("Creating mag logger");
-    fixed_point_factory!(MagFF1, f64, 49.9, 55.0, 0.05);
-    create_buffered_tiered_logger!(
-        mag_logger, mag_logger_fut, MagData, 40, services,
-        MagFF1: AVIONICS_MAG_LOGGER_TIER_1, 25 * 9,
-        SensorsFF2: AVIONICS_MAG_LOGGER_TIER_2, 25 * 10,
-    );
+    // log_info!("Creating mag logger");
+    // fixed_point_factory!(MagFF1, f64, 49.9, 55.0, 0.05);
+    // create_buffered_tiered_logger!(
+    //     mag_logger, mag_logger_fut, MagData, 40, services,
+    //     MagFF1: AVIONICS_MAG_LOGGER_TIER_1, 25 * 9,
+    //     SensorsFF2: AVIONICS_MAG_LOGGER_TIER_2, 25 * 10,
+    // );
 
-    log_info!("Creating battery logger");
-    create_buffered_tiered_logger!(
-        battery_logger, battery_logger_fut, ADCData<Volt>, 40, services,
-        SensorsFF1: AVIONICS_BATTERY_LOGGER_TIER_1, 25 * 11,
-        SensorsFF2: AVIONICS_BATTERY_LOGGER_TIER_2, 25 * 12,
-    );
+    // log_info!("Creating battery logger");
+    // create_buffered_tiered_logger!(
+    //     battery_logger, battery_logger_fut, ADCData<Volt>, 40, services,
+    //     SensorsFF1: AVIONICS_BATTERY_LOGGER_TIER_1, 25 * 11,
+    //     SensorsFF2: AVIONICS_BATTERY_LOGGER_TIER_2, 25 * 12,
+    // );
 
     log_info!(
         "Loggers created, free space: {}MB",
@@ -228,8 +228,8 @@ pub async fn avionics_main(
     let arming_state_debounce_fut = arming_state.run_debounce(services.delay.clone());
 
     let flight_core_events = FlightCoreEventChannel::new();
-    let flight_core: RefCell<Option<FlightCore<FlightCoreEventChannelPublisher>>> =
-        RefCell::new(None);
+    // let flight_core: RefCell<Option<FlightCore<FlightCoreEventChannelPublisher>>> =
+    //     RefCell::new(None);
     let backup_flight_core: RefCell<Option<BackupFlightCore<FlightCoreEventChannelPublisher>>> =
         RefCell::new(None);
 
@@ -256,8 +256,8 @@ pub async fn avionics_main(
         low_g_imu,
         high_g_imu,
         barometer,
-        mag,
-        batt_voltmeter,
+        // mag,
+        // batt_voltmeter,
         lora,
         camera,
         can_bus
@@ -528,34 +528,34 @@ pub async fn avionics_main(
         }
     };
 
-    let mut mag_ticker = Ticker::every(services.clock(), services.delay(), 50.0);
-    let mag_fut = async {
-        loop {
-            mag_ticker.next().await;
-            if *low_power_mode.borrow() {
-                continue;
-            }
-            let mag_reading = mag.read().await.unwrap();
+    // let mut mag_ticker = Ticker::every(services.clock(), services.delay(), 50.0);
+    // let mag_fut = async {
+    //     loop {
+    //         mag_ticker.next().await;
+    //         if *low_power_mode.borrow() {
+    //             continue;
+    //         }
+    //         let mag_reading = mag.read().await.unwrap();
 
-            if !*storage_full.borrow() {
-                mag_logger.ref_log(mag_reading.clone());
-            }
-        }
-    };
+    //         if !*storage_full.borrow() {
+    //             mag_logger.ref_log(mag_reading.clone());
+    //         }
+    //     }
+    // };
 
-    let mut batt_volt_ticker = Ticker::every(services.clock(), services.delay(), 5.0);
-    let bat_fut = async {
-        loop {
-            let battery_v = batt_voltmeter.read().await.unwrap();
-            if !*storage_full.borrow() {
-                battery_logger.ref_log(battery_v.clone());
-            }
-            telemetry_packet_builder.update(|b| {
-                b.battery_v = battery_v.data.value;
-            });
-            batt_volt_ticker.next().await;
-        }
-    };
+    // let mut batt_volt_ticker = Ticker::every(services.clock(), services.delay(), 5.0);
+    // let bat_fut = async {
+    //     loop {
+    //         let battery_v = batt_voltmeter.read().await.unwrap();
+    //         if !*storage_full.borrow() {
+    //             battery_logger.ref_log(battery_v.clone());
+    //         }
+    //         telemetry_packet_builder.update(|b| {
+    //             b.battery_v = battery_v.data.value;
+    //         });
+    //         batt_volt_ticker.next().await;
+    //     }
+    // };
 
     let loggers_unix_time_log_fut = async {
         let mut unix_clock_sub = services.unix_clock.subscribe_unix_clock_update();
@@ -570,8 +570,8 @@ pub async fn avionics_main(
             low_g_imu_logger.ref_log_unix_time(log.clone());
             high_g_imu_logger.ref_log_unix_time(log.clone());
             baro_logger.ref_log_unix_time(log.clone());
-            mag_logger.ref_log_unix_time(log.clone());
-            battery_logger.ref_log_unix_time(log.clone());
+            // mag_logger.ref_log_unix_time(log.clone());
+            // battery_logger.ref_log_unix_time(log.clone());
         }
     };
 
@@ -579,22 +579,22 @@ pub async fn avionics_main(
         let mut arming_state_sub = arming_state.subscriber();
         loop {
             let armed = arming_state_sub.next_message_pure().await.is_armed();
-            let flight_core_initialized = flight_core.borrow().is_some();
+            let flight_core_initialized = backup_flight_core.borrow().is_some();
             if armed && !flight_core_initialized {
-                if let Some(imu_config) = imu_config.borrow().clone() {
-                    flight_core.replace(Some(FlightCore::new(
-                        flight_profile.clone(),
-                        flight_core_events.publisher(false),
-                        imu_config.up_right_vector.into(),
-                        Variances::default(),
-                    )));
-                }
+                // if let Some(imu_config) = imu_config.borrow().clone() {
+                //     flight_core.replace(Some(FlightCore::new(
+                //         flight_profile.clone(),
+                //         flight_core_events.publisher(false),
+                //         imu_config.up_right_vector.into(),
+                //         Variances::default(),
+                //     )));
+                // }
                 backup_flight_core.replace(Some(BackupFlightCore::new(
                     flight_profile.clone(),
                     flight_core_events.publisher(true),
                 )));
             } else if !armed && flight_core_initialized {
-                flight_core.take();
+                // flight_core.take();
                 backup_flight_core.take();
             }
         }
@@ -620,13 +620,13 @@ pub async fn avionics_main(
             if let Some(backup_flight_core) = backup_flight_core.borrow_mut().as_mut() {
                 backup_flight_core.tick(&baro_reading)
             }
-            if let Some(flight_core) = flight_core.borrow_mut().as_mut() {
-                flight_core.tick(PartialSensorSnapshot {
-                    timestamp: combined_imu_reading.timestamp,
-                    imu_reading: combined_imu_reading,
-                    baro_reading: Some(baro_reading),
-                })
-            }
+            // if let Some(flight_core) = flight_core.borrow_mut().as_mut() {
+            //     flight_core.tick(PartialSensorSnapshot {
+            //         timestamp: combined_imu_reading.timestamp,
+            //         imu_reading: combined_imu_reading,
+            //         baro_reading: Some(baro_reading),
+            //     })
+            // }
         }
     };
 
@@ -803,8 +803,8 @@ pub async fn avionics_main(
             low_g_imu_logger_fut,
             high_g_imu_logger_fut,
             baro_logger_fut,
-            mag_logger_fut,
-            battery_logger_fut,
+            // mag_logger_fut,
+            // battery_logger_fut,
             vlp_tx_fut,
             vlp_rx_fut,
             vlp_fut,
@@ -815,8 +815,8 @@ pub async fn avionics_main(
             pyro_drogue_cont_fut,
             imu_baro_fut,
             gps_fut,
-            mag_fut,
-            bat_fut,
+            // mag_fut,
+            // bat_fut,
             flight_core_tick_fut,
             pyro_main_ctrl_fut,
             pyro_drogue_ctrl_fut,
