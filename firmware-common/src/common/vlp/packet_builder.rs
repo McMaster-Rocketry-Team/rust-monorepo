@@ -8,13 +8,16 @@ use crate::{
         delta_logger::prelude::{BitArraySerializable, BitSliceReader, BitSliceWriter},
         unix_clock::UnixClock,
         vlp::{packet::*, telemetry_packet::TelemetryPacket},
-    }, driver::clock::Clock,
+    },
+    driver::clock::Clock,
 };
 use packed_struct::prelude::*;
 
 use super::packet::{VLPDownlinkPacket, VLPUplinkPacket};
 
 pub const MAX_VLP_PACKET_SIZE: usize = 48;
+
+const TIME_BASED_NONCE_ENABLED: bool = false;
 
 pub struct VLPPacketBuilder<'a, 'b, CL: Clock> {
     lora_config: BaseBandModulationParams,
@@ -47,39 +50,46 @@ impl<'a, 'b, CL: Clock> VLPPacketBuilder<'a, 'b, CL> {
     }
 
     fn get_nonce(time: f64) -> [u8; 8] {
-        let mut now = time as u64;
-        // cloesest 100ms
-        now = now - now % 100;
-        now.to_le_bytes()
+        if TIME_BASED_NONCE_ENABLED {
+            let mut now = time as u64;
+            // cloesest 100ms
+            now = now - now % 100;
+            now.to_le_bytes()
+        } else {
+            [0x69; 8]
+        }
     }
 
     fn get_past_nonce(&self, packet_length: usize) -> Vec<(i32, [u8; 8]), 10> {
-        let now = self.unix_clock.now_ms() as u64;
-        let air_time = self
-            .lora_config
-            .time_on_air_us(Some(4), true, packet_length as u8)
-            / 1000;
-        // TODO include time take to prepare for tx (spi)?
-        let sent_time = now.checked_sub(air_time as u64).unwrap_or(0);
-
-        let module = sent_time % 100;
-
         let mut result = Vec::new();
 
-        let start = sent_time
-            .checked_sub(module)
-            .unwrap_or(0)
-            .checked_sub(500)
-            .unwrap_or(0);
-        for i in 0..10 {
-            result
-                .push((
-                    (i as i32 * 100 - 500) as i32,
-                    (start + i * 100).to_le_bytes(),
-                ))
-                .unwrap();
-        }
+        if TIME_BASED_NONCE_ENABLED {
+            let now = self.unix_clock.now_ms() as u64;
+            let air_time = self
+                .lora_config
+                .time_on_air_us(Some(4), true, packet_length as u8)
+                / 1000;
+            // TODO include time take to prepare for tx (spi)?
+            let sent_time = now.checked_sub(air_time as u64).unwrap_or(0);
 
+            let module = sent_time % 100;
+
+            let start = sent_time
+                .checked_sub(module)
+                .unwrap_or(0)
+                .checked_sub(500)
+                .unwrap_or(0);
+            for i in 0..10 {
+                result
+                    .push((
+                        (i as i32 * 100 - 500) as i32,
+                        (start + i * 100).to_le_bytes(),
+                    ))
+                    .unwrap();
+            }
+        } else {
+            result.push((0, [0x69; 8])).unwrap();
+        }
         result
     }
 
