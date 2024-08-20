@@ -15,8 +15,6 @@ use super::{
 const FFT_SIZE: usize = 2048;
 
 struct SGChannelProcessor<'a> {
-    sg_i: u8,
-
     // samples used for fft
     fft_samples_sum: [f32; FFT_SIZE],
     fft_samples_sum_count: usize,
@@ -29,7 +27,7 @@ struct SGChannelProcessor<'a> {
 }
 
 impl<'a> SGChannelProcessor<'a> {
-    fn new(sg_i: u8, fft: &'a FloatRealFft) -> Self {
+    fn new(fft: &'a FloatRealFft) -> Self {
         let cutoff_freq = 100.hz();
         let sampling_freq = ((SAMPLES_PER_READ * READS_PER_SECOND) as u32).hz();
 
@@ -42,8 +40,6 @@ impl<'a> SGChannelProcessor<'a> {
         .unwrap();
         let low_pass_filter = DirectForm2Transposed::<f32>::new(coeffs);
         Self {
-            sg_i,
-
             fft_samples_sum: [0.0; FFT_SIZE],
             fft_samples_sum_count: 0,
             fft_i: 0,
@@ -142,7 +138,7 @@ pub async fn sg_low_prio_main<T: RawSGReadingsTrait>(states: &SGGlobalStates<imp
     let mut fft_out_buffer = [0f32; FFT_SIZE];
 
     let mut sg_processor_list: [SGChannelProcessor; 4] =
-        array::from_fn(|i| SGChannelProcessor::new(i as u8, &fft));
+        array::from_fn(|_| SGChannelProcessor::new(&fft));
 
     let mut raw_readings_receiver = states.raw_readings_channel.receiver();
     let mut processed_readings_sender = states.processed_readings_channel.sender();
