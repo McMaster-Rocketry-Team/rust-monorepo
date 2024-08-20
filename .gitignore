@@ -4,3 +4,4 @@
 /vlfs-host/test-images
 /rustc-ice*
 .VSCodeCounter
+.DS_Store
