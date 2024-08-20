@@ -99,7 +99,15 @@ pub async fn sg_mid_prio_main(
     let usb_console_fut = async {
         loop {
             usb.wait_connection().await;
-            run_rpc_server(&mut usb, &fs, &sys_reset, device_serial_number, &sg_adc_controller, states).await;
+            run_rpc_server(
+                &mut usb,
+                &fs,
+                &sys_reset,
+                device_serial_number,
+                &sg_adc_controller,
+                states,
+            )
+            .await;
         }
     };
 
@@ -153,6 +161,9 @@ pub async fn sg_mid_prio_main(
                         .await
                         .set_enable(armed && !landed)
                         .await;
+                    states.error_states.lock(|s| {
+                        s.borrow_mut().recording = armed && !landed;
+                    });
                 }
                 Err(_) => {
                     states.error_states.lock(|s| {
@@ -197,6 +208,11 @@ pub async fn sg_mid_prio_main(
                 delay.delay_ms(100.0).await;
                 indicator.set_enable(false).await;
                 delay.delay_ms(100.0).await;
+            } else if error_states.recording {
+                indicator.set_enable(true).await;
+                delay.delay_ms(500.0).await;
+                indicator.set_enable(false).await;
+                delay.delay_ms(500.0).await;
             } else {
                 indicator.set_enable(true).await;
                 delay.delay_ms(50.0).await;
@@ -256,8 +272,13 @@ pub async fn sg_mid_prio_main(
         let processed_readings_receiver_fut = async {
             let clock = clock.clone();
             let mut processed_readings_receiver = states.processed_readings_channel.receiver();
-            // #[cfg(debug_assertions)]
-            sg_adc_controller.lock().await.set_enable(true).await;
+            #[cfg(debug_assertions)]
+            {
+                sg_adc_controller.lock().await.set_enable(true).await;
+                states.error_states.lock(|s| {
+                    s.borrow_mut().recording = true;
+                });
+            }
 
             loop {
                 let reading = processed_readings_receiver.receive().await;

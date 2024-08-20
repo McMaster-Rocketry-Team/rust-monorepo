@@ -11,6 +11,7 @@ use embedded_hal_async::delay::DelayNs;
 use firmware_common::common::console::vl_rpc::GCMPollDownlinkPacketResponse;
 use firmware_common::common::vlp::packet::DeleteLogsPacket;
 use firmware_common::common::vlp::packet::LowPowerModePacket;
+use firmware_common::common::vlp::packet::ManualTriggerDeplotmentPacket;
 use firmware_common::common::vlp::packet::ResetPacket;
 use firmware_common::common::vlp::packet::SoftArmPacket;
 use firmware_common::common::vlp::packet::VLPUplinkPacket;
@@ -132,7 +133,7 @@ enum GCMUplinkPacket {
     LowPowerModeOff,
     Reset,
     DeleteLogs,
-    ManualTriggerDeplotmentPacket,
+    ManualTriggerDeployment,
 }
 
 fn file_type_parser(s: &str) -> Result<FileType, String> {
@@ -248,7 +249,9 @@ async fn main() -> Result<()> {
                         .into(),
                         GCMUplinkPacket::Reset => ResetPacket { timestamp }.into(),
                         GCMUplinkPacket::DeleteLogs => DeleteLogsPacket { timestamp }.into(),
-                        GCMUplinkPacket::ManualTriggerDeplotmentPacket => todo!(),
+                        GCMUplinkPacket::ManualTriggerDeployment => {
+                            ManualTriggerDeplotmentPacket { timestamp }.into()
+                        }
                     };
 
                     let result = client.g_c_m_send_uplink_packet(packet).await.unwrap();
