@@ -1,7 +1,9 @@
 use crate::common::{debug2defmt_wrapper::Debug2DefmtWrapper, sensor_reading::SensorReading};
 
 use super::{
-    clock::Clock, gps::{GPSData, GPS}, timestamp::BootTimestamp
+    clock::Clock,
+    gps::{GPSData, GPS},
+    timestamp::BootTimestamp,
 };
 use embassy_futures::yield_now;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, signal::Signal};
@@ -21,20 +23,20 @@ impl UARTGPS {
     }
 
     pub async fn run(&self, rx: &mut impl Read, clock: impl Clock) -> ! {
-        let mut buffer = [0; 9];
+        let mut buffer = [0; 84];
         let mut sentence = String::<84>::new();
         let mut nmea = Nmea::default();
         loop {
             match rx.read(&mut buffer).await {
                 Ok(length) => {
                     for i in 0..length {
+                        if buffer[i] == b'$' {
+                            sentence.clear();
+                        }
                         sentence.push(buffer[i] as char).ok();
 
                         if buffer[i] == 10u8 || sentence.len() == 84 {
-                            if sentence.as_bytes()[0] != b'$' {
-                                sentence.clear();
-                            }
-
+                            log_info!("NMEA sentence: {}", sentence);
                             nmea.parse(sentence.as_str()).ok();
 
                             self.last_location
