@@ -148,6 +148,8 @@ mod test {
             main_pyro: PyroSelection::Pyro2,
             main_chute_altitude_agl: 500.0,
             main_chute_delay_ms: 1000.0,
+            drouge_to_main_ms: 107000.0,
+            main_to_landed_ms: 76000.0,
         };
         let channel = Channel::<NoopRawMutex, FlightCoreEvent, 10>::new();
         let receiver = channel.receiver();

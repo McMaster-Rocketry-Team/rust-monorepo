@@ -1,16 +1,23 @@
 use arming_state::ArmingStateManager;
+use backup_backup_flight_core::BackupBackupFlightCore;
 use backup_flight_core::BackupFlightCore;
-use vlfs::FileEntry;
+use core::borrow::BorrowMut;
 use core::cell::RefCell;
 use embassy_futures::{join::join3, select::select};
-use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex, signal::Signal};
+use embassy_sync::{
+    blocking_mutex::raw::NoopRawMutex, blocking_mutex::Mutex as BlockingMutex, mutex::Mutex,
+    signal::Signal,
+};
 use flight_core_event::FlightCoreState;
-use flight_core_event_channel::{FlightCoreEventChannel, FlightCoreEventChannelPublisher};
+use flight_core_event_channel::{
+    FlightCoreEventChannel, FlightCoreEventChannelPublisher, FlightCoreRedundancy,
+};
 use flight_profile::{FlightProfile, PyroSelection};
 use futures::join;
 use imu_calibration_info::IMUCalibrationInfo;
 use libm::fabsf;
 use nalgebra::Vector3;
+use vlfs::FileEntry;
 use vlfs::{Crc, Flash};
 
 use crate::common::delta_logger::buffered_logger::BufferedLoggerState;
@@ -61,6 +68,7 @@ use paste::paste;
 use self_test::{self_test, SelfTestResult};
 
 pub mod arming_state;
+mod backup_backup_flight_core;
 pub mod backup_flight_core;
 pub mod baro_reading_filter;
 pub mod flight_core;
@@ -232,6 +240,10 @@ pub async fn avionics_main(
     //     RefCell::new(None);
     let backup_flight_core: RefCell<Option<BackupFlightCore<FlightCoreEventChannelPublisher>>> =
         RefCell::new(None);
+    let backup_backup_flight_core: BlockingMutex<
+        NoopRawMutex,
+        RefCell<Option<BackupBackupFlightCore<FlightCoreEventChannelPublisher>>>,
+    > = BlockingMutex::new(RefCell::new(None));
 
     let vertical_calibration_in_progress = RefCell::new(false);
     let imu_baro_signal = Signal::<
@@ -404,6 +416,14 @@ pub async fn avionics_main(
                 }
                 VLPUplinkPacket::GroundTestDeployPacket(_) => {
                     // noop
+                }
+                VLPUplinkPacket::ManualTriggerDeplotmentPacket(_) => {
+                    backup_backup_flight_core.lock(|r| {
+                        if let Some(backup_backup_flight_core) = r.borrow_mut().as_mut() {
+                            backup_backup_flight_core
+                                .manual_deployment_triggered(services.clock.now_ms());
+                        }
+                    });
                 }
             }
         }
@@ -591,11 +611,18 @@ pub async fn avionics_main(
                 // }
                 backup_flight_core.replace(Some(BackupFlightCore::new(
                     flight_profile.clone(),
-                    flight_core_events.publisher(true),
+                    flight_core_events.publisher(FlightCoreRedundancy::Backup),
                 )));
+                backup_backup_flight_core.lock(|r| {
+                    r.borrow_mut().replace(BackupBackupFlightCore::new(
+                        flight_profile.clone(),
+                        flight_core_events.publisher(FlightCoreRedundancy::BackupBackup),
+                    ));
+                })
             } else if !armed && flight_core_initialized {
                 // flight_core.take();
                 backup_flight_core.take();
+                backup_backup_flight_core.lock(|r| r.borrow_mut().take());
             }
         }
     };
@@ -618,8 +645,13 @@ pub async fn avionics_main(
             }
 
             if let Some(backup_flight_core) = backup_flight_core.borrow_mut().as_mut() {
-                backup_flight_core.tick(&baro_reading)
+                backup_flight_core.tick(&baro_reading);
             }
+            backup_backup_flight_core.lock(|r| {
+                if let Some(backup_backup_flight_core) = r.borrow_mut().as_mut() {
+                    backup_backup_flight_core.tick(services.clock.now_ms());
+                }
+            });
             // if let Some(flight_core) = flight_core.borrow_mut().as_mut() {
             //     flight_core.tick(PartialSensorSnapshot {
             //         timestamp: combined_imu_reading.timestamp,
@@ -634,7 +666,7 @@ pub async fn avionics_main(
         let mut sub = flight_core_events.subscriber();
 
         loop {
-            let (is_backup, event) = sub.next_message_pure().await;
+            let (redundancy, event) = sub.next_message_pure().await;
             match event {
                 FlightCoreEvent::CriticalError => {
                     services.reset();
@@ -644,28 +676,28 @@ pub async fn avionics_main(
                 }
                 FlightCoreEvent::ChangeState(new_state) => {
                     telemetry_packet_builder.update(|s| {
-                        if is_backup {
-                            s.backup_flight_core_state = new_state;
-                        } else {
+                        if redundancy == FlightCoreRedundancy::Primary {
                             s.flight_core_state = new_state;
+                        } else if redundancy == FlightCoreRedundancy::Backup {
+                            s.backup_flight_core_state = new_state;
                         }
                     });
                 }
                 FlightCoreEvent::ChangeAltitude(new_altitude) => {
                     telemetry_packet_builder.update(|s| {
-                        if is_backup {
-                            s.backup_altitude = new_altitude;
-                        } else {
+                        if redundancy == FlightCoreRedundancy::Primary {
                             s.altitude = new_altitude;
+                        } else if redundancy == FlightCoreRedundancy::Backup {
+                            s.backup_altitude = new_altitude;
                         }
                     });
                 }
                 FlightCoreEvent::ChangeAirSpeed(new_speed) => {
                     telemetry_packet_builder.update(|s| {
-                        if is_backup {
-                            s.backup_air_speed = new_speed;
-                        } else {
+                        if redundancy == FlightCoreRedundancy::Primary {
                             s.air_speed = new_speed;
+                        } else if redundancy == FlightCoreRedundancy::Backup {
+                            s.backup_air_speed = new_speed;
                         }
                     });
                 }
@@ -711,12 +743,11 @@ pub async fn avionics_main(
     let pyro_main_ctrl_fut = async {
         let mut sub = flight_core_events.subscriber();
 
-        // only react to backup flight core for now
         loop {
             if matches!(
                 sub.next_message_pure().await,
                 (
-                    true,
+                    _,
                     FlightCoreEvent::ChangeState(FlightCoreState::MainChuteDeployed)
                 )
             ) {
@@ -739,12 +770,11 @@ pub async fn avionics_main(
     let pyro_drogue_ctrl_fut = async {
         let mut sub = flight_core_events.subscriber();
 
-        // only react to backup flight core for now
         loop {
             if matches!(
                 sub.next_message_pure().await,
                 (
-                    true,
+                    _,
                     FlightCoreEvent::ChangeState(FlightCoreState::DrogueChuteDeployed)
                 )
             ) {

@@ -5,8 +5,15 @@ use embassy_sync::{
 
 use super::flight_core_event::{FlightCoreEvent, FlightCoreEventPublisher};
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FlightCoreRedundancy {
+    Primary,
+    Backup,
+    BackupBackup,
+}
+
 pub struct FlightCoreEventChannel {
-    channel: PubSubChannel<NoopRawMutex, (bool, FlightCoreEvent), 10, 5, 2>,
+    channel: PubSubChannel<NoopRawMutex, (FlightCoreRedundancy, FlightCoreEvent), 10, 5, 3>,
 }
 
 impl FlightCoreEventChannel {
@@ -16,25 +23,25 @@ impl FlightCoreEventChannel {
         }
     }
 
-    pub fn subscriber(&self) -> Subscriber<NoopRawMutex, (bool, FlightCoreEvent), 10, 5, 2> {
+    pub fn subscriber(&self) -> Subscriber<NoopRawMutex, (FlightCoreRedundancy, FlightCoreEvent), 10, 5, 3> {
         self.channel.subscriber().unwrap()
     }
 
-    pub fn publisher(&self, is_backup: bool) -> FlightCoreEventChannelPublisher {
+    pub fn publisher(&self, redundancy: FlightCoreRedundancy) -> FlightCoreEventChannelPublisher {
         FlightCoreEventChannelPublisher {
             publisher: self.channel.publisher().unwrap(),
-            is_backup,
+            redundancy,
         }
     }
 }
 
 pub struct FlightCoreEventChannelPublisher<'a> {
-    publisher: Publisher<'a, NoopRawMutex, (bool, FlightCoreEvent), 10, 5, 2>,
-    is_backup: bool,
+    publisher: Publisher<'a, NoopRawMutex, (FlightCoreRedundancy, FlightCoreEvent), 10, 5, 3>,
+    redundancy: FlightCoreRedundancy,
 }
 
 impl<'a> FlightCoreEventPublisher for FlightCoreEventChannelPublisher<'a> {
     fn publish(&mut self, event: FlightCoreEvent) {
-        self.publisher.publish_immediate((self.is_backup, event));
+        self.publisher.publish_immediate((self.redundancy, event));
     }
 }

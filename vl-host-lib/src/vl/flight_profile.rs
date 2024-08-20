@@ -11,6 +11,8 @@ pub struct FlightProfileSerde {
     pub main_pyro: PyroSelectionSerde,
     pub main_chute_altitude_agl: f32,
     pub main_chute_delay_ms: f64,
+    pub drouge_to_main_ms: f64,
+    pub main_to_landed_ms: f64,
 }
 
 impl Into<FlightProfile> for FlightProfileSerde {
@@ -23,6 +25,8 @@ impl Into<FlightProfile> for FlightProfileSerde {
             main_pyro: self.main_pyro.into(),
             main_chute_altitude_agl: self.main_chute_altitude_agl,
             main_chute_delay_ms: self.main_chute_delay_ms,
+            drouge_to_main_ms: self.drouge_to_main_ms,
+            main_to_landed_ms: self.main_to_landed_ms,
         }
     }
 }

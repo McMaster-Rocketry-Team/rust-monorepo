@@ -109,6 +109,7 @@ impl<'a, 'b, CL: Clock> VLPPacketBuilder<'a, 'b, CL> {
             VLPUplinkPacket::ResetPacket(_) => 3,
             VLPUplinkPacket::DeleteLogsPacket(_) => 4,
             VLPUplinkPacket::GroundTestDeployPacket(_) => 5,
+            VLPUplinkPacket::ManualTriggerDeplotmentPacket(_) => 6,
         };
         let packet_type: Integer<u8, packed_bits::Bits<3>> = packet_type.into();
 
@@ -126,6 +127,9 @@ impl<'a, 'b, CL: Clock> VLPPacketBuilder<'a, 'b, CL> {
                 packet.serialize(&mut self.bit_slice_writer)
             }
             VLPUplinkPacket::GroundTestDeployPacket(packet) => {
+                packet.serialize(&mut self.bit_slice_writer)
+            }
+            VLPUplinkPacket::ManualTriggerDeplotmentPacket(packet) => {
                 packet.serialize(&mut self.bit_slice_writer)
             }
         };

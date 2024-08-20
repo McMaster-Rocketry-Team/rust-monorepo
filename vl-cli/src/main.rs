@@ -132,6 +132,7 @@ enum GCMUplinkPacket {
     LowPowerModeOff,
     Reset,
     DeleteLogs,
+    ManualTriggerDeplotmentPacket,
 }
 
 fn file_type_parser(s: &str) -> Result<FileType, String> {
@@ -247,6 +248,7 @@ async fn main() -> Result<()> {
                         .into(),
                         GCMUplinkPacket::Reset => ResetPacket { timestamp }.into(),
                         GCMUplinkPacket::DeleteLogs => DeleteLogsPacket { timestamp }.into(),
+                        GCMUplinkPacket::ManualTriggerDeplotmentPacket => todo!(),
                     };
 
                     let result = client.g_c_m_send_uplink_packet(packet).await.unwrap();
