@@ -293,6 +293,7 @@ pub async fn avionics_main(
             };
             let mut can_tx = can_tx.lock().await;
             can_tx.send(&message, 3).await.ok();
+            log_info!("Sent CAN avionics status message");
             drop(can_tx);
 
             ticker.next().await;
@@ -308,6 +309,7 @@ pub async fn avionics_main(
                 timestamp: (unix_timestamp as u64).into(),
             };
             can_tx.send(&message, 2).await.ok();
+            log_info!("Sent CAN unix time message");
             drop(can_tx);
         }
     };
@@ -386,6 +388,7 @@ pub async fn avionics_main(
                 VLPUplinkPacket::ResetPacket(_) => {
                     let mut can_tx = can_tx.lock().await;
                     can_tx.send(&ResetMessage {}, 7).await.ok();
+                    log_info!("Sent CAN reset message");
                     drop(can_tx);
                     services.delay().delay_ms(100.0).await;
                     services.reset();
@@ -714,6 +717,7 @@ pub async fn avionics_main(
             };
             let mut can_tx = can_tx.lock().await;
             can_tx.send(&message, 7).await.ok();
+            log_info!("Sent CAN flight event message");
             drop(can_tx);
         };
 

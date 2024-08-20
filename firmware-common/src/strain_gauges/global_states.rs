@@ -26,7 +26,7 @@ impl<M: RawMutex, T: RawSGReadingsTrait> SGGlobalStates<M, T> {
                 can_bus_error: false,
                 sg_adc_error: false,
                 usb_connected: false,
-                recording: true,
+                recording: false,
             })),
         }
     }

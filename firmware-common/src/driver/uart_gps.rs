@@ -36,7 +36,7 @@ impl UARTGPS {
                         sentence.push(buffer[i] as char).ok();
 
                         if buffer[i] == 10u8 || sentence.len() == 84 {
-                            log_info!("NMEA sentence: {}", sentence);
+                            // log_info!("NMEA sentence: {}", sentence);
                             nmea.parse(sentence.as_str()).ok();
 
                             self.last_location

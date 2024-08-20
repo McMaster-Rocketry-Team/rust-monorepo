@@ -118,6 +118,7 @@ pub async fn sg_mid_prio_main(
         loop {
             match can_rx.receive().await {
                 Ok(message) => {
+                    log_info!("Received CAN message");
                     states.error_states.lock(|s| {
                         s.borrow_mut().can_bus_error = false;
                     });
@@ -131,17 +132,20 @@ pub async fn sg_mid_prio_main(
                         // if armed -> going to launch soon, start recording adc
                         let message =
                             AvionicsStatusMessage::from_data(message.data().try_into().unwrap());
+                        log_info!("Received CAN message: AvionicsStatusMessage");
                         armed = message.armed;
                     } else if id.message_type == FlightEventMessage::message_type() {
                         // if landed -> stop recording adc
                         let message =
                             FlightEventMessage::from_data(message.data().try_into().unwrap());
+                        log_info!("Received CAN message: FlightEventMessage");
                         landed = message.event == FlightEvent::Landed;
                     } else if id.message_type == UnixTimeMessage::message_type() {
                         // sync time
                         let boot_timestamp = message.timestamp();
                         let message =
                             UnixTimeMessage::from_data(message.data().try_into().unwrap());
+                        log_info!("Received CAN message: UnixTimeMessage");
                         let unix_timestamp: u64 = message.timestamp.into();
                         unix_timestamp_log_mutex.lock(|m| {
                             m.borrow_mut().replace((
@@ -165,7 +169,8 @@ pub async fn sg_mid_prio_main(
                         s.borrow_mut().recording = armed && !landed;
                     });
                 }
-                Err(_) => {
+                Err(e) => {
+                    log_error!("Error receiving CAN message: {:?}", e);
                     states.error_states.lock(|s| {
                         s.borrow_mut().can_bus_error = true;
                     });
@@ -374,6 +379,6 @@ pub async fn sg_mid_prio_main(
         store_sg_fut,
         led_fut,
         can_rx_fut,
-        can_tx_fut
+        // can_tx_fut
     );
 }
