@@ -14,10 +14,13 @@ use firmware_common::common::vlp::packet::LowPowerModePacket;
 use firmware_common::common::vlp::packet::ManualTriggerDeplotmentPacket;
 use firmware_common::common::vlp::packet::ResetPacket;
 use firmware_common::common::vlp::packet::SoftArmPacket;
+use firmware_common::common::vlp::packet::VLPDownlinkPacket;
 use firmware_common::common::vlp::packet::VLPUplinkPacket;
 use firmware_common::common::vlp::packet::VerticalCalibrationPacket;
+use firmware_common::common::vlp::telemetry_packet::TelemetryPacket;
 use firmware_common::sg_rpc;
 use firmware_common::vl_rpc;
+use firmware_common::vl_rpc::RpcPacketStatus;
 use log::LevelFilter;
 use tokio::fs::read_to_string;
 use tokio::time::sleep;
@@ -261,7 +264,9 @@ async fn main() -> Result<()> {
                             Ok(GCMPollDownlinkPacketResponse {
                                 packet: Some((packet, status)),
                             }) => {
-                                println!("{:?} {:?}", packet, status);
+                                if let VLPDownlinkPacket::TelemetryPacket(packet) = packet {
+                                    print_telemetry_packet(&packet, &status);
+                                }
                             }
                             Err(e) => {
                                 println!("{:?}", e);
@@ -276,7 +281,9 @@ async fn main() -> Result<()> {
                         Ok(GCMPollDownlinkPacketResponse {
                             packet: Some((packet, status)),
                         }) => {
-                            println!("{:?} {:?}", packet, status);
+                            if let VLPDownlinkPacket::TelemetryPacket(packet) = packet {
+                                print_telemetry_packet(&packet, &status);
+                            }
                         }
                         Err(e) => {
                             println!("{:?}", e);
@@ -369,4 +376,25 @@ async fn main() -> Result<()> {
 
     println!("Done");
     Ok(())
+}
+
+fn print_telemetry_packet(packet: &TelemetryPacket, status: &RpcPacketStatus) {
+    if let Some((lat, lon)) = packet.lat_lon() {
+        println!("GPS: {}, {}", lat, lon);
+    }
+    println!(
+        "Altitude: {}/{}, Speed: {}/{}, Temp: {}, Main Cont: {}, Drogue Cont: {}, H Armed: {}, S Armed: {}, Free space: {}MiB, RSSI: {}, SNR: {}",
+        packet.altitude(),
+        packet.max_altitude(),
+        packet.air_speed(),
+        packet.max_air_speed(),
+        packet.temperature(),
+        packet.pyro_main_continuity(),
+        packet.pyro_drogue_continuity(),
+        packet.hardware_armed(),
+        packet.software_armed(),
+        packet.free_space() / 1024.0 / 1024.0,
+        status.rssi,
+        status.snr,
+    );
 }
