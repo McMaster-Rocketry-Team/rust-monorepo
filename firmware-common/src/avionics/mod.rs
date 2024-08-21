@@ -230,16 +230,18 @@ pub async fn avionics_main(
     );
 
     // states
-    let storage_full = RefCell::new(false);
-    let low_power_mode = RefCell::new(false);
+    let storage_full = BlockingMutex::<NoopRawMutex, _>::new(RefCell::new(false));
+    let low_power_mode = BlockingMutex::<NoopRawMutex, _>::new(RefCell::new(false));
     let arming_state = ArmingStateManager::<NoopRawMutex>::new();
     let arming_state_debounce_fut = arming_state.run_debounce(services.delay.clone());
 
     let flight_core_events = FlightCoreEventChannel::new();
     // let flight_core: RefCell<Option<FlightCore<FlightCoreEventChannelPublisher>>> =
     //     RefCell::new(None);
-    let backup_flight_core: RefCell<Option<BackupFlightCore<FlightCoreEventChannelPublisher>>> =
-        RefCell::new(None);
+    let backup_flight_core: BlockingMutex<
+        NoopRawMutex,
+        RefCell<Option<BackupFlightCore<FlightCoreEventChannelPublisher>>>,
+    > = BlockingMutex::new(RefCell::new(None));
     let backup_backup_flight_core: BlockingMutex<
         NoopRawMutex,
         RefCell<Option<BackupBackupFlightCore<FlightCoreEventChannelPublisher>>>,
@@ -288,7 +290,7 @@ pub async fn avionics_main(
         let mut ticker = Ticker::every(services.clock(), services.delay(), 2000.0);
         loop {
             let message = can_messages::AvionicsStatusMessage {
-                low_power: *low_power_mode.borrow(),
+                low_power: low_power_mode.lock(|r| *r.borrow()),
                 armed: arming_state.is_armed(),
             };
             let mut can_tx = can_tx.lock().await;
@@ -340,7 +342,7 @@ pub async fn avionics_main(
     let vlp_rx_fut = async {
         loop {
             let (packet, _) = vlp.wait_receive().await;
-            low_power_mode.replace(false);
+            low_power_mode.lock(|r| r.replace(false));
             log_info!("Received packet: {:?}", packet);
             match packet {
                 VLPUplinkPacket::VerticalCalibrationPacket(_) => {
@@ -377,7 +379,7 @@ pub async fn avionics_main(
                     });
                 }
                 VLPUplinkPacket::LowPowerModePacket(LowPowerModePacket { enabled, .. }) => {
-                    low_power_mode.replace(enabled);
+                    low_power_mode.lock(|r| r.replace(enabled));
                     if !enabled {
                         arming_state.set_software_armed(false);
                         telemetry_packet_builder.update(|b| {
@@ -519,19 +521,18 @@ pub async fn avionics_main(
     let imu_baro_fut = async {
         loop {
             imu_baro_ticker.next().await;
-            if *low_power_mode.borrow() {
+            if low_power_mode.lock(|s| *s.borrow()) {
                 continue;
             }
 
-            let (low_g_imu_result, baro_result) =
-                join!(low_g_imu.read(), barometer.read());
+            let (low_g_imu_result, baro_result) = join!(low_g_imu.read(), barometer.read());
             let low_g_imu_reading = low_g_imu_result.unwrap();
             let baro_reading = baro_result.unwrap();
 
             telemetry_packet_builder.update(|s| {
                 s.temperature = baro_reading.data.temperature;
             });
-            if !*storage_full.borrow() {
+            if storage_full.lock(|r| !*r.borrow()) {
                 low_g_imu_logger.ref_log(low_g_imu_reading.clone());
                 baro_logger.ref_log(baro_reading.clone());
             }
@@ -544,7 +545,7 @@ pub async fn avionics_main(
     let gps_fut = async {
         loop {
             let gps_location = gps_sub.next_message_pure().await;
-            if !*storage_full.borrow() {
+            if storage_full.lock(|r| !*r.borrow()) {
                 gps_logger.ref_log(gps_location.clone());
             }
             telemetry_packet_builder.update(|b| {
@@ -604,7 +605,7 @@ pub async fn avionics_main(
         let mut arming_state_sub = arming_state.subscriber();
         loop {
             let armed = arming_state_sub.next_message_pure().await.is_armed();
-            let flight_core_initialized = backup_flight_core.borrow().is_some();
+            let flight_core_initialized = backup_flight_core.lock(|s| s.borrow().is_some());
             if armed && !flight_core_initialized {
                 // if let Some(imu_config) = imu_config.borrow().clone() {
                 //     flight_core.replace(Some(FlightCore::new(
@@ -614,10 +615,12 @@ pub async fn avionics_main(
                 //         Variances::default(),
                 //     )));
                 // }
-                backup_flight_core.replace(Some(BackupFlightCore::new(
-                    flight_profile.clone(),
-                    flight_core_events.publisher(FlightCoreRedundancy::Backup),
-                )));
+                backup_flight_core.lock(|r| {
+                    r.borrow_mut().replace(BackupFlightCore::new(
+                        flight_profile.clone(),
+                        flight_core_events.publisher(FlightCoreRedundancy::Backup),
+                    ));
+                });
                 backup_backup_flight_core.lock(|r| {
                     r.borrow_mut().replace(BackupBackupFlightCore::new(
                         flight_profile.clone(),
@@ -626,7 +629,7 @@ pub async fn avionics_main(
                 })
             } else if !armed && flight_core_initialized {
                 // flight_core.take();
-                backup_flight_core.take();
+                backup_flight_core.lock(|r| r.borrow_mut().take());
                 backup_backup_flight_core.lock(|r| r.borrow_mut().take());
             }
         }
@@ -638,8 +641,7 @@ pub async fn avionics_main(
             //     services.delay.delay_ms(100.0).await;
             //     continue;
             // }
-            let (low_g_imu_reading, baro_reading) =
-                imu_baro_signal.wait().await;
+            let (low_g_imu_reading, baro_reading) = imu_baro_signal.wait().await;
 
             // let mut combined_imu_reading = low_g_imu_reading.clone();
             // if fabsf(combined_imu_reading.data.acc[0]) > 15.0 * 9.81
@@ -649,12 +651,9 @@ pub async fn avionics_main(
             //     combined_imu_reading.data.acc = high_g_imu_reading.data.acc;
             // }
 
-            if let Some(backup_flight_core) = backup_flight_core.borrow_mut().as_mut() {
-                backup_flight_core.tick(&baro_reading);
-            }
-            backup_backup_flight_core.lock(|r| {
-                if let Some(backup_backup_flight_core) = r.borrow_mut().as_mut() {
-                    backup_backup_flight_core.tick(services.clock.now_ms());
+            backup_flight_core.lock(|r| {
+                if let Some(backup_flight_core) = r.borrow_mut().as_mut() {
+                    backup_flight_core.tick(&baro_reading);
                 }
             });
             // if let Some(flight_core) = flight_core.borrow_mut().as_mut() {
@@ -664,6 +663,18 @@ pub async fn avionics_main(
             //         baro_reading: Some(baro_reading),
             //     })
             // }
+        }
+    };
+
+    let backup_backup_flight_core_tick_fut = async {
+        let mut ticker = Ticker::every(services.clock(), services.delay(), 5.0);
+        loop {
+            ticker.next().await;
+            backup_backup_flight_core.lock(|r| {
+                if let Some(backup_backup_flight_core) = r.borrow_mut().as_mut() {
+                    backup_backup_flight_core.tick(services.clock.now_ms());
+                }
+            });
         }
     };
 
@@ -837,7 +848,7 @@ pub async fn avionics_main(
         loop {
             storage_full_detection_ticker.next().await;
             let free = services.fs.free().await;
-            storage_full.replace(free < 1024 * 1024);
+            storage_full.lock(|r| r.replace(free < 1024 * 1024));
         }
     };
 
@@ -863,6 +874,7 @@ pub async fn avionics_main(
             // mag_fut,
             // bat_fut,
             flight_core_tick_fut,
+            backup_backup_flight_core_tick_fut,
             pyro_main_ctrl_fut,
             pyro_drogue_ctrl_fut,
             flight_core_event_consumer,
