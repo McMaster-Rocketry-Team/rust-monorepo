@@ -242,9 +242,9 @@ pub async fn sg_mid_prio_main(
             &fs,
             RingDeltaLoggerConfig {
                 file_type: SG_READINGS,
-                seconds_per_segment: 120,
-                first_segment_seconds: 120,
-                segments_per_ring: 45, // 90 mins of data
+                seconds_per_segment: 60 * 10,
+                first_segment_seconds: 60 * 10,
+                segments_per_ring: 60, // 10 hours of data
             },
             delay.clone(),
             clock.clone(),
@@ -264,7 +264,7 @@ pub async fn sg_mid_prio_main(
                     file_type: SG_BATTERY_LOGGER,
                     seconds_per_segment: 1800,
                     first_segment_seconds: 60,
-                    segments_per_ring: 40, // 20 hours
+                    segments_per_ring: 20, // 10 hours
                 },
             )
             .await
@@ -277,7 +277,7 @@ pub async fn sg_mid_prio_main(
         let processed_readings_receiver_fut = async {
             let clock = clock.clone();
             let mut processed_readings_receiver = states.processed_readings_channel.receiver();
-            #[cfg(debug_assertions)]
+            // #[cfg(debug_assertions)]
             {
                 sg_adc_controller.lock().await.set_enable(true).await;
                 states.error_states.lock(|s| {

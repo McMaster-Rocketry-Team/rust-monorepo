@@ -105,9 +105,9 @@ impl<'a> SGChannelProcessor<'a> {
             //     }
             // }
 
-            let amplitude_bytes = amplitude.to_le_bytes();
-            processed_reading.amplitudes[i * 2] = amplitude_bytes[0];
-            processed_reading.amplitudes[i * 2 + 1] = amplitude_bytes[1];
+            // let amplitude_bytes = amplitude.to_le_bytes();
+            // processed_reading.amplitudes[i * 2] = amplitude_bytes[0];
+            // processed_reading.amplitudes[i * 2 + 1] = amplitude_bytes[1];
         }
 
         // if self.sg_i == 1 {
