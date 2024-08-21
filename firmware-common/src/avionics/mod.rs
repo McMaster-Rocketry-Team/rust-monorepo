@@ -329,7 +329,7 @@ pub async fn avionics_main(
             update_ticker.next().await;
 
             let free = services.fs.free().await;
-            // log_info!("Free space: {}MB", free / 1024 / 1024);
+            log_info!("Free space: {}MB", free / 1024 / 1024);
             telemetry_packet_builder.update(|b| {
                 b.disk_free_space = free;
             });
@@ -528,6 +528,9 @@ pub async fn avionics_main(
             let low_g_imu_reading = low_g_imu_result.unwrap();
             let baro_reading = baro_result.unwrap();
 
+            telemetry_packet_builder.update(|s| {
+                s.temperature = baro_reading.data.temperature;
+            });
             if !*storage_full.borrow() {
                 low_g_imu_logger.ref_log(low_g_imu_reading.clone());
                 baro_logger.ref_log(baro_reading.clone());
@@ -754,6 +757,10 @@ pub async fn avionics_main(
                     FlightCoreEvent::ChangeState(FlightCoreState::MainChuteDeployed)
                 )
             ) {
+                log_info!("Deploying main chute");
+                telemetry_packet_builder.update(|b| {
+                    b.main_deployed = true;
+                });
                 pyro!(
                     device_manager,
                     flight_profile.main_pyro,
@@ -781,6 +788,10 @@ pub async fn avionics_main(
                     FlightCoreEvent::ChangeState(FlightCoreState::DrogueChuteDeployed)
                 )
             ) {
+                log_info!("Deploying drogue chute");
+                telemetry_packet_builder.update(|b| {
+                    b.drogue_deployed = true;
+                });
                 pyro!(
                     device_manager,
                     flight_profile.drogue_pyro,
@@ -810,6 +821,7 @@ pub async fn avionics_main(
                         camera.set_recording(false).await.ok();
                     }
                     FlightCoreState::Landed => {
+                        log_info!("Landed, stopping recording in 1 minute");
                         services.delay().delay_ms(1000.0 * 60.0).await;
                         camera.set_recording(false).await.ok();
                     }

@@ -15,7 +15,7 @@ use packed_struct::prelude::*;
 
 use super::packet::{VLPDownlinkPacket, VLPUplinkPacket};
 
-pub const MAX_VLP_PACKET_SIZE: usize = 48;
+pub const MAX_VLP_PACKET_SIZE: usize = 49;
 
 const TIME_BASED_NONCE_ENABLED: bool = false;
 
@@ -111,7 +111,7 @@ impl<'a, 'b, CL: Clock> VLPPacketBuilder<'a, 'b, CL> {
             VLPUplinkPacket::GroundTestDeployPacket(_) => 5,
             VLPUplinkPacket::ManualTriggerDeplotmentPacket(_) => 6,
         };
-        let packet_type: Integer<u8, packed_bits::Bits<3>> = packet_type.into();
+        let packet_type: Integer<u8, packed_bits::Bits<4>> = packet_type.into();
 
         self.bit_slice_writer.write(packet_type);
         match packet {
@@ -188,7 +188,7 @@ impl<'a, 'b, CL: Clock> VLPPacketBuilder<'a, 'b, CL> {
                 buffer.pop();
                 self.bit_slice_reader.clear();
                 self.bit_slice_reader.replenish_bytes(buffer.as_slice());
-                let packet_type: Integer<u8, packed_bits::Bits<3>> =
+                let packet_type: Integer<u8, packed_bits::Bits<4>> =
                     self.bit_slice_reader.read().unwrap();
                 let packet_type: u8 = packet_type.into();
                 let packet = match packet_type {
@@ -207,6 +207,12 @@ impl<'a, 'b, CL: Clock> VLPPacketBuilder<'a, 'b, CL> {
                     4 => VLPUplinkPacket::DeleteLogsPacket(DeleteLogsPacket::deserialize(
                         &mut self.bit_slice_reader,
                     )),
+                    5 => VLPUplinkPacket::GroundTestDeployPacket(
+                        GroundTestDeployPacket::deserialize(&mut self.bit_slice_reader),
+                    ),
+                    6 => VLPUplinkPacket::ManualTriggerDeplotmentPacket(
+                        ManualTriggerDeplotmentPacket::deserialize(&mut self.bit_slice_reader),
+                    ),
                     _ => {
                         continue;
                     }
@@ -429,6 +435,8 @@ mod test {
             350.3,
             FlightCoreState::Armed,
             FlightCoreState::Armed,
+            false,
+            false,
         ));
         packet_builder
             .serialize_downlink(&mut buffer, &packet)
@@ -456,6 +464,7 @@ mod test {
         assert_eq!(packet, deserialized_packet);
 
         buffer[30] = 0xFF;
+        buffer[31] = 0xFF;
         packet_builder.deserialize_downlink(&buffer).unwrap_err();
     }
 }

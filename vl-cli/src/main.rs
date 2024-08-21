@@ -383,7 +383,9 @@ fn print_telemetry_packet(packet: &TelemetryPacket, status: &RpcPacketStatus) {
         println!("GPS: {}, {}", lat, lon);
     }
     println!(
-        "Altitude: {}/{}, Speed: {}/{}, Temp: {}, Main Cont: {}, Drogue Cont: {}, H Armed: {}, S Armed: {}, Free space: {}MiB, RSSI: {}, SNR: {}",
+        "{} ({:?}) Altitude: {}/{}, Speed: {}/{}, Temp: {}, Main Cont: {}, Drogue Cont: {}, H Armed: {}, S Armed: {}, Free space: {}MiB, RSSI: {}, SNR: {}{}{}",
+        packet.timestamp(),
+        packet.backup_flight_core_state(),
         packet.altitude(),
         packet.max_altitude(),
         packet.air_speed(),
@@ -396,5 +398,7 @@ fn print_telemetry_packet(packet: &TelemetryPacket, status: &RpcPacketStatus) {
         packet.free_space() / 1024.0 / 1024.0,
         status.rssi,
         status.snr,
+        if packet.drogue_deployed() { " Drogue Deployed" } else { "" },
+        if packet.main_deployed() { " Main Deployed" } else { "" },
     );
 }

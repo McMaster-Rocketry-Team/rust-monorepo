@@ -12,7 +12,7 @@ use rkyv::{Archive, Deserialize, Serialize};
 
 fixed_point_factory!(BatteryVFac, f32, 6.0, 9.0, 0.001);
 fixed_point_factory!(TemperatureFac, f32, -30.0, 85.0, 0.1);
-fixed_point_factory!(FreeSpaceFac, f32, 0.0, 524288.0, 128.0);
+fixed_point_factory!(FreeSpaceFac, f32, 0.0, 67108864.0, 40960.0);
 fixed_point_factory!(AltitudeFac, f32, -100.0, 5000.0, 5.0);
 fixed_point_factory!(AirSpeedFac, f32, -400.0, 400.0, 2.0);
 
@@ -67,6 +67,9 @@ pub struct TelemetryPacket {
     #[defmt(Debug2Format)]
     #[with(VariableIntRkyvWrapper)]
     backup_flight_core_state: Integer<u8, packed_bits::Bits<3>>,
+
+    drogue_deployed: bool,
+    main_deployed: bool,
 }
 
 impl TelemetryPacket {
@@ -98,6 +101,9 @@ impl TelemetryPacket {
 
         flight_core_state: FlightCoreState,
         backup_flight_core_state: FlightCoreState,
+
+        drogue_deployed: bool,
+        main_deployed: bool,
     ) -> Self {
         Self {
             unix_clock_ready,
@@ -119,6 +125,8 @@ impl TelemetryPacket {
             backup_max_air_speed: AirSpeedFac::to_fixed_point_capped(backup_max_air_speed),
             flight_core_state: (flight_core_state as u8).into(),
             backup_flight_core_state: (backup_flight_core_state as u8).into(),
+            drogue_deployed,
+            main_deployed,
         }
     }
 
@@ -213,6 +221,14 @@ impl TelemetryPacket {
             FlightCoreState::DisArmed
         }
     }
+
+    pub fn drogue_deployed(&self) -> bool {
+        self.drogue_deployed
+    }
+
+    pub fn main_deployed(&self) -> bool {
+        self.main_deployed
+    }
 }
 
 impl BitArraySerializable for TelemetryPacket {
@@ -236,6 +252,8 @@ impl BitArraySerializable for TelemetryPacket {
         writer.write(self.backup_max_air_speed);
         writer.write(self.flight_core_state);
         writer.write(self.backup_flight_core_state);
+        writer.write(self.drogue_deployed);
+        writer.write(self.main_deployed);
     }
 
     fn deserialize<const N: usize>(reader: &mut BitSliceReader<N>) -> Self {
@@ -259,6 +277,8 @@ impl BitArraySerializable for TelemetryPacket {
             backup_max_air_speed: reader.read().unwrap(),
             flight_core_state: reader.read().unwrap(),
             backup_flight_core_state: reader.read().unwrap(),
+            drogue_deployed: reader.read().unwrap(),
+            main_deployed: reader.read().unwrap(),
         }
     }
 
@@ -282,6 +302,8 @@ impl BitArraySerializable for TelemetryPacket {
             + AirSpeedFacPacked::len_bits()
             + <Integer<u8, packed_bits::Bits<3>>>::len_bits()
             + <Integer<u8, packed_bits::Bits<3>>>::len_bits()
+            + bool::len_bits()
+            + bool::len_bits()
     }
 }
 
@@ -305,6 +327,9 @@ pub struct TelemetryPacketBuilderState {
     pub flight_core_state: FlightCoreState,
     pub backup_flight_core_state: FlightCoreState,
     pub disk_free_space: u32,
+
+    pub drogue_deployed: bool,
+    pub main_deployed: bool,
 }
 
 pub struct TelemetryPacketBuilder<'a, K: Clock> {
@@ -335,6 +360,8 @@ impl<'a, K: Clock> TelemetryPacketBuilder<'a, K> {
                 flight_core_state: FlightCoreState::DisArmed,
                 backup_flight_core_state: FlightCoreState::DisArmed,
                 disk_free_space: 0,
+                drogue_deployed: false,
+                main_deployed: false,
             })),
         }
     }
@@ -366,6 +393,8 @@ impl<'a, K: Clock> TelemetryPacketBuilder<'a, K> {
                 state.backup_max_air_speed,
                 state.flight_core_state,
                 state.backup_flight_core_state,
+                state.drogue_deployed,
+                state.main_deployed,
             )
         })
     }
