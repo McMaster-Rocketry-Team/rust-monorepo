@@ -384,7 +384,7 @@ fn print_telemetry_packet(packet: &TelemetryPacket, status: &RpcPacketStatus) {
     }
     println!(
         "{} ({:?}) Altitude: {}/{}, Speed: {}/{}, Temp: {}, Main Cont: {}, Drogue Cont: {}, H Armed: {}, S Armed: {}, Free space: {}MiB, RSSI: {}, SNR: {}{}{}",
-        packet.timestamp(),
+        packet.timestamp() / 1000.0,
         packet.backup_flight_core_state(),
         packet.altitude(),
         packet.max_altitude(),
