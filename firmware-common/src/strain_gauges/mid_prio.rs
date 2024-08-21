@@ -378,7 +378,7 @@ pub async fn sg_mid_prio_main(
         usb_console_fut,
         store_sg_fut,
         led_fut,
-        can_rx_fut,
+        // can_rx_fut,
         // can_tx_fut
     );
 }
