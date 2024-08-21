@@ -4,7 +4,7 @@
     "mode": "GCM"
   },
   "lora": {
-    "frequency": 918000000,
+    "frequency": 903000000,
     "sf": 12,
     "bw": 250000,
     "cr": 8,
