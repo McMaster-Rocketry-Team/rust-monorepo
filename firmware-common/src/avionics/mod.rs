@@ -127,6 +127,9 @@ macro_rules! create_buffered_tiered_logger {
     };
 }
 
+fixed_point_factory!(SensorsFF1, f64, 4.9, 7.0, 0.05);
+fixed_point_factory!(SensorsFF2, f64, 199.0, 210.0, 0.5);
+
 #[inline(never)]
 pub async fn avionics_main(
     device_manager: vl_device_manager_type!(),
@@ -184,9 +187,6 @@ pub async fn avionics_main(
         GPSFF1: AVIONICS_GPS_LOGGER_TIER_1, 25 * 1,
         GPSFF2: AVIONICS_GPS_LOGGER_TIER_2, 25 * 2,
     );
-
-    fixed_point_factory!(SensorsFF1, f64, 4.9, 7.0, 0.05);
-    fixed_point_factory!(SensorsFF2, f64, 199.0, 210.0, 0.5);
 
     log_info!("Creating low G IMU logger");
     create_buffered_tiered_logger!(

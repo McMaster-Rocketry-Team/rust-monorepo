@@ -34,6 +34,7 @@ use vl_host_lib::vl::format_lora_key;
 use vl_host_lib::vl::gen_lora_key;
 use vl_host_lib::vl::json_to_device_config;
 use vl_host_lib::vl::json_to_flight_profile;
+use vl_host_lib::vl::pull_flight_data;
 use vl_host_lib::vl::pull_vacuum_test;
 use vlfs::FileID;
 use vlfs::FileType;
@@ -302,7 +303,9 @@ async fn main() -> Result<()> {
                     let device_config = json_to_device_config(json)?;
                     client.set_device_config(device_config).await.unwrap();
                 }
-                VLCommands::PullFlight(_) => todo!(),
+                VLCommands::PullFlight(args) => {
+                    pull_flight_data(&mut client, &args.save_folder).await.unwrap();
+                },
                 VLCommands::PullVacuumTest(args) => {
                     pull_vacuum_test(&mut client, &args.save_folder)
                         .await
