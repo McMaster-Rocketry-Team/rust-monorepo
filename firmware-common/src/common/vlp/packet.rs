@@ -139,6 +139,27 @@ impl BitArraySerializable for GroundTestDeployPacket {
 }
 
 #[derive(defmt::Format, Debug, Clone, PartialEq, Archive, Deserialize, Serialize)]
+pub struct ManualTriggerDeplotmentPacket {
+    pub timestamp: f64,
+}
+
+impl BitArraySerializable for ManualTriggerDeplotmentPacket {
+    fn serialize<const N: usize>(&self, writer: &mut BitSliceWriter<N>) {
+        writer.write(self.timestamp);
+    }
+
+    fn deserialize<const N: usize>(reader: &mut BitSliceReader<N>) -> Self {
+        Self {
+            timestamp: reader.read().unwrap(),
+        }
+    }
+
+    fn len_bits() -> usize {
+        64
+    }
+}
+
+#[derive(defmt::Format, Debug, Clone, PartialEq, Archive, Deserialize, Serialize)]
 pub enum VLPUplinkPacket {
     VerticalCalibrationPacket(VerticalCalibrationPacket),
     SoftArmPacket(SoftArmPacket),
@@ -146,6 +167,7 @@ pub enum VLPUplinkPacket {
     ResetPacket(ResetPacket),
     DeleteLogsPacket(DeleteLogsPacket),
     GroundTestDeployPacket(GroundTestDeployPacket),
+    ManualTriggerDeplotmentPacket(ManualTriggerDeplotmentPacket),
 }
 
 impl From<VerticalCalibrationPacket> for VLPUplinkPacket {
@@ -175,6 +197,18 @@ impl From<ResetPacket> for VLPUplinkPacket {
 impl From<DeleteLogsPacket> for VLPUplinkPacket {
     fn from(packet: DeleteLogsPacket) -> Self {
         Self::DeleteLogsPacket(packet)
+    }
+}
+
+impl From<GroundTestDeployPacket> for VLPUplinkPacket {
+    fn from(packet: GroundTestDeployPacket) -> Self {
+        Self::GroundTestDeployPacket(packet)
+    }
+}
+
+impl From<ManualTriggerDeplotmentPacket> for VLPUplinkPacket {
+    fn from(packet: ManualTriggerDeplotmentPacket) -> Self {
+        Self::ManualTriggerDeplotmentPacket(packet)
     }
 }
 

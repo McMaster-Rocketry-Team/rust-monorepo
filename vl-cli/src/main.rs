@@ -11,12 +11,16 @@ use embedded_hal_async::delay::DelayNs;
 use firmware_common::common::console::vl_rpc::GCMPollDownlinkPacketResponse;
 use firmware_common::common::vlp::packet::DeleteLogsPacket;
 use firmware_common::common::vlp::packet::LowPowerModePacket;
+use firmware_common::common::vlp::packet::ManualTriggerDeplotmentPacket;
 use firmware_common::common::vlp::packet::ResetPacket;
 use firmware_common::common::vlp::packet::SoftArmPacket;
+use firmware_common::common::vlp::packet::VLPDownlinkPacket;
 use firmware_common::common::vlp::packet::VLPUplinkPacket;
 use firmware_common::common::vlp::packet::VerticalCalibrationPacket;
+use firmware_common::common::vlp::telemetry_packet::TelemetryPacket;
 use firmware_common::sg_rpc;
 use firmware_common::vl_rpc;
+use firmware_common::vl_rpc::RpcPacketStatus;
 use log::LevelFilter;
 use tokio::fs::read_to_string;
 use tokio::time::sleep;
@@ -30,6 +34,7 @@ use vl_host_lib::vl::format_lora_key;
 use vl_host_lib::vl::gen_lora_key;
 use vl_host_lib::vl::json_to_device_config;
 use vl_host_lib::vl::json_to_flight_profile;
+use vl_host_lib::vl::pull_flight_data;
 use vl_host_lib::vl::pull_vacuum_test;
 use vlfs::FileID;
 use vlfs::FileType;
@@ -132,6 +137,7 @@ enum GCMUplinkPacket {
     LowPowerModeOff,
     Reset,
     DeleteLogs,
+    ManualTriggerDeployment,
 }
 
 fn file_type_parser(s: &str) -> Result<FileType, String> {
@@ -247,6 +253,9 @@ async fn main() -> Result<()> {
                         .into(),
                         GCMUplinkPacket::Reset => ResetPacket { timestamp }.into(),
                         GCMUplinkPacket::DeleteLogs => DeleteLogsPacket { timestamp }.into(),
+                        GCMUplinkPacket::ManualTriggerDeployment => {
+                            ManualTriggerDeplotmentPacket { timestamp }.into()
+                        }
                     };
 
                     let result = client.g_c_m_send_uplink_packet(packet).await.unwrap();
@@ -256,7 +265,9 @@ async fn main() -> Result<()> {
                             Ok(GCMPollDownlinkPacketResponse {
                                 packet: Some((packet, status)),
                             }) => {
-                                println!("{:?} {:?}", packet, status);
+                                if let VLPDownlinkPacket::TelemetryPacket(packet) = packet {
+                                    print_telemetry_packet(&packet, &status);
+                                }
                             }
                             Err(e) => {
                                 println!("{:?}", e);
@@ -271,7 +282,9 @@ async fn main() -> Result<()> {
                         Ok(GCMPollDownlinkPacketResponse {
                             packet: Some((packet, status)),
                         }) => {
-                            println!("{:?} {:?}", packet, status);
+                            if let VLPDownlinkPacket::TelemetryPacket(packet) = packet {
+                                print_telemetry_packet(&packet, &status);
+                            }
                         }
                         Err(e) => {
                             println!("{:?}", e);
@@ -290,7 +303,9 @@ async fn main() -> Result<()> {
                     let device_config = json_to_device_config(json)?;
                     client.set_device_config(device_config).await.unwrap();
                 }
-                VLCommands::PullFlight(_) => todo!(),
+                VLCommands::PullFlight(args) => {
+                    pull_flight_data(&mut client, &args.save_folder).await.unwrap();
+                },
                 VLCommands::PullVacuumTest(args) => {
                     pull_vacuum_test(&mut client, &args.save_folder)
                         .await
@@ -364,4 +379,29 @@ async fn main() -> Result<()> {
 
     println!("Done");
     Ok(())
+}
+
+fn print_telemetry_packet(packet: &TelemetryPacket, status: &RpcPacketStatus) {
+    if let Some((lat, lon)) = packet.lat_lon() {
+        println!("GPS: {}, {}", lat, lon);
+    }
+    println!(
+        "{} ({:?}) Altitude: {}/{}, Speed: {}/{}, Temp: {}, Main Cont: {}, Drogue Cont: {}, H Armed: {}, S Armed: {}, Free space: {}MiB, RSSI: {}, SNR: {}{}{}",
+        packet.timestamp() / 1000.0,
+        packet.backup_flight_core_state(),
+        packet.altitude(),
+        packet.max_altitude(),
+        packet.air_speed(),
+        packet.max_air_speed(),
+        packet.temperature(),
+        packet.pyro_main_continuity(),
+        packet.pyro_drogue_continuity(),
+        packet.hardware_armed(),
+        packet.software_armed(),
+        packet.free_space() / 1024.0 / 1024.0,
+        status.rssi,
+        status.snr,
+        if packet.drogue_deployed() { " Drogue Deployed" } else { "" },
+        if packet.main_deployed() { " Main Deployed" } else { "" },
+    );
 }

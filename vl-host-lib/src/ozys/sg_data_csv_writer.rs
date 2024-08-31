@@ -40,7 +40,7 @@ impl SGCSVWriter {
         unix_timestamp: Option<f64>,
     ) -> Result<()> {
         assert_eq!(reading.samples.len(), 80);
-        assert_eq!(reading.amplitudes.len(), 400);
+        // assert_eq!(reading.amplitudes.len(), 400);
 
         // samples
         for i in 0..(reading.samples.len() / 2) {
@@ -57,18 +57,18 @@ impl SGCSVWriter {
         }
 
         // fft
-        let mut row = Vec::<String>::new();
-        row.push(format!("{}", reading.start_time));
-        row.push(unix_timestamp.map_or("".into(), |t| format!("{}", t)));
-        for i in 0..(reading.amplitudes.len() / 2) {
-            let amplitude = half::f16::from_le_bytes([
-                reading.amplitudes[i * 2],
-                reading.amplitudes[i * 2 + 1],
-            ])
-            .to_f32();
-            row.push(format!("{}", amplitude));
-        }
-        self.fft_writer.write_record(row)?;
+        // let mut row = Vec::<String>::new();
+        // row.push(format!("{}", reading.start_time));
+        // row.push(unix_timestamp.map_or("".into(), |t| format!("{}", t)));
+        // for i in 0..(reading.amplitudes.len() / 2) {
+        //     let amplitude = half::f16::from_le_bytes([
+        //         reading.amplitudes[i * 2],
+        //         reading.amplitudes[i * 2 + 1],
+        //     ])
+        //     .to_f32();
+        //     row.push(format!("{}", amplitude));
+        // }
+        // self.fft_writer.write_record(row)?;
 
         Ok(())
     }

@@ -8,13 +8,16 @@ use crate::{
         delta_logger::prelude::{BitArraySerializable, BitSliceReader, BitSliceWriter},
         unix_clock::UnixClock,
         vlp::{packet::*, telemetry_packet::TelemetryPacket},
-    }, driver::clock::Clock,
+    },
+    driver::clock::Clock,
 };
 use packed_struct::prelude::*;
 
 use super::packet::{VLPDownlinkPacket, VLPUplinkPacket};
 
-pub const MAX_VLP_PACKET_SIZE: usize = 48;
+pub const MAX_VLP_PACKET_SIZE: usize = 49;
+
+const TIME_BASED_NONCE_ENABLED: bool = false;
 
 pub struct VLPPacketBuilder<'a, 'b, CL: Clock> {
     lora_config: BaseBandModulationParams,
@@ -47,39 +50,46 @@ impl<'a, 'b, CL: Clock> VLPPacketBuilder<'a, 'b, CL> {
     }
 
     fn get_nonce(time: f64) -> [u8; 8] {
-        let mut now = time as u64;
-        // cloesest 100ms
-        now = now - now % 100;
-        now.to_le_bytes()
+        if TIME_BASED_NONCE_ENABLED {
+            let mut now = time as u64;
+            // cloesest 100ms
+            now = now - now % 100;
+            now.to_le_bytes()
+        } else {
+            [0x69; 8]
+        }
     }
 
     fn get_past_nonce(&self, packet_length: usize) -> Vec<(i32, [u8; 8]), 10> {
-        let now = self.unix_clock.now_ms() as u64;
-        let air_time = self
-            .lora_config
-            .time_on_air_us(Some(4), true, packet_length as u8)
-            / 1000;
-        // TODO include time take to prepare for tx (spi)?
-        let sent_time = now.checked_sub(air_time as u64).unwrap_or(0);
-
-        let module = sent_time % 100;
-
         let mut result = Vec::new();
 
-        let start = sent_time
-            .checked_sub(module)
-            .unwrap_or(0)
-            .checked_sub(500)
-            .unwrap_or(0);
-        for i in 0..10 {
-            result
-                .push((
-                    (i as i32 * 100 - 500) as i32,
-                    (start + i * 100).to_le_bytes(),
-                ))
-                .unwrap();
-        }
+        if TIME_BASED_NONCE_ENABLED {
+            let now = self.unix_clock.now_ms() as u64;
+            let air_time = self
+                .lora_config
+                .time_on_air_us(Some(4), true, packet_length as u8)
+                / 1000;
+            // TODO include time take to prepare for tx (spi)?
+            let sent_time = now.checked_sub(air_time as u64).unwrap_or(0);
 
+            let module = sent_time % 100;
+
+            let start = sent_time
+                .checked_sub(module)
+                .unwrap_or(0)
+                .checked_sub(500)
+                .unwrap_or(0);
+            for i in 0..10 {
+                result
+                    .push((
+                        (i as i32 * 100 - 500) as i32,
+                        (start + i * 100).to_le_bytes(),
+                    ))
+                    .unwrap();
+            }
+        } else {
+            result.push((0, [0x69; 8])).unwrap();
+        }
         result
     }
 
@@ -99,8 +109,9 @@ impl<'a, 'b, CL: Clock> VLPPacketBuilder<'a, 'b, CL> {
             VLPUplinkPacket::ResetPacket(_) => 3,
             VLPUplinkPacket::DeleteLogsPacket(_) => 4,
             VLPUplinkPacket::GroundTestDeployPacket(_) => 5,
+            VLPUplinkPacket::ManualTriggerDeplotmentPacket(_) => 6,
         };
-        let packet_type: Integer<u8, packed_bits::Bits<3>> = packet_type.into();
+        let packet_type: Integer<u8, packed_bits::Bits<4>> = packet_type.into();
 
         self.bit_slice_writer.write(packet_type);
         match packet {
@@ -116,6 +127,9 @@ impl<'a, 'b, CL: Clock> VLPPacketBuilder<'a, 'b, CL> {
                 packet.serialize(&mut self.bit_slice_writer)
             }
             VLPUplinkPacket::GroundTestDeployPacket(packet) => {
+                packet.serialize(&mut self.bit_slice_writer)
+            }
+            VLPUplinkPacket::ManualTriggerDeplotmentPacket(packet) => {
                 packet.serialize(&mut self.bit_slice_writer)
             }
         };
@@ -174,7 +188,7 @@ impl<'a, 'b, CL: Clock> VLPPacketBuilder<'a, 'b, CL> {
                 buffer.pop();
                 self.bit_slice_reader.clear();
                 self.bit_slice_reader.replenish_bytes(buffer.as_slice());
-                let packet_type: Integer<u8, packed_bits::Bits<3>> =
+                let packet_type: Integer<u8, packed_bits::Bits<4>> =
                     self.bit_slice_reader.read().unwrap();
                 let packet_type: u8 = packet_type.into();
                 let packet = match packet_type {
@@ -193,6 +207,12 @@ impl<'a, 'b, CL: Clock> VLPPacketBuilder<'a, 'b, CL> {
                     4 => VLPUplinkPacket::DeleteLogsPacket(DeleteLogsPacket::deserialize(
                         &mut self.bit_slice_reader,
                     )),
+                    5 => VLPUplinkPacket::GroundTestDeployPacket(
+                        GroundTestDeployPacket::deserialize(&mut self.bit_slice_reader),
+                    ),
+                    6 => VLPUplinkPacket::ManualTriggerDeplotmentPacket(
+                        ManualTriggerDeplotmentPacket::deserialize(&mut self.bit_slice_reader),
+                    ),
                     _ => {
                         continue;
                     }
@@ -415,6 +435,8 @@ mod test {
             350.3,
             FlightCoreState::Armed,
             FlightCoreState::Armed,
+            false,
+            false,
         ));
         packet_builder
             .serialize_downlink(&mut buffer, &packet)
@@ -442,6 +464,7 @@ mod test {
         assert_eq!(packet, deserialized_packet);
 
         buffer[30] = 0xFF;
+        buffer[31] = 0xFF;
         packet_builder.deserialize_downlink(&buffer).unwrap_err();
     }
 }

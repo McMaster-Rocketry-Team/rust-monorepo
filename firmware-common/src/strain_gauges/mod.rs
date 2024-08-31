@@ -27,7 +27,7 @@ pub const READS_PER_SECOND: usize = 200;
 pub struct ProcessedSGReading {
     pub start_time: f64, // boot time in ms
     pub sg_i: u8,
-    pub amplitudes: [u8; 400], // [half::f16; 200]
+    // pub amplitudes: [u8; 400], // [half::f16; 200]
     pub samples: [u8; 80],      // [half::f16; 40]
 }
 
@@ -36,7 +36,7 @@ impl Default for ProcessedSGReading {
         Self {
             start_time: 0.0,
             sg_i: 0,
-            amplitudes: [0u8; 400],
+            // amplitudes: [0u8; 400],
             samples: [0u8; 80],
         }
     }

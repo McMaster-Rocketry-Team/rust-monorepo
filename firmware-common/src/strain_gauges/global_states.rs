@@ -26,6 +26,7 @@ impl<M: RawMutex, T: RawSGReadingsTrait> SGGlobalStates<M, T> {
                 can_bus_error: false,
                 sg_adc_error: false,
                 usb_connected: false,
+                recording: false,
             })),
         }
     }
@@ -36,4 +37,5 @@ pub(crate) struct SGLEDState {
     pub(crate) can_bus_error: bool,
     pub(crate) sg_adc_error: bool,
     pub(crate) usb_connected: bool,
+    pub(crate) recording: bool,
 }

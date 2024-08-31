@@ -34,9 +34,9 @@ pub async fn gcm_main(
 ) {
     claim_devices!(device_manager, lora, indicators);
 
-    let indicators_fut = indicators.run([], [], [250, 250]);
-    let wait_gps_fut = services.unix_clock.wait_until_ready();
-    select(indicators_fut, wait_gps_fut).await;
+    // let indicators_fut = indicators.run([], [], [250, 250]);
+    // let wait_gps_fut = services.unix_clock.wait_until_ready();
+    // select(indicators_fut, wait_gps_fut).await;
     let indictors_fut = indicators.run([], [50, 950], []);
 
     let vlp_client = VLPDownlinkClient::new();

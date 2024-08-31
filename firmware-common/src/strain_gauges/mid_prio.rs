@@ -99,7 +99,15 @@ pub async fn sg_mid_prio_main(
     let usb_console_fut = async {
         loop {
             usb.wait_connection().await;
-            run_rpc_server(&mut usb, &fs, &sys_reset, device_serial_number, &sg_adc_controller, states).await;
+            run_rpc_server(
+                &mut usb,
+                &fs,
+                &sys_reset,
+                device_serial_number,
+                &sg_adc_controller,
+                states,
+            )
+            .await;
         }
     };
 
@@ -110,6 +118,7 @@ pub async fn sg_mid_prio_main(
         loop {
             match can_rx.receive().await {
                 Ok(message) => {
+                    log_info!("Received CAN message");
                     states.error_states.lock(|s| {
                         s.borrow_mut().can_bus_error = false;
                     });
@@ -123,17 +132,20 @@ pub async fn sg_mid_prio_main(
                         // if armed -> going to launch soon, start recording adc
                         let message =
                             AvionicsStatusMessage::from_data(message.data().try_into().unwrap());
+                        log_info!("Received CAN message: AvionicsStatusMessage");
                         armed = message.armed;
                     } else if id.message_type == FlightEventMessage::message_type() {
                         // if landed -> stop recording adc
                         let message =
                             FlightEventMessage::from_data(message.data().try_into().unwrap());
+                        log_info!("Received CAN message: FlightEventMessage");
                         landed = message.event == FlightEvent::Landed;
                     } else if id.message_type == UnixTimeMessage::message_type() {
                         // sync time
                         let boot_timestamp = message.timestamp();
                         let message =
                             UnixTimeMessage::from_data(message.data().try_into().unwrap());
+                        log_info!("Received CAN message: UnixTimeMessage");
                         let unix_timestamp: u64 = message.timestamp.into();
                         unix_timestamp_log_mutex.lock(|m| {
                             m.borrow_mut().replace((
@@ -153,8 +165,12 @@ pub async fn sg_mid_prio_main(
                         .await
                         .set_enable(armed && !landed)
                         .await;
+                    states.error_states.lock(|s| {
+                        s.borrow_mut().recording = armed && !landed;
+                    });
                 }
-                Err(_) => {
+                Err(e) => {
+                    log_error!("Error receiving CAN message: {:?}", e);
                     states.error_states.lock(|s| {
                         s.borrow_mut().can_bus_error = true;
                     });
@@ -197,6 +213,11 @@ pub async fn sg_mid_prio_main(
                 delay.delay_ms(100.0).await;
                 indicator.set_enable(false).await;
                 delay.delay_ms(100.0).await;
+            } else if error_states.recording {
+                indicator.set_enable(true).await;
+                delay.delay_ms(500.0).await;
+                indicator.set_enable(false).await;
+                delay.delay_ms(500.0).await;
             } else {
                 indicator.set_enable(true).await;
                 delay.delay_ms(50.0).await;
@@ -221,9 +242,9 @@ pub async fn sg_mid_prio_main(
             &fs,
             RingDeltaLoggerConfig {
                 file_type: SG_READINGS,
-                seconds_per_segment: 120,
-                first_segment_seconds: 120,
-                segments_per_ring: 45, // 90 mins of data
+                seconds_per_segment: 60 * 10,
+                first_segment_seconds: 60 * 10,
+                segments_per_ring: 60, // 10 hours of data
             },
             delay.clone(),
             clock.clone(),
@@ -243,7 +264,7 @@ pub async fn sg_mid_prio_main(
                     file_type: SG_BATTERY_LOGGER,
                     seconds_per_segment: 1800,
                     first_segment_seconds: 60,
-                    segments_per_ring: 40, // 20 hours
+                    segments_per_ring: 20, // 10 hours
                 },
             )
             .await
@@ -257,7 +278,12 @@ pub async fn sg_mid_prio_main(
             let clock = clock.clone();
             let mut processed_readings_receiver = states.processed_readings_channel.receiver();
             // #[cfg(debug_assertions)]
-            sg_adc_controller.lock().await.set_enable(true).await;
+            {
+                sg_adc_controller.lock().await.set_enable(true).await;
+                states.error_states.lock(|s| {
+                    s.borrow_mut().recording = true;
+                });
+            }
 
             loop {
                 let reading = processed_readings_receiver.receive().await;
@@ -352,7 +378,7 @@ pub async fn sg_mid_prio_main(
         usb_console_fut,
         store_sg_fut,
         led_fut,
-        can_rx_fut,
-        can_tx_fut
+        // can_rx_fut,
+        // can_tx_fut
     );
 }

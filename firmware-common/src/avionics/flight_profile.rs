@@ -18,4 +18,6 @@ pub struct FlightProfile {
     pub main_pyro: PyroSelection,
     pub main_chute_altitude_agl: f32,
     pub main_chute_delay_ms: f64,
+    pub drouge_to_main_ms: f64, // 107s
+    pub main_to_landed_ms: f64, // 76s
 }
