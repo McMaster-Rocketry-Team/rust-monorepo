@@ -32,7 +32,9 @@
     "vscode": {
       // Set *default* container specific settings.json values on container create.
       "settings": {
-        "files.autoSave": "afterDelay"
+        "files.autoSave": "afterDelay",
+        "git.enableSmartCommit": true,
+        "git.autofetch": true
       },
       // Add the IDs of extensions you want installed when the container is created.
       "extensions": [
