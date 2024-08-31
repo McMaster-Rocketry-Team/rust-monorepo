@@ -19,7 +19,7 @@
       "profile": "default"
     },
     "ghcr.io/deep-space-cartel/devcontainers-features/apt:latest": {
-      "packages": "pkg-config fontconfig-devel"
+      "packages": "pkg-config libfontconfig1-dev"
     }
   },
   // Use 'forwardPorts' to make a list of ports inside the container available locally.
