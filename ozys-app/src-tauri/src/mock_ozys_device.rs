@@ -91,7 +91,8 @@ impl OzysDevice for MockOzysDevice {
         Ok(Some(self.channel_states.map(|state| {
             if state == OZYSChannelState::Connected {
                 Some(OzysChannelRealtimeData {
-                    readings: vec![0.0; 20],
+                    readings: vec![0.0; 10],
+                    reading_noises: vec![0.0; 10],
                     fft_0_to_2k: vec![0.0; 200],
                     fft_2k_to_20k: vec![0.0; 360],
                 })
