@@ -32,9 +32,11 @@ async fn ozys_enumerate_devices(
     state: State<'_, Mutex<AppState>>,
 ) -> Result<Vec<OzysDeviceInfo>, String> {
     let mut state = state.lock().await;
-    state
-        .connected_ozys_devices
-        .push(Box::new(MockOzysDevice::new()));
+    if state.connected_ozys_devices.is_empty() {
+        state
+            .connected_ozys_devices
+            .push(Box::new(MockOzysDevice::new()));
+    }
     Ok(state
         .connected_ozys_devices
         .iter_mut()

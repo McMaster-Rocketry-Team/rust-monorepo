@@ -88,6 +88,16 @@ impl OzysDevice for MockOzysDevice {
     }
 
     async fn poll_realtime_data(&mut self) -> Result<Option<[Option<OzysChannelRealtimeData>; 4]>> {
-        Ok(None)
+        Ok(Some(self.channel_states.map(|state| {
+            if state == OZYSChannelState::Connected {
+                Some(OzysChannelRealtimeData {
+                    readings: vec![0.0; 20],
+                    fft_0_to_2k: vec![0.0; 200],
+                    fft_2k_to_20k: vec![0.0; 360],
+                })
+            } else {
+                None
+            }
+        })))
     }
 }
