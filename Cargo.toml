@@ -8,8 +8,10 @@ members = [
     # "vl8-ctrl-protocol", 
     "vl-cli",
     # "vl-simulink-bridge", 
-    "calculate-required-bits", "vl-host-lib",
+    "calculate-required-bits", 
+    "vl-host-lib",
     # "launch-simulator",
+    "ozys-app/src-tauri",
 ]
 resolver = "2"
 
