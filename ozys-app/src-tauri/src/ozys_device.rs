@@ -21,6 +21,7 @@ pub enum OZYSChannelState {
 #[derive(Serialize, Clone)]
 pub struct OzysChannelRealtimeData {
     /// Absolute reading values
+    /// Unit is 1, e.g. 0.01 = 1% of length change
     /// 10 readings long, interval between readings is 10ms
     pub readings: Vec<f32>,
 
