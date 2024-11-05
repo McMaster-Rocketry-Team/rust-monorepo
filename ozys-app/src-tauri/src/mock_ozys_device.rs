@@ -15,6 +15,7 @@ impl MockOzysDevice {
                 name: "Mock OZYS Device".to_string(),
                 id: "mock-ozys-id".to_string(),
                 model: "OZYS V3".to_string(),
+                channel_count: 4,
             },
             channel_names: [
                 Some("Channel 1".to_string()),
@@ -43,12 +44,12 @@ impl OzysDevice for MockOzysDevice {
         Ok(())
     }
 
-    async fn get_channel_names(&mut self) -> Result<[Option<String>; 4]> {
-        Ok(self.channel_names.clone())
+    async fn get_channel_name(&mut self, channel_index: usize) -> Result<Option<String>> {
+        Ok(self.channel_names[channel_index].clone())
     }
 
-    async fn get_channel_states(&mut self) -> Result<[OZYSChannelState; 4]> {
-        Ok(self.channel_states.clone())
+    async fn get_channel_states(&mut self) -> Result<Vec<OZYSChannelState>> {
+        Ok(self.channel_states.to_vec())
     }
 
     async fn rename_channel(&mut self, channel_index: usize, new_name: String) -> Result<()> {
@@ -87,18 +88,22 @@ impl OzysDevice for MockOzysDevice {
         Ok(())
     }
 
-    async fn poll_realtime_data(&mut self) -> Result<Option<[Option<OzysChannelRealtimeData>; 4]>> {
-        Ok(Some(self.channel_states.map(|state| {
-            if state == OZYSChannelState::Connected {
-                Some(OzysChannelRealtimeData {
-                    readings: vec![0.0; 10],
-                    reading_noises: vec![0.0; 10],
-                    fft_0_to_2k: vec![0.0; 200],
-                    fft_2k_to_20k: vec![0.0; 360],
+    async fn poll_realtime_data(&mut self) -> Result<Option<Vec<Option<OzysChannelRealtimeData>>>> {
+        Ok(Some(
+            self.channel_states
+                .map(|state| {
+                    if state == OZYSChannelState::Connected {
+                        Some(OzysChannelRealtimeData {
+                            readings: vec![0.0; 10],
+                            reading_noises: vec![0.0; 10],
+                            fft_0_to_2k: vec![0.0; 200],
+                            fft_2k_to_20k: vec![0.0; 360],
+                        })
+                    } else {
+                        None
+                    }
                 })
-            } else {
-                None
-            }
-        })))
+                .to_vec(),
+        ))
     }
 }

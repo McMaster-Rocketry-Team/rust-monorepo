@@ -65,20 +65,24 @@ async fn ozys_rename_device(
 }
 
 #[tauri::command]
-async fn ozys_get_channel_names(
+async fn ozys_get_channel_name(
     state: State<'_, Mutex<AppState>>,
     device_id: String,
-) -> Result<[Option<String>; 4], String> {
+    channel_index: usize,
+) -> Result<Option<String>, String> {
     let mut state = state.lock().await;
     let device = state.get_device_by_id(&device_id)?;
-    device.get_channel_names().await.map_err(|e| e.to_string())
+    device
+        .get_channel_name(channel_index)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 async fn ozys_get_channel_states(
     state: State<'_, Mutex<AppState>>,
     device_id: String,
-) -> Result<[OZYSChannelState; 4], String> {
+) -> Result<Vec<OZYSChannelState>, String> {
     let mut state = state.lock().await;
     let device = state.get_device_by_id(&device_id)?;
     device.get_channel_states().await.map_err(|e| e.to_string())
@@ -136,7 +140,7 @@ async fn ozys_control_recording(
 async fn ozys_poll_realtime_data(
     state: State<'_, Mutex<AppState>>,
     device_id: String,
-) -> Result<Option<[Option<OzysChannelRealtimeData>; 4]>, String> {
+) -> Result<Option<Vec<Option<OzysChannelRealtimeData>>>, String> {
     let mut state = state.lock().await;
     let device = state.get_device_by_id(&device_id)?;
     device.poll_realtime_data().await.map_err(|e| e.to_string())
@@ -154,7 +158,7 @@ pub fn run() {
             ozys_enumerate_devices,
             ozys_manually_add_device,
             ozys_rename_device,
-            ozys_get_channel_names,
+            ozys_get_channel_name,
             ozys_get_channel_states,
             ozys_rename_channel,
             ozys_control_channel,
