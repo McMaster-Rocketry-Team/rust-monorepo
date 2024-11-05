@@ -1,3 +1,5 @@
+cargo-features = ["profile-rustflags", "trim-paths"]
+
 [package]
 name = "ozys-app"
 version = "0.1.0"
@@ -13,6 +15,19 @@ edition = "2021"
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
 name = "ozys_app_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
+
+[profile.dev]
+incremental = true # Compile your binary in smaller steps.
+rustflags = ["-Zthreads=8"] # Better compile performance.
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true
+trim-paths = "all"
+rustflags = ["-Cdebuginfo=0", "-Zthreads=8"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
