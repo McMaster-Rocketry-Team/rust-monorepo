@@ -4,8 +4,6 @@ use async_trait::async_trait;
 
 pub struct MockOzysDevice {
     device_info: OzysDeviceInfo,
-    channel_names: [Option<String>; 4],
-    channel_states: [OZYSChannelState; 4],
 }
 
 impl MockOzysDevice {
@@ -15,20 +13,25 @@ impl MockOzysDevice {
                 name: "Mock OZYS Device".to_string(),
                 id: "mock-ozys-id".to_string(),
                 model: "OZYS V3".to_string(),
-                channel_count: 4,
+                channels: vec![
+                    OZYSChannelState::Connected {
+                        enabled: true,
+                        name: "Channel 1".to_string(),
+                        id: "channel-1".into(),
+                    },
+                    OZYSChannelState::Connected {
+                        enabled: true,
+                        name: "Channel 2".to_string(),
+                        id: "channel-2".into(),
+                    },
+                    OZYSChannelState::Connected {
+                        enabled: false,
+                        name: "Channel 3".to_string(),
+                        id: "channel-3".into(),
+                    },
+                    OZYSChannelState::Disconnected,
+                ],
             },
-            channel_names: [
-                Some("Channel 1".to_string()),
-                Some("Channel 2".to_string()),
-                Some("Channel 3".to_string()),
-                None,
-            ],
-            channel_states: [
-                OZYSChannelState::Connected,
-                OZYSChannelState::Connected,
-                OZYSChannelState::Disabled,
-                OZYSChannelState::Disconnected,
-            ],
         }
     }
 }
@@ -44,17 +47,11 @@ impl OzysDevice for MockOzysDevice {
         Ok(())
     }
 
-    async fn get_channel_name(&mut self, channel_index: usize) -> Result<Option<String>> {
-        Ok(self.channel_names[channel_index].clone())
-    }
-
-    async fn get_channel_states(&mut self) -> Result<Vec<OZYSChannelState>> {
-        Ok(self.channel_states.to_vec())
-    }
-
     async fn rename_channel(&mut self, channel_index: usize, new_name: String) -> Result<()> {
-        if let Some(channel_name) = &mut self.channel_names[channel_index] {
-            *channel_name = new_name;
+        if let OZYSChannelState::Connected { name, .. } =
+            &mut self.device_info.channels[channel_index]
+        {
+            *name = new_name;
             Ok(())
         } else {
             Err(anyhow::anyhow!(
@@ -64,23 +61,17 @@ impl OzysDevice for MockOzysDevice {
         }
     }
 
-    async fn control_channel(&mut self, channel_index: usize, enabled: bool) -> Result<()> {
-        let channel_state = &mut self.channel_states[channel_index];
-
-        match (&channel_state, enabled) {
-            (OZYSChannelState::Connected, false) => {
-                *channel_state = OZYSChannelState::Disabled;
-                Ok(())
-            }
-            (OZYSChannelState::Disabled, true) => {
-                *channel_state = OZYSChannelState::Connected;
-                Ok(())
-            }
-            (OZYSChannelState::Disconnected, _) => Err(anyhow::anyhow!(
+    async fn control_channel(&mut self, channel_index: usize, new_enabled: bool) -> Result<()> {
+        if let OZYSChannelState::Connected { enabled, .. } =
+            &mut self.device_info.channels[channel_index]
+        {
+            *enabled = new_enabled;
+            Ok(())
+        } else {
+            Err(anyhow::anyhow!(
                 "Channel {} is not connected",
                 channel_index
-            )),
-            _ => Ok(()),
+            ))
         }
     }
 
@@ -90,9 +81,11 @@ impl OzysDevice for MockOzysDevice {
 
     async fn poll_realtime_data(&mut self) -> Result<Option<Vec<Option<OzysChannelRealtimeData>>>> {
         Ok(Some(
-            self.channel_states
+            self.device_info
+                .channels
+                .iter()
                 .map(|state| {
-                    if state == OZYSChannelState::Connected {
+                    if matches!(state, OZYSChannelState::Connected { enabled: true, .. }) {
                         Some(OzysChannelRealtimeData {
                             readings: vec![0.0; 10],
                             reading_noises: vec![0.0; 10],
@@ -103,7 +96,7 @@ impl OzysDevice for MockOzysDevice {
                         None
                     }
                 })
-                .to_vec(),
+                .collect(),
         ))
     }
 }

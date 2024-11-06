@@ -7,14 +7,18 @@ pub struct OzysDeviceInfo {
     pub name: String,
     pub id: String,
     pub model: String,
-    pub channel_count: usize,
+    pub channels: Vec<OZYSChannelState>,
 }
 
-#[derive(Serialize, Clone, Copy, PartialEq, Eq)]
+#[derive(Serialize, Clone, PartialEq, Eq)]
+#[serde(tag = "state")]
 pub enum OZYSChannelState {
-    Connected,
     Disconnected,
-    Disabled,
+    Connected {
+        enabled: bool,
+        name: String,
+        id: String,
+    },
 }
 
 /// The frontend polls this at 10Hz, contains the readings and
@@ -46,11 +50,6 @@ pub struct OzysChannelRealtimeData {
 pub trait OzysDevice {
     fn get_device_info(&self) -> OzysDeviceInfo;
     async fn rename_device(&mut self, new_name: String) -> Result<()>;
-
-    /// this is slow, so we don't want to call it too often
-    async fn get_channel_name(&mut self, channel_index: usize) -> Result<Option<String>>;
-
-    async fn get_channel_states(&mut self) -> Result<Vec<OZYSChannelState>>;
     async fn rename_channel(&mut self, channel_index: usize, new_name: String) -> Result<()>;
     async fn control_channel(&mut self, channel_index: usize, enabled: bool) -> Result<()>;
     async fn control_recording(&mut self, record: bool) -> Result<()>;

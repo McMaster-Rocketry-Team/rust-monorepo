@@ -1,8 +1,7 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 
 use mock_ozys_device::MockOzysDevice;
-use ozys_device::{OZYSChannelState, OzysChannelRealtimeData};
-use ozys_device::{OzysDevice, OzysDeviceInfo};
+use ozys_device::{OzysChannelRealtimeData, OzysDevice, OzysDeviceInfo};
 use tauri::Manager as _;
 use tauri::State;
 use tokio::sync::Mutex;
@@ -62,30 +61,6 @@ async fn ozys_rename_device(
         .await
         .map_err(|e| e.to_string())?;
     Ok(())
-}
-
-#[tauri::command]
-async fn ozys_get_channel_name(
-    state: State<'_, Mutex<AppState>>,
-    device_id: String,
-    channel_index: usize,
-) -> Result<Option<String>, String> {
-    let mut state = state.lock().await;
-    let device = state.get_device_by_id(&device_id)?;
-    device
-        .get_channel_name(channel_index)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn ozys_get_channel_states(
-    state: State<'_, Mutex<AppState>>,
-    device_id: String,
-) -> Result<Vec<OZYSChannelState>, String> {
-    let mut state = state.lock().await;
-    let device = state.get_device_by_id(&device_id)?;
-    device.get_channel_states().await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -158,8 +133,6 @@ pub fn run() {
             ozys_enumerate_devices,
             ozys_manually_add_device,
             ozys_rename_device,
-            ozys_get_channel_name,
-            ozys_get_channel_states,
             ozys_rename_channel,
             ozys_control_channel,
             ozys_control_recording,
