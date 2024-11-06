@@ -34,7 +34,7 @@ async fn ozys_enumerate_devices(
     if state.connected_ozys_devices.is_empty() {
         state
             .connected_ozys_devices
-            .push(Box::new(MockOzysDevice::new()));
+            .push(Box::new(MockOzysDevice::new(None)));
     }
     Ok(state
         .connected_ozys_devices
@@ -44,8 +44,17 @@ async fn ozys_enumerate_devices(
 }
 
 #[tauri::command]
-async fn ozys_manually_add_device(path: String) -> Result<OzysDeviceInfo, String> {
-    Err("Not implemented".to_string())
+async fn ozys_manually_add_device(
+    state: State<'_, Mutex<AppState>>,
+    path: String,
+) -> Result<OzysDeviceInfo, String> {
+    let mut state = state.lock().await;
+
+    let device = Box::new(MockOzysDevice::new(Some(path)));
+    let device_info = device.get_device_info();
+    state.connected_ozys_devices.push(device);
+
+    Ok(device_info)
 }
 
 #[tauri::command]

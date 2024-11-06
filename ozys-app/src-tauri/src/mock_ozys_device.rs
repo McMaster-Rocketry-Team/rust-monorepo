@@ -7,11 +7,12 @@ pub struct MockOzysDevice {
 }
 
 impl MockOzysDevice {
-    pub fn new() -> Self {
+    pub fn new(name: Option<String>) -> Self {
+        let name = name.unwrap_or("Mock OZYS Device".to_string());
         Self {
             device_info: OzysDeviceInfo {
-                name: "Mock OZYS Device".to_string(),
-                id: "mock-ozys-id".to_string(),
+                name: name.clone(),
+                id: name.to_lowercase().replace(" ", "-"),
                 model: "OZYS V3".to_string(),
                 channels: vec![
                     OZYSChannelState::Connected {
