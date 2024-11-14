@@ -1,7 +1,30 @@
-# Tauri + React + Typescript
+# OZYS App
 
-This template should help get you started developing with Tauri, React and Typescript in Vite.
+A desktop app for connecting to OZYS PCBs and visualizing real-time strain gauge data.
 
-## Recommended IDE Setup
+## Getting Started
 
-- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+### Prerequisites
+Make sure you have installed nvm, yarn and Rust.
+
+### Installing
+
+```
+cd ozys-app
+
+# Use node version 22
+nvm use 22
+
+# enable corepack
+corepack enable
+
+# Install dependencies
+yarn install
+```
+
+### Executing program
+
+To run the app:
+```
+yarn tauri dev
+```
