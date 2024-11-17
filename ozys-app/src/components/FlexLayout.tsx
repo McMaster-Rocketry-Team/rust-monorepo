@@ -13,8 +13,10 @@ import { useRef } from 'react'
 
 import addIcon from '../assets/add.svg'
 import { defaultLayout } from '../models/defaultLayout'
+import { onAllowDrop } from '../models/onAllowDrop'
 
 const model = Model.fromJson(defaultLayout)
+model.setOnAllowDrop(onAllowDrop)
 
 export default function FlexLayout() {
   // Refs and state
@@ -79,6 +81,7 @@ export default function FlexLayout() {
       model={model}
       factory={factory}
       onRenderTabSet={newTab}
+      realtimeResize
     />
   )
 }
