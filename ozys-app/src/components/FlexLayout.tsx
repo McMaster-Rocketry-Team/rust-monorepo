@@ -15,22 +15,13 @@ import { useRef } from 'react'
 
 import addIcon from '../assets/add.svg'
 
-// Random error even though it works and everything matches the types and enums in the docs
+// Random error but it works and everything matches the types and enums in the docs
 // https://rawgit.com/caplin/FlexLayout/demos/demos/v0.8/typedoc/types/IBorderLocation.html
 const model = Model.fromJson(layout)
-
-// add new tab?
-
-// const a = new Actions()
-
-// function x(){
-//     a.addNode(json, toNodeId, location, index, select?)
-// }
 
 export default function FlexLayout() {
   // Refs and state
   const layoutRef = useRef<Layout | null>(null)
-  let nextGridIndex = 1 // Example variable for generating unique tab names
 
   const factory = (node: TabNode) => {
     const tab = node.getName()
@@ -45,6 +36,8 @@ export default function FlexLayout() {
 
   const onAddFromTabSetButton = (node: TabSetNode | BorderNode) => {
     if (layoutRef.current) {
+      
+      // Temporary, will add a popup menu to select tab type
       const addedTab = layoutRef.current.addTabToTabSet(node.getId(), {
         type: 'tab',
         name: 'Strain Graph',
@@ -57,7 +50,6 @@ export default function FlexLayout() {
     node: TabSetNode | BorderNode,
     renderValues: ITabSetRenderValues,
   ) => {
-    // renderValues.buttons.push(<img key="folder" style={{width:"1em", height:"1em"}} src="images/folder.svg"/>);
     if (node instanceof TabSetNode) {
       renderValues.stickyButtons.push(
         <button
