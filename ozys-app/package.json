@@ -13,11 +13,15 @@
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-shell": "^2",
     "flexlayout-react": "^0.8.1",
+    "jotai": "^2.10.2",
+    "lodash-es": "^4.17.21",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "rooks": "^7.14.1"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",
+    "@types/lodash-es": "^4",
     "@types/react": "^18.2.15",
     "@types/react-dom": "^18.2.7",
     "@vitejs/plugin-react": "^4.2.1",

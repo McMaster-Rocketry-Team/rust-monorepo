@@ -10,9 +10,7 @@ export default function Devices() {
   useEffect(() => {
     async function enumerateDevices() {
       let list: DeviceType[] = []
-      const devices: any[] = (await invoke(
-        'ozys_enumerate_devices',
-      )) as DeviceType[]
+      const devices = (await invoke('ozys_enumerate_devices')) as DeviceType[]
 
       devices.forEach((device) => {
         list.push(device)
@@ -29,7 +27,7 @@ export default function Devices() {
 
       <div className='flex p-4'>
         {deviceList.map((device) => (
-          <DeviceCard deviceData={device} />
+          <DeviceCard key={device.id} deviceData={device} />
         ))}{' '}
       </div>
     </div>

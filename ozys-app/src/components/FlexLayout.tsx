@@ -9,33 +9,50 @@ import {
 import 'flexlayout-react/style/light.css'
 
 import Devices from './devices/Devices'
-import { useRef } from 'react'
+import { useMemo, useRef } from 'react'
 
 import addIcon from '../assets/add.svg'
-import { defaultLayout } from '../models/defaultLayout'
-import { onAllowDrop } from '../models/onAllowDrop'
-
-const model = Model.fromJson(defaultLayout)
-model.setOnAllowDrop(onAllowDrop)
+import { defaultLayout } from '../workspace/defaultLayout'
+import { onAllowDrop } from '../workspace/onAllowDrop'
+import { TabIdProvider } from '../workspace/useTabId'
+import { StrainGraph } from './straingraph/StrainGraph'
+import { useDebounce } from 'rooks'
 
 export default function FlexLayout() {
   // Refs and state
   const layoutRef = useRef<Layout | null>(null)
 
+  const initModel = useMemo(() => {
+    let initModelJson = defaultLayout
+    try {
+      initModelJson = JSON.parse(localStorage.getItem('model')!)
+    } catch (e) {}
+    const model = Model.fromJson(initModelJson)
+    model.setOnAllowDrop(onAllowDrop)
+    return model
+  }, [])
+
+  const saveModel = useDebounce((model: Model) => {
+    localStorage.setItem('model', JSON.stringify(model.toJson()))
+  }, 500)
+
   const factory = (node: TabNode) => {
     const tab = node.getName()
+    let component
     if (tab === 'Devices') {
-      return <Devices />
-    } else if (tab === 'Strain Graph' || tab === 'Spectrogram') {
-      return <button>{node.getName()}</button>
+      component = <Devices />
+    } else if (tab === 'Strain Graph') {
+      component = <StrainGraph />
+    } else if (tab === 'Spectrogram') {
+      component = <button>{node.getName()}</button>
     } else {
-      return <h1>Unknown Tab</h1>
+      component = <h1>Unknown Tab</h1>
     }
+    return <TabIdProvider value={node.getId()}>{component}</TabIdProvider>
   }
 
   const onAddFromTabSetButton = (node: TabSetNode | BorderNode) => {
     if (layoutRef.current) {
-      
       // Temporary, will add a popup menu to select tab type
       const addedTab = layoutRef.current.addTabToTabSet(node.getId(), {
         type: 'tab',
@@ -78,10 +95,11 @@ export default function FlexLayout() {
   return (
     <Layout
       ref={layoutRef}
-      model={model}
+      model={initModel}
       factory={factory}
       onRenderTabSet={newTab}
       realtimeResize
+      onModelChange={saveModel}
     />
   )
 }

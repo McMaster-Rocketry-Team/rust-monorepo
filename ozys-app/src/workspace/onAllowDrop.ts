@@ -21,3 +21,4 @@ export const onAllowDrop = (dragNode: Node, dropInfo: DropInfo) => {
 
   return true
 }
+
