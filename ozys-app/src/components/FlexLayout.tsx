@@ -2,22 +2,19 @@ import {
   Layout,
   Model,
   TabNode,
-  Actions,
   TabSetNode,
   BorderNode,
   ITabSetRenderValues,
 } from 'flexlayout-react'
 import 'flexlayout-react/style/light.css'
-import layout from '../models/layout.json'
 
 import Devices from './devices/Devices'
 import { useRef } from 'react'
 
 import addIcon from '../assets/add.svg'
+import { defaultLayout } from '../models/defaultLayout'
 
-// Random error but it works and everything matches the types and enums in the docs
-// https://rawgit.com/caplin/FlexLayout/demos/demos/v0.8/typedoc/types/IBorderLocation.html
-const model = Model.fromJson(layout)
+const model = Model.fromJson(defaultLayout)
 
 export default function FlexLayout() {
   // Refs and state
