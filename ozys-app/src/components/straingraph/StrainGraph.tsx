@@ -1,7 +1,7 @@
 import { useTabAtom } from '../../workspace/useTabAtom'
 
 export const StrainGraph = () => {
-  const [text, setText] = useTabAtom('text', "hello")
+  const [text, setText] = useTabAtom('text', 'hello')
 
   return (
     <div>

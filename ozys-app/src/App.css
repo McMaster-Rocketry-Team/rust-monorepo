@@ -21,3 +21,9 @@
     background-color: #0f0f0f69;
   }
 }
+
+:root {
+  -webkit-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}

@@ -19,7 +19,7 @@ export default function Devices() {
     }
 
     enumerateDevices()
-  })
+  }, [])
 
   return (
     <div className='w-full h-full'>
