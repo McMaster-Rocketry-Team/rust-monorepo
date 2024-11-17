@@ -23,11 +23,11 @@ export default function FlexLayout() {
   const layoutRef = useRef<Layout | null>(null)
 
   const initModel = useMemo(() => {
-    let initModelJson = defaultLayout
+    let model = Model.fromJson(defaultLayout)
     try {
-      initModelJson = JSON.parse(localStorage.getItem('model')!)
+      const initModelJson = JSON.parse(localStorage.getItem('model')!)
+      model = Model.fromJson(initModelJson)
     } catch (e) {}
-    const model = Model.fromJson(initModelJson)
     model.setOnAllowDrop(onAllowDrop)
     return model
   }, [])
