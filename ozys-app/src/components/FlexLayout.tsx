@@ -1,56 +1,14 @@
 import { Layout, Model, TabNode, IJsonModel, Actions } from 'flexlayout-react'
 import 'flexlayout-react/style/light.css'
+import layout from '../models/layout.json'
 
-var json: IJsonModel = {
-  global: { tabEnablePopout: false, tabSetEnableMaximize: false },
-  borders: [],
-  layout: {
-    type: 'row',
-    weight: 100,
-    children: [
-      {
-        type: 'tabset',
-        weight: 15,
-        children: [
-          {
-            type: 'tab',
-            name: 'One',
-            component: 'button',
-          },
-        ],
-      },
-      {
-        type: 'row',
-        id: '#21d1a37a-e3d9-4fc6-80a2-b3dfd2ce963c',
-        weight: 50,
-        children: [
-          {
-            type: 'tabset',
-            weight: 50,
-            children: [
-              {
-                type: 'tab',
-                name: 'Two',
-                component: 'button',
-              },
-            ],
-          },
-          {
-            type: 'tabset',
-            weight: 50,
-            children: [
-              {
-                type: 'tab',
-                name: 'Three',
-                component: 'button',
-              },
-            ],
-          },
-        ],
-      },
-    ],
-  },
-}
+import Devices from './devices/Devices'
+
+// Random error even though it works and everything matches the types and enums in the docs
+// https://rawgit.com/caplin/FlexLayout/demos/demos/v0.8/typedoc/types/IBorderLocation.html
+const model = Model.fromJson(layout)
+
+// add new tab?
 
 // const a = new Actions()
 
@@ -58,13 +16,19 @@ var json: IJsonModel = {
 //     a.addNode(json, toNodeId, location, index, select?)
 // }
 
-const model = Model.fromJson(json)
-
 export default function FlexLayout() {
   const factory = (node: TabNode) => {
-    var component = node.getComponent()
-    if (component === 'button') {
+    var tab = node.getName()
+
+    // render different components
+    if (tab === 'Devices') {
+      return <Devices />
+    } else if (tab === 'Strain Graph') {
       return <button>{node.getName()}</button>
+    } else if (tab === 'Spectrogram') {
+      return <button>{node.getName()}</button>
+    } else {
+      return <h1>hi</h1>
     }
   }
 
