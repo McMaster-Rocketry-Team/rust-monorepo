@@ -1,4 +1,5 @@
 use core::cell::RefCell;
+use core::future::Future;
 use core::ops::DerefMut;
 
 use embassy_futures::select::{select, Either};
@@ -47,20 +48,24 @@ create_serialized_enum!(
 
 fixed_point_factory!(BatteryFF, f64, 4999.0, 5010.0, 0.5);
 
-pub async fn sg_mid_prio_main(
+pub async fn sg_mid_prio_main<N, NF>(
     states: &SGGlobalStates<impl RawMutex, impl RawSGReadingsTrait>,
     device_serial_number: [u8; 12],
     mut indicator: impl Indicator,
     sg_adc_controller: impl SGAdcController,
     mut flash: impl Flash,
     crc: impl Crc,
-    mut can: impl SplitableCanBus,
+    can: impl (FnOnce() -> NF) + Send,
     clock: impl Clock,
     delay: impl Delay,
     sys_reset: impl SysReset,
     mut usb: impl SplitableUSB,
     mut battery_adc: impl ADC<Volt>,
-)->! {
+)->! 
+where
+N: SplitableCanBus + 'static,
+    NF: Future<Output = N>,
+{
     let sg_adc_controller = Mutex::<NoopRawMutex, _>::new(sg_adc_controller);
     let unix_timestamp_log_mutex = BlockingMutex::<
         NoopRawMutex,
@@ -73,6 +78,7 @@ pub async fn sg_mid_prio_main(
     fs.init().await.unwrap();
 
     log_info!("Initializing CAN Bus");
+    let mut can = can().await;
     let (mut can_tx, mut can_rx) = can.split();
     can_tx.configure_self_node(
         STRAIN_GAUGES_NODE_TYPE,
@@ -375,7 +381,7 @@ pub async fn sg_mid_prio_main(
     };
 
     join!(
-        usb_console_fut,
+        // usb_console_fut,
         store_sg_fut,
         led_fut,
         // can_rx_fut,

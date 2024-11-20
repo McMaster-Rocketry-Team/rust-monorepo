@@ -1,3 +1,5 @@
+use core::future::Future;
+
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use global_states::SGGlobalStates;
 use rkyv::{Archive, Deserialize, Serialize};
@@ -60,7 +62,7 @@ impl Default for ProcessedSGReading {
     }
 }
 
-pub fn sg_main<T, SG, I, SC, F, C, N, CL, DL, R, U, A>(
+pub fn sg_main<T, SG, I, SC, F, C, N, NF, CL, DL, R, U, A>(
     high_prio_spawner: &'static impl SendSpawner,
     mid_prio_spawner: &'static impl SendSpawner,
     low_prio_spawner: &'static impl SendSpawner,
@@ -72,7 +74,7 @@ pub fn sg_main<T, SG, I, SC, F, C, N, CL, DL, R, U, A>(
     sg_adc_controller: impl (FnOnce() -> SC) + Send,
     flash: impl (FnOnce() -> F) + Send,
     crc: impl (FnOnce() -> C) + Send,
-    can: impl (FnOnce() -> N) + Send,
+    can: impl (FnOnce() -> NF) + Send + 'static,
     clock: impl (FnOnce() -> CL) + Send,
     delay: impl (FnOnce() -> DL) + Send,
     sys_reset: impl (FnOnce() -> R) + Send,
@@ -86,6 +88,7 @@ pub fn sg_main<T, SG, I, SC, F, C, N, CL, DL, R, U, A>(
     F: Flash + 'static,
     C: Crc + 'static,
     N: SplitableCanBus + 'static,
+    NF: Future<Output = N> + 'static,
     CL: Clock + 'static,
     DL: Delay + 'static,
     R: SysReset + 'static,
@@ -101,7 +104,7 @@ pub fn sg_main<T, SG, I, SC, F, C, N, CL, DL, R, U, A>(
             sg_adc_controller(),
             flash(),
             crc(),
-            can(),
+            can,
             clock(),
             delay(),
             sys_reset(),
