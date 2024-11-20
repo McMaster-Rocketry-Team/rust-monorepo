@@ -20,3 +20,4 @@ pub mod can_bus;
 pub mod delay;
 pub mod uart_gps;
 pub mod sg_adc;
+pub mod spawner;
