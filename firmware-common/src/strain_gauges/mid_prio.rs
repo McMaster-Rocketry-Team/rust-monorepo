@@ -49,7 +49,7 @@ fixed_point_factory!(BatteryFF, f64, 4999.0, 5010.0, 0.5);
 
 pub async fn sg_mid_prio_main(
     states: &SGGlobalStates<impl RawMutex, impl RawSGReadingsTrait>,
-    device_serial_number: &[u8; 12],
+    device_serial_number: [u8; 12],
     mut indicator: impl Indicator,
     sg_adc_controller: impl SGAdcController,
     mut flash: impl Flash,
@@ -60,7 +60,7 @@ pub async fn sg_mid_prio_main(
     sys_reset: impl SysReset,
     mut usb: impl SplitableUSB,
     mut battery_adc: impl ADC<Volt>,
-) {
+)->! {
     let sg_adc_controller = Mutex::<NoopRawMutex, _>::new(sg_adc_controller);
     let unix_timestamp_log_mutex = BlockingMutex::<
         NoopRawMutex,
@@ -76,7 +76,7 @@ pub async fn sg_mid_prio_main(
     let (mut can_tx, mut can_rx) = can.split();
     can_tx.configure_self_node(
         STRAIN_GAUGES_NODE_TYPE,
-        can_node_id_from_serial_number(device_serial_number),
+        can_node_id_from_serial_number(&device_serial_number),
     );
 
     let usb_connected = {
@@ -103,7 +103,7 @@ pub async fn sg_mid_prio_main(
                 &mut usb,
                 &fs,
                 &sys_reset,
-                device_serial_number,
+                &device_serial_number,
                 &sg_adc_controller,
                 states,
             )
@@ -381,4 +381,6 @@ pub async fn sg_mid_prio_main(
         // can_rx_fut,
         // can_tx_fut
     );
+
+    log_unreachable!()
 }

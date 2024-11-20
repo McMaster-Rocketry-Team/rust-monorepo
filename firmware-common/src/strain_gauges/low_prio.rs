@@ -132,7 +132,9 @@ impl<'a> SGChannelProcessor<'a> {
     }
 }
 
-pub async fn sg_low_prio_main<T: RawSGReadingsTrait>(states: &SGGlobalStates<impl RawMutex, T>) {
+pub async fn sg_low_prio_main<T: RawSGReadingsTrait>(
+    states: &SGGlobalStates<impl RawMutex, T>,
+) -> ! {
     let realtime_pub = states.realtime_sample_pubsub.publisher().unwrap();
     let fft = FloatRealFft::new(FFT_SIZE as u16).unwrap();
     let mut fft_out_buffer = [0f32; FFT_SIZE];

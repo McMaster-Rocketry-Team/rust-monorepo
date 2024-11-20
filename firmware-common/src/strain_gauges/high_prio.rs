@@ -5,7 +5,8 @@ use embassy_sync::blocking_mutex::raw::RawMutex;
 pub async fn sg_high_prio_main<T: RawSGReadingsTrait>(
     states: &SGGlobalStates<impl RawMutex, T>,
     mut sg_adc: impl SGAdc<T>,
-) {
+)->! {
+    log_info!("Starting sg_high_prio_main");
     let mut raw_readings_sender = states.raw_readings_channel.sender();
     loop {
         match sg_adc.read(&mut raw_readings_sender).await {

@@ -1,4 +1,22 @@
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use global_states::SGGlobalStates;
 use rkyv::{Archive, Deserialize, Serialize};
+use vlfs::{Crc, Flash};
+
+use crate::{
+    driver::{
+        adc::{Volt, ADC},
+        can_bus::SplitableCanBus,
+        clock::Clock,
+        delay::Delay,
+        indicator::Indicator,
+        sg_adc::{RawSGReadingsTrait, SGAdc, SGAdcController},
+        spawner::SendSpawner,
+        sys_reset::SysReset,
+        usb::SplitableUSB,
+    },
+    sg_high_prio_main, sg_low_prio_main, sg_mid_prio_main,
+};
 
 pub mod global_states;
 pub mod high_prio;
@@ -28,7 +46,7 @@ pub struct ProcessedSGReading {
     pub start_time: f64, // boot time in ms
     pub sg_i: u8,
     // pub amplitudes: [u8; 400], // [half::f16; 200]
-    pub samples: [u8; 80],      // [half::f16; 40]
+    pub samples: [u8; 80], // [half::f16; 40]
 }
 
 impl Default for ProcessedSGReading {
@@ -40,4 +58,56 @@ impl Default for ProcessedSGReading {
             samples: [0u8; 80],
         }
     }
+}
+
+pub fn sg_main<T, SG, I, SC, F, C, N, CL, DL, R, U, A>(
+    high_prio_spawner: &'static impl SendSpawner,
+    mid_prio_spawner: &'static impl SendSpawner,
+    low_prio_spawner: &'static impl SendSpawner,
+    global_states: &'static SGGlobalStates<CriticalSectionRawMutex, T>,
+    sg_adc: impl (FnOnce() -> SG) + Send,
+
+    device_serial_number: [u8; 12],
+    indicator: impl (FnOnce() -> I) + Send,
+    sg_adc_controller: impl (FnOnce() -> SC) + Send,
+    flash: impl (FnOnce() -> F) + Send,
+    crc: impl (FnOnce() -> C) + Send,
+    can: impl (FnOnce() -> N) + Send,
+    clock: impl (FnOnce() -> CL) + Send,
+    delay: impl (FnOnce() -> DL) + Send,
+    sys_reset: impl (FnOnce() -> R) + Send,
+    usb: impl (FnOnce() -> U) + Send,
+    battery_adc: impl (FnOnce() -> A) + Send,
+) where
+    T: RawSGReadingsTrait + Send,
+    SG: SGAdc<T> + 'static,
+    I: Indicator + 'static,
+    SC: SGAdcController + 'static,
+    F: Flash + 'static,
+    C: Crc + 'static,
+    N: SplitableCanBus + 'static,
+    CL: Clock + 'static,
+    DL: Delay + 'static,
+    R: SysReset + 'static,
+    U: SplitableUSB + 'static,
+    A: ADC<Volt> + 'static,
+{
+    high_prio_spawner.spawn(move || sg_high_prio_main(global_states, sg_adc()));
+    mid_prio_spawner.spawn(move || {
+        sg_mid_prio_main(
+            global_states,
+            device_serial_number,
+            indicator(),
+            sg_adc_controller(),
+            flash(),
+            crc(),
+            can(),
+            clock(),
+            delay(),
+            sys_reset(),
+            usb(),
+            battery_adc(),
+        )
+    });
+    low_prio_spawner.spawn(move || sg_low_prio_main(global_states));
 }
