@@ -736,6 +736,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@tauri-apps/plugin-log@npm:~2":
+  version: 2.0.0
+  resolution: "@tauri-apps/plugin-log@npm:2.0.0"
+  dependencies:
+    "@tauri-apps/api": "npm:^2.0.0"
+  checksum: 10c0/41b864ef7cd1a139897f63efab32fce4271c942416d2ce5f292272920cd6ab7925f53d0ef5c51c157eae0e481ae6f827d1d0b68c7ab47dc49361adedda609b85
+  languageName: node
+  linkType: hard
+
 "@tauri-apps/plugin-shell@npm:^2":
   version: 2.0.1
   resolution: "@tauri-apps/plugin-shell@npm:2.0.1"
@@ -1974,6 +1983,7 @@ __metadata:
   dependencies:
     "@tauri-apps/api": "npm:^2"
     "@tauri-apps/cli": "npm:^2"
+    "@tauri-apps/plugin-log": "npm:~2"
     "@tauri-apps/plugin-shell": "npm:^2"
     "@types/lodash-es": "npm:^4"
     "@types/react": "npm:^18.2.15"
