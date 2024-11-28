@@ -4,16 +4,7 @@ import DeviceCard from './DeviceCard'
 
 import { DeviceType, RealtimeData } from '../../types'
 
-// logging stuff
-import {
-  warn,
-  debug,
-  trace,
-  info,
-  error,
-  attachConsole,
-  attachLogger,
-} from '@tauri-apps/plugin-log'
+import {info} from '@tauri-apps/plugin-log'
 
 
 export default function Devices() {

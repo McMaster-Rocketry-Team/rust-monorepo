@@ -1,8 +1,5 @@
-interface ButtonProps {
-  children: React.ReactNode
-}
 
-export default function Button({ children }: ButtonProps) {
+export default function Button({ children }: {children : React.ReactNode}) {
   return (
     <button className='bg-slate-100 p-8'>
       <h1>{children}</h1>
