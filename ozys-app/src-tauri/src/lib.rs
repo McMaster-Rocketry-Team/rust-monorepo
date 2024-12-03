@@ -1,5 +1,7 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 
+use tauri_plugin_log::{Target, TargetKind};
+
 use mock_ozys_device::MockOzysDevice;
 use ozys_device::{OzysChannelRealtimeData, OzysDevice, OzysDeviceInfo};
 use tauri::Manager as _;
@@ -133,6 +135,7 @@ async fn ozys_poll_realtime_data(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_log::Builder::new().build())
         .setup(|app| {
             app.manage(Mutex::new(AppState::default()));
             Ok(())

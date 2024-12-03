@@ -9,7 +9,7 @@ import {
 import 'flexlayout-react/style/light.css'
 
 import Devices from './devices/Devices'
-import { useMemo, useRef } from 'react'
+import { MouseEvent, useEffect, useMemo, useRef, useState } from 'react'
 
 import addIcon from '../assets/add.svg'
 import { defaultLayout } from '../workspace/defaultLayout'
@@ -18,9 +18,18 @@ import { TabIdProvider } from '../workspace/useTabId'
 import { StrainGraph } from './straingraph/StrainGraph'
 import { useDebounce } from 'rooks'
 
+type tabType = 'Strain Graph' | 'Spectrogram'
+interface position {
+  x: number
+  y: number
+}
+
 export default function FlexLayout() {
   // Refs and state
   const layoutRef = useRef<Layout | null>(null)
+  const [openTabMenu, setOpenTabMenu] = useState<boolean>(false)
+  const [currentNode, setCurrentNode] = useState<TabSetNode | BorderNode>()
+  const [mousePos, setMousePos] = useState<position>({ x: 0, y: 0 })
 
   const initModel = useMemo(() => {
     let model = Model.fromJson(defaultLayout)
@@ -51,16 +60,36 @@ export default function FlexLayout() {
     return <TabIdProvider value={node.getId()}>{component}</TabIdProvider>
   }
 
-  const onAddFromTabSetButton = (node: TabSetNode | BorderNode) => {
-    if (layoutRef.current) {
-      // Temporary, will add a popup menu to select tab type
-      const addedTab = layoutRef.current.addTabToTabSet(node.getId(), {
+  const onAddFromTabSetButton = (
+    node: TabSetNode | BorderNode,
+    event: MouseEvent,
+  ) => {
+    setOpenTabMenu(true)
+    setCurrentNode(node)
+    setMousePos({ x: event.clientX + 20, y: event.clientY + 20 })
+  }
+
+  const createTab = (type: tabType) => {
+    if (layoutRef.current && currentNode) {
+      const addedTab = layoutRef.current.addTabToTabSet(currentNode.getId(), {
         type: 'tab',
-        name: 'Strain Graph',
+        name: type,
       })
       console.log('Added tab:', addedTab)
     }
   }
+
+  const closePopup = () => {
+    if (openTabMenu) {
+      setOpenTabMenu(false)
+    }
+  }
+
+  useEffect(() => {
+    window.addEventListener('resize', () => {
+      closePopup()
+    })
+  })
 
   const newTab = (
     node: TabSetNode | BorderNode,
@@ -68,38 +97,66 @@ export default function FlexLayout() {
   ) => {
     if (node instanceof TabSetNode) {
       renderValues.stickyButtons.push(
-        <button
-          key='add-button'
-          style={{
-            width: '1.1em',
-            height: '1.1em',
-            border: 'none',
-            background: 'transparent',
-            cursor: 'pointer',
-          }}
-          title='Add Tab'
-          onClick={() => onAddFromTabSetButton(node)}
-        >
-          <img
-            src={addIcon}
-            alt='Add'
-            key='Add button'
-            style={{ width: '1.1em', height: '1.1em' }}
-            className='flexlayout__tab_toolbar_button'
-          />
-        </button>,
+        <>
+          <button
+            key='add-button'
+            style={{
+              width: '1.1em',
+              height: '1.1em',
+              border: 'none',
+              background: 'transparent',
+              cursor: 'pointer',
+            }}
+            title='Add Tab'
+            onClick={(event) => onAddFromTabSetButton(node, event)}
+          >
+            <img
+              src={addIcon}
+              alt='Add'
+              key='Add button'
+              style={{ width: '1.1em', height: '1.1em' }}
+              className='flexlayout__tab_toolbar_button'
+            />
+          </button>
+        </>,
       )
     }
   }
 
   return (
-    <Layout
-      ref={layoutRef}
-      model={initModel}
-      factory={factory}
-      onRenderTabSet={newTab}
-      realtimeResize
-      onModelChange={saveModel}
-    />
+    <div className='' onClick={closePopup}>
+      {/* Popup tab selection */}
+      {openTabMenu ? (
+        <div
+          className={`flex flex-col items-start bg-[#F7F7F7] z-50 w-[120px] drop-shadow-lg absolute`}
+          style={{
+            left: `${mousePos.x}px`,
+            top: `${mousePos.y}px`,
+          }}
+        >
+          <button
+            className='border-b-[1px] border-gray-300 px-2 py-1 w-full text-center hover:bg-[#E2E2E2]'
+            onClick={() => createTab('Strain Graph')}
+          >
+            Strain Graph
+          </button>
+          <button
+            className='px-2 py-1 w-full text-center hover:bg-[#E2E2E2]'
+            onClick={() => createTab('Spectrogram')}
+          >
+            Spectrogram
+          </button>
+        </div>
+      ) : null}
+
+      <Layout
+        ref={layoutRef}
+        model={initModel}
+        factory={factory}
+        onRenderTabSet={newTab}
+        realtimeResize
+        onModelChange={saveModel}
+      />
+    </div>
   )
 }
