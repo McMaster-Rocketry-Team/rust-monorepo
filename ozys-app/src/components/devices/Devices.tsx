@@ -1,11 +1,7 @@
-import { invoke } from '@tauri-apps/api/core'
 import { useEffect, useState } from 'react'
 import DeviceCard from './DeviceCard'
 
 import { DeviceType, RealtimeData } from '../../types'
-
-import {info} from '@tauri-apps/plugin-log'
-
 
 export default function Devices() {
   const [deviceList, setDeviceList] = useState<DeviceType[]>([])
@@ -13,11 +9,11 @@ export default function Devices() {
   const [deviceData, setDeviceData] = useState<RealtimeData[]>([])
 
   async function poll() {
-    const data = (await invoke('ozys_poll_realtime_data', {
-      deviceId: 'mock-ozys-device',
-    })) as RealtimeData[]
+    // const data = (await invoke('ozys_poll_realtime_data', {
+    //   deviceId: 'mock-ozys-device',
+    // })) as RealtimeData[]
 
-    setDeviceData(data)
+    // setDeviceData(data)
 
     // info('data: ' + JSON.stringify(data))
   }
@@ -36,11 +32,11 @@ export default function Devices() {
   useEffect(() => {
     async function enumerateDevices() {
       let list: DeviceType[] = []
-      const devices = (await invoke('ozys_enumerate_devices')) as DeviceType[]
+      // const devices = (await invoke('ozys_enumerate_devices')) as DeviceType[]
 
-      devices.forEach((device) => {
-        list.push(device)
-      })
+      // devices.forEach((device) => {
+      //   list.push(device)
+      // })
       setDeviceList(list)
     }
 
