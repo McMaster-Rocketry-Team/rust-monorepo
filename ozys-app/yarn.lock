@@ -708,6 +708,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@types/w3c-web-usb@npm:^1.0.10":
+  version: 1.0.10
+  resolution: "@types/w3c-web-usb@npm:1.0.10"
+  checksum: 10c0/3df5733a334c5fd22ef3fa1e97a70c029542591058d11905d1304c26bab8705d975168818b5b7ec21fef5591cdea776dbdb31d4c04aa433e7fe7d61dd7ebdecf
+  languageName: node
+  linkType: hard
+
 "@vitejs/plugin-react@npm:^4.2.1":
   version: 4.3.3
   resolution: "@vitejs/plugin-react@npm:4.3.3"
@@ -1848,6 +1855,7 @@ __metadata:
     "@types/lodash-es": "npm:^4"
     "@types/react": "npm:^18.2.15"
     "@types/react-dom": "npm:^18.2.7"
+    "@types/w3c-web-usb": "npm:^1.0.10"
     "@vitejs/plugin-react": "npm:^4.2.1"
     autoprefixer: "npm:^10.4.20"
     flexlayout-react: "npm:^0.8.1"

@@ -17,8 +17,9 @@ import { onAllowDrop } from '../workspace/onAllowDrop'
 import { TabIdProvider } from '../workspace/useTabId'
 import { StrainGraph } from './straingraph/StrainGraph'
 import { useDebounce } from 'rooks'
+import { WebUSBDebugTab } from './webusb_debug/WebUSBDebugTab'
 
-type tabType = 'Strain Graph' | 'Spectrogram'
+type tabType = 'Strain Graph' | 'Spectrogram' | 'WebUSB Debug'
 interface position {
   x: number
   y: number
@@ -54,6 +55,8 @@ export default function FlexLayout() {
       component = <StrainGraph />
     } else if (tab === 'Spectrogram') {
       component = <button>{node.getName()}</button>
+    } else if (tab === 'WebUSB Debug') {
+      component = <WebUSBDebugTab />
     } else {
       component = <h1>Unknown Tab</h1>
     }
@@ -128,14 +131,14 @@ export default function FlexLayout() {
       {/* Popup tab selection */}
       {openTabMenu ? (
         <div
-          className={`flex flex-col items-start bg-[#F7F7F7] z-50 w-[120px] drop-shadow-lg absolute`}
+          className={`flex flex-col items-start bg-[#F7F7F7] z-50 w-[150px] drop-shadow-lg absolute divide-y divide-gray-300`}
           style={{
             left: `${mousePos.x}px`,
             top: `${mousePos.y}px`,
           }}
         >
           <button
-            className='border-b-[1px] border-gray-300 px-2 py-1 w-full text-center hover:bg-[#E2E2E2]'
+            className='px-2 py-1 w-full text-center hover:bg-[#E2E2E2]'
             onClick={() => createTab('Strain Graph')}
           >
             Strain Graph
@@ -145,6 +148,12 @@ export default function FlexLayout() {
             onClick={() => createTab('Spectrogram')}
           >
             Spectrogram
+          </button>
+          <button
+            className='px-2 py-1 w-full text-center hover:bg-[#E2E2E2]'
+            onClick={() => createTab('WebUSB Debug')}
+          >
+            WebUSB Debug
           </button>
         </div>
       ) : null}
