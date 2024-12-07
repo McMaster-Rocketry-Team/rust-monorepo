@@ -20,6 +20,8 @@ export class Resampler {
 
     this.sourceSampleDuration = 1000 / sourceSampleRate
     this.targetSampleDuration = 1000 / targetSampleRate
+    console.log('sourceSampleDuration', this.sourceSampleDuration)
+    console.log('targetSampleDuration', this.targetSampleDuration)
 
     this.nextSampleTimestamp = this.targetSampleOffset
     if (this.nextSampleTimestamp < 0) {

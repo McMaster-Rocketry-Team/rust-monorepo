@@ -1,4 +1,4 @@
-import { expose } from 'comlink'
+import * as Comlink from 'comlink'
 import {
   OzysChannelRealtimeFft,
   OzysChannelRealtimeReadings,
@@ -99,7 +99,7 @@ class DatabaseWorker {
     data: OzysChannelRealtimeReadings,
   ) {
     for (const player of this.realtimeReadingsPlayers.values()) {
-      player.onRealtimeReadings(deviceId, channelId, data)
+      player.onRealtimeReadings(channelId, data)
     }
 
     const cacheKey = `${deviceId}:${channelId}`
@@ -127,32 +127,21 @@ class DatabaseWorker {
   }
 
   async createRealtimeReadingsPlayer(
-    deviceId: string,
     channelId: string,
     sampleRate: number,
     targetSampleOffset: number,
-  ): Promise<string> {
+  ) {
+    const id = crypto.randomUUID()
     const player = new RealtimeReadingsPlayer(
-      deviceId,
       channelId,
       sampleRate,
       targetSampleOffset,
+      () => {
+        this.realtimeReadingsPlayers.delete(id)
+      },
     )
-    const id = crypto.randomUUID()
     this.realtimeReadingsPlayers.set(id, player)
-    return id
-  }
-
-  deletePlayer(playerId: string) {
-    this.realtimeReadingsPlayers.delete(playerId)
-  }
-
-  getNewDataFromPlayer(playerId: string) {
-    const player = this.realtimeReadingsPlayers.get(playerId)
-    if (!player) {
-      return []
-    }
-    return player.getNewData()
+    return Comlink.proxy(player)
   }
 }
 
@@ -160,4 +149,4 @@ const obj = new DatabaseWorker()
 
 export type DatabaseWorkerType = typeof obj
 
-expose(obj)
+Comlink.expose(obj)

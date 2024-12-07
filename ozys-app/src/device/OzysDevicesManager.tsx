@@ -1,4 +1,9 @@
-import { makeAutoObservable } from 'mobx'
+import {
+  action,
+  computed,
+  makeObservable,
+  observable,
+} from 'mobx'
 import { OzysDevice } from './OzysDevice'
 import {
   createContext,
@@ -16,9 +21,32 @@ class OzysDevicesManager {
   private dbWorkerScript = new DatabaseWorker()
   private dbWorker = Comlink.wrap<DatabaseWorkerType>(this.dbWorkerScript)
 
+  get activeChannels() {
+    const result = []
+    for (const device of this.devices) {
+      for (const channel of device.deviceInfo.channels) {
+        if (channel.connected && channel.enabled) {
+          result.push({
+            device,
+            channel,
+          })
+        }
+      }
+    }
+
+    return result
+  }
+
   constructor() {
-    makeAutoObservable(this)
     this.dbWorker.init()
+    makeObservable(this, {
+      devices: observable,
+      activeChannels: computed,
+      addDevice: action,
+      disconnectDevice: action,
+      disconnectAllDevices: action,
+    })
+    console.log('OzysDevicesManager created')
   }
 
   addDevice(device: OzysDevice) {
@@ -45,6 +73,19 @@ class OzysDevicesManager {
     this.devices.forEach((device) => device.disconnect())
     this.devices = []
     this.dbWorkerScript.terminate()
+    console.log('OzysDevicesManager terminated')
+  }
+
+  async createRealtimeReadingsPlayer(
+    channelId: string,
+    sampleRate: number,
+    targetSampleOffset: number,
+  ) {
+    return await this.dbWorker.createRealtimeReadingsPlayer(
+      channelId,
+      sampleRate,
+      targetSampleOffset,
+    )
   }
 }
 

@@ -11,18 +11,19 @@ export class RealtimeReadingsPlayer {
   }> = new RingBuffer(200)
 
   constructor(
-    private deviceId: string,
     private channelId: string,
     private sampleRate: number,
     private targetSampleOffset: number,
-  ) {}
+    private onDisplose: () => void
+  ) {
+    console.log('RealtimeReadingsPlayer created', channelId)
+  }
 
   async onRealtimeReadings(
-    deviceId: string,
     channelId: string,
     data: OzysChannelRealtimeReadings,
   ) {
-    if (deviceId !== this.deviceId || channelId !== this.channelId) {
+    if (channelId !== this.channelId) {
       return
     }
 
@@ -30,6 +31,7 @@ export class RealtimeReadingsPlayer {
       this.resampler === undefined ||
       data.timestamp !== this.lastTimestamp + 10
     ) {
+      console.log("recreating resampler")
       this.resampler = new Resampler(
         2000,
         this.sampleRate,
@@ -43,11 +45,18 @@ export class RealtimeReadingsPlayer {
         this.outputData.add(resampled)
       }
     }
+    
+    this.lastTimestamp = data.timestamp
   }
 
   getNewData() {
     const result = this.outputData.toArray()
     this.outputData.clear()
     return result
+  }
+
+  dispose() {
+    console.log('RealtimeReadingsPlayer disposed', this.channelId)
+    this.onDisplose()
   }
 }
