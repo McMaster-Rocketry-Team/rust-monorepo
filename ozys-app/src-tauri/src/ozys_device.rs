@@ -30,7 +30,7 @@ pub struct OzysChannelRealtimeData {
     /// 10 readings long, interval between readings is 10ms
     pub readings: Vec<f32>,
 
-    /// Standard deviation of all the samples inside the 10ms interval
+    /// Standard deviation of all the samples inside the 100ms interval
     /// 10 values long, one value for each reading
     pub reading_noises: Vec<f32>,
 
