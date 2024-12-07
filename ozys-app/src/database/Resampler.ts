@@ -28,13 +28,18 @@ export class Resampler {
     timestamp: number
     reading: number
   } | null {
-    let filteredData = this.filter.next(reading)
+    let filteredReading = this.filter.next(reading)
     if (this.cubicBuffer.isEmpty()) {
+      // let the filter reach steady state
+      while (Math.abs(filteredReading - reading) / reading > 0.01) {
+        filteredReading = this.filter.next(reading)
+      }
+
       for (let i = 0; i < 4; i++) {
-        this.cubicBuffer.add(filteredData)
+        this.cubicBuffer.add(filteredReading)
       }
     } else {
-      this.cubicBuffer.add(filteredData)
+      this.cubicBuffer.add(filteredReading)
     }
 
     const interpolatableStart = (this.sourceI - 2) * this.sourceSampleDuration
@@ -43,8 +48,8 @@ export class Resampler {
     this.sourceI++
 
     if (
-      this.nextSampleTimestamp > interpolatableStart &&
-      this.nextSampleTimestamp < interpolatableEnd
+      this.nextSampleTimestamp >= interpolatableStart &&
+      this.nextSampleTimestamp <= interpolatableEnd
     ) {
       const t =
         (this.nextSampleTimestamp - interpolatableStart) /
@@ -69,6 +74,7 @@ export class Resampler {
     const p1 = this.cubicBuffer.get(1)!
     const p2 = this.cubicBuffer.get(2)!
     const p3 = this.cubicBuffer.get(3)!
+    // console.log(p0, p1, p2, p3)
     return (
       0.5 *
       (2 * p1 +

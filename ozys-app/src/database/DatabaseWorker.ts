@@ -3,8 +3,6 @@ import {
   OzysChannelRealtimeFft,
   OzysChannelRealtimeReadings,
 } from '../device/OzysDevice'
-
-// Import Dexie
 import Dexie, { EntityTable } from 'dexie'
 import { RealtimeReadingsPlayer } from './Player'
 
