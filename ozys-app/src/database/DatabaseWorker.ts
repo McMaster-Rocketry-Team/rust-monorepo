@@ -5,7 +5,8 @@ import {
 } from '../device/OzysDevice'
 
 // Import Dexie
-import Dexie, { EntityTable, Table } from 'dexie'
+import Dexie, { EntityTable } from 'dexie'
+import { RealtimeReadingsPlayer } from './Player'
 
 class DBReadingsRowBuilder {
   timestamp: number = -1
@@ -77,6 +78,8 @@ type DBType = Dexie & {
 class DatabaseWorker {
   private db: DBType
   private readingsRowCache: Map<string, DBReadingsRowBuilder> = new Map()
+  private realtimeReadingsPlayers: Map<string, RealtimeReadingsPlayer> =
+    new Map()
 
   constructor() {
     this.db = new Dexie('db') as DBType
@@ -97,6 +100,10 @@ class DatabaseWorker {
     channelId: string,
     data: OzysChannelRealtimeReadings,
   ) {
+    for (const player of this.realtimeReadingsPlayers.values()) {
+      player.onRealtimeReadings(deviceId, channelId, data)
+    }
+
     const cacheKey = `${deviceId}:${channelId}`
     let builder = this.readingsRowCache.get(cacheKey)
     if (!builder) {
@@ -119,6 +126,35 @@ class DatabaseWorker {
       channelId,
       ...data,
     })
+  }
+
+  async createRealtimeReadingsPlayer(
+    deviceId: string,
+    channelId: string,
+    sampleRate: number,
+    targetSampleOffset: number,
+  ): Promise<string> {
+    const player = new RealtimeReadingsPlayer(
+      deviceId,
+      channelId,
+      sampleRate,
+      targetSampleOffset,
+    )
+    const id = crypto.randomUUID()
+    this.realtimeReadingsPlayers.set(id, player)
+    return id
+  }
+
+  deletePlayer(playerId: string) {
+    this.realtimeReadingsPlayers.delete(playerId)
+  }
+
+  getNewDataFromPlayer(playerId: string) {
+    const player = this.realtimeReadingsPlayers.get(playerId)
+    if (!player) {
+      return []
+    }
+    return player.getNewData()
   }
 }
 
