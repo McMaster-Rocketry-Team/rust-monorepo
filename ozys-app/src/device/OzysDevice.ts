@@ -101,7 +101,7 @@ export abstract class OzysDevice {
     }
   }
 
-  onRealtimeFFT(
+  onRealtimeFft(
     callback: (channelId: string, data: OzysChannelRealtimeFFT) => void,
   ): () => void {
     this.fftCallbacks.push(callback)

@@ -1,19 +1,17 @@
-import { useState } from 'react'
 import './App.css'
 
-import Button from './components/Button'
-import Dashboard from "./components/Dashboard"
+import Dashboard from './components/Dashboard'
+import { OzysDevicesManagerProvider } from './device/OzysDevicesManager'
 
 function App() {
-
   return (
-    <main>
+    <OzysDevicesManagerProvider>
+      <main>
+        {/* <Button>test button</Button> */}
 
-      {/* <Button>test button</Button> */}
-
-      <Dashboard/>
-
-    </main>
+        <Dashboard />
+      </main>
+    </OzysDevicesManagerProvider>
   )
 }
 
