@@ -1,3 +1,5 @@
+import { makeAutoObservable } from 'mobx'
+
 export type OzysChannelState =
   | {
       connected: false
@@ -13,6 +15,7 @@ export type OzysDeviceInfo = {
   name: string
   id: string
   model: string
+  isRecording: boolean
   channels: OzysChannelState[]
 }
 
@@ -49,20 +52,63 @@ export type OzysChannelRealtimeFFT = {
   fft2kTo20k: Float32Array
 }
 
-export interface OzysDevice {
-  get_device_info(): Promise<OzysDeviceInfo>
-  rename_device(name: string): Promise<void>
-  rename_channel(channelId: string, name: string): Promise<void>
-  control_channel(channelId: string, enabled: boolean): Promise<void>
-  control_recording(enabled: boolean): Promise<void>
+export abstract class OzysDevice {
+  protected readingCallbacks: Array<
+    (channelId: string, data: OzysChannelRealtimeReadings) => void
+  > = []
+  protected fftCallbacks: Array<
+    (channelId: string, data: OzysChannelRealtimeFFT) => void
+  > = []
 
-  on_realtime_readings(
+  constructor(public deviceInfo: OzysDeviceInfo) {
+    makeAutoObservable(this)
+  }
+
+  async renameDevice(name: string) {
+    this.deviceInfo.name = name
+  }
+
+  async renameChannel(channelId: string, name: string) {
+    for (const channel of this.deviceInfo.channels) {
+      if (channel.connected && channel.id === channelId) {
+        channel.name = name
+        return
+      }
+    }
+  }
+
+  async controlChannel(channelId: string, enabled: boolean) {
+    for (const channel of this.deviceInfo.channels) {
+      if (channel.connected && channel.id === channelId) {
+        channel.enabled = enabled
+        return
+      }
+    }
+  }
+
+  async controlRecording(enabled: boolean) {
+    this.deviceInfo.isRecording = enabled
+  }
+
+  onRealtimeReadings(
     callback: (channelId: string, data: OzysChannelRealtimeReadings) => void,
-  ): () => void
+  ): () => void {
+    this.readingCallbacks.push(callback)
+    return () => {
+      this.readingCallbacks = this.readingCallbacks.filter(
+        (cb) => cb !== callback,
+      )
+    }
+  }
 
-  on_realtime_fft(
+  onRealtimeFFT(
     callback: (channelId: string, data: OzysChannelRealtimeFFT) => void,
-  ): () => void
+  ): () => void {
+    this.fftCallbacks.push(callback)
+    return () => {
+      this.fftCallbacks = this.fftCallbacks.filter((cb) => cb !== callback)
+    }
+  }
 
-  disconnect(): void
+  abstract disconnect(): void
 }
