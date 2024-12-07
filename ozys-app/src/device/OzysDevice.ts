@@ -23,6 +23,8 @@ export type OzysDeviceInfo = {
 // The readings list contains 20 samples during the last 10ms
 // Sampling rate is 2kHz
 export type OzysChannelRealtimeReadings = {
+  // milliseconds since epoch
+  // aligned to the start of the 10ms interval
   timestamp: number
 
   // Absolute reading values
@@ -32,12 +34,14 @@ export type OzysChannelRealtimeReadings = {
 
   // Standard deviation of all the samples inside the 10ms interval
   // 20 values long, one value for each reading
-  readingNoises: Float32Array
+  noises: Float32Array
 }
 
 // The device sends this data to the app every 100ms
 // The data contains FFT during the last 100ms
 export type OzysChannelRealtimeFft = {
+  // milliseconds since epoch
+  // aligned to the start of the 100ms interval
   timestamp: number
 
   // FFT for frequencies below 2kHz, with 10Hz resolution

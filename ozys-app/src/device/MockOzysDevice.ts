@@ -9,34 +9,34 @@ export class MockOzysDevice extends OzysDevice {
 
   constructor() {
     super({
-        name: 'Mock OZYS Device',
-        id: crypto.randomUUID(),
-        model: 'OZYS V3',
-        isRecording: false,
-        channels: [
-          {
-            connected: true,
-            enabled: true,
-            name: 'Channel 1',
-            id: crypto.randomUUID(),
-          },
-          {
-            connected: true,
-            enabled: true,
-            name: 'Channel 2',
-            id: crypto.randomUUID(),
-          },
-          {
-            connected: true,
-            enabled: false,
-            name: 'Channel 3',
-            id: crypto.randomUUID(),
-          },
-          {
-            connected: false,
-          },
-        ],
-      })
+      name: 'Mock OZYS Device',
+      id: crypto.randomUUID(),
+      model: 'OZYS V3',
+      isRecording: false,
+      channels: [
+        {
+          connected: true,
+          enabled: true,
+          name: 'Channel 1',
+          id: crypto.randomUUID(),
+        },
+        {
+          connected: true,
+          enabled: true,
+          name: 'Channel 2',
+          id: crypto.randomUUID(),
+        },
+        {
+          connected: true,
+          enabled: false,
+          name: 'Channel 3',
+          id: crypto.randomUUID(),
+        },
+        {
+          connected: false,
+        },
+      ],
+    })
 
     this.startRealtimeReadings()
     this.startRealtimeFFT()
@@ -46,10 +46,17 @@ export class MockOzysDevice extends OzysDevice {
     this.intervalIds.forEach((id) => clearInterval(id))
   }
 
-  private startRealtimeReadings() {
+  async untilAligned(): Promise<void> {
+    const remainder = 100 - (Date.now() % 100)
+    await new Promise((resolve) => setTimeout(resolve, remainder))
+  }
+
+  private async startRealtimeReadings() {
+    await this.untilAligned()
     this.intervalIds.push(
       setInterval(() => {
-        const timestamp = Date.now()
+        let timestamp = Date.now()
+        timestamp = Math.round(timestamp / 10) * 10
         for (const channel of this.deviceInfo.channels) {
           if (!channel.connected || !channel.enabled) {
             continue
@@ -62,7 +69,7 @@ export class MockOzysDevice extends OzysDevice {
           const data: OzysChannelRealtimeReadings = {
             timestamp,
             readings,
-            readingNoises,
+            noises: readingNoises,
           }
           for (let k = 0; k < this.readingCallbacks.length; k++) {
             this.readingCallbacks[k](channel.id, data)
@@ -72,10 +79,12 @@ export class MockOzysDevice extends OzysDevice {
     )
   }
 
-  private startRealtimeFFT() {
+  private async startRealtimeFFT() {
+    await this.untilAligned()
     this.intervalIds.push(
       setInterval(() => {
-        const timestamp = Date.now()
+        let timestamp = Date.now()
+        timestamp = Math.round(timestamp / 100) * 100
         for (const channel of this.deviceInfo.channels) {
           if (!channel.connected || !channel.enabled) {
             continue
