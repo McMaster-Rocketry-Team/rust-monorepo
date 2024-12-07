@@ -1,6 +1,5 @@
-import { makeAutoObservable } from 'mobx'
 import {
-  OzysChannelRealtimeFFT,
+  OzysChannelRealtimeFft,
   OzysChannelRealtimeReadings,
   OzysDevice,
 } from './OzysDevice'
@@ -83,7 +82,7 @@ export class MockOzysDevice extends OzysDevice {
           }
           const fft0To2k = new Float32Array(200).fill(0)
           const fft2kTo20k = new Float32Array(360).fill(0)
-          const data: OzysChannelRealtimeFFT = {
+          const data: OzysChannelRealtimeFft = {
             timestamp,
             fft0To2k,
             fft2kTo20k,

@@ -37,7 +37,7 @@ export type OzysChannelRealtimeReadings = {
 
 // The device sends this data to the app every 100ms
 // The data contains FFT during the last 100ms
-export type OzysChannelRealtimeFFT = {
+export type OzysChannelRealtimeFft = {
   timestamp: number
 
   // FFT for frequencies below 2kHz, with 10Hz resolution
@@ -57,7 +57,7 @@ export abstract class OzysDevice {
     (channelId: string, data: OzysChannelRealtimeReadings) => void
   > = []
   protected fftCallbacks: Array<
-    (channelId: string, data: OzysChannelRealtimeFFT) => void
+    (channelId: string, data: OzysChannelRealtimeFft) => void
   > = []
 
   constructor(public deviceInfo: OzysDeviceInfo) {
@@ -108,7 +108,7 @@ export abstract class OzysDevice {
   }
 
   onRealtimeFft(
-    callback: (channelId: string, data: OzysChannelRealtimeFFT) => void,
+    callback: (channelId: string, data: OzysChannelRealtimeFft) => void,
   ): () => void {
     this.fftCallbacks.push(callback)
     return () => {

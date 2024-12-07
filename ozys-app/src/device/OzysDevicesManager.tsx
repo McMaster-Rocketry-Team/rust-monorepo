@@ -7,20 +7,26 @@ import {
   useLayoutEffect,
   useState,
 } from 'react'
+import DatabaseWorker from '../database/DatabaseWorker?worker'
+import * as Comlink from 'comlink'
+import type { DatabaseWorkerType } from '../database/DatabaseWorker'
 
 class OzysDevicesManager {
   public devices: OzysDevice[] = []
+  private dbWorkerScript = new DatabaseWorker()
+  private dbWorker = Comlink.wrap<DatabaseWorkerType>(this.dbWorkerScript)
 
   constructor() {
     makeAutoObservable(this)
+    this.dbWorker.init()
   }
 
   addDevice(device: OzysDevice) {
     device.onRealtimeReadings((channelId, data) => {
-      // Send the data to worker thread
+      this.dbWorker.onRealtimeReadings(device.deviceInfo.id, channelId, data)
     })
     device.onRealtimeFft((channelId, data) => {
-      // Send the data to worker thread
+      this.dbWorker.onRealtimeFft(device.deviceInfo.id, channelId, data)
     })
     this.devices.push(device)
   }
@@ -38,6 +44,7 @@ class OzysDevicesManager {
   disconnectAllDevices() {
     this.devices.forEach((device) => device.disconnect())
     this.devices = []
+    this.dbWorkerScript.terminate()
   }
 }
 

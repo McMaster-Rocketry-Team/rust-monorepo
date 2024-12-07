@@ -9,6 +9,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "comlink": "^4.4.2",
+    "dexie": "^4.0.10",
     "flexlayout-react": "^0.8.1",
     "jotai": "^2.10.2",
     "lodash-es": "^4.17.21",
