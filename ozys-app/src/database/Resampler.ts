@@ -22,6 +22,9 @@ export class Resampler {
     this.targetSampleDuration = 1000 / targetSampleRate
 
     this.nextSampleTimestamp = this.targetSampleOffset
+    if (this.nextSampleTimestamp < 0) {
+      this.nextSampleTimestamp += this.targetSampleDuration
+    }
   }
 
   next(reading: number): {

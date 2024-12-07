@@ -63,7 +63,11 @@ export class MockOzysDevice extends OzysDevice {
           }
           const readings = new Float32Array(20)
           for (let j = 0; j < 20; j++) {
-            readings[j] = Math.sin((timestamp + j * 0.5) * 0.001)
+            readings[j] = Math.sin(
+              2 * Math.PI * 5 * (timestamp + j * 0.5) * 0.001,
+            )
+            readings[j] +=
+              Math.sin(2 * Math.PI * 60 * (timestamp + j * 0.5) * 0.001) * 0.1
           }
           const readingNoises = new Float32Array(20).fill(0)
           const data: OzysChannelRealtimeReadings = {

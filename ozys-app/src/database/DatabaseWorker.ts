@@ -4,7 +4,7 @@ import {
   OzysChannelRealtimeReadings,
 } from '../device/OzysDevice'
 import Dexie, { EntityTable } from 'dexie'
-import { RealtimeReadingsPlayer } from './Player'
+import { RealtimeReadingsPlayer } from './RealtimeReadingsPlayer'
 
 class DBReadingsRowBuilder {
   timestamp: number = -1
