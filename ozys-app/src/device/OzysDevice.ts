@@ -1,4 +1,4 @@
-import { makeAutoObservable } from 'mobx'
+import { action, makeAutoObservable, makeObservable, observable } from 'mobx'
 
 export type OzysChannelState =
   | {
@@ -61,7 +61,13 @@ export abstract class OzysDevice {
   > = []
 
   constructor(public deviceInfo: OzysDeviceInfo) {
-    makeAutoObservable(this)
+    makeObservable(this, {
+      deviceInfo: observable,
+      renameDevice: action,
+      renameChannel: action,
+      controlChannel: action,
+      controlRecording: action,
+    })
   }
 
   async renameDevice(name: string) {

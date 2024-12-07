@@ -8,7 +8,7 @@ import {
 } from 'flexlayout-react'
 import 'flexlayout-react/style/light.css'
 
-import Devices from './devices/Devices'
+import {Devices} from './devices/Devices'
 import { MouseEvent, useEffect, useMemo, useRef, useState } from 'react'
 
 import addIcon from '../assets/add.svg'
@@ -100,28 +100,26 @@ export default function FlexLayout() {
   ) => {
     if (node instanceof TabSetNode) {
       renderValues.stickyButtons.push(
-        <>
-          <button
-            key='add-button'
-            style={{
-              width: '1.1em',
-              height: '1.1em',
-              border: 'none',
-              background: 'transparent',
-              cursor: 'pointer',
-            }}
-            title='Add Tab'
-            onClick={(event) => onAddFromTabSetButton(node, event)}
-          >
-            <img
-              src={addIcon}
-              alt='Add'
-              key='Add button'
-              style={{ width: '1.1em', height: '1.1em' }}
-              className='flexlayout__tab_toolbar_button'
-            />
-          </button>
-        </>,
+        <button
+          key='add-button'
+          style={{
+            width: '1.1em',
+            height: '1.1em',
+            border: 'none',
+            background: 'transparent',
+            cursor: 'pointer',
+          }}
+          title='Add Tab'
+          onClick={(event) => onAddFromTabSetButton(node, event)}
+        >
+          <img
+            src={addIcon}
+            alt='Add'
+            key='Add button'
+            style={{ width: '1.1em', height: '1.1em' }}
+            className='flexlayout__tab_toolbar_button'
+          />
+        </button>,
       )
     }
   }

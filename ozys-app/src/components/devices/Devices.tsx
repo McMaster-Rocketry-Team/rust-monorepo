@@ -1,61 +1,28 @@
-import { useEffect, useState } from 'react'
-import DeviceCard from './DeviceCard'
+import { observer } from 'mobx-react-lite'
+import { useOzysDevicesManager } from '../../device/OzysDevicesManager'
+import { MockOzysDevice } from '../../device/MockOzysDevice'
+import { DeviceCard } from './DeviceCard'
 
-import { DeviceType, RealtimeData } from '../../types'
-
-export default function Devices() {
-  const [deviceList, setDeviceList] = useState<DeviceType[]>([])
-
-  const [deviceData, setDeviceData] = useState<RealtimeData[]>([])
-
-  async function poll() {
-    // const data = (await invoke('ozys_poll_realtime_data', {
-    //   deviceId: 'mock-ozys-device',
-    // })) as RealtimeData[]
-
-    // setDeviceData(data)
-
-    // info('data: ' + JSON.stringify(data))
-  }
-
-
-  useEffect(() => {
-    const polling = setInterval(() => {
-      poll()
-    }, 10)
-
-    return () => {clearInterval(polling)}
-  }, [deviceData])
-
-
-
-  useEffect(() => {
-    async function enumerateDevices() {
-      let list: DeviceType[] = []
-      // const devices = (await invoke('ozys_enumerate_devices')) as DeviceType[]
-
-      // devices.forEach((device) => {
-      //   list.push(device)
-      // })
-      setDeviceList(list)
-    }
-
-    enumerateDevices()
-  }, [])
+export const Devices = observer(() => {
+  const devicesManager = useOzysDevicesManager()
 
   return (
-    <div className='w-full h-full'>
-      <p>{deviceList ? JSON.stringify(deviceList) : 'No devices found'}</p>
-
-      <p>{deviceData ? JSON.stringify(deviceList) : 'No devices LIST'}</p>
-
-      <h1>{JSON.stringify(deviceData)}</h1>
-
-      <div className='flex p-4'>
-        {deviceList.map((device) => (
-          <DeviceCard key={device.id} deviceData={device} />
-        ))}{' '}
+    <div className='w-full h-full relative'>
+      {devicesManager.devices.map((device) => (
+        <DeviceCard key={device.deviceInfo.id} device={device} />
+      ))}{' '}
+      <div className='absolute right-0 bottom-0 m-4'>
+        <button
+          className='border'
+          onClick={() => {
+            devicesManager.addDevice(new MockOzysDevice())
+          }}
+        >
+          Add Mock Device
+        </button>
+        <br />
+        <button className='border'>Add USB Device</button>
       </div>
     </div>
   )
-}
+})

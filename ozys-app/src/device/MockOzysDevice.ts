@@ -41,7 +41,6 @@ export class MockOzysDevice extends OzysDevice {
 
     this.startRealtimeReadings()
     this.startRealtimeFFT()
-    makeAutoObservable(this)
   }
 
   disconnect(): void {

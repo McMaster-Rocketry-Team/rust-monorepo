@@ -18,7 +18,6 @@ class OzysDevicesManager {
   addDevice(device: OzysDevice) {
     device.onRealtimeReadings((channelId, data) => {
       // Send the data to worker thread
-      console.log('realtime readings', data)
     })
     device.onRealtimeFft((channelId, data) => {
       // Send the data to worker thread
