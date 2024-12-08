@@ -157,7 +157,8 @@ export class StrainGraphCanvas {
   setMsPerPixel(msPerPixel: number) {
     if (msPerPixel === this.msPerPixel) return
     this.msPerPixel = msPerPixel
-    this.resize(false, true)
+    this.calculateWindowDuration()
+    this.recreatePlayers()
   }
 
   private diffSelectedChannels(
@@ -179,10 +180,9 @@ export class StrainGraphCanvas {
     return { removed, added }
   }
 
-  private resize(initial: boolean = false, force: boolean = false) {
+  private resize(initial: boolean = false) {
     if (this.disposed) return
     if (
-      !force &&
       !initial &&
       this.canvas.width == this.container.clientWidth &&
       this.canvas.height == this.container.clientHeight
@@ -194,14 +194,18 @@ export class StrainGraphCanvas {
     this.canvas.height = this.container.clientHeight
     this.width = this.container.clientWidth
     this.height = this.container.clientHeight
-    this.windowDuration = this.width * this.msPerPixel
-    this.sampleRate = this.width / (this.windowDuration / 1000)
-    this.sampleDuration = this.windowDuration / this.width
+    this.calculateWindowDuration()
 
-    if (!initial || force) {
+    if (!initial) {
       console.log('resize to', this.width, this.height)
       this.recreatePlayers()
     }
+  }
+
+  private calculateWindowDuration() {
+    this.windowDuration = this.width * this.msPerPixel
+    this.sampleRate = this.width / (this.windowDuration / 1000)
+    this.sampleDuration = this.windowDuration / this.width
   }
 
   private recreatePlayers() {
