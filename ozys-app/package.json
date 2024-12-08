@@ -10,7 +10,6 @@
     "test": "vitest"
   },
   "dependencies": {
-    "@thi.ng/dsp": "^4.7.53",
     "async-mutex": "^0.5.0",
     "comlink": "^4.4.2",
     "dexie": "^4.0.10",
