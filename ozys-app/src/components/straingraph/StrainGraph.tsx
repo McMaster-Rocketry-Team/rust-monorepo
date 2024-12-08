@@ -1,21 +1,19 @@
 import { observer } from 'mobx-react-lite'
 import { useTabAtom } from '../../workspace/useTabAtom'
 import { useOzysDevicesManager } from '../../device/OzysDevicesManager'
-import { useEffect, useId, useMemo, useRef } from 'react'
+import { Dispatch, SetStateAction, useEffect, useId, useRef } from 'react'
 import { produce } from 'immer'
 import { RealtimeReadingsPlayer } from '../../database/RealtimeReadingsPlayer'
 import { Remote } from 'comlink'
-import { useGetIsMounted, useIntervalWhen, useWillUnmount } from 'rooks'
+import { useIntervalWhen, useWillUnmount } from 'rooks'
 import { Mutex } from 'async-mutex'
 import { autorun } from 'mobx'
 
-export const StrainGraph = observer(() => {
-  const getIsMounted = useGetIsMounted()
+const usePlayers = (
+  selectedChannels: string[],
+  setSelectedChannels: Dispatch<SetStateAction<string[]>>,
+) => {
   const devicesManager = useOzysDevicesManager()
-  const [selectedChannels, setSelectedChannels] = useTabAtom<string[]>(
-    'selectedChannels',
-    [],
-  )
   const playersRef = useRef<Map<string, Remote<RealtimeReadingsPlayer>>>()
   const playersMutexRef = useRef<Mutex>()
 
@@ -50,7 +48,6 @@ export const StrainGraph = observer(() => {
             60, // TODO
             0,
           )
-          if (!getIsMounted()) return
           playersRef.current!.set(selectedChannel, player)
         }
       }
@@ -65,20 +62,6 @@ export const StrainGraph = observer(() => {
     })
   }, [selectedChannels])
 
-  useIntervalWhen(
-    async () => {
-      for (const player of playersRef.current!.values()) {
-        const newData = await player.getNewData()
-        for (const data of newData) {
-          console.log(data)
-          
-        }
-      }
-    },
-    50,
-    true,
-  )
-
   useWillUnmount(() => {
     playersMutexRef.current!.runExclusive(async () => {
       for (const player of playersRef.current!.values()) {
@@ -86,6 +69,30 @@ export const StrainGraph = observer(() => {
       }
     })
   })
+
+  return playersRef.current
+}
+
+export const StrainGraph = observer(() => {
+  const devicesManager = useOzysDevicesManager()
+  const [selectedChannels, setSelectedChannels] = useTabAtom<string[]>(
+    'selectedChannels',
+    [],
+  )
+  const players = usePlayers(selectedChannels, setSelectedChannels)
+
+  useIntervalWhen(
+    async () => {
+      for (const player of players.values()) {
+        const newData = await player.getNewData()
+        for (const data of newData) {
+          console.log(data)
+        }
+      }
+    },
+    50,
+    true,
+  )
 
   return (
     <div>
