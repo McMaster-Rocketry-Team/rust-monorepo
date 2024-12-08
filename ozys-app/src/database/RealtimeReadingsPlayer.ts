@@ -33,10 +33,7 @@ export class RealtimeReadingsPlayer {
     this.windowDuration = options.windowDuration
   }
 
-  async onRealtimeReadings(
-    channelId: string,
-    data: OzysChannelRealtimeReadings,
-  ) {
+  onRealtimeReadings(channelId: string, data: OzysChannelRealtimeReadings) {
     if (channelId !== this.channelId) {
       return
     }
@@ -50,6 +47,7 @@ export class RealtimeReadingsPlayer {
       )
       // null means there is a gap in the data
       this.outputData.addLast(null)
+      console.log('last null:', this.outputData.peek(-1))
       this.createResampler(data.timestamp)
     }
 
@@ -61,20 +59,6 @@ export class RealtimeReadingsPlayer {
     }
 
     this.lastTimestamp = data.timestamp
-
-    // remove data points in outputData that are older than windowDuration
-    const lastResampled = this.outputData.peek(-1)
-    if (lastResampled) {
-      const windowStartTimestamp = lastResampled.timestamp - this.windowDuration
-      while (!this.outputData.isEmpty()) {
-        let data = this.outputData.peek(0)
-        if (data === null || data!.timestamp < windowStartTimestamp) {
-          this.outputData.removeFirst()
-        } else {
-          break
-        }
-      }
-    }
   }
 
   private createResampler(sourceTimestamp: number) {

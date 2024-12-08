@@ -56,9 +56,7 @@ export class CircularBuffer<T> {
     for (let i = 0; i < this.size; i++) {
       const index = (this.head + i) % this.capacity
       const item = this.buffer[index]
-      if (item !== undefined) {
-        callback(item, i)
-      }
+      callback(item!, i)
     }
   }
 
@@ -107,9 +105,7 @@ export class CircularBuffer<T> {
     for (let i = 0; i < this.size; i++) {
       const index = (this.head + i) % this.capacity
       const item = this.buffer[index]
-      if (item !== undefined) {
-        result.push(item)
-      }
+      result.push(item!)
     }
     return result
   }
@@ -127,9 +123,7 @@ export class CircularBuffer<T> {
     for (let i = 0; i < limit; i++) {
       const index = (this.head + i) % this.capacity
       const item = this.buffer[index]
-      if (item !== undefined) {
-        result.push(item)
-      }
+      result.push(item!)
     }
     return result
   }
@@ -179,9 +173,7 @@ export class CircularBuffer<T> {
     for (let i = this.size - limit; i < this.size; i++) {
       const index = (this.head + i) % this.capacity
       const item = this.buffer[index]
-      if (item !== undefined) {
-        result.push(item)
-      }
+      result.push(item!)
     }
     return result
   }

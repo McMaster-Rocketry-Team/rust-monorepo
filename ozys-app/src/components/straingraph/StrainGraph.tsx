@@ -23,7 +23,7 @@ export const StrainGraph = observer(() => {
   const [data, setData] = useState<
     { time: number; value1: number; value2: number }[]
   >([])
-  const [isMenuOpen, setIsMenuOpen] = useState(false) // Popup menu state
+  const [isMenuOpen, setIsMenuOpen] = useTabAtom('isMenuOpen', false)
 
   useEffect(() => {
     canvasRef.current = new StrainGraphCanvas(
@@ -41,22 +41,6 @@ export const StrainGraph = observer(() => {
       canvasRef.current.draw(selectedChannels)
     }
   }, true)
-
-  // remove selected channels that are not in allChannels
-  // autorun is needed here because devicesManager.activeChannels
-  // is not a react state (but a mobx computed property)
-  useEffect(
-    () =>
-      autorun(() => {
-        const activeChannelIds = devicesManager.activeChannels.map(
-          (channel) => channel.channel.id,
-        )
-        setSelectedChannels((old) =>
-          old.filter(({ channelId }) => activeChannelIds.includes(channelId)),
-        )
-      }),
-    [],
-  )
 
   // Render graph on canvas
   // useEffect(() => {

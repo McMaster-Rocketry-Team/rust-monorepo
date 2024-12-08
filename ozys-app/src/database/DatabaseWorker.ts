@@ -140,14 +140,14 @@ class DatabaseWorker {
     }
 
     let readingsCache = this.readingsCacheMap.get(channelId)
-    if (readingsCache) {
-      readingsCache.toArray().forEach((readings) => {
-        if (readings.timestamp > lastReadingTimestamp) {
-          player.onRealtimeReadings(channelId, readings)
-        }
-      })
-    }
-    console.info(`Took ${performance.now() - start}ms to process data for player`)
+    readingsCache?.forEach((readings) => {
+      if (readings.timestamp > lastReadingTimestamp) {
+        player.onRealtimeReadings(channelId, readings)
+      }
+    })
+    console.info(
+      `Took ${performance.now() - start}ms to process data for player`,
+    )
 
     this.realtimeReadingsPlayers.set(id, player)
     return Comlink.proxy(player)
