@@ -118,6 +118,7 @@ class DatabaseWorker {
       this.realtimeReadingsPlayers.delete(id)
     })
 
+    const start = performance.now()
     // Fill the player with readings from the database
     const rows = await this.db.readings
       .where('[channelId+timestamp]')
@@ -146,6 +147,7 @@ class DatabaseWorker {
         }
       })
     }
+    console.info(`Took ${performance.now() - start}ms to process data for player`)
 
     this.realtimeReadingsPlayers.set(id, player)
     return Comlink.proxy(player)

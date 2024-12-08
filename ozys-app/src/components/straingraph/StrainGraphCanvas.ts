@@ -28,6 +28,7 @@ export class StrainGraphCanvas {
   private selectedChannels: SelectedChannel[] = []
   private disposed = false
   private isDrawing = false
+  private resizeObserver: ResizeObserver
 
   private width!: number
   private height!: number
@@ -45,19 +46,16 @@ export class StrainGraphCanvas {
     container.appendChild(this.canvas)
     this.ctx = this.canvas.getContext('2d')!
 
-    this.draw = this.draw.bind(this)
-    this.recreatePlayers = debounce(this.recreatePlayers.bind(this), 100)
-    this.resize = this.resize.bind(this)
-
     this.resize(true)
-    container.addEventListener('resize', () => this.resize())
+    this.resizeObserver = new ResizeObserver(debounce(() => this.resize(), 100))
+    this.resizeObserver.observe(container)
   }
 
   async draw(selectedChannels: SelectedChannel[]) {
     if (this.disposed) return
-    if (this.isDrawing){
-        console.warn("Skipping frame")
-        return
+    if (this.isDrawing) {
+      console.warn('Skipping frame')
+      return
     }
     this.isDrawing = true
     const now = Date.now()
@@ -97,14 +95,14 @@ export class StrainGraphCanvas {
     })
 
     for (const { channelId } of selectedChannels) {
-        const player = this.players.get(channelId)
-        if (!player) continue
-  
-        const newData = await player.player.getNewData()
-        const readings = player.readings
-        for (const data of newData) {
-          readings.addLast(data)
-        }
+      const player = this.players.get(channelId)
+      if (!player) continue
+
+      const newData = await player.player.getNewData()
+      const readings = player.readings
+      for (const data of newData) {
+        readings.addLast(data)
+      }
     }
 
     this.ctx.clearRect(0, 0, this.width, this.height)
@@ -128,7 +126,7 @@ export class StrainGraphCanvas {
             (reading.timestamp - start) / this.sampleDuration,
           )
           const y = reading.reading * 10 + this.height / 2
-        //   console.log("x, y", x, y)
+          //   console.log("x, y", x, y)
           if (firstPoint) {
             this.ctx.moveTo(x, y)
             firstPoint = false
@@ -147,6 +145,7 @@ export class StrainGraphCanvas {
   dispose() {
     if (this.disposed) return
     this.disposed = true
+    this.resizeObserver.disconnect()
     this.canvas.remove()
     this.playersMutex.runExclusive(async () => {
       for (const player of this.players.values()) {
@@ -175,6 +174,15 @@ export class StrainGraphCanvas {
   }
 
   private resize(initial: boolean = false) {
+    if (this.disposed) return
+    if (
+      !initial &&
+      this.canvas.width == this.container.clientWidth &&
+      this.canvas.height == this.container.clientHeight
+    ) {
+      return
+    }
+
     this.canvas.width = this.container.clientWidth
     this.canvas.height = this.container.clientHeight
     this.width = this.container.clientWidth

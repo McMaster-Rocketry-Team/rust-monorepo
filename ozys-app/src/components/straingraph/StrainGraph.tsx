@@ -1,87 +1,11 @@
 import { useTabAtom } from '../../workspace/useTabAtom'
 import { useOzysDevicesManager } from '../../device/OzysDevicesManager'
-import { Dispatch, SetStateAction, useEffect, useRef, useState } from 'react'
-import type { RealtimeReadingsPlayer } from '../../database/RealtimeReadingsPlayer'
-import { Remote } from 'comlink'
-import { useRaf, useWillUnmount } from 'rooks'
-import { Mutex } from 'async-mutex'
+import { useEffect, useRef, useState } from 'react'
+import { useRaf } from 'rooks'
 import { autorun } from 'mobx'
 import { observer } from 'mobx-react-lite'
 import { produce } from 'immer'
 import { SelectedChannel, StrainGraphCanvas } from './StrainGraphCanvas'
-
-const usePlayers = <
-  C extends {
-    channelId: string
-  },
->(
-  selectedChannels: C[],
-  setSelectedChannels: Dispatch<SetStateAction<C[]>>,
-) => {
-  const devicesManager = useOzysDevicesManager()
-  const playersRef = useRef<Map<string, Remote<RealtimeReadingsPlayer>>>()
-  const playersMutexRef = useRef<Mutex>()
-
-  if (!playersRef.current) {
-    playersRef.current = new Map()
-    playersMutexRef.current = new Mutex()
-  }
-
-  // remove selected channels that are not in allChannels
-  // autorun is needed here because devicesManager.activeChannels
-  // is not a react state (but a mobx computed property)
-  useEffect(
-    () =>
-      autorun(() => {
-        const activeChannelIds = devicesManager.activeChannels.map(
-          (channel) => channel.channel.id,
-        )
-        setSelectedChannels((old) =>
-          old.filter(({ channelId }) => activeChannelIds.includes(channelId)),
-        )
-      }),
-    [],
-  )
-
-  useEffect(() => {
-    playersMutexRef.current!.runExclusive(async () => {
-      // create new players for selected channels
-      for (const { channelId } of selectedChannels) {
-        if (!playersRef.current!.has(channelId)) {
-          const player = await devicesManager.createRealtimeReadingsPlayer(
-            channelId,
-            {
-              windowDuration: 1000 * 10,
-              windowSampleCount: 1920,
-              windowStartTimestamp: Date.now() - 1000 * 10,
-            },
-          )
-          playersRef.current!.set(channelId, player)
-        }
-      }
-
-      // dispose players for unselected channels
-      for (const [channelId, player] of playersRef.current!) {
-        if (
-          selectedChannels.findIndex((c) => c.channelId === channelId) === -1
-        ) {
-          player.dispose()
-          playersRef.current!.delete(channelId)
-        }
-      }
-    })
-  }, [selectedChannels])
-
-  useWillUnmount(() => {
-    playersMutexRef.current!.runExclusive(async () => {
-      for (const player of playersRef.current!.values()) {
-        player.dispose()
-      }
-    })
-  })
-
-  return playersRef.current
-}
 
 export const StrainGraph = observer(() => {
   const devicesManager = useOzysDevicesManager()
@@ -112,11 +36,11 @@ export const StrainGraph = observer(() => {
     }
   }, [])
 
-  useRaf(()=>{
-    if (canvasRef.current){
+  useRaf(() => {
+    if (canvasRef.current) {
       canvasRef.current.draw(selectedChannels)
     }
-  },true)
+  }, true)
 
   // remove selected channels that are not in allChannels
   // autorun is needed here because devicesManager.activeChannels
@@ -331,7 +255,7 @@ export const StrainGraph = observer(() => {
           display: 'block',
           width: '100%',
           height: '100%',
-          padding: '10px',
+          overflow: 'hidden',
         }}
       />
     </div>

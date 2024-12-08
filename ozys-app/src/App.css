@@ -28,3 +28,7 @@
   user-select: none;
   cursor: default;
 }
+
+.flexlayout__layout {
+  overflow: hidden;
+}
