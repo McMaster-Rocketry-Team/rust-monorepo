@@ -1,6 +1,6 @@
 import { OzysChannelRealtimeReadings } from '../device/OzysDevice'
 import { CircularBuffer } from '../utils/CircularBuffer'
-import { Resampler, resamplerFactory } from './Resampler'
+import { Resampler } from './Resampler'
 
 export type PlayerWindowOptions = {
   windowDuration: number
@@ -62,7 +62,7 @@ export class RealtimeReadingsPlayer {
   }
 
   private createResampler(sourceTimestamp: number) {
-    this.resampler = resamplerFactory(
+    this.resampler = new Resampler(
       sourceTimestamp,
       2000,
       this.targetSampleRate,
