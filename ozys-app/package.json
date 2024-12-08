@@ -22,7 +22,6 @@
     "mobx-react-lite": "^4.0.7",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "ring-buffer-ts": "^1.2.0",
     "rooks": "^7.14.1"
   },
   "devDependencies": {

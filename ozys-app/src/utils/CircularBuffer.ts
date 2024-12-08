@@ -49,6 +49,20 @@ export class CircularBuffer<T> {
   }
 
   /**
+   * Executes a provided function once for each item in the buffer.
+   * @param callback The function to execute for each item.
+   */
+  forEach(callback: (value: T, index: number) => void): void {
+    for (let i = 0; i < this.size; i++) {
+      const index = (this.head + i) % this.capacity
+      const item = this.buffer[index]
+      if (item !== undefined) {
+        callback(item, i)
+      }
+    }
+  }
+
+  /**
    * Adds an item to the start of the buffer.
    * If the buffer is full, it overwrites the oldest item.
    * @param value The item to add.

@@ -1,5 +1,5 @@
 import { OzysChannelRealtimeReadings } from '../device/OzysDevice'
-import { RingBuffer } from 'ring-buffer-ts'
+import { CircularBuffer } from '../utils/CircularBuffer'
 import { Resampler } from './Resampler'
 
 export type PlayerWindowOptions = {
@@ -14,7 +14,7 @@ export class RealtimeReadingsPlayer {
   private sampleRate: number
   private targetSampleOffset: number
   private resampler: Resampler | undefined
-  private outputData: RingBuffer<{
+  private outputData: CircularBuffer<{
     timestamp: number
     reading: number
   } | null>
@@ -25,11 +25,12 @@ export class RealtimeReadingsPlayer {
     private onDisplose: () => void,
   ) {
     console.log('RealtimeReadingsPlayer created', channelId)
-    this.sampleRate = options.windowSampleCount / (options.windowDuration / 1000)
+    this.sampleRate =
+      options.windowSampleCount / (options.windowDuration / 1000)
     const sampleDuration = 1000 / this.sampleRate
     this.targetSampleOffset = options.windowStartTimestamp % sampleDuration
 
-    this.outputData = new RingBuffer(options.windowSampleCount)
+    this.outputData = new CircularBuffer(options.windowSampleCount)
     this.windowDuration = options.windowDuration
   }
 
@@ -49,25 +50,25 @@ export class RealtimeReadingsPlayer {
         channelId,
       )
       // null means there is a gap in the data
-      this.outputData.add(null)
+      this.outputData.addLast(null)
       this.createResampler()
     }
 
     for (const reading of data.readings) {
       const resampled = this.resampler!.next(reading)
       if (resampled) {
-        this.outputData.add(resampled)
+        this.outputData.addLast(resampled)
       }
     }
 
     this.lastTimestamp = data.timestamp
 
     // remove data points in outputData that are older than windowDuration
-    const lastResampled = this.outputData.getLast()
+    const lastResampled = this.outputData.peek(-1)
     if (lastResampled) {
       const windowStartTimestamp = lastResampled.timestamp - this.windowDuration
       while (!this.outputData.isEmpty()) {
-        let data = this.outputData.getFirst()
+        let data = this.outputData.peek(0)
         if (data === null || data!.timestamp < windowStartTimestamp) {
           this.outputData.removeFirst()
         } else {

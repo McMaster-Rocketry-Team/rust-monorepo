@@ -2210,7 +2210,6 @@ __metadata:
     postcss: "npm:^8.4.49"
     react: "npm:^18.2.0"
     react-dom: "npm:^18.2.0"
-    ring-buffer-ts: "npm:^1.2.0"
     rooks: "npm:^7.14.1"
     tailwindcss: "npm:^3.4.15"
     typescript: "npm:^5.2.2"
@@ -2516,13 +2515,6 @@ __metadata:
   version: 1.0.4
   resolution: "reusify@npm:1.0.4"
   checksum: 10c0/c19ef26e4e188f408922c46f7ff480d38e8dfc55d448310dfb518736b23ed2c4f547fb64a6ed5bdba92cd7e7ddc889d36ff78f794816d5e71498d645ef476107
-  languageName: node
-  linkType: hard
-
-"ring-buffer-ts@npm:^1.2.0":
-  version: 1.2.0
-  resolution: "ring-buffer-ts@npm:1.2.0"
-  checksum: 10c0/2bc6a27e02479034f3550e04f50262d4a6baf57e0fbc8823157d46d779a8dd894cadd4006d13b32af534bcbdcb0a051a3e56486c0230156e8028af0c42b88b7b
   languageName: node
   linkType: hard
 

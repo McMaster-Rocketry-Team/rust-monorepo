@@ -8,7 +8,7 @@ import {
   PlayerWindowOptions,
   RealtimeReadingsPlayer,
 } from './RealtimeReadingsPlayer'
-import { RingBuffer } from 'ring-buffer-ts'
+import { CircularBuffer } from '../utils/CircularBuffer'
 
 // Stores 100ms worth of readings (200 readings)
 // instead of 10ms worth of readings from OzysChannelRealtimeReadings
@@ -59,7 +59,7 @@ class DatabaseWorker {
   private db: DBType
   private readingsCacheMap: Map<
     string,
-    RingBuffer<OzysChannelRealtimeReadings>
+    CircularBuffer<OzysChannelRealtimeReadings>
   > = new Map()
   private realtimeReadingsPlayers: Map<string, RealtimeReadingsPlayer> =
     new Map()
@@ -86,13 +86,13 @@ class DatabaseWorker {
 
     let readingsCache = this.readingsCacheMap.get(channelId)
     if (!readingsCache) {
-      readingsCache = new RingBuffer(50)
+      readingsCache = new CircularBuffer(50)
       this.readingsCacheMap.set(channelId, readingsCache)
     }
-    readingsCache.add(readings)
+    readingsCache.addLast(readings)
 
     if ((readings.timestamp - 90) % 100 === 0) {
-      const last10Readings = readingsCache.getLastN(10)
+      const last10Readings = readingsCache.lastN(10)
       if (
         last10Readings.length === 10 &&
         last10Readings[0].timestamp === readings.timestamp - 90

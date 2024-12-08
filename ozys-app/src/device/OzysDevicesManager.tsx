@@ -12,7 +12,7 @@ import * as Comlink from 'comlink'
 import type { DatabaseWorkerType } from '../database/DatabaseWorker'
 import type { PlayerWindowOptions } from '../database/RealtimeReadingsPlayer'
 
-class OzysDevicesManager {
+export class OzysDevicesManager {
   public devices: OzysDevice[] = []
   private dbWorkerScript = new DatabaseWorker()
   private dbWorker = Comlink.wrap<DatabaseWorkerType>(this.dbWorkerScript)
@@ -43,6 +43,17 @@ class OzysDevicesManager {
       disconnectAllDevices: action,
     })
     console.log('OzysDevicesManager created')
+  }
+
+  getDeviceAndChannel(channelId: string) {
+    for (const device of this.devices) {
+      for (const channel of device.deviceInfo.channels) {
+        if (channel.connected && channel.id === channelId) {
+          return { device, channel }
+        }
+      }
+    }
+    return null
   }
 
   addDevice(device: OzysDevice) {

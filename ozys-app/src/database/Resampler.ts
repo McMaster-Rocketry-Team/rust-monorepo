@@ -1,9 +1,10 @@
 import { Biquad, biquadLP } from '@thi.ng/dsp'
-import { RingBuffer } from 'ring-buffer-ts'
+import { CircularBuffer } from '../utils/CircularBuffer'
+
 
 export class Resampler {
   private filter: Biquad
-  private cubicBuffer: RingBuffer<number> = new RingBuffer(4)
+  private cubicBuffer: CircularBuffer<number> = new CircularBuffer(4)
   private sourceSampleDuration: number
   private targetSampleDuration: number
   private sourceI = 0
@@ -41,10 +42,10 @@ export class Resampler {
       }
 
       for (let i = 0; i < 4; i++) {
-        this.cubicBuffer.add(filteredReading)
+        this.cubicBuffer.addLast(filteredReading)
       }
     } else {
-      this.cubicBuffer.add(filteredReading)
+      this.cubicBuffer.addLast(filteredReading)
     }
 
     const interpolatableStart = (this.sourceI - 2) * this.sourceSampleDuration
@@ -75,11 +76,10 @@ export class Resampler {
 
   // interpolate using a Catmull-Rom Spline
   private cubicInterpolate(t: number) {
-    const p0 = this.cubicBuffer.get(0)!
-    const p1 = this.cubicBuffer.get(1)!
-    const p2 = this.cubicBuffer.get(2)!
-    const p3 = this.cubicBuffer.get(3)!
-    // console.log(p0, p1, p2, p3)
+    const p0 = this.cubicBuffer.peek(0)!
+    const p1 = this.cubicBuffer.peek(1)!
+    const p2 = this.cubicBuffer.peek(2)!
+    const p3 = this.cubicBuffer.peek(3)!
     return (
       0.5 *
       (2 * p1 +
