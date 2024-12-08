@@ -6,11 +6,15 @@ export const StrainGraph = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [time, setTime] = useState(0);
   const [hoverInfo, setHoverInfo] = useState<{
-    time: number;
+    x: number;
     dataIndex: number | null;
   } | null>(null);
   const [data, setData] = useState<{ time: number; value1: number; value2: number }[]>([]);
-
+  const [isMenuOpen, setIsMenuOpen] = useState(false); // Popup menu state
+  const [dataConfig, setDataConfig] = useState([
+    { key: 'value1', color: 'blue', interval: 100 },
+    { key: 'value2', color: 'orange', interval: 100 },
+  ]);
 
   // Generate dynamic data
   useEffect(() => {
@@ -19,10 +23,10 @@ export const StrainGraph = () => {
       setData((prev) => {
         const newDataPoint = {
           time: time,
-          value1: Math.sin(time / 50) * 100, // Example sine wave for sensor 1
-          value2: Math.cos(time / 50) * 80, // Example cosine wave for sensor 2
+          value1: Math.sin(time / 50) * 100,
+          value2: Math.cos(time / 50) * 80,
         };
-        return [...prev.slice(-100), newDataPoint]; // Keep only the latest 100 points
+        return [...prev.slice(-100), newDataPoint];
       });
     }, 100); // Update every 100ms
 
@@ -37,7 +41,6 @@ export const StrainGraph = () => {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Resize the canvas to fill its parent
     const resizeCanvas = () => {
       if (canvas.parentElement) {
         canvas.width = canvas.parentElement.clientWidth;
@@ -46,10 +49,7 @@ export const StrainGraph = () => {
     };
     resizeCanvas(); // Initial resize
 
-    // Redraw the graph on window resize
-    const handleResize = () => {
-      resizeCanvas();
-    };
+    const handleResize = () => resizeCanvas();
     window.addEventListener('resize', handleResize);
 
     // Clear canvas
@@ -71,50 +71,152 @@ export const StrainGraph = () => {
     }
 
     // Define scales
-    const timeScale = canvas.width / 100; // Scale time to canvas width
-    const valueScale = canvas.height / 200; // Scale values to canvas height (-100 to 100)
+    const timeScale = canvas.width / 100;
+    const valueScale = canvas.height / 200;
 
     // Draw sensor lines
-    const drawLine = (key: 'value1' | 'value2', color: string) => {
+    dataConfig.forEach(({ key, color }) => {
       ctx.beginPath();
       ctx.strokeStyle = color;
       data.forEach((point, index) => {
         const x = index * timeScale;
-        const y = canvas.height / 2 - point[key] * valueScale;
+        const y = canvas.height / 2 - (point[key as keyof typeof point] as number) * valueScale;
         if (index === 0) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
       });
       ctx.stroke();
-    };
+    });
 
-    drawLine('value1', 'blue'); // Sensor 1 in blue
-    drawLine('value2', 'orange'); // Sensor 2 in orange
+    // Draw hover line and values
+    if (hoverInfo && hoverInfo.dataIndex !== null) {
+      const { x, dataIndex } = hoverInfo;
+      const hoveredPoint = data[dataIndex];
 
-    // Draw time labels on x-axis
-    ctx.font = '12px Arial';
-    ctx.fillStyle = 'black';
-    ctx.textAlign = 'center';
-      
-    const labelInterval = 10; // Label every 10 data points
-    for (let i = 0; i < data.length; i += labelInterval) {
-      const x = i * timeScale;
-      const timeLabel = data[i].time; // Get time value
-      ctx.fillText(`${timeLabel}ms`, x, canvas.height - 5); // Draw time label near the bottom
+      // Draw vertical hover line
+      ctx.beginPath();
+      ctx.strokeStyle = 'gray';
+      ctx.setLineDash([5, 5]);
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, canvas.height);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Draw hover data values
+      ctx.font = '12px Arial';
+      ctx.fillStyle = 'black';
+      ctx.textAlign = 'left';
+
+      const textX = x + 10;
+      const textYStart = 20;
+      ctx.fillText(`Time: ${hoveredPoint.time}ms`, textX, textYStart);
+      dataConfig.forEach(({ key, color }, idx) => {
+        ctx.fillText(`${key}: ${(hoveredPoint[key as keyof typeof hoveredPoint] as number).toFixed(2)}`, textX, textYStart + 15 * (idx + 1));
+      });
     }
 
     return () => window.removeEventListener('resize', handleResize);
-  }, [data]);
+  }, [data, hoverInfo, dataConfig]);
+
+  // Handle mouse hover
+  const handleMouseMove = (event: React.MouseEvent) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const mouseX = event.clientX - rect.left;
+
+    const timeScale = canvas.width / 100;
+    const dataIndex = Math.floor(mouseX / timeScale);
+
+    if (dataIndex >= 0 && dataIndex < data.length) {
+      setHoverInfo({ x: mouseX, dataIndex });
+    } else {
+      setHoverInfo(null);
+    }
+  };
+
+  const handleMouseLeave = () => {
+    setHoverInfo(null);
+  };
+
+  const toggleMenu = () => setIsMenuOpen((prev) => !prev);
+
+  const updateConfig = (index: number, newConfig: Partial<{ color: string; interval: number }>) => {
+    setDataConfig((prev) =>
+      prev.map((config, i) => (i === index ? { ...config, ...newConfig } : config))
+    );
+  };
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+      {/* Toggle Button */}
+      <button
+        onClick={toggleMenu}
+        style={{
+          position: 'absolute',
+          top: '10px',
+          left: '10px',
+          zIndex: 10,
+        }}
+      >
+        {isMenuOpen ? 'Close Menu' : 'Open Menu'}
+      </button>
+
+      {/* Popup Menu */}
+      {isMenuOpen && (
+        <div
+          style={{
+            position: 'absolute',
+            top: '40px',
+            left: '10px',
+            padding: '10px',
+            border: '1px solid black',
+            backgroundColor: 'white',
+            zIndex: 10,
+          }}
+        >
+          <h4>Data Configurations</h4>
+          {dataConfig.map((config, index) => (
+            <div key={index} style={{ marginBottom: '10px' }}>
+              <label>
+                Key: {config.key}
+                <br />
+                Color:
+                <input
+                  type="color"
+                  value={config.color}
+                  onChange={(e) =>
+                    updateConfig(index, { color: e.target.value })
+                  }
+                />
+              </label>
+              <br />
+              <label>
+                Interval (ms):
+                <input
+                  type="number"
+                  value={config.interval}
+                  onChange={(e) =>
+                    updateConfig(index, { interval: parseInt(e.target.value, 10) || 0 })
+                  }
+                />
+              </label>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Graph Canvas */}
       <canvas
         ref={canvasRef}
         style={{
           display: 'block',
           width: '100%',
           height: '100%',
-          padding: '10px'
+          padding: '10px',
         }}
+        onMouseMove={handleMouseMove}
+        onMouseLeave={handleMouseLeave}
       />
     </div>
   );
