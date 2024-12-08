@@ -2,7 +2,6 @@ import { useTabAtom } from '../../workspace/useTabAtom'
 import { useOzysDevicesManager } from '../../device/OzysDevicesManager'
 import { useEffect, useRef, useState } from 'react'
 import { useRaf } from 'rooks'
-import { autorun } from 'mobx'
 import { observer } from 'mobx-react-lite'
 import { produce } from 'immer'
 import { SelectedChannel, StrainGraphCanvas } from './StrainGraphCanvas'
@@ -13,6 +12,7 @@ export const StrainGraph = observer(() => {
     'selectedChannels',
     [],
   )
+  const [msPerPixel, setMsPerPixel] = useTabAtom('msPerPixel', 10)
 
   const canvasContainerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<StrainGraphCanvas | null>(null)
@@ -20,14 +20,11 @@ export const StrainGraph = observer(() => {
     x: number
     dataIndex: number | null
   } | null>(null)
-  const [data, setData] = useState<
-    { time: number; value1: number; value2: number }[]
-  >([])
   const [isMenuOpen, setIsMenuOpen] = useTabAtom('isMenuOpen', false)
 
   useEffect(() => {
     canvasRef.current = new StrainGraphCanvas(
-      1000 * 10,
+      msPerPixel,
       canvasContainerRef.current!,
       devicesManager,
     )
@@ -35,6 +32,10 @@ export const StrainGraph = observer(() => {
       canvasRef.current!.dispose()
     }
   }, [])
+
+  useEffect(() => {
+    canvasRef.current?.setMsPerPixel(msPerPixel)
+  }, [msPerPixel])
 
   useRaf(() => {
     if (canvasRef.current) {
@@ -240,6 +241,12 @@ export const StrainGraph = observer(() => {
           width: '100%',
           height: '100%',
           overflow: 'hidden',
+        }}
+        onWheel={(e) => {
+          setMsPerPixel((prev) => {
+            const newMsPerPixel = prev * (1 + e.deltaY / 1000)
+            return newMsPerPixel
+          })
         }}
       />
     </div>

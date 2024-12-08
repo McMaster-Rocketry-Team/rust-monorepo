@@ -32,11 +32,12 @@ export class StrainGraphCanvas {
 
   private width!: number
   private height!: number
+  private windowDuration!: number
   private sampleRate!: number
   private sampleDuration!: number
 
   constructor(
-    private duration: number,
+    private msPerPixel: number,
     private container: HTMLDivElement,
     private devicesManager: OzysDevicesManager,
   ) {
@@ -61,11 +62,11 @@ export class StrainGraphCanvas {
     const now = Date.now()
 
     // start is inclusive
-    let start = now - this.duration + this.sampleDuration
+    let start = now - this.windowDuration + this.sampleDuration
     start -= start % this.sampleDuration
 
     // end is also inclusive
-    const end = start + this.duration - this.sampleDuration
+    const end = start + this.windowDuration - this.sampleDuration
 
     const channelsDiff = this.diffSelectedChannels(
       this.selectedChannels,
@@ -77,9 +78,9 @@ export class StrainGraphCanvas {
         const player = await this.devicesManager.createRealtimeReadingsPlayer(
           channelId,
           {
-            windowDuration: this.duration,
+            windowDuration: this.windowDuration,
             windowSampleCount: this.width,
-            windowStartTimestamp: Date.now() - this.duration,
+            windowStartTimestamp: Date.now() - this.windowDuration,
           },
         )
         this.players.set(channelId, {
@@ -125,8 +126,7 @@ export class StrainGraphCanvas {
           const x = Math.round(
             (reading.timestamp - start) / this.sampleDuration,
           )
-          const y = reading.reading * 10 + this.height / 2
-          //   console.log("x, y", x, y)
+          const y = reading.reading * 20 + this.height / 2
           if (firstPoint) {
             this.ctx.moveTo(x, y)
             firstPoint = false
@@ -154,6 +154,12 @@ export class StrainGraphCanvas {
     })
   }
 
+  setMsPerPixel(msPerPixel: number) {
+    if (msPerPixel === this.msPerPixel) return
+    this.msPerPixel = msPerPixel
+    this.resize(false, true)
+  }
+
   private diffSelectedChannels(
     old: SelectedChannel[],
     newChannels: SelectedChannel[],
@@ -173,9 +179,10 @@ export class StrainGraphCanvas {
     return { removed, added }
   }
 
-  private resize(initial: boolean = false) {
+  private resize(initial: boolean = false, force: boolean = false) {
     if (this.disposed) return
     if (
+      !force &&
       !initial &&
       this.canvas.width == this.container.clientWidth &&
       this.canvas.height == this.container.clientHeight
@@ -187,10 +194,11 @@ export class StrainGraphCanvas {
     this.canvas.height = this.container.clientHeight
     this.width = this.container.clientWidth
     this.height = this.container.clientHeight
-    this.sampleRate = this.width / (this.duration / 1000)
-    this.sampleDuration = this.duration / this.width
+    this.windowDuration = this.width * this.msPerPixel
+    this.sampleRate = this.width / (this.windowDuration / 1000)
+    this.sampleDuration = this.windowDuration / this.width
 
-    if (!initial) {
+    if (!initial || force) {
       console.log('resize to', this.width, this.height)
       this.recreatePlayers()
     }
@@ -202,9 +210,9 @@ export class StrainGraphCanvas {
       for (const channelId of this.players.keys()) {
         const newPlayer =
           await this.devicesManager.createRealtimeReadingsPlayer(channelId, {
-            windowDuration: this.duration,
+            windowDuration: this.windowDuration,
             windowSampleCount: this.width,
-            windowStartTimestamp: Date.now() - this.duration,
+            windowStartTimestamp: Date.now() - this.windowDuration,
           })
         newPlayers.set(channelId, {
           player: newPlayer,
