@@ -1,9 +1,4 @@
-import {
-  action,
-  computed,
-  makeObservable,
-  observable,
-} from 'mobx'
+import { action, computed, makeObservable, observable } from 'mobx'
 import { OzysDevice } from './OzysDevice'
 import {
   createContext,
@@ -15,6 +10,7 @@ import {
 import DatabaseWorker from '../database/DatabaseWorker?worker'
 import * as Comlink from 'comlink'
 import type { DatabaseWorkerType } from '../database/DatabaseWorker'
+import type { PlayerWindowOptions } from '../database/RealtimeReadingsPlayer'
 
 class OzysDevicesManager {
   public devices: OzysDevice[] = []
@@ -51,10 +47,10 @@ class OzysDevicesManager {
 
   addDevice(device: OzysDevice) {
     device.onRealtimeReadings((channelId, data) => {
-      this.dbWorker.onRealtimeReadings(device.deviceInfo.id, channelId, data)
+      this.dbWorker.onRealtimeReadings(channelId, data)
     })
     device.onRealtimeFft((channelId, data) => {
-      this.dbWorker.onRealtimeFft(device.deviceInfo.id, channelId, data)
+      this.dbWorker.onRealtimeFft(channelId, data)
     })
     this.devices.push(device)
   }
@@ -78,13 +74,11 @@ class OzysDevicesManager {
 
   async createRealtimeReadingsPlayer(
     channelId: string,
-    sampleRate: number,
-    targetSampleOffset: number,
+    windowOptions: PlayerWindowOptions,
   ) {
     return await this.dbWorker.createRealtimeReadingsPlayer(
       channelId,
-      sampleRate,
-      targetSampleOffset,
+      windowOptions,
     )
   }
 }
