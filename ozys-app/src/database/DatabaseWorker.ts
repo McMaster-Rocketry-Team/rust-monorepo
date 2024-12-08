@@ -67,8 +67,8 @@ class DatabaseWorker {
   constructor() {
     this.db = new Dexie('db') as DBType
     this.db.version(1).stores({
-      readings: '[timestamp+channelId]',
-      ffts: '[timestamp+channelId]',
+      readings: '[channelId+timestamp]',
+      ffts: '[channelId+timestamp]',
     })
     this.db.readings.mapToClass(DBReadingsRow)
     this.db.ffts.mapToClass(DBFftRow)
@@ -119,22 +119,25 @@ class DatabaseWorker {
     })
 
     // Fill the player with readings from the database
-    let lastReadingTimestamp = -1
-    await this.db.readings
-      .where('[timestamp+channelId]')
+    const rows = await this.db.readings
+      .where('[channelId+timestamp]')
       .between(
-        [windowOptions.windowStartTimestamp, channelId],
+        [channelId, windowOptions.windowStartTimestamp],
         [
-          windowOptions.windowStartTimestamp + windowOptions.windowDuration,
           channelId,
+          windowOptions.windowStartTimestamp + windowOptions.windowDuration,
         ],
       )
-      .each((dbReadingsRow) => {
-        for (const readings of dbReadingsRow.splitInto10msIntervals()) {
-          player.onRealtimeReadings(channelId, readings)
-          lastReadingTimestamp = readings.timestamp
-        }
-      })
+      .toArray()
+
+    let lastReadingTimestamp = -1
+    for (const dbReadingsRow of rows) {
+      for (const readings of dbReadingsRow.splitInto10msIntervals()) {
+        player.onRealtimeReadings(channelId, readings)
+        lastReadingTimestamp = readings.timestamp
+      }
+    }
+
     let readingsCache = this.readingsCacheMap.get(channelId)
     if (readingsCache) {
       readingsCache.toArray().forEach((readings) => {

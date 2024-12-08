@@ -1,19 +1,14 @@
 import { useTabAtom } from '../../workspace/useTabAtom'
 import { useOzysDevicesManager } from '../../device/OzysDevicesManager'
-import {
-  Dispatch,
-  SetStateAction,
-  useEffect,
-  useRef,
-  useState,
-} from 'react'
+import { Dispatch, SetStateAction, useEffect, useRef, useState } from 'react'
 import type { RealtimeReadingsPlayer } from '../../database/RealtimeReadingsPlayer'
 import { Remote } from 'comlink'
-import { useWillUnmount } from 'rooks'
+import { useRaf, useWillUnmount } from 'rooks'
 import { Mutex } from 'async-mutex'
 import { autorun } from 'mobx'
 import { observer } from 'mobx-react-lite'
 import { produce } from 'immer'
+import { SelectedChannel, StrainGraphCanvas } from './StrainGraphCanvas'
 
 const usePlayers = <
   C extends {
@@ -66,7 +61,7 @@ const usePlayers = <
       }
 
       // dispose players for unselected channels
-      for (const [channelId, player] of playersRef.current!.entries()) {
+      for (const [channelId, player] of playersRef.current!) {
         if (
           selectedChannels.findIndex((c) => c.channelId === channelId) === -1
         ) {
@@ -90,20 +85,13 @@ const usePlayers = <
 
 export const StrainGraph = observer(() => {
   const devicesManager = useOzysDevicesManager()
-  const [selectedChannels, setSelectedChannels] = useTabAtom<
-    Array<{
-      channelId: string
-      color: string
-    }>
-  >('selectedChannels', [])
-  const players = usePlayers(selectedChannels, setSelectedChannels)
+  const [selectedChannels, setSelectedChannels] = useTabAtom<SelectedChannel[]>(
+    'selectedChannels',
+    [],
+  )
 
-  // for (const player of players.values()) {
-  //   console.log(player)
-  //   console.log(player.getNewData().then((data) => console.log(data.length)))
-  // }
-
-  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const canvasContainerRef = useRef<HTMLDivElement>(null)
+  const canvasRef = useRef<StrainGraphCanvas | null>(null)
   const [hoverInfo, setHoverInfo] = useState<{
     x: number
     dataIndex: number | null
@@ -113,121 +101,154 @@ export const StrainGraph = observer(() => {
   >([])
   const [isMenuOpen, setIsMenuOpen] = useState(false) // Popup menu state
 
-  // Render graph on canvas
   useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-
-    const resizeCanvas = () => {
-      if (canvas.parentElement) {
-        canvas.width = canvas.parentElement.clientWidth
-        canvas.height = canvas.parentElement.clientHeight
-      }
+    canvasRef.current = new StrainGraphCanvas(
+      1000 * 10,
+      canvasContainerRef.current!,
+      devicesManager,
+    )
+    return () => {
+      canvasRef.current!.dispose()
     }
-    resizeCanvas() // Initial resize
+  }, [])
 
-    const handleResize = () => resizeCanvas()
-    window.addEventListener('resize', handleResize)
-
-    // Clear canvas
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
-
-    // Draw grid lines
-    ctx.strokeStyle = '#e0e0e0'
-    for (let x = 0; x <= canvas.width; x += 50) {
-      ctx.beginPath()
-      ctx.moveTo(x, 0)
-      ctx.lineTo(x, canvas.height)
-      ctx.stroke()
+  useRaf(()=>{
+    if (canvasRef.current){
+      canvasRef.current.draw(selectedChannels)
     }
-    for (let y = 0; y <= canvas.height; y += 50) {
-      ctx.beginPath()
-      ctx.moveTo(0, y)
-      ctx.lineTo(canvas.width, y)
-      ctx.stroke()
-    }
+  },true)
 
-    // Define scales
-    const timeScale = canvas.width / 100
-    const valueScale = canvas.height / 200
+  // remove selected channels that are not in allChannels
+  // autorun is needed here because devicesManager.activeChannels
+  // is not a react state (but a mobx computed property)
+  useEffect(
+    () =>
+      autorun(() => {
+        const activeChannelIds = devicesManager.activeChannels.map(
+          (channel) => channel.channel.id,
+        )
+        setSelectedChannels((old) =>
+          old.filter(({ channelId }) => activeChannelIds.includes(channelId)),
+        )
+      }),
+    [],
+  )
 
-    // Draw sensor lines
-    selectedChannels.forEach(({ color }) => {
-      ctx.beginPath()
-      ctx.strokeStyle = color
-      // TODO
-      // data.forEach((point, index) => {
-      //   const x = index * timeScale
-      //   const y =
-      //     canvas.height / 2 -
-      //     (point[key as keyof typeof point] as number) * valueScale
-      //   if (index === 0) ctx.moveTo(x, y)
-      //   else ctx.lineTo(x, y)
-      // })
-      ctx.stroke()
-    })
+  // Render graph on canvas
+  // useEffect(() => {
+  //   const canvas = canvasRef.current
+  //   if (!canvas) return
 
-    // Draw hover line and values
-    if (hoverInfo && hoverInfo.dataIndex !== null) {
-      const { x, dataIndex } = hoverInfo
-      const hoveredPoint = data[dataIndex]
+  //   const ctx = canvas.getContext('2d')
+  //   if (!ctx) return
 
-      // Draw vertical hover line
-      ctx.beginPath()
-      ctx.strokeStyle = 'gray'
-      ctx.setLineDash([5, 5])
-      ctx.moveTo(x, 0)
-      ctx.lineTo(x, canvas.height)
-      ctx.stroke()
-      ctx.setLineDash([])
+  //   const resizeCanvas = () => {
+  //     if (canvas.parentElement) {
+  //       canvas.width = canvas.parentElement.clientWidth
+  //       canvas.height = canvas.parentElement.clientHeight
+  //     }
+  //   }
+  //   resizeCanvas() // Initial resize
 
-      // Draw hover data values
-      ctx.font = '12px Arial'
-      ctx.fillStyle = 'black'
-      ctx.textAlign = 'left'
+  //   const handleResize = () => resizeCanvas()
+  //   window.addEventListener('resize', handleResize)
 
-      const textX = x + 10
-      const textYStart = 20
-      ctx.fillText(`Time: ${hoveredPoint.time}ms`, textX, textYStart)
-      // TODO
-      // selectedChannelsWithInfo.forEach(({ key, color }, idx) => {
-      //   ctx.fillText(
-      //     `${key}: ${(
-      //       hoveredPoint[key as keyof typeof hoveredPoint] as number
-      //     ).toFixed(2)}`,
-      //     textX,
-      //     textYStart + 15 * (idx + 1),
-      //   )
-      // })
-    }
+  //   // Clear canvas
+  //   ctx.clearRect(0, 0, canvas.width, canvas.height)
 
-    return () => window.removeEventListener('resize', handleResize)
-  }, [data, hoverInfo, selectedChannels])
+  //   // Draw grid lines
+  //   ctx.strokeStyle = '#e0e0e0'
+  //   for (let x = 0; x <= canvas.width; x += 50) {
+  //     ctx.beginPath()
+  //     ctx.moveTo(x, 0)
+  //     ctx.lineTo(x, canvas.height)
+  //     ctx.stroke()
+  //   }
+  //   for (let y = 0; y <= canvas.height; y += 50) {
+  //     ctx.beginPath()
+  //     ctx.moveTo(0, y)
+  //     ctx.lineTo(canvas.width, y)
+  //     ctx.stroke()
+  //   }
+
+  //   // Define scales
+  //   const timeScale = canvas.width / 100
+  //   const valueScale = canvas.height / 200
+
+  //   // Draw sensor lines
+  //   selectedChannels.forEach(({ color }) => {
+  //     ctx.beginPath()
+  //     ctx.strokeStyle = color
+  //     // TODO
+  //     // data.forEach((point, index) => {
+  //     //   const x = index * timeScale
+  //     //   const y =
+  //     //     canvas.height / 2 -
+  //     //     (point[key as keyof typeof point] as number) * valueScale
+  //     //   if (index === 0) ctx.moveTo(x, y)
+  //     //   else ctx.lineTo(x, y)
+  //     // })
+  //     ctx.stroke()
+  //   })
+
+  //   // Draw hover line and values
+  //   if (hoverInfo && hoverInfo.dataIndex !== null) {
+  //     const { x, dataIndex } = hoverInfo
+  //     const hoveredPoint = data[dataIndex]
+
+  //     // Draw vertical hover line
+  //     ctx.beginPath()
+  //     ctx.strokeStyle = 'gray'
+  //     ctx.setLineDash([5, 5])
+  //     ctx.moveTo(x, 0)
+  //     ctx.lineTo(x, canvas.height)
+  //     ctx.stroke()
+  //     ctx.setLineDash([])
+
+  //     // Draw hover data values
+  //     ctx.font = '12px Arial'
+  //     ctx.fillStyle = 'black'
+  //     ctx.textAlign = 'left'
+
+  //     const textX = x + 10
+  //     const textYStart = 20
+  //     ctx.fillText(`Time: ${hoveredPoint.time}ms`, textX, textYStart)
+  //     // TODO
+  //     // selectedChannelsWithInfo.forEach(({ key, color }, idx) => {
+  //     //   ctx.fillText(
+  //     //     `${key}: ${(
+  //     //       hoveredPoint[key as keyof typeof hoveredPoint] as number
+  //     //     ).toFixed(2)}`,
+  //     //     textX,
+  //     //     textYStart + 15 * (idx + 1),
+  //     //   )
+  //     // })
+  //   }
+
+  //   return () => window.removeEventListener('resize', handleResize)
+  // }, [data, hoverInfo, selectedChannels])
 
   // Handle mouse hover
-  const handleMouseMove = (event: React.MouseEvent) => {
-    const canvas = canvasRef.current
-    if (!canvas) return
+  // const handleMouseMove = (event: React.MouseEvent) => {
+  //   const canvas = canvasRef.current
+  //   if (!canvas) return
 
-    const rect = canvas.getBoundingClientRect()
-    const mouseX = event.clientX - rect.left
+  //   const rect = canvas.getBoundingClientRect()
+  //   const mouseX = event.clientX - rect.left
 
-    const timeScale = canvas.width / 100
-    const dataIndex = Math.floor(mouseX / timeScale)
+  //   const timeScale = canvas.width / 100
+  //   const dataIndex = Math.floor(mouseX / timeScale)
 
-    if (dataIndex >= 0 && dataIndex < data.length) {
-      setHoverInfo({ x: mouseX, dataIndex })
-    } else {
-      setHoverInfo(null)
-    }
-  }
+  //   if (dataIndex >= 0 && dataIndex < data.length) {
+  //     setHoverInfo({ x: mouseX, dataIndex })
+  //   } else {
+  //     setHoverInfo(null)
+  //   }
+  // }
 
-  const handleMouseLeave = () => {
-    setHoverInfo(null)
-  }
+  // const handleMouseLeave = () => {
+  //   setHoverInfo(null)
+  // }
 
   const toggleMenu = () => setIsMenuOpen((prev) => !prev)
 
@@ -304,16 +325,14 @@ export const StrainGraph = observer(() => {
       )}
 
       {/* Graph Canvas */}
-      <canvas
-        ref={canvasRef}
+      <div
+        ref={canvasContainerRef}
         style={{
           display: 'block',
           width: '100%',
           height: '100%',
           padding: '10px',
         }}
-        onMouseMove={handleMouseMove}
-        onMouseLeave={handleMouseLeave}
       />
     </div>
   )

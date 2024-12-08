@@ -11,9 +11,9 @@ export type PlayerWindowOptions = {
 export class RealtimeReadingsPlayer {
   private lastTimestamp: number = -1
   private windowDuration: number
-  private sampleRate: number
-  private targetSampleOffset: number
   private resampler: Resampler | undefined
+  private targetSampleRate: number
+  private targetSampleDuration: number
   private outputData: CircularBuffer<{
     timestamp: number
     reading: number
@@ -24,11 +24,10 @@ export class RealtimeReadingsPlayer {
     options: PlayerWindowOptions,
     private onDisplose: () => void,
   ) {
-    console.log('RealtimeReadingsPlayer created', channelId)
-    this.sampleRate =
+    console.log('RealtimeReadingsPlayer created', channelId, options)
+    this.targetSampleRate =
       options.windowSampleCount / (options.windowDuration / 1000)
-    const sampleDuration = 1000 / this.sampleRate
-    this.targetSampleOffset = options.windowStartTimestamp % sampleDuration
+    this.targetSampleDuration = 1000 / this.targetSampleRate
 
     this.outputData = new CircularBuffer(options.windowSampleCount)
     this.windowDuration = options.windowDuration
@@ -43,7 +42,7 @@ export class RealtimeReadingsPlayer {
     }
 
     if (this.resampler === undefined) {
-      this.createResampler()
+      this.createResampler(data.timestamp)
     } else if (data.timestamp !== this.lastTimestamp + 10) {
       console.log(
         `Gap between last timestamp and current timestamp is not 10ms. Last timestamp: ${this.lastTimestamp}, Current timestamp: ${data.timestamp}`,
@@ -51,7 +50,7 @@ export class RealtimeReadingsPlayer {
       )
       // null means there is a gap in the data
       this.outputData.addLast(null)
-      this.createResampler()
+      this.createResampler(data.timestamp)
     }
 
     for (const reading of data.readings) {
@@ -78,11 +77,12 @@ export class RealtimeReadingsPlayer {
     }
   }
 
-  private createResampler() {
+  private createResampler(sourceTimestamp: number) {
     this.resampler = new Resampler(
+      sourceTimestamp,
       2000,
-      this.sampleRate,
-      this.targetSampleOffset,
+      this.targetSampleRate,
+      -(sourceTimestamp % this.targetSampleDuration),
     )
   }
 

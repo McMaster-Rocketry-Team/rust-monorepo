@@ -1,7 +1,6 @@
 import { Biquad, biquadLP } from '@thi.ng/dsp'
 import { CircularBuffer } from '../utils/CircularBuffer'
 
-
 export class Resampler {
   private filter: Biquad
   private cubicBuffer: CircularBuffer<number> = new CircularBuffer(4)
@@ -12,6 +11,7 @@ export class Resampler {
   private nextSampleTimestamp: number
 
   constructor(
+    private sourceTimestampStart: number,
     sourceSampleRate: number,
     targetSampleRate: number,
     private targetSampleOffset: number,
@@ -21,11 +21,10 @@ export class Resampler {
 
     this.sourceSampleDuration = 1000 / sourceSampleRate
     this.targetSampleDuration = 1000 / targetSampleRate
-    console.log('sourceSampleDuration', this.sourceSampleDuration)
-    console.log('targetSampleDuration', this.targetSampleDuration)
 
     this.nextSampleTimestamp = this.targetSampleOffset
     if (this.nextSampleTimestamp < 0) {
+      this.sampleI++
       this.nextSampleTimestamp += this.targetSampleDuration
     }
   }
@@ -61,7 +60,7 @@ export class Resampler {
         (this.nextSampleTimestamp - interpolatableStart) /
         this.sourceSampleDuration
       const result = {
-        timestamp: this.nextSampleTimestamp,
+        timestamp: this.sourceTimestampStart + this.nextSampleTimestamp,
         reading: this.cubicInterpolate(t),
       }
 

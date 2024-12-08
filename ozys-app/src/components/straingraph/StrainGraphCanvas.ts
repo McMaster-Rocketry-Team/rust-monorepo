@@ -3,8 +3,9 @@ import type { RealtimeReadingsPlayer } from '../../database/RealtimeReadingsPlay
 import { OzysDevicesManager } from '../../device/OzysDevicesManager'
 import { Mutex } from 'async-mutex'
 import { CircularBuffer } from '../../utils/CircularBuffer'
+import { debounce } from 'lodash-es'
 
-type selectedChannel = {
+export type SelectedChannel = {
   channelId: string
   color: string
 }
@@ -14,6 +15,7 @@ export class StrainGraphCanvas {
     string,
     {
       player: Remote<RealtimeReadingsPlayer>
+      width: number
       readings: CircularBuffer<{
         timestamp: number
         reading: number
@@ -23,9 +25,14 @@ export class StrainGraphCanvas {
   private playersMutex = new Mutex()
   private canvas: HTMLCanvasElement
   private ctx: CanvasRenderingContext2D
+  private selectedChannels: SelectedChannel[] = []
+  private disposed = false
+  private isDrawing = false
+
   private width!: number
   private height!: number
-  private selectedChannels: selectedChannel[] = []
+  private sampleRate!: number
+  private sampleDuration!: number
 
   constructor(
     private duration: number,
@@ -38,13 +45,30 @@ export class StrainGraphCanvas {
     container.appendChild(this.canvas)
     this.ctx = this.canvas.getContext('2d')!
 
-    this.resize()
-    container.addEventListener('resize', this.resize.bind(this))
-
     this.draw = this.draw.bind(this)
+    this.recreatePlayers = debounce(this.recreatePlayers.bind(this), 100)
+    this.resize = this.resize.bind(this)
+
+    this.resize(true)
+    container.addEventListener('resize', () => this.resize())
   }
 
-  async draw(selectedChannels: selectedChannel[]) {
+  async draw(selectedChannels: SelectedChannel[]) {
+    if (this.disposed) return
+    if (this.isDrawing){
+        console.warn("Skipping frame")
+        return
+    }
+    this.isDrawing = true
+    const now = Date.now()
+
+    // start is inclusive
+    let start = now - this.duration + this.sampleDuration
+    start -= start % this.sampleDuration
+
+    // end is also inclusive
+    const end = start + this.duration - this.sampleDuration
+
     const channelsDiff = this.diffSelectedChannels(
       this.selectedChannels,
       selectedChannels,
@@ -62,6 +86,7 @@ export class StrainGraphCanvas {
         )
         this.players.set(channelId, {
           player,
+          width: this.width,
           readings: new CircularBuffer(this.width),
         })
       }
@@ -71,39 +96,68 @@ export class StrainGraphCanvas {
       }
     })
 
-    this.ctx.clearRect(0, 0, this.width, this.height)
+    for (const { channelId } of selectedChannels) {
+        const player = this.players.get(channelId)
+        if (!player) continue
+  
+        const newData = await player.player.getNewData()
+        const readings = player.readings
+        for (const data of newData) {
+          readings.addLast(data)
+        }
+    }
 
+    this.ctx.clearRect(0, 0, this.width, this.height)
     for (const { channelId, color } of selectedChannels) {
       const player = this.players.get(channelId)
       if (!player) continue
-
-      const newData = await player.player.getNewData()
       const readings = player.readings
-      for (const data of newData) {
-        readings.addLast(data)
-      }
 
       this.ctx.beginPath()
       this.ctx.strokeStyle = color
+      this.ctx.lineWidth = 1
 
+      let firstPoint = true
       readings.forEach((reading) => {
         if (reading === null) {
           this.ctx.stroke()
           this.ctx.beginPath()
+          firstPoint = true
         } else {
-          // TODO draw line
+          const x = Math.round(
+            (reading.timestamp - start) / this.sampleDuration,
+          )
+          const y = reading.reading * 10 + this.height / 2
+        //   console.log("x, y", x, y)
+          if (firstPoint) {
+            this.ctx.moveTo(x, y)
+            firstPoint = false
+          } else {
+            this.ctx.lineTo(x, y)
+          }
         }
       })
 
       this.ctx.stroke()
     }
+
+    this.isDrawing = false
   }
 
-  dispose() {}
+  dispose() {
+    if (this.disposed) return
+    this.disposed = true
+    this.canvas.remove()
+    this.playersMutex.runExclusive(async () => {
+      for (const player of this.players.values()) {
+        player.player.dispose()
+      }
+    })
+  }
 
   private diffSelectedChannels(
-    old: selectedChannel[],
-    newChannels: selectedChannel[],
+    old: SelectedChannel[],
+    newChannels: SelectedChannel[],
   ) {
     const removed = old.filter(
       (oldChannel) =>
@@ -120,11 +174,42 @@ export class StrainGraphCanvas {
     return { removed, added }
   }
 
-  private resize() {
-    console.log('resize')
+  private resize(initial: boolean = false) {
     this.canvas.width = this.container.clientWidth
     this.canvas.height = this.container.clientHeight
     this.width = this.container.clientWidth
     this.height = this.container.clientHeight
+    this.sampleRate = this.width / (this.duration / 1000)
+    this.sampleDuration = this.duration / this.width
+
+    if (!initial) {
+      console.log('resize to', this.width, this.height)
+      this.recreatePlayers()
+    }
+  }
+
+  private recreatePlayers() {
+    this.playersMutex.runExclusive(async () => {
+      const newPlayers = new Map()
+      for (const channelId of this.players.keys()) {
+        const newPlayer =
+          await this.devicesManager.createRealtimeReadingsPlayer(channelId, {
+            windowDuration: this.duration,
+            windowSampleCount: this.width,
+            windowStartTimestamp: Date.now() - this.duration,
+          })
+        newPlayers.set(channelId, {
+          player: newPlayer,
+          width: this.width,
+          readings: new CircularBuffer(this.width),
+        })
+      }
+
+      const oldPlayers = this.players
+      this.players = newPlayers
+      for (const player of oldPlayers.values()) {
+        player.player.dispose()
+      }
+    })
   }
 }
