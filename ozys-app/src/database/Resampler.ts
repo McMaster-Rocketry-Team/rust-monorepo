@@ -21,7 +21,10 @@ export class Resampler {
     )
 
     if (sourceSampleRate > targetSampleRate) {
-      this.filter = new Butterworth2ndLP(sourceSampleRate, targetSampleRate / 4)
+      this.filter = new CascadedFilter([
+        new Butterworth2ndLP(sourceSampleRate, targetSampleRate / 4),
+        new Butterworth2ndLP(sourceSampleRate, targetSampleRate / 4),
+      ])
     } else {
       this.filter = new NoopFilter()
     }
@@ -90,6 +93,22 @@ interface Filter {
 class NoopFilter implements Filter {
   process(input: number): number {
     return input
+  }
+}
+
+class CascadedFilter implements Filter {
+  private filters: Filter[]
+
+  constructor(filters: Filter[]) {
+    this.filters = filters
+  }
+
+  process(input: number): number {
+    let output = input
+    for (const filter of this.filters) {
+      output = filter.process(output)
+    }
+    return output
   }
 }
 
