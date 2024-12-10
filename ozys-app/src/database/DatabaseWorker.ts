@@ -102,7 +102,14 @@ export class DatabaseWorker {
         last10Readings.length === 10 &&
         last10Readings[0].timestamp === readings.timestamp - 90
       ) {
-        await this.db.readings.add(new DBReadingsRow(channelId, last10Readings))
+        try {
+          await this.db.readings.add(
+            new DBReadingsRow(channelId, last10Readings),
+          )
+        } catch (e) {
+          console.error(e)
+          console.error('Key: ', channelId, last10Readings[0].timestamp)
+        }
       }
     }
   }
@@ -119,10 +126,15 @@ export class DatabaseWorker {
     }
     fftCache.addLast(fft)
 
-    await this.db.ffts.add({
-      channelId,
-      ...fft,
-    })
+    try {
+      await this.db.ffts.add({
+        channelId,
+        ...fft,
+      })
+    } catch (e) {
+      console.error(e)
+      console.error('Key: ', channelId, fft.timestamp)
+    }
   }
 
   async createRealtimeReadingsPlayer(

@@ -5,7 +5,7 @@ import {
 } from './OzysDevice'
 
 export class MockOzysDevice extends OzysDevice {
-  static i = 1
+  private static i = 1
   private intervalIds: number[] = []
 
   constructor() {

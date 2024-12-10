@@ -2,6 +2,7 @@ import { observer } from 'mobx-react-lite'
 import { useOzysDevicesManager } from '../../device/OzysDevicesManager'
 import { MockOzysDevice } from '../../device/MockOzysDevice'
 import { DeviceCard } from './DeviceCard'
+import { MicOzysDevice } from '../../device/MicOzysDevice'
 
 export const Devices = observer(() => {
   const devicesManager = useOzysDevicesManager()
@@ -19,6 +20,15 @@ export const Devices = observer(() => {
           }}
         >
           Add Mock Device
+        </button>
+        <br />
+        <button
+          className='border'
+          onClick={() => {
+            devicesManager.addDevice(new MicOzysDevice())
+          }}
+        >
+          Add Mic Device
         </button>
         <br />
         <button className='border'>Add USB Device</button>
