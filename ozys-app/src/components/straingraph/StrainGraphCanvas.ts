@@ -62,7 +62,7 @@ export class StrainGraphCanvas {
     const now = Date.now()
 
     // start is inclusive
-    let start = now - this.windowDuration + this.sampleDuration
+    let start = now - this.windowDuration + this.sampleDuration - 200
     start -= start % this.sampleDuration
 
     // end is also inclusive
@@ -78,9 +78,9 @@ export class StrainGraphCanvas {
         const player = await this.devicesManager.createRealtimeReadingsPlayer(
           channelId,
           {
-            windowDuration: this.windowDuration,
+            windowDuration: this.windowDuration + 400,
             windowSampleCount: this.width,
-            windowStartTimestamp: Date.now() - this.windowDuration,
+            windowStartTimestamp: Date.now() - this.windowDuration - 400,
           },
         )
         this.players.set(channelId, {
@@ -214,9 +214,9 @@ export class StrainGraphCanvas {
       for (const channelId of this.players.keys()) {
         const newPlayer =
           await this.devicesManager.createRealtimeReadingsPlayer(channelId, {
-            windowDuration: this.windowDuration,
+            windowDuration: this.windowDuration + 400,
             windowSampleCount: this.width,
-            windowStartTimestamp: Date.now() - this.windowDuration,
+            windowStartTimestamp: Date.now() - this.windowDuration - 400,
           })
         newPlayers.set(channelId, {
           player: newPlayer,
