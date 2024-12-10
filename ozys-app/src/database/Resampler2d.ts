@@ -1,15 +1,16 @@
-import { Butterworth2ndLP, CascadedFilter, Filter, NoopFilter } from "./Filter"
+import { Butterworth2ndLP, CascadedFilter, Filter, NoopFilter } from './Filter'
 
-export class Resampler {
-  private filter: Filter
+export class Resampler2D {
+  private filters: Filter[]
   private sourceSampleDuration: number
   private targetSampleDuration: number
   private sourceI = 0
   private sampleI = 0
   private nextSampleTimestamp: number
-  private lastReading: number | undefined
+  private lastReading: Float32Array | undefined
 
   constructor(
+    dataWidth: number,
     private sourceTimestampStart: number,
     sourceSampleRate: number,
     targetSampleRate: number,
@@ -22,13 +23,18 @@ export class Resampler {
       targetSampleRate,
     )
 
+    this.filters = new Array(dataWidth)
     if (sourceSampleRate > targetSampleRate) {
-      this.filter = new CascadedFilter([
-        new Butterworth2ndLP(sourceSampleRate, targetSampleRate / 4),
-        new Butterworth2ndLP(sourceSampleRate, targetSampleRate / 4),
-      ])
+      for (let i = 0; i < dataWidth; i++) {
+        this.filters[i] = new CascadedFilter([
+          new Butterworth2ndLP(sourceSampleRate, targetSampleRate / 4),
+          new Butterworth2ndLP(sourceSampleRate, targetSampleRate / 4),
+        ])
+      }
     } else {
-      this.filter = new NoopFilter()
+      for (let i = 0; i < dataWidth; i++) {
+        this.filters[i] = new NoopFilter()
+      }
     }
 
     this.sourceSampleDuration = 1000 / sourceSampleRate
@@ -41,18 +47,28 @@ export class Resampler {
     }
   }
 
-  next(reading: number): Array<{
+  next(readings: Float32Array): Array<{
     timestamp: number
-    reading: number
+    readings: Float32Array
   }> {
-    let filteredReading = this.filter.process(reading)
+    let filteredReadings = new Float32Array(readings.length)
+    for (let i = 0; i < readings.length; i++) {
+      const filter = this.filters[i]
+      filteredReadings[i] = filter.process(readings[i])
+    }
+
     if (this.lastReading === undefined) {
       // let the filter reach steady state
-      while (Math.abs(filteredReading - reading) / reading > 0.01) {
-        filteredReading = this.filter.process(reading)
+      for (let i = 0; i < readings.length; i++) {
+        const filter = this.filters[i]
+        const reading = readings[i]
+
+        while (Math.abs(filteredReadings[i] - reading) / reading > 0.01) {
+          filteredReadings[i] = filter.process(reading)
+        }
       }
 
-      this.lastReading = filteredReading
+      this.lastReading = filteredReadings
       return []
     }
 
@@ -71,7 +87,7 @@ export class Resampler {
         this.sourceSampleDuration
       results.push({
         timestamp: this.sourceTimestampStart + this.nextSampleTimestamp,
-        reading: this.lerp(this.lastReading, filteredReading, t),
+        readings: this.lerp2d(this.lastReading, filteredReadings, t),
       })
 
       this.sampleI++
@@ -79,12 +95,15 @@ export class Resampler {
         this.sampleI * this.targetSampleDuration + this.targetSampleOffset
     }
 
-    this.lastReading = filteredReading
+    this.lastReading = filteredReadings
     return results
   }
 
-  private lerp(a: number, b: number, t: number) {
-    return a + t * (b - a)
+  private lerp2d(a: Float32Array, b: Float32Array, t: number) {
+    const result = new Float32Array(a.length)
+    for (let i = 0; i < a.length; i++) {
+      result[i] = a[i] + t * (b[i] - a[i])
+    }
+    return result
   }
 }
-

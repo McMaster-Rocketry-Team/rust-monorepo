@@ -9,7 +9,7 @@ import {
 } from 'react'
 import DatabaseWorker from '../database/DatabaseWorker?worker'
 import * as Comlink from 'comlink'
-import type { DatabaseWorkerType } from '../database/DatabaseWorker'
+import type { DatabaseWorker as DatabaseWorkerType } from '../database/DatabaseWorker'
 import type { PlayerWindowOptions } from '../database/RealtimeReadingsPlayer'
 
 export class OzysDevicesManager {
@@ -91,6 +91,13 @@ export class OzysDevicesManager {
       channelId,
       windowOptions,
     )
+  }
+
+  async createRealtimeFftPlayer(
+    channelId: string,
+    windowOptions: PlayerWindowOptions,
+  ) {
+    return await this.dbWorker.createRealtimeFftPlayer(channelId, windowOptions)
   }
 }
 

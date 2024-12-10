@@ -9,9 +9,11 @@ import {
   RealtimeReadingsPlayer,
 } from './RealtimeReadingsPlayer'
 import { CircularBuffer } from '../utils/CircularBuffer'
+import { RealtimeFftPlayer } from './RealtimeFftPlayer'
 
 // Stores 100ms worth of readings (200 readings)
 // instead of 10ms worth of readings from OzysChannelRealtimeReadings
+// improves performance by reducing the number of database writes
 class DBReadingsRow {
   // aligned to the start of the 100ms interval
   timestamp!: number
@@ -55,7 +57,7 @@ type DBType = Dexie & {
   ffts: EntityTable<DBFftRow, 'timestamp'>
 }
 
-class DatabaseWorker {
+export class DatabaseWorker {
   private db: DBType
   private readingsCacheMap: Map<
     string,
@@ -63,6 +65,9 @@ class DatabaseWorker {
   > = new Map()
   private realtimeReadingsPlayers: Map<string, RealtimeReadingsPlayer> =
     new Map()
+  private fftCacheMap: Map<string, CircularBuffer<OzysChannelRealtimeFft>> =
+    new Map()
+  private realtimeFftPlayers: Map<string, RealtimeFftPlayer> = new Map()
 
   constructor() {
     this.db = new Dexie('db') as DBType
@@ -102,10 +107,21 @@ class DatabaseWorker {
     }
   }
 
-  async onRealtimeFft(channelId: string, data: OzysChannelRealtimeFft) {
+  async onRealtimeFft(channelId: string, fft: OzysChannelRealtimeFft) {
+    for (const player of this.realtimeFftPlayers.values()) {
+      player.onRealtimeFft(channelId, fft)
+    }
+
+    let fftCache = this.fftCacheMap.get(channelId)
+    if (!fftCache) {
+      fftCache = new CircularBuffer(5)
+      this.fftCacheMap.set(channelId, fftCache)
+    }
+    fftCache.addLast(fft)
+
     await this.db.ffts.add({
       channelId,
-      ...data,
+      ...fft,
     })
   }
 
@@ -123,7 +139,7 @@ class DatabaseWorker {
     const rows = await this.db.readings
       .where('[channelId+timestamp]')
       .between(
-        [channelId, windowOptions.windowStartTimestamp],
+        [channelId, windowOptions.windowStartTimestamp - 100],
         [
           channelId,
           windowOptions.windowStartTimestamp + windowOptions.windowDuration,
@@ -152,10 +168,51 @@ class DatabaseWorker {
     this.realtimeReadingsPlayers.set(id, player)
     return Comlink.proxy(player)
   }
+
+  async createRealtimeFftPlayer(
+    channelId: string,
+    windowOptions: PlayerWindowOptions,
+  ) {
+    const id = crypto.randomUUID()
+    const player = new RealtimeFftPlayer(channelId, windowOptions, () => {
+      this.realtimeFftPlayers.delete(id)
+    })
+
+    const start = performance.now()
+    // Fill the player with ffts from the database
+    const rows = await this.db.ffts
+      .where('[channelId+timestamp]')
+      .between(
+        [channelId, windowOptions.windowStartTimestamp - 100],
+        [
+          channelId,
+          windowOptions.windowStartTimestamp + windowOptions.windowDuration,
+        ],
+      )
+      .toArray()
+
+    let lastFftTimestamp = -1
+    for (const dbFftRow of rows) {
+      player.onRealtimeFft(channelId, dbFftRow)
+      lastFftTimestamp = dbFftRow.timestamp
+    }
+
+    let fftCache = this.fftCacheMap.get(channelId)
+    fftCache?.forEach((fft) => {
+      if (fft.timestamp > lastFftTimestamp) {
+        player.onRealtimeFft(channelId, fft)
+      }
+    })
+
+    console.info(
+      `Took ${performance.now() - start}ms to process data for player`,
+    )
+
+    this.realtimeFftPlayers.set(id, player)
+    return Comlink.proxy(player)
+  }
 }
 
 const obj = new DatabaseWorker()
-
-export type DatabaseWorkerType = typeof obj
 
 Comlink.expose(obj)
