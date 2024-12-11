@@ -11,6 +11,7 @@ import DatabaseWorker from '../database/DatabaseWorker?worker'
 import * as Comlink from 'comlink'
 import type { DatabaseWorker as DatabaseWorkerType } from '../database/DatabaseWorker'
 import type { StrainGraphPlayerOptions } from '../database/RealtimeStrainGraphPlayer'
+import type { SpectrogramPlayerOptions } from '../database/RealtimeSpectrogramPlayer'
 
 export class OzysDevicesManager {
   public devices: OzysDevice[] = []
@@ -93,11 +94,11 @@ export class OzysDevicesManager {
     )
   }
 
-  async createRealtimeFftPlayer(
+  async createRealtimeSpectrogramPlayer(
     channelId: string,
-    options: StrainGraphPlayerOptions,
+    options: SpectrogramPlayerOptions,
   ) {
-    return await this.dbWorker.createRealtimeFftPlayer(channelId, options)
+    return await this.dbWorker.createRealtimeSpectrogramPlayer(channelId, options)
   }
 }
 

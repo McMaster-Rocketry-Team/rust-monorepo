@@ -78,9 +78,9 @@ export class StrainGraphCanvas {
         const player = await this.devicesManager.createRealtimeStrainGraphPlayer(
           channelId,
           {
-            windowDuration: this.windowDuration + 400,
-            windowSampleCount: this.width,
-            windowStartTimestamp: Date.now() - this.windowDuration - 400,
+            duration: this.windowDuration + 400,
+            sampleCount: this.width,
+            startTimestamp: Date.now() - this.windowDuration - 400,
           },
         )
         this.players.set(channelId, {
@@ -214,9 +214,9 @@ export class StrainGraphCanvas {
       for (const channelId of this.players.keys()) {
         const newPlayer =
           await this.devicesManager.createRealtimeStrainGraphPlayer(channelId, {
-            windowDuration: this.windowDuration + 400,
-            windowSampleCount: this.width,
-            windowStartTimestamp: Date.now() - this.windowDuration - 400,
+            duration: this.windowDuration + 400,
+            sampleCount: this.width,
+            startTimestamp: Date.now() - this.windowDuration - 400,
           })
         newPlayers.set(channelId, {
           player: newPlayer,

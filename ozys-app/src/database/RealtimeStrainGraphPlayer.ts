@@ -3,9 +3,9 @@ import { CircularBuffer } from '../utils/CircularBuffer'
 import { Resampler } from './Resampler'
 
 export type StrainGraphPlayerOptions = {
-  windowDuration: number
-  windowSampleCount: number
-  windowStartTimestamp: number
+  duration: number
+  sampleCount: number
+  startTimestamp: number
 }
 
 export class RealtimeStrainGraphPlayer {
@@ -26,11 +26,11 @@ export class RealtimeStrainGraphPlayer {
   ) {
     console.log('RealtimeReadingsPlayer created', channelId, options)
     this.targetSampleRate =
-      options.windowSampleCount / (options.windowDuration / 1000)
+      options.sampleCount / (options.duration / 1000)
     this.targetSampleDuration = 1000 / this.targetSampleRate
 
-    this.outputData = new CircularBuffer(options.windowSampleCount)
-    this.windowDuration = options.windowDuration
+    this.outputData = new CircularBuffer(options.sampleCount)
+    this.windowDuration = options.duration
   }
 
   onRealtimeReadings(channelId: string, data: OzysChannelRealtimeReadings) {

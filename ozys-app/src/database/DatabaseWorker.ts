@@ -9,7 +9,7 @@ import {
   RealtimeStrainGraphPlayer,
 } from './RealtimeStrainGraphPlayer'
 import { CircularBuffer } from '../utils/CircularBuffer'
-import { RealtimeFftPlayer } from './RealtimeFftPlayer'
+import { RealtimeSpectrogramPlayer, SpectrogramPlayerOptions } from './RealtimeSpectrogramPlayer'
 
 // Stores 100ms worth of readings (200 readings)
 // instead of 10ms worth of readings from OzysChannelRealtimeReadings
@@ -67,7 +67,7 @@ export class DatabaseWorker {
     new Map()
   private fftCacheMap: Map<string, CircularBuffer<OzysChannelRealtimeFft>> =
     new Map()
-  private realtimeFftPlayers: Map<string, RealtimeFftPlayer> = new Map()
+  private realtimeFftPlayers: Map<string, RealtimeSpectrogramPlayer> = new Map()
 
   constructor() {
     this.db = new Dexie('db') as DBType
@@ -151,10 +151,10 @@ export class DatabaseWorker {
     const rows = await this.db.readings
       .where('[channelId+timestamp]')
       .between(
-        [channelId, options.windowStartTimestamp - 100],
+        [channelId, options.startTimestamp - 100],
         [
           channelId,
-          options.windowStartTimestamp + options.windowDuration,
+          options.startTimestamp + options.duration,
         ],
       )
       .toArray()
@@ -181,12 +181,12 @@ export class DatabaseWorker {
     return Comlink.proxy(player)
   }
 
-  async createRealtimeFftPlayer(
+  async createRealtimeSpectrogramPlayer(
     channelId: string,
-    windowOptions: StrainGraphPlayerOptions,
+    options: SpectrogramPlayerOptions,
   ) {
     const id = crypto.randomUUID()
-    const player = new RealtimeFftPlayer(channelId, windowOptions, () => {
+    const player = new RealtimeSpectrogramPlayer(channelId, options, () => {
       this.realtimeFftPlayers.delete(id)
     })
 
@@ -195,10 +195,10 @@ export class DatabaseWorker {
     const rows = await this.db.ffts
       .where('[channelId+timestamp]')
       .between(
-        [channelId, windowOptions.windowStartTimestamp - 100],
+        [channelId, options.startTimestamp - 100],
         [
           channelId,
-          windowOptions.windowStartTimestamp + windowOptions.windowDuration,
+          options.startTimestamp + options.duration,
         ],
       )
       .toArray()

@@ -3,7 +3,12 @@ import { CircularBuffer } from "../utils/CircularBuffer"
 import { StrainGraphPlayerOptions } from "./RealtimeStrainGraphPlayer"
 import { Resampler2D } from "./Resampler2D"
 
-export class RealtimeFftPlayer {
+export type SpectrogramPlayerOptions = StrainGraphPlayerOptions & {
+  minFrequency: number
+  maxFrequency: number
+}
+
+export class RealtimeSpectrogramPlayer {
   private lastTimestamp: number = -1
   private windowDuration: number
   private resampler0To2k: Resampler2D | undefined
@@ -14,16 +19,16 @@ export class RealtimeFftPlayer {
 
   constructor(
     private channelId: string,
-    options: StrainGraphPlayerOptions,
+    options: SpectrogramPlayerOptions,
     private onDisplose: () => void,
   ) {
     console.log('RealtimeFftPlayer created', channelId, options)
     this.targetSampleRate =
-      options.windowSampleCount / (options.windowDuration / 1000)
+      options.sampleCount / (options.duration / 1000)
     this.targetSampleDuration = 1000 / this.targetSampleRate
 
-    this.outputData = new CircularBuffer(options.windowSampleCount)
-    this.windowDuration = options.windowDuration
+    this.outputData = new CircularBuffer(options.sampleCount)
+    this.windowDuration = options.duration
   }
 
   onRealtimeFft(channelId: string, data: OzysChannelRealtimeFft) {
