@@ -45,7 +45,6 @@ export class RealtimeSpectrogramPlayer {
       )
       // null means there is a gap in the data
       this.outputData.addLast(null)
-      console.log('last null:', this.outputData.peek(-1))
       this.createResampler(data.timestamp)
     }
 

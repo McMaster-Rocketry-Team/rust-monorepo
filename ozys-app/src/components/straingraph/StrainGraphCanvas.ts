@@ -195,7 +195,6 @@ export class StrainGraphCanvas {
     this.calculateWindowDuration()
 
     if (!initial) {
-      console.log('resize to', this.width, this.height)
       this.recreatePlayers()
     }
   }
@@ -216,7 +215,6 @@ export class StrainGraphCanvas {
       const oldPlayers = this.players
       this.players = newPlayers
       for (const player of oldPlayers.values()) {
-        console.log(player)
         player.player.dispose()
       }
     })

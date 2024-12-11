@@ -1,4 +1,4 @@
-import { expect, test } from 'vitest'
+import { test } from 'vitest'
 import { Resampler } from './Resampler'
 
 test('Resample 10hz to 3hz', () => {
