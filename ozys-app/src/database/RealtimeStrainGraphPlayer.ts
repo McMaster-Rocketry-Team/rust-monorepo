@@ -2,13 +2,13 @@ import { OzysChannelRealtimeReadings } from '../device/OzysDevice'
 import { CircularBuffer } from '../utils/CircularBuffer'
 import { Resampler } from './Resampler'
 
-export type PlayerWindowOptions = {
+export type StrainGraphPlayerOptions = {
   windowDuration: number
   windowSampleCount: number
   windowStartTimestamp: number
 }
 
-export class RealtimeReadingsPlayer {
+export class RealtimeStrainGraphPlayer {
   private lastTimestamp: number = -1
   private windowDuration: number
   private resampler: Resampler | undefined
@@ -21,7 +21,7 @@ export class RealtimeReadingsPlayer {
 
   constructor(
     private channelId: string,
-    options: PlayerWindowOptions,
+    options: StrainGraphPlayerOptions,
     private onDisplose: () => void,
   ) {
     console.log('RealtimeReadingsPlayer created', channelId, options)

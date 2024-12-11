@@ -10,7 +10,7 @@ import {
 import DatabaseWorker from '../database/DatabaseWorker?worker'
 import * as Comlink from 'comlink'
 import type { DatabaseWorker as DatabaseWorkerType } from '../database/DatabaseWorker'
-import type { PlayerWindowOptions } from '../database/RealtimeReadingsPlayer'
+import type { StrainGraphPlayerOptions } from '../database/RealtimeStrainGraphPlayer'
 
 export class OzysDevicesManager {
   public devices: OzysDevice[] = []
@@ -83,21 +83,21 @@ export class OzysDevicesManager {
     console.log('OzysDevicesManager terminated')
   }
 
-  async createRealtimeReadingsPlayer(
+  async createRealtimeStrainGraphPlayer(
     channelId: string,
-    windowOptions: PlayerWindowOptions,
+    options: StrainGraphPlayerOptions,
   ) {
-    return await this.dbWorker.createRealtimeReadingsPlayer(
+    return await this.dbWorker.createRealtimeStrainGraphPlayer(
       channelId,
-      windowOptions,
+      options,
     )
   }
 
   async createRealtimeFftPlayer(
     channelId: string,
-    windowOptions: PlayerWindowOptions,
+    options: StrainGraphPlayerOptions,
   ) {
-    return await this.dbWorker.createRealtimeFftPlayer(channelId, windowOptions)
+    return await this.dbWorker.createRealtimeFftPlayer(channelId, options)
   }
 }
 

@@ -5,9 +5,9 @@ import {
 } from '../device/OzysDevice'
 import Dexie, { EntityTable } from 'dexie'
 import {
-  PlayerWindowOptions,
-  RealtimeReadingsPlayer,
-} from './RealtimeReadingsPlayer'
+  StrainGraphPlayerOptions,
+  RealtimeStrainGraphPlayer,
+} from './RealtimeStrainGraphPlayer'
 import { CircularBuffer } from '../utils/CircularBuffer'
 import { RealtimeFftPlayer } from './RealtimeFftPlayer'
 
@@ -63,7 +63,7 @@ export class DatabaseWorker {
     string,
     CircularBuffer<OzysChannelRealtimeReadings>
   > = new Map()
-  private realtimeReadingsPlayers: Map<string, RealtimeReadingsPlayer> =
+  private realtimeReadingsPlayers: Map<string, RealtimeStrainGraphPlayer> =
     new Map()
   private fftCacheMap: Map<string, CircularBuffer<OzysChannelRealtimeFft>> =
     new Map()
@@ -137,12 +137,12 @@ export class DatabaseWorker {
     }
   }
 
-  async createRealtimeReadingsPlayer(
+  async createRealtimeStrainGraphPlayer(
     channelId: string,
-    windowOptions: PlayerWindowOptions,
+    options: StrainGraphPlayerOptions,
   ) {
     const id = crypto.randomUUID()
-    const player = new RealtimeReadingsPlayer(channelId, windowOptions, () => {
+    const player = new RealtimeStrainGraphPlayer(channelId, options, () => {
       this.realtimeReadingsPlayers.delete(id)
     })
 
@@ -151,10 +151,10 @@ export class DatabaseWorker {
     const rows = await this.db.readings
       .where('[channelId+timestamp]')
       .between(
-        [channelId, windowOptions.windowStartTimestamp - 100],
+        [channelId, options.windowStartTimestamp - 100],
         [
           channelId,
-          windowOptions.windowStartTimestamp + windowOptions.windowDuration,
+          options.windowStartTimestamp + options.windowDuration,
         ],
       )
       .toArray()
@@ -183,7 +183,7 @@ export class DatabaseWorker {
 
   async createRealtimeFftPlayer(
     channelId: string,
-    windowOptions: PlayerWindowOptions,
+    windowOptions: StrainGraphPlayerOptions,
   ) {
     const id = crypto.randomUUID()
     const player = new RealtimeFftPlayer(channelId, windowOptions, () => {

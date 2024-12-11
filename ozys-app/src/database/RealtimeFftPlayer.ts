@@ -1,6 +1,6 @@
 import { OzysChannelRealtimeFft } from "../device/OzysDevice"
 import { CircularBuffer } from "../utils/CircularBuffer"
-import { PlayerWindowOptions } from "./RealtimeReadingsPlayer"
+import { StrainGraphPlayerOptions } from "./RealtimeStrainGraphPlayer"
 import { Resampler2D } from "./Resampler2D"
 
 export class RealtimeFftPlayer {
@@ -14,7 +14,7 @@ export class RealtimeFftPlayer {
 
   constructor(
     private channelId: string,
-    options: PlayerWindowOptions,
+    options: StrainGraphPlayerOptions,
     private onDisplose: () => void,
   ) {
     console.log('RealtimeFftPlayer created', channelId, options)

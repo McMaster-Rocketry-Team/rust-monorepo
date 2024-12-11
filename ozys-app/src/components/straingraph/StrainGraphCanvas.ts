@@ -1,5 +1,5 @@
 import { Remote } from 'comlink'
-import type { RealtimeReadingsPlayer } from '../../database/RealtimeReadingsPlayer'
+import type { RealtimeStrainGraphPlayer } from '../../database/RealtimeStrainGraphPlayer'
 import { OzysDevicesManager } from '../../device/OzysDevicesManager'
 import { Mutex } from 'async-mutex'
 import { CircularBuffer } from '../../utils/CircularBuffer'
@@ -14,7 +14,7 @@ export class StrainGraphCanvas {
   private players: Map<
     string,
     {
-      player: Remote<RealtimeReadingsPlayer>
+      player: Remote<RealtimeStrainGraphPlayer>
       width: number
       readings: CircularBuffer<{
         timestamp: number
@@ -75,7 +75,7 @@ export class StrainGraphCanvas {
     this.selectedChannels = selectedChannels
     this.playersMutex.runExclusive(async () => {
       for (const { channelId } of channelsDiff.added) {
-        const player = await this.devicesManager.createRealtimeReadingsPlayer(
+        const player = await this.devicesManager.createRealtimeStrainGraphPlayer(
           channelId,
           {
             windowDuration: this.windowDuration + 400,
@@ -213,7 +213,7 @@ export class StrainGraphCanvas {
       const newPlayers = new Map()
       for (const channelId of this.players.keys()) {
         const newPlayer =
-          await this.devicesManager.createRealtimeReadingsPlayer(channelId, {
+          await this.devicesManager.createRealtimeStrainGraphPlayer(channelId, {
             windowDuration: this.windowDuration + 400,
             windowSampleCount: this.width,
             windowStartTimestamp: Date.now() - this.windowDuration - 400,
