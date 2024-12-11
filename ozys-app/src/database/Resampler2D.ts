@@ -2,6 +2,7 @@ import { Butterworth2ndLP, CascadedFilter, Filter, NoopFilter } from './Filter'
 
 export class Resampler2D {
   private filters: Filter[]
+  private interpolator: Interpolator2D
   private sourceSampleDuration: number
   private targetSampleDuration: number
   private sourceI = 0
@@ -31,10 +32,12 @@ export class Resampler2D {
           new Butterworth2ndLP(sourceSampleRate, targetSampleRate / 4),
         ])
       }
+      this.interpolator = new LinearInterpolator2D()
     } else {
       for (let i = 0; i < dataWidth; i++) {
         this.filters[i] = new NoopFilter()
       }
+      this.interpolator = new NearestNeighborInterpolator2D()
     }
 
     this.sourceSampleDuration = 1000 / sourceSampleRate
@@ -87,7 +90,11 @@ export class Resampler2D {
         this.sourceSampleDuration
       results.push({
         timestamp: this.sourceTimestampStart + this.nextSampleTimestamp,
-        readings: this.lerp2d(this.lastReading, filteredReadings, t),
+        readings: this.interpolator.interpolate(
+          this.lastReading,
+          filteredReadings,
+          t,
+        ),
       })
 
       this.sampleI++
@@ -98,12 +105,24 @@ export class Resampler2D {
     this.lastReading = filteredReadings
     return results
   }
+}
 
-  private lerp2d(a: Float32Array, b: Float32Array, t: number) {
+interface Interpolator2D {
+  interpolate(a: Float32Array, b: Float32Array, t: number): Float32Array
+}
+
+class LinearInterpolator2D implements Interpolator2D {
+  interpolate(a: Float32Array, b: Float32Array, t: number): Float32Array {
     const result = new Float32Array(a.length)
     for (let i = 0; i < a.length; i++) {
       result[i] = a[i] + t * (b[i] - a[i])
     }
     return result
+  }
+}
+
+class NearestNeighborInterpolator2D implements Interpolator2D {
+  interpolate(a: Float32Array, b: Float32Array, t: number): Float32Array {
+    return t < 0.5 ? a : b
   }
 }

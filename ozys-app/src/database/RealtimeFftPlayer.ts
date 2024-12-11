@@ -1,7 +1,7 @@
 import { OzysChannelRealtimeFft } from "../device/OzysDevice"
 import { CircularBuffer } from "../utils/CircularBuffer"
 import { PlayerWindowOptions } from "./RealtimeReadingsPlayer"
-import { Resampler2D } from "./Resampler2d"
+import { Resampler2D } from "./Resampler2D"
 
 export class RealtimeFftPlayer {
   private lastTimestamp: number = -1
