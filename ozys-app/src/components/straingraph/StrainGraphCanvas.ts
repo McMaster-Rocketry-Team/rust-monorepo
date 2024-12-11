@@ -10,18 +10,18 @@ export type SelectedChannel = {
   color: string
 }
 
+type PlayerWrapper = {
+  player: Remote<RealtimeStrainGraphPlayer>
+  width: number
+  windowDuration: number
+  readings: CircularBuffer<{
+    timestamp: number
+    reading: number
+  } | null>
+}
+
 export class StrainGraphCanvas {
-  private players: Map<
-    string,
-    {
-      player: Remote<RealtimeStrainGraphPlayer>
-      width: number
-      readings: CircularBuffer<{
-        timestamp: number
-        reading: number
-      } | null>
-    }
-  > = new Map()
+  private players: Map<string, PlayerWrapper> = new Map()
   private playersMutex = new Mutex()
   private canvas: HTMLCanvasElement
   private ctx: CanvasRenderingContext2D
@@ -62,8 +62,9 @@ export class StrainGraphCanvas {
     const now = Date.now()
 
     // start is inclusive
-    let start = now - this.windowDuration + this.sampleDuration - 200
-    start -= start % this.sampleDuration
+    const start = this.alignToSampleDuration(
+      now - this.windowDuration + this.sampleDuration - 200,
+    )
 
     // end is also inclusive
     const end = start + this.windowDuration - this.sampleDuration
@@ -73,27 +74,17 @@ export class StrainGraphCanvas {
       selectedChannels,
     )
     this.selectedChannels = selectedChannels
-    this.playersMutex.runExclusive(async () => {
-      for (const { channelId } of channelsDiff.added) {
-        const player = await this.devicesManager.createRealtimeStrainGraphPlayer(
-          channelId,
-          {
-            duration: this.windowDuration + 400,
-            sampleCount: this.width,
-            startTimestamp: Date.now() - this.windowDuration - 400,
-          },
-        )
-        this.players.set(channelId, {
-          player,
-          width: this.width,
-          readings: new CircularBuffer(this.width),
-        })
-      }
-      for (const { channelId } of channelsDiff.removed) {
-        this.players.get(channelId)?.player.dispose()
-        this.players.delete(channelId)
-      }
-    })
+    if (channelsDiff.changed !== 0) {
+      this.playersMutex.runExclusive(async () => {
+        for (const { channelId } of channelsDiff.added) {
+          this.players.set(channelId, await this.createPlayer(channelId))
+        }
+        for (const { channelId } of channelsDiff.removed) {
+          this.players.get(channelId)?.player.dispose()
+          this.players.delete(channelId)
+        }
+      })
+    }
 
     for (const { channelId } of selectedChannels) {
       const player = this.players.get(channelId)
@@ -110,6 +101,13 @@ export class StrainGraphCanvas {
     for (const { channelId, color } of selectedChannels) {
       const player = this.players.get(channelId)
       if (!player) continue
+      if (
+        player.width !== this.width ||
+        player.windowDuration !== this.windowDuration
+      ) {
+        continue
+      }
+
       const readings = player.readings
 
       this.ctx.beginPath()
@@ -177,7 +175,7 @@ export class StrainGraphCanvas {
           (oldChannel) => oldChannel.channelId === newChannel.channelId,
         ),
     )
-    return { removed, added }
+    return { removed, added, changed: removed.length + added.length }
   }
 
   private resize(initial: boolean = false) {
@@ -210,26 +208,44 @@ export class StrainGraphCanvas {
 
   private recreatePlayers() {
     this.playersMutex.runExclusive(async () => {
-      const newPlayers = new Map()
+      const newPlayers = new Map<string, PlayerWrapper>()
       for (const channelId of this.players.keys()) {
-        const newPlayer =
-          await this.devicesManager.createRealtimeStrainGraphPlayer(channelId, {
-            duration: this.windowDuration + 400,
-            sampleCount: this.width,
-            startTimestamp: Date.now() - this.windowDuration - 400,
-          })
-        newPlayers.set(channelId, {
-          player: newPlayer,
-          width: this.width,
-          readings: new CircularBuffer(this.width),
-        })
+        newPlayers.set(channelId, await this.createPlayer(channelId))
       }
 
       const oldPlayers = this.players
       this.players = newPlayers
       for (const player of oldPlayers.values()) {
+        console.log(player)
         player.player.dispose()
       }
     })
+  }
+
+  private async createPlayer(channelId: string): Promise<PlayerWrapper> {
+    const width = this.width
+    const windowDuration = this.windowDuration
+
+    const player = await this.devicesManager.createRealtimeStrainGraphPlayer(
+      channelId,
+      {
+        duration: windowDuration + 400,
+        sampleCount: width,
+        startTimestamp: this.alignToSampleDuration(
+          Date.now() - windowDuration - 400,
+        ),
+      },
+    )
+
+    return {
+      player,
+      width,
+      windowDuration,
+      readings: new CircularBuffer(width),
+    }
+  }
+
+  private alignToSampleDuration(timestamp: number) {
+    return timestamp - (timestamp % this.sampleDuration)
   }
 }
