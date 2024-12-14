@@ -86,16 +86,21 @@ export class StrainGraphCanvas {
       })
     }
 
+    const promises = []
     for (const { channelId } of selectedChannels) {
       const player = this.players.get(channelId)
       if (!player) continue
 
-      const newData = await player.player.getNewData()
-      const readings = player.readings
-      for (const data of newData) {
-        readings.addLast(data)
-      }
+      promises.push(
+        player.player.getNewData().then((newData) => {
+          const readings = player.readings
+          for (const data of newData) {
+            readings.addLast(data)
+          }
+        }),
+      )
     }
+    await Promise.all(promises)
 
     this.ctx.clearRect(0, 0, this.width, this.height)
     for (const { channelId, color } of selectedChannels) {
