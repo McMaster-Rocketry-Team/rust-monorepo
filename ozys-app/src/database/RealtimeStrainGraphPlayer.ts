@@ -10,7 +10,6 @@ export type StrainGraphPlayerOptions = {
 
 export class RealtimeStrainGraphPlayer {
   private lastTimestamp: number = -1
-  private windowDuration: number
   private resampler: Resampler | undefined
   private targetSampleRate: number
   private targetSampleDuration: number
@@ -30,7 +29,6 @@ export class RealtimeStrainGraphPlayer {
     this.targetSampleDuration = 1000 / this.targetSampleRate
 
     this.outputData = new CircularBuffer(options.sampleCount)
-    this.windowDuration = options.duration
   }
 
   onRealtimeReadings(channelId: string, data: OzysChannelRealtimeReadings) {

@@ -12,7 +12,6 @@ export type SpectrogramPlayerOptions = StrainGraphPlayerOptions & {
 
 export class RealtimeSpectrogramPlayer {
   private lastTimestamp: number = -1
-  private windowDuration: number
   private timeAxisResampler: Resampler2D | undefined
   private outputData: CircularBuffer<{
     timestamp: number
@@ -30,9 +29,6 @@ export class RealtimeSpectrogramPlayer {
   // frequency axis, sample / Hz
   private targetFrequencySampleRate: number
 
-  // frequency axis, Hz / sample
-  private targetFrequencySampleDuration: number
-
   private frequencyAxisResampleBuffer: Float32Array
 
   constructor(
@@ -48,13 +44,11 @@ export class RealtimeSpectrogramPlayer {
     this.targetFrequencySampleRate =
       options.frequencySampleCount /
       (options.maxFrequency - options.minFrequency)
-    this.targetFrequencySampleDuration = 1 / this.targetFrequencySampleRate
     this.frequencyAxisResampleBuffer = new Float32Array(
       options.frequencySampleCount,
     )
 
     this.outputData = new CircularBuffer(options.sampleCount)
-    this.windowDuration = options.duration
   }
 
   onRealtimeFft(channelId: string, data: OzysChannelRealtimeFft) {
