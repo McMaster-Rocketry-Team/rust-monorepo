@@ -87,6 +87,11 @@ async fn main() -> Result<()> {
         ModeSelect::Testing(TestingModeSelect::MockGroundStation) => {
             mock_ground_station_tui().await
         }
+        #[cfg(feature = "server")]
+        ModeSelect::Testing(TestingModeSelect::MockServer) => {
+            println!("Testing Server");
+            Ok(())
+        }
         ModeSelect::Testing(TestingModeSelect::SendVLPTelemetry(args)) => {
             send_fake_vlp_telemetry(args).await
         }

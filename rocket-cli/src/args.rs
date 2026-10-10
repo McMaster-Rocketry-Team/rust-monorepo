@@ -136,6 +136,8 @@ pub struct GenVlpKeyCli {
 pub enum TestingModeSelect {
     MockConnection,
     MockGroundStation,
+    #[cfg(feature = "server")]
+    MockServer,
     SendVLPTelemetry(SendVLPTelemetryArgs),
 }
 

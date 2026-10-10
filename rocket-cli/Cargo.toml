@@ -3,12 +3,17 @@ name = "rocket-cli"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+default = []
+server = ["dep:axum"]
+
 [dependencies]
 firmware-common-new = { path = "../firmware-common-new", default-features = false, features = [
     "log",
     "std",
 ]}
 anyhow = "1.0.86"
+axum = { version = "0.8.9", features = ["ws"], optional=true }
 clap = { version = "4.5.7", features = ["derive"] }
 clap-num = "1.1.1"
 tokio = { version = "1.45.0", features = ["full"] }
