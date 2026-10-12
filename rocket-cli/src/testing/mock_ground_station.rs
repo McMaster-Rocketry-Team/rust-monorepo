@@ -36,7 +36,7 @@ use tokio::task::spawn_blocking;
 /// How long each mocked packet stays on screen before the next replaces it.
 const PACKET_DWELL: Duration = Duration::from_secs(4);
 
-struct MockVLPClient {
+pub struct MockVLPClient {
     /// One packet per downlink type, cycled so every panel is exercised.
     packets: Vec<(VLPDownlinkPacket, PacketStatus)>,
     next: AtomicUsize,

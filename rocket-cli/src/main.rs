@@ -7,6 +7,8 @@ mod monitor;
 mod plot;
 mod probe;
 mod serial_can;
+#[cfg(feature = "server")]
+mod serve;
 mod testing;
 mod usb_storage;
 
@@ -38,6 +40,8 @@ use crate::gs::headless::{
 };
 use crate::testing::mock_ground_station::mock_ground_station_tui;
 use crate::testing::send_fake_vlp_telemetry::send_fake_vlp_telemetry;
+#[cfg(feature = "server")]
+use crate::testing::mock_server::mock_server;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -89,8 +93,7 @@ async fn main() -> Result<()> {
         }
         #[cfg(feature = "server")]
         ModeSelect::Testing(TestingModeSelect::MockServer) => {
-            println!("Testing Server");
-            Ok(())
+            mock_server().await
         }
         ModeSelect::Testing(TestingModeSelect::SendVLPTelemetry(args)) => {
             send_fake_vlp_telemetry(args).await
