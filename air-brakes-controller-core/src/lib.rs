@@ -6,7 +6,6 @@
 // under std the same function is `f32::sqrt`.
 #![cfg_attr(
     not(any(test, feature = "std")),
-    feature(core_intrinsics),
     allow(internal_features)
 )]
 
@@ -14,37 +13,37 @@
 
 mod fmt;
 
-pub mod airbrakes_estimator;
+//pub mod airbrakes_estimator;
 pub mod baro_gate;
 pub mod baro_state_estimator;
-mod controller;
+//mod controller;
 pub mod flight_estimators;
 pub mod ignition_detector;
-mod utils;
+//mod utils;
 
 pub use baro_state_estimator::{
     DeploymentProfile, FlightProfile, RocketState, RocketStateEstimator,
 };
 pub use baro_gate::BaroGateOutcome;
 pub use ignition_detector::IgnitionDetector;
-pub use airbrakes_estimator::ImuSample;
+pub use flight_estimators::ImuSample;
 pub use flight_estimators::{
-    AirbrakesLogSample, AirbrakesMPCStates, EstimatorLogSample, FlightConfig, FlightEstimators,
+    EstimatorLogSample, FlightConfig, FlightEstimators,
 };
-pub use controller::{AirBrakesMPC, MpcSolution, RocketParameters};
-pub use utils::{approximate_air_density, approximate_speed_of_sound, lerp};
+//pub use controller::{AirBrakesMPC, MpcSolution, RocketParameters};
+//pub use utils::{approximate_air_density, approximate_speed_of_sound, lerp};
 
 #[cfg(test)]
 mod tests;
 
-#[derive(Debug, Clone)]
-pub struct RocketConstants {
-    // front cd at 0%, 33%, 66% 100% air brakes
-    pub initial_front_cd: [f32; 4],
-    pub initial_sideways_moment_co: f32,
-    pub side_cd: f32,
-    pub burn_out_mass: f32,
-    pub moment_of_inertia: f32,
-    pub front_reference_area: f32,
-    pub side_reference_area: f32,
-}
+// #[derive(Debug, Clone)]
+// pub struct RocketConstants {
+//     // front cd at 0%, 33%, 66% 100% air brakes
+//     pub initial_front_cd: [f32; 4],
+//     pub initial_sideways_moment_co: f32,
+//     pub side_cd: f32,
+//     pub burn_out_mass: f32,
+//     pub moment_of_inertia: f32,
+//     pub front_reference_area: f32,
+//     pub side_reference_area: f32,
+// }

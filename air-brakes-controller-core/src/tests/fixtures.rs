@@ -33,9 +33,9 @@
 //! synthetic `cd` tables in `controller` — those tests exist to exercise
 //! the table.
 
-use crate::airbrakes_estimator::AirbrakesConfig;
+// use crate::airbrakes_estimator::AirbrakesConfig;
 use crate::baro_state_estimator::{DeploymentProfile, FlightProfile};
-use crate::controller::RocketParameters;
+// use crate::controller::RocketParameters;
 
 /// The ignition threshold for tests that are not about ignition.
 ///
@@ -75,43 +75,43 @@ pub fn subsonic_profile() -> FlightProfile {
     }
 }
 
-/// The LC'25 airframe — the one both replayed flights fly, and the one the
-/// drag check inverts.
-///
-/// `cd[0] * reference_area / burnout_mass` = 2.4e-4, which the flight
-/// itself corroborates: measured drag deceleration over dynamic pressure
-/// sits at 0.00022-0.00026 across the whole subsonic coast, and rises about
-/// 40% through the transonic peak — which is why inverting with the
-/// SUBSONIC Cd makes the check read high exactly while supersonic (see
-/// [`AirbrakesConfig::rocket`]).
-pub fn lc25_rocket() -> RocketParameters {
-    RocketParameters {
-        burnout_mass: 17.607,
-        cd: [0.47044, 0.5082, 0.57784, 0.665, 0.74313],
-        reference_area: 0.008982476,
-    }
-}
-
-/// The airbrakes half on the LC'25 airframe with **no Mach lockout**.
-///
-/// No lockout is the subsonic case: the drag check is never consulted, the
-/// airframe cannot affect the run, and the vertical filter is born right
-/// after the thrust-vector alignment finishes. That is Void Lake, and it is
-/// also what the synthetic gate tests in [`crate::flight_estimators`] want
-/// — a config that does nothing interesting while the pad gate is under
-/// test.
-///
-/// `max_open_mach` is 0.8 because that is the Mach [`lc25_rocket`]'s stowed
-/// `cd[0]` is tabulated at; the two have to agree, and pairing them here is
-/// the reason they cannot drift apart across the four call sites.
-///
-/// The supersonic replay overrides `mach_lockout` at its own call site —
-/// the two timers in it are precisely what that test measures, so they do
-/// not get to live in here.
-pub fn lc25_airbrakes() -> AirbrakesConfig {
-    AirbrakesConfig {
-        mach_lockout: None,
-        max_open_mach: 0.8,
-        rocket: lc25_rocket(),
-    }
-}
+// /// The LC'25 airframe — the one both replayed flights fly, and the one the
+// /// drag check inverts.
+// ///
+// /// `cd[0] * reference_area / burnout_mass` = 2.4e-4, which the flight
+// /// itself corroborates: measured drag deceleration over dynamic pressure
+// /// sits at 0.00022-0.00026 across the whole subsonic coast, and rises about
+// /// 40% through the transonic peak — which is why inverting with the
+// /// SUBSONIC Cd makes the check read high exactly while supersonic (see
+// /// [`AirbrakesConfig::rocket`]).
+// pub fn lc25_rocket() -> RocketParameters {
+    // RocketParameters {
+        // burnout_mass: 17.607,
+        // cd: [0.47044, 0.5082, 0.57784, 0.665, 0.74313],
+        // reference_area: 0.008982476,
+    // }
+// }
+//
+// /// The airbrakes half on the LC'25 airframe with **no Mach lockout**.
+// ///
+// /// No lockout is the subsonic case: the drag check is never consulted, the
+// /// airframe cannot affect the run, and the vertical filter is born right
+// /// after the thrust-vector alignment finishes. That is Void Lake, and it is
+// /// also what the synthetic gate tests in [`crate::flight_estimators`] want
+// /// — a config that does nothing interesting while the pad gate is under
+// /// test.
+// ///
+// /// `max_open_mach` is 0.8 because that is the Mach [`lc25_rocket`]'s stowed
+// /// `cd[0]` is tabulated at; the two have to agree, and pairing them here is
+// /// the reason they cannot drift apart across the four call sites.
+// ///
+// /// The supersonic replay overrides `mach_lockout` at its own call site —
+// /// the two timers in it are precisely what that test measures, so they do
+// /// not get to live in here.
+// pub fn lc25_airbrakes() -> AirbrakesConfig {
+    // AirbrakesConfig {
+        // mach_lockout: None,
+        // max_open_mach: 0.8,
+        // rocket: lc25_rocket(),
+    // }
+// }

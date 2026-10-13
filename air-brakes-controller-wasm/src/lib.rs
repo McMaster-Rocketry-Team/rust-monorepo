@@ -1,45 +1,44 @@
-use air_brakes_controller_core::airbrakes_estimator::{AirbrakesConfig, MachLockoutConfig};
+// use air_brakes_controller_core::airbrakes_estimator::{AirbrakesConfig, MachLockoutConfig};
 use air_brakes_controller_core::{
-    AirBrakesMPC, DeploymentProfile, FlightConfig, FlightEstimators, FlightProfile, ImuSample,
-    RocketParameters,
+    DeploymentProfile, FlightConfig, FlightEstimators, FlightProfile, ImuSample
 };
 use nalgebra::{Vector2, Vector3};
 
-/// Stateless one-shot solve: the export the OpenRocket plugin has always
-/// called, and the only one that existed before the harness below.
-///
-/// The horizontal velocity argument is NOT new fat — the plugin has been
-/// passing it since it was written, and this export took ten arguments
-/// while the plugin sent eleven, so every call through it trapped in
-/// Chicory before reaching any Rust. The core solver has taken a
-/// `Vector2` all along; this signature is what the caller already spoke.
-#[unsafe(no_mangle)]
-pub extern "C" fn get_air_brakes_extension_percentage(
-    burnout_mass: f32,
-    cd_0: f32,
-    cd_25: f32,
-    cd_50: f32,
-    cd_75: f32,
-    cd_100: f32,
-    reference_area: f32,
-    target_apogee_asl: f32,
-    current_altitude_asl: f32,
-    current_horizontal_velocity: f32,
-    current_vertical_velocity: f32,
-) -> f32 {
-    let rocket_parameters = RocketParameters {
-        burnout_mass,
-        cd: [cd_0, cd_25, cd_50, cd_75, cd_100],
-        reference_area,
-    };
+// /// Stateless one-shot solve: the export the OpenRocket plugin has always
+// /// called, and the only one that existed before the harness below.
+// ///
+// /// The horizontal velocity argument is NOT new fat — the plugin has been
+// /// passing it since it was written, and this export took ten arguments
+// /// while the plugin sent eleven, so every call through it trapped in
+// /// Chicory before reaching any Rust. The core solver has taken a
+// /// `Vector2` all along; this signature is what the caller already spoke.
+// #[unsafe(no_mangle)]
+// pub extern "C" fn get_air_brakes_extension_percentage(
+//     burnout_mass: f32,
+//     cd_0: f32,
+//     cd_25: f32,
+//     cd_50: f32,
+//     cd_75: f32,
+//     cd_100: f32,
+//     reference_area: f32,
+//     target_apogee_asl: f32,
+//     current_altitude_asl: f32,
+//     current_horizontal_velocity: f32,
+//     current_vertical_velocity: f32,
+// ) -> f32 {
+//     let rocket_parameters = RocketParameters {
+//         burnout_mass,
+//         cd: [cd_0, cd_25, cd_50, cd_75, cd_100],
+//         reference_area,
+//     };
 
-    AirBrakesMPC::new(rocket_parameters, target_apogee_asl)
-        .update(
-            current_altitude_asl,
-            Vector2::new(current_horizontal_velocity, current_vertical_velocity),
-        )
-        .extension_percentage
-}
+//     AirBrakesMPC::new(rocket_parameters, target_apogee_asl)
+//         .update(
+//             current_altitude_asl,
+//             Vector2::new(current_horizontal_velocity, current_vertical_velocity),
+//         )
+//         .extension_percentage
+// }
 
 // ---------------------------------------------------------------------------
 // Full-loop harness exports: the SAME `FlightEstimators` + `AirBrakesMPC` the
@@ -52,9 +51,9 @@ pub extern "C" fn get_air_brakes_extension_percentage(
 // ---------------------------------------------------------------------------
 
 static mut ESTIMATORS: Option<FlightEstimators> = None;
-static mut ROCKET: Option<RocketParameters> = None;
-static mut MPC: Option<AirBrakesMPC> = None;
-static mut LAST_PREDICTED_APOGEE_ASL: f32 = f32::NAN;
+// static mut ROCKET: Option<RocketParameters> = None;
+// static mut MPC: Option<AirBrakesMPC> = None;
+// static mut LAST_PREDICTED_APOGEE_ASL: f32 = f32::NAN;
 
 #[allow(static_mut_refs)]
 fn estimators() -> Option<&'static mut FlightEstimators> {
@@ -92,11 +91,11 @@ pub extern "C" fn harness_init(
     cd_100: f32,
     reference_area: f32,
 ) {
-    let rocket = RocketParameters {
-        burnout_mass,
-        cd: [cd_0, cd_25, cd_50, cd_75, cd_100],
-        reference_area,
-    };
+    // let rocket = RocketParameters {
+    //     burnout_mass,
+    //     cd: [cd_0, cd_25, cd_50, cd_75, cd_100],
+    //     reference_area,
+    // };
 
     let deployment = if deployment_kind == 0 {
         DeploymentProfile::Dual {
@@ -112,15 +111,15 @@ pub extern "C" fn harness_init(
         }
     };
 
-    let mach_lockout = if airbrakes_earliest_subsonic_s < 0.0 {
-        None
-    } else {
-        Some(MachLockoutConfig {
-            earliest_subsonic_after_ignition_us: (airbrakes_earliest_subsonic_s * 1e6) as u32,
-            force_birth_after_ignition_us: (airbrakes_force_birth_s * 1e6) as u32,
-            subsonic_crossing_altitude_asl: airbrakes_crossing_altitude_asl,
-        })
-    };
+    // let mach_lockout = if airbrakes_earliest_subsonic_s < 0.0 {
+    //     None
+    // } else {
+    //     Some(MachLockoutConfig {
+    //         earliest_subsonic_after_ignition_us: (airbrakes_earliest_subsonic_s * 1e6) as u32,
+    //         force_birth_after_ignition_us: (airbrakes_force_birth_s * 1e6) as u32,
+    //         subsonic_crossing_altitude_asl: airbrakes_crossing_altitude_asl,
+    //     })
+    // };
 
     let config = FlightConfig {
         ignition_detection_acc_threshold,
@@ -132,18 +131,18 @@ pub extern "C" fn harness_init(
             },
             deployment,
         },
-        airbrakes: AirbrakesConfig {
-            mach_lockout,
-            max_open_mach,
-            rocket: rocket.clone(),
-        },
+        // airbrakes: AirbrakesConfig {
+        //     mach_lockout,
+        //     max_open_mach,
+        //     rocket: rocket.clone(),
+        // },
     };
 
     unsafe {
         ESTIMATORS = Some(FlightEstimators::new(config));
-        ROCKET = Some(rocket);
-        MPC = None;
-        LAST_PREDICTED_APOGEE_ASL = f32::NAN;
+        // ROCKET = Some(rocket);
+        // MPC = None;
+        // LAST_PREDICTED_APOGEE_ASL = f32::NAN;
     }
 }
 
@@ -182,21 +181,21 @@ pub extern "C" fn harness_update(
     let (pyro, log) = estimators.update((time_s * 1e6) as u64, Some(&imu), baro_altitude_asl);
 
     let mut flags = 0i32;
-    if estimators.airbrakes_mpc_states().is_some() {
-        flags |= 1;
-    }
-    if estimators.airbrakes_estimator().is_none() {
-        flags |= 2;
-    }
-    if let Some(airbrakes) = log.airbrakes {
-        if airbrakes.calibration_complete {
-            flags |= 4;
-        }
-        if airbrakes.burnout_detected {
-            flags |= 8;
-        }
-        flags |= (airbrakes.state as i32 & 0x3) << 8;
-    }
+    // if estimators.airbrakes_mpc_states().is_some() {
+    //     flags |= 1;
+    // }
+    // if estimators.airbrakes_estimator().is_none() {
+    //     flags |= 2;
+    // }
+    // if let Some(airbrakes) = log.airbrakes {
+    //     if airbrakes.calibration_complete {
+    //         flags |= 4;
+    //     }
+    //     if airbrakes.burnout_detected {
+    //         flags |= 8;
+    //     }
+    //     flags |= (airbrakes.state as i32 & 0x3) << 8;
+    // }
     match pyro {
         Some(firmware_common_new::vlp::packets::fire_pyro::PyroSelect::PyroDrogue) => flags |= 16,
         Some(firmware_common_new::vlp::packets::fire_pyro::PyroSelect::PyroMain) => flags |= 32,
@@ -211,77 +210,77 @@ pub extern "C" fn harness_launch_pad_altitude_asl() -> f32 {
     estimators().map_or(f32::NAN, |e| e.launch_pad_altitude_asl())
 }
 
-/// The airbrakes filter's altitude ASL, or NaN while it has no reading.
-#[unsafe(no_mangle)]
-pub extern "C" fn harness_estimated_altitude_asl() -> f32 {
-    estimators()
-        .and_then(|e| e.airbrakes_mpc_states())
-        .map_or(f32::NAN, |s| s.altitude_asl)
-}
+// /// The airbrakes filter's altitude ASL, or NaN while it has no reading.
+// #[unsafe(no_mangle)]
+// pub extern "C" fn harness_estimated_altitude_asl() -> f32 {
+//     estimators()
+//         .and_then(|e| e.airbrakes_mpc_states())
+//         .map_or(f32::NAN, |s| s.altitude_asl)
+// }
 
-#[unsafe(no_mangle)]
-pub extern "C" fn harness_estimated_vertical_velocity() -> f32 {
-    estimators()
-        .and_then(|e| e.airbrakes_mpc_states())
-        .map_or(f32::NAN, |s| s.velocity.y)
-}
+// #[unsafe(no_mangle)]
+// pub extern "C" fn harness_estimated_vertical_velocity() -> f32 {
+//     estimators()
+//         .and_then(|e| e.airbrakes_mpc_states())
+//         .map_or(f32::NAN, |s| s.velocity.y)
+// }
 
-#[unsafe(no_mangle)]
-pub extern "C" fn harness_estimated_horizontal_velocity() -> f32 {
-    estimators()
-        .and_then(|e| e.airbrakes_mpc_states())
-        .map_or(f32::NAN, |s| s.velocity.x)
-}
+// #[unsafe(no_mangle)]
+// pub extern "C" fn harness_estimated_horizontal_velocity() -> f32 {
+//     estimators()
+//         .and_then(|e| e.airbrakes_mpc_states())
+//         .map_or(f32::NAN, |s| s.velocity.x)
+// }
 
-#[unsafe(no_mangle)]
-pub extern "C" fn harness_estimated_tilt_rad() -> f32 {
-    estimators()
-        .and_then(|e| e.airbrakes_estimator())
-        .and_then(|ab| ab.tilt())
-        .unwrap_or(f32::NAN)
-}
+// #[unsafe(no_mangle)]
+// pub extern "C" fn harness_estimated_tilt_rad() -> f32 {
+//     estimators()
+//         .and_then(|e| e.airbrakes_estimator())
+//         .and_then(|ab| ab.tilt())
+//         .unwrap_or(f32::NAN)
+// }
 
-/// Latch the MPC's target, once, exactly as `armed_mode` does: the pad
-/// reference the deployment half is holding plus the configured AGL.
-#[unsafe(no_mangle)]
-pub extern "C" fn harness_mpc_latch_target(target_apogee_agl: f32) -> f32 {
-    let Some(estimators) = estimators() else {
-        return f32::NAN;
-    };
-    let target_asl = estimators.launch_pad_altitude_asl() + target_apogee_agl;
-    #[allow(static_mut_refs)]
-    unsafe {
-        MPC = Some(AirBrakesMPC::new(
-            ROCKET.clone().expect("harness_init first"),
-            target_asl,
-        ));
-    }
-    target_asl
-}
+// /// Latch the MPC's target, once, exactly as `armed_mode` does: the pad
+// /// reference the deployment half is holding plus the configured AGL.
+// #[unsafe(no_mangle)]
+// pub extern "C" fn harness_mpc_latch_target(target_apogee_agl: f32) -> f32 {
+//     let Some(estimators) = estimators() else {
+//         return f32::NAN;
+//     };
+//     let target_asl = estimators.launch_pad_altitude_asl() + target_apogee_agl;
+//     #[allow(static_mut_refs)]
+//     unsafe {
+//         MPC = Some(AirBrakesMPC::new(
+//             ROCKET.clone().expect("harness_init first"),
+//             target_asl,
+//         ));
+//     }
+//     target_asl
+// }
 
-/// One 10 Hz control tick against the estimator's own state. Returns the
-/// commanded extension, or -1.0 when the gate is shut (which firmware
-/// treats as a commanded 0.0 with no prediction).
-#[unsafe(no_mangle)]
-pub extern "C" fn harness_mpc_tick() -> f32 {
-    let Some(estimators) = estimators() else {
-        return -1.0;
-    };
-    let Some(states) = estimators.airbrakes_mpc_states() else {
-        unsafe { LAST_PREDICTED_APOGEE_ASL = f32::NAN };
-        return -1.0;
-    };
-    #[allow(static_mut_refs)]
-    let mpc = unsafe { MPC.as_ref() };
-    let Some(mpc) = mpc else {
-        return -1.0;
-    };
-    let solution = mpc.update(states.altitude_asl, states.velocity);
-    unsafe { LAST_PREDICTED_APOGEE_ASL = solution.predicted_apogee_asl };
-    solution.extension_percentage
-}
+// /// One 10 Hz control tick against the estimator's own state. Returns the
+// /// commanded extension, or -1.0 when the gate is shut (which firmware
+// /// treats as a commanded 0.0 with no prediction).
+// #[unsafe(no_mangle)]
+// pub extern "C" fn harness_mpc_tick() -> f32 {
+//     let Some(estimators) = estimators() else {
+//         return -1.0;
+//     };
+//     let Some(states) = estimators.airbrakes_mpc_states() else {
+//         unsafe { LAST_PREDICTED_APOGEE_ASL = f32::NAN };
+//         return -1.0;
+//     };
+//     #[allow(static_mut_refs)]
+//     let mpc = unsafe { MPC.as_ref() };
+//     let Some(mpc) = mpc else {
+//         return -1.0;
+//     };
+//     let solution = mpc.update(states.altitude_asl, states.velocity);
+//     unsafe { LAST_PREDICTED_APOGEE_ASL = solution.predicted_apogee_asl };
+//     solution.extension_percentage
+// }
 
-#[unsafe(no_mangle)]
-pub extern "C" fn harness_mpc_predicted_apogee_asl() -> f32 {
-    unsafe { LAST_PREDICTED_APOGEE_ASL }
-}
+// #[unsafe(no_mangle)]
+// pub extern "C" fn harness_mpc_predicted_apogee_asl() -> f32 {
+//     unsafe { LAST_PREDICTED_APOGEE_ASL }
+// }

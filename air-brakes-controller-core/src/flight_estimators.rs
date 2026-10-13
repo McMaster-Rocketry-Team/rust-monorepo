@@ -40,27 +40,27 @@
 //! anything is missing, stale, or out of range, the brakes stay shut.
 //! Recovery (the pyro path) does not depend on the airbrakes half at all.
 
-use core::f32::consts::FRAC_PI_2;
+// use core::f32::consts::FRAC_PI_2;
 
-use firmware_common_new::flight_data_record::AirbrakesState;
+// use firmware_common_new::flight_data_record::AirbrakesState;
 use firmware_common_new::vlp::packets::fire_pyro::PyroSelect;
-use nalgebra::Vector2;
+// use nalgebra::Vector2;
 
-use crate::airbrakes_estimator::{AirbrakesConfig, AirbrakesEstimator, ImuSample};
+// use crate::airbrakes_estimator::{AirbrakesConfig, AirbrakesEstimator, ImuSample};
 use crate::baro_gate::BaroGateOutcome;
 use crate::baro_state_estimator::{FlightProfile, RocketState, RocketStateEstimator};
 
-/// The MPC's input state, handed out by
-/// [`FlightEstimators::airbrakes_mpc_states`] exactly when the airbrakes
-/// are permitted to open. Permission and state availability are one
-/// `Option` — "permitted but no state" cannot be expressed.
-#[derive(Debug, Clone)]
-pub struct AirbrakesMPCStates {
-    /// Altitude ASL (m), from the airbrakes filter.
-    pub altitude_asl: f32,
-    /// Velocity `[horizontal, vertical]` (m/s), from the airbrakes filter.
-    pub velocity: Vector2<f32>,
-}
+// /// The MPC's input state, handed out by
+// /// [`FlightEstimators::airbrakes_mpc_states`] exactly when the airbrakes
+// /// are permitted to open. Permission and state availability are one
+// /// `Option` — "permitted but no state" cannot be expressed.
+// #[derive(Debug, Clone)]
+// pub struct AirbrakesMPCStates {
+//     /// Altitude ASL (m), from the airbrakes filter.
+//     pub altitude_asl: f32,
+//     /// Velocity `[horizontal, vertical]` (m/s), from the airbrakes filter.
+//     pub velocity: Vector2<f32>,
+// }
 
 /// Everything [`FlightEstimators`] is configured with, in one value.
 ///
@@ -111,9 +111,9 @@ pub struct FlightConfig {
     /// The deployment estimator's profile: Mach lockout, burn timer, and
     /// the drogue/main deployment scheme. This half fires the pyros.
     pub profile: FlightProfile,
-    /// The airbrakes estimator's config, including the airframe it shares
-    /// with the MPC.
-    pub airbrakes: AirbrakesConfig,
+    // /// The airbrakes estimator's config, including the airframe it shares
+    // /// with the MPC.
+    // pub airbrakes: AirbrakesConfig,
 }
 
 /// The two flight estimators plus the policy connecting them. See the
@@ -121,11 +121,11 @@ pub struct FlightConfig {
 #[derive(Debug)]
 pub struct FlightEstimators {
     deployment: RocketStateEstimator,
-    /// `None` once the airbrakes window has closed for good — see
-    /// [`FlightEstimators::update`]. Retirement is destructive on purpose:
-    /// there is no state left to re-open the brakes from, so the window
-    /// cannot reopen no matter what any later sample looks like.
-    airbrakes: Option<AirbrakesEstimator>,
+    // /// `None` once the airbrakes window has closed for good — see
+    // /// [`FlightEstimators::update`]. Retirement is destructive on purpose:
+    // /// there is no state left to re-open the brakes from, so the window
+    // /// cannot reopen no matter what any later sample looks like.
+    // airbrakes: Option<AirbrakesEstimator>,
 }
 
 impl FlightEstimators {
@@ -138,10 +138,10 @@ impl FlightEstimators {
                 config.profile,
                 config.ignition_detection_acc_threshold,
             ),
-            airbrakes: Some(AirbrakesEstimator::new(
-                config.airbrakes,
-                config.ignition_detection_acc_threshold,
-            )),
+            // airbrakes: Some(AirbrakesEstimator::new(
+            //     config.airbrakes,
+            //     config.ignition_detection_acc_threshold,
+            // )),
         }
     }
 
@@ -216,29 +216,29 @@ impl FlightEstimators {
         // sample without it is skipped whole: the vertical filter predicts
         // with the dead reckoner's attitude, so there is nothing to step it
         // with and nothing to fuse against.
-        if let (Some(airbrakes), Some(imu)) = (self.airbrakes.as_mut(), imu) {
-            airbrakes.update(timestamp_us, imu, baro_altitude_asl);
-        }
+        // if let (Some(airbrakes), Some(imu)) = (self.airbrakes.as_mut(), imu) {
+        //     airbrakes.update(timestamp_us, imu, baro_altitude_asl);
+        // }
 
         // (c) Retirement. Checked every sample, IMU or not, so clause 3
         // still bites while the airbrakes half is starved of IMU data.
-        if let Some(airbrakes) = self.airbrakes.as_ref() {
-            let descending = airbrakes.velocity().is_some_and(|v| v.y <= 0.0);
-            let below_horizon = airbrakes.tilt().is_some_and(|t| t >= FRAC_PI_2);
-            let deployment_apogee = !matches!(
-                self.deployment.state(),
-                RocketState::OnPad | RocketState::Ascent { .. } | RocketState::MachLockout { .. }
-            );
-            if descending || below_horizon || deployment_apogee {
-                log_info!(
-                    "retiring airbrakes estimator (descending: {}, below horizon: {}, deployment apogee: {})",
-                    descending,
-                    below_horizon,
-                    deployment_apogee
-                );
-                self.airbrakes = None;
-            }
-        }
+        // if let Some(airbrakes) = self.airbrakes.as_ref() {
+        //     let descending = airbrakes.velocity().is_some_and(|v| v.y <= 0.0);
+        //     let below_horizon = airbrakes.tilt().is_some_and(|t| t >= FRAC_PI_2);
+        //     let deployment_apogee = !matches!(
+        //         self.deployment.state(),
+        //         RocketState::OnPad | RocketState::Ascent { .. } | RocketState::MachLockout { .. }
+        //     );
+        //     if descending || below_horizon || deployment_apogee {
+        //         log_info!(
+        //             "retiring airbrakes estimator (descending: {}, below horizon: {}, deployment apogee: {})",
+        //             descending,
+        //             below_horizon,
+        //             deployment_apogee
+        //         );
+        //         self.airbrakes = None;
+        //     }
+        // }
 
         // (d) The log sample, built AFTER retirement so that the sample the
         // airbrakes half is dropped on already reports the whole airbrakes
@@ -249,53 +249,53 @@ impl FlightEstimators {
             deployment_vertical_velocity: self.deployment.kf_vertical_velocity(),
             deployment_launch_pad_altitude_asl: self.deployment.launch_pad_altitude_asl(),
             deployment_baro_gate,
-            airbrakes: self.airbrakes.as_ref().map(|ab| AirbrakesLogSample {
-                altitude_asl: ab.altitude_asl(),
-                vertical_velocity: ab.velocity().map(|v| v.y),
-                tilt_rad: ab.tilt(),
-                burnout_detected: ab.burnout_detected(),
-                state: ab.state(),
-                calibration_complete: ab.calibration_complete(),
-            }),
+            // airbrakes: self.airbrakes.as_ref().map(|ab| AirbrakesLogSample {
+            //     altitude_asl: ab.altitude_asl(),
+            //     vertical_velocity: ab.velocity().map(|v| v.y),
+            //     tilt_rad: ab.tilt(),
+            //     burnout_detected: ab.burnout_detected(),
+            //     state: ab.state(),
+            //     calibration_complete: ab.calibration_complete(),
+            // }),
         };
 
         (pyro, log_sample)
     }
 
-    /// `Some` exactly when the airbrakes are permitted to open, carrying
-    /// the MPC's input state. Permission and state are one `Option`, so
-    /// "permitted but no state" cannot be expressed — the MPC's run/stop
-    /// condition and its state source are the same value.
-    ///
-    /// Two clauses, and neither is decided here:
-    /// * the airbrakes half has not been retired — everything about *when
-    ///   the window ends* lives in [`Self::update`];
-    /// * the half is in its last state, which is what
-    ///   [`AirbrakesEstimator::airbrakes_enabled`] reports and what
-    ///   `altitude_asl` and `velocity` being present already imply.
-    ///
-    /// Everything the permission depends on — motor out, drag check passed,
-    /// filter alive, airframe under `max_open_mach` — was decided on the way
-    /// into that state and cannot be revisited from here. This function used
-    /// to re-derive the last of those every sample from the filter's own
-    /// velocity, which meant the permission could withdraw itself: the
-    /// filter's birth transient threw its velocity over the Mach limit for
-    /// 170 ms and shut the brakes after they had opened. A test that can
-    /// only be answered by a filter that is briefly wrong belongs at the
-    /// transition, where the estimator now asks it once.
-    ///
-    /// So the window is opened by the airbrakes half and closed by
-    /// retirement, and nothing in between can narrow it.
-    ///
-    /// [`AirbrakesEstimator::airbrakes_enabled`]:
-    ///     crate::airbrakes_estimator::AirbrakesEstimator::airbrakes_enabled
-    pub fn airbrakes_mpc_states(&self) -> Option<AirbrakesMPCStates> {
-        let airbrakes = self.airbrakes.as_ref()?;
-        Some(AirbrakesMPCStates {
-            altitude_asl: airbrakes.altitude_asl()?,
-            velocity: airbrakes.velocity()?,
-        })
-    }
+    // /// `Some` exactly when the airbrakes are permitted to open, carrying
+    // /// the MPC's input state. Permission and state are one `Option`, so
+    // /// "permitted but no state" cannot be expressed — the MPC's run/stop
+    // /// condition and its state source are the same value.
+    // ///
+    // /// Two clauses, and neither is decided here:
+    // /// * the airbrakes half has not been retired — everything about *when
+    // ///   the window ends* lives in [`Self::update`];
+    // /// * the half is in its last state, which is what
+    // ///   [`AirbrakesEstimator::airbrakes_enabled`] reports and what
+    // ///   `altitude_asl` and `velocity` being present already imply.
+    // ///
+    // /// Everything the permission depends on — motor out, drag check passed,
+    // /// filter alive, airframe under `max_open_mach` — was decided on the way
+    // /// into that state and cannot be revisited from here. This function used
+    // /// to re-derive the last of those every sample from the filter's own
+    // /// velocity, which meant the permission could withdraw itself: the
+    // /// filter's birth transient threw its velocity over the Mach limit for
+    // /// 170 ms and shut the brakes after they had opened. A test that can
+    // /// only be answered by a filter that is briefly wrong belongs at the
+    // /// transition, where the estimator now asks it once.
+    // ///
+    // /// So the window is opened by the airbrakes half and closed by
+    // /// retirement, and nothing in between can narrow it.
+    // ///
+    // /// [`AirbrakesEstimator::airbrakes_enabled`]:
+    // ///     crate::airbrakes_estimator::AirbrakesEstimator::airbrakes_enabled
+    // pub fn airbrakes_mpc_states(&self) -> Option<AirbrakesMPCStates> {
+    //     let airbrakes = self.airbrakes.as_ref()?;
+    //     Some(AirbrakesMPCStates {
+    //         altitude_asl: airbrakes.altitude_asl()?,
+    //         velocity: airbrakes.velocity()?,
+    //     })
+    // }
 
     /// The deployment estimator's rocket state — the honest variant set,
     /// including [`RocketState::MachLockout`].
@@ -328,19 +328,19 @@ impl FlightEstimators {
         self.deployment.launch_pad_altitude_asl()
     }
 
-    /// Read-only access to the airbrakes estimator (drag check, birth, tilt,
-    /// fast-record flag assembly, ...).
-    ///
-    /// Deliberately no `&mut` twin: cross-estimator data flows by value,
-    /// inside [`Self::update`], once per sample — the API makes any other
-    /// coupling between the two estimators impossible to write.
-    ///
-    /// `None` once retired (see [`Self::update`]), which callers should
-    /// treat as "no reading" rather than "reading of zero" — the telemetry
-    /// and SD-log fields sourced from here go absent from that sample on.
-    pub fn airbrakes_estimator(&self) -> Option<&AirbrakesEstimator> {
-        self.airbrakes.as_ref()
-    }
+    // /// Read-only access to the airbrakes estimator (drag check, birth, tilt,
+    // /// fast-record flag assembly, ...).
+    // ///
+    // /// Deliberately no `&mut` twin: cross-estimator data flows by value,
+    // /// inside [`Self::update`], once per sample — the API makes any other
+    // /// coupling between the two estimators impossible to write.
+    // ///
+    // /// `None` once retired (see [`Self::update`]), which callers should
+    // /// treat as "no reading" rather than "reading of zero" — the telemetry
+    // /// and SD-log fields sourced from here go absent from that sample on.
+    // pub fn airbrakes_estimator(&self) -> Option<&AirbrakesEstimator> {
+    //     self.airbrakes.as_ref()
+    // }
 
 }
 
@@ -367,53 +367,59 @@ pub struct EstimatorLogSample {
     /// where the two fields above go absent.
     pub deployment_launch_pad_altitude_asl: f32,
     pub deployment_baro_gate: BaroGateOutcome,
-    /// `None` once the airbrakes half is retired at apogee — absent, not zero.
-    pub airbrakes: Option<AirbrakesLogSample>,
+    // /// `None` once the airbrakes half is retired at apogee — absent, not zero.
+    // pub airbrakes: Option<AirbrakesLogSample>,
 }
 
-/// The airbrakes half of [`EstimatorLogSample`]. The `Option` fields are
-/// absent until the piece of the estimator that produces them is alive.
+// /// The airbrakes half of [`EstimatorLogSample`]. The `Option` fields are
+// /// absent until the piece of the estimator that produces them is alive.
+// #[derive(Debug, Clone, Copy)]
+// pub struct AirbrakesLogSample {
+//     pub altitude_asl: Option<f32>,
+//     pub vertical_velocity: Option<f32>,
+//     pub tilt_rad: Option<f32>,
+//     pub burnout_detected: bool,
+//     /// Which of the four states produced this sample.
+//     ///
+//     /// The whole of "where was the estimator", replacing the two booleans it
+//     /// used to be inferred from. `baro_trusted` (the filter exists) and
+//     /// `mpc_permitted` (the filter exists AND the airframe is subsonic right
+//     /// now) could differ only because the second was recomputed every sample
+//     /// and could withdraw itself; once the Mach limit became a condition of
+//     /// entering the last state they were the same fact, and once they were
+//     /// the same fact the honest thing to log was the state.
+//     pub state: AirbrakesState,
+//     //
+//     // No `is_apogee` twin and no baro-gate field: the airbrakes half has no
+//     // apogee state to report from (it is retired at apogee, and this whole
+//     // struct goes absent on that sample), and its vertical filter has no
+//     // gate to report on — it fuses every baro sample. Both facts are in
+//     // [`FlightEstimators::update`] and
+//     // [`super::airbrakes_estimator::vertical_kf::VerticalKF`].
+//     /// The pad calibration exists (see
+//     /// [`AirbrakesEstimator::calibration_complete`]).
+//     ///
+//     /// The only field here that says something while the rocket is still on
+//     /// the rail, and the reason it is logged: without a calibration the
+//     /// estimator refuses to detect ignition, so the airbrakes silently do
+//     /// not fly. Every other flag below is retrospective.
+//     ///
+//     /// [`AirbrakesEstimator::calibration_complete`]:
+//     ///     crate::airbrakes_estimator::AirbrakesEstimator::calibration_complete
+//     pub calibration_complete: bool,
+// }
+
 #[derive(Debug, Clone, Copy)]
-pub struct AirbrakesLogSample {
-    pub altitude_asl: Option<f32>,
-    pub vertical_velocity: Option<f32>,
-    pub tilt_rad: Option<f32>,
-    pub burnout_detected: bool,
-    /// Which of the four states produced this sample.
-    ///
-    /// The whole of "where was the estimator", replacing the two booleans it
-    /// used to be inferred from. `baro_trusted` (the filter exists) and
-    /// `mpc_permitted` (the filter exists AND the airframe is subsonic right
-    /// now) could differ only because the second was recomputed every sample
-    /// and could withdraw itself; once the Mach limit became a condition of
-    /// entering the last state they were the same fact, and once they were
-    /// the same fact the honest thing to log was the state.
-    pub state: AirbrakesState,
-    //
-    // No `is_apogee` twin and no baro-gate field: the airbrakes half has no
-    // apogee state to report from (it is retired at apogee, and this whole
-    // struct goes absent on that sample), and its vertical filter has no
-    // gate to report on — it fuses every baro sample. Both facts are in
-    // [`FlightEstimators::update`] and
-    // [`super::airbrakes_estimator::vertical_kf::VerticalKF`].
-    /// The pad calibration exists (see
-    /// [`AirbrakesEstimator::calibration_complete`]).
-    ///
-    /// The only field here that says something while the rocket is still on
-    /// the rail, and the reason it is logged: without a calibration the
-    /// estimator refuses to detect ignition, so the airbrakes silently do
-    /// not fly. Every other flag below is retrospective.
-    ///
-    /// [`AirbrakesEstimator::calibration_complete`]:
-    ///     crate::airbrakes_estimator::AirbrakesEstimator::calibration_complete
-    pub calibration_complete: bool,
+pub struct ImuSample {
+    pub acc: nalgebra::Vector3<f32>,
+    pub gyro: nalgebra::Vector3<f32>,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::baro_state_estimator::{DT, SAMPLES_PER_S};
-    use crate::tests::fixtures::{IGNITION_ACC_THRESHOLD, lc25_airbrakes, subsonic_profile};
+    use crate::tests::fixtures::{IGNITION_ACC_THRESHOLD, subsonic_profile};
     use nalgebra::Vector3;
 
     /// Nominal 416 Hz sample spacing in microseconds.
@@ -424,29 +430,29 @@ mod tests {
     // config. They take the shared bases whole and override nothing; see
     // [`crate::tests::fixtures`].
 
-    /// On the pad — before ignition, before the burn timer — the gate
-    /// must hand out nothing, even with a healthy IMU feed coming in.
-    #[test]
-    fn no_mpc_states_before_coasting() {
-        let mut est = FlightEstimators::new(FlightConfig {
-            ignition_detection_acc_threshold: IGNITION_ACC_THRESHOLD,
-            profile: subsonic_profile(),
-            airbrakes: lc25_airbrakes(),
-        });
-        let imu = ImuSample {
-            acc: Vector3::new(0.0, 0.0, 9.81),
-            gyro: Vector3::zeros(),
-        };
+    // /// On the pad — before ignition, before the burn timer — the gate
+    // /// must hand out nothing, even with a healthy IMU feed coming in.
+    // #[test]
+    // fn no_mpc_states_before_coasting() {
+    //     let mut est = FlightEstimators::new(FlightConfig {
+    //         ignition_detection_acc_threshold: IGNITION_ACC_THRESHOLD,
+    //         profile: subsonic_profile(),
+    //         airbrakes: lc25_airbrakes(),
+    //     });
+    //     let imu = ImuSample {
+    //         acc: Vector3::new(0.0, 0.0, 9.81),
+    //         gyro: Vector3::zeros(),
+    //     };
 
-        let mut t_us = 0u64;
-        for _ in 0..(5 * SAMPLES_PER_S) {
-            let (pyro, _log) = est.update(t_us, Some(&imu), 200.0);
-            assert!(pyro.is_none());
-            assert!(est.airbrakes_mpc_states().is_none());
-            t_us += SAMPLE_DT_US;
-        }
-        assert!(matches!(est.state(), RocketState::OnPad));
-    }
+    //     let mut t_us = 0u64;
+    //     for _ in 0..(5 * SAMPLES_PER_S) {
+    //         let (pyro, _log) = est.update(t_us, Some(&imu), 200.0);
+    //         assert!(pyro.is_none());
+    //         assert!(est.airbrakes_mpc_states().is_none());
+    //         t_us += SAMPLE_DT_US;
+    //     }
+    //     assert!(matches!(est.state(), RocketState::OnPad));
+    // }
 
     /// The composed update must return exactly what a bare deployment
     /// estimator returns on the same baro stream: pyro commands pass
@@ -460,7 +466,7 @@ mod tests {
         let mut composed = FlightEstimators::new(FlightConfig {
             ignition_detection_acc_threshold: IGNITION_ACC_THRESHOLD,
             profile: subsonic_profile(),
-            airbrakes: lc25_airbrakes(),
+            // airbrakes: lc25_airbrakes(),
         });
 
         // Clean point-mass trajectory: 5 s pad hold, 3 s burn at
