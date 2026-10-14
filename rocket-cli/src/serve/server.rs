@@ -1,5 +1,8 @@
 use std::sync::Arc;
 use std::sync::RwLock;
+use std::time::Instant;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 use anyhow::Result;
 use firmware_common_new::vlp::packets::VLPDownlinkPacket;
 use lora_phy::mod_params::PacketStatus;
@@ -25,14 +28,16 @@ pub async fn start_server(
 
     // spawn data polling task from client
     tokio::spawn(async move {
+        let mut last_packet_time = Instant::now();
         loop {
             if let Some((packet, status)) = client.try_receive() {
-                // println!("{:#?}", packet);
-                // println!("rssi {}, snr {}", status.rssi, status.snr);
+                println!("{:#?}", packet);
+                println!("rssi {}, snr {}", status.rssi, status.snr);
                 /* 
                 TODO: at the moment just sending with JSON to test the server functionality. 
                 Need to implement correct sending method (from NICK/docs/BACKEND_WIRING-4.2, copied here)
                 Packet decoding and unit corrections can be seen in the formatting in gs/downlink_packet_display/sections (L259)
+
                 on each received `VLPDownlinkPacket`, decode it and flatten it
                     into `(key, value, timestampMs)` triples using the `gsd_*` dictionary —
                     the flattening rules (booleans as 0/1, enums as their numeric values,
@@ -41,12 +46,21 @@ pub async fn start_server(
                     `gsd_packet_type`, packet counters) which come from the LoRa
                     `PacketStatus`, not the payload.
                  */
-                let pws = PacketWithStatus {packet: packet, rssi: status.rssi, snr: status.snr};
-                let json_pws = serde_json::to_string(&pws);
-                if let Ok(data) = json_pws {
-                    // safe to ignore error, just shows no clients connected
-                    let _ = tx.send(data);
-                }
+                let packet_time = Instant::now();
+                let packet_millis = match SystemTime::now().duration_since(UNIX_EPOCH) {
+                    Ok(t) => t.as_millis(),
+                    Err(_) => {println!("System Time before UNIX EPOCH");0}
+                };
+                let time_since_last: u16 = match packet_time.duration_since(last_packet_time).as_secs().try_into() {
+                    Ok(t) => t,
+                    Err(_) => 120, // we return 120 if it does not fit, this is max range frontend expects
+                };
+                last_packet_time = packet_time;
+                let dat = downlink_triples(&packet, &status, packet_millis, time_since_last);
+                // safe to ignore error, just shows no clients connected
+                for trip in dat {
+                    let _ = tx.send(format!("({}, {}, {})", trip.0, trip.1, trip.2));
+                    }
             } else {
                 tokio::time::sleep(Duration::from_millis(10)).await;
             }
@@ -66,13 +80,6 @@ pub async fn start_server(
 #[derive(Clone)]
 struct AppState {
     tx: broadcast::Sender<String>
-}
-
-#[derive(Serialize)]
-struct PacketWithStatus {
-    packet: VLPDownlinkPacket,
-    rssi: i16,
-    snr: i16
 }
 
 #[derive(Deserialize)]
@@ -107,4 +114,201 @@ async fn handle_socket(mut socket: WebSocket, mut rx: broadcast::Receiver<String
             break;
         }
     }
+}
+
+fn downlink_triples(packet: &VLPDownlinkPacket, status: &PacketStatus, timestamp: u128, time_since_last: u16) -> Vec<(&'static str, f64, u128)> {
+    let mut triples = Vec::new();
+    // we always need rssi and snr and time since last packet
+    triples.push(("gsd_rssi", status.rssi.into(), timestamp));
+    triples.push(("gsd_snr", status.snr.into(), timestamp));
+    triples.push(("gsd_seconds_since_received", time_since_last.into(), timestamp));
+    match packet {
+        VLPDownlinkPacket::Telemetry(p) => {
+            triples.push(("gsd_packet_type", 1.0, timestamp));
+            triples.push(("gsd_unix_clock_ready", p.unix_clock_ready().into(), timestamp));
+            triples.push(("gsd_num_of_fix_satellites", p.num_of_fix_satellites().into(), timestamp));
+            let (lat, lon) = match p.lat_lon() {
+                Some(t) => t,
+                None => (0.0,0.0) // TODO: what should defaults be in this case?
+            };
+            triples.push(("gsd_lat", lat, timestamp));
+            triples.push(("gsd_lon", lon, timestamp));
+            // lat_lon_valid: true,
+            triples.push(("gsd_air_temperature", p.air_temperature().into(), timestamp));
+            triples.push(("gsd_vl_battery_v", p.vl_battery_v().into(), timestamp));
+
+            triples.push(("gsd_pyro_main_continuity", p.pyro_main_continuity().into(), timestamp));
+            triples.push(("gsd_pyro_drogue_continuity", p.pyro_drogue_continuity().into(), timestamp));
+
+            triples.push(("gsd_flight_stage", p.flight_stage() as i8 as f64, timestamp)); // TODO: the flightstage definition here does not match the one given in NICK documentation
+            let alt_agl = match p.deployment_kf_altitude_agl() {
+                Some(t) => t,
+                None => 0.0 // TODO: is there really no velocity or altitude tracking at all during mach lockout? 
+                // TODO: frontend doesn't have keys for altitude or velocity validity - should these be added?
+            };
+            let max_alt_agl = match p.max_deployment_kf_altitude_agl() {
+                Some(t) => t,
+                None => 0.0
+            };
+            let vert_velo = match p.deployment_kf_vertical_velocity() {
+                Some(t) => t,
+                None => 0.0
+            };
+            triples.push(("gsd_altitude_agl", alt_agl.into(), timestamp));
+            triples.push(("gsd_max_altitude_agl", max_alt_agl.into(), timestamp));
+            triples.push(("gsd_air_speed", vert_velo.into(), timestamp));
+            // deployment_kf_valid: false,
+            // deployment_kf_altitude_agl: 162,
+            // deployment_kf_vertical_velocity: 282,
+
+            // max_deployment_kf_altitude_valid: true,
+            // max_deployment_kf_altitude_agl: 2595,
+
+            // airbrakes_kf_tilt_valid: true,
+            // airbrakes_kf_tilt_deg: 133,
+            let tilt_deg = match p.airbrakes_kf_tilt_deg() {
+                Some(t) => t,
+                None => 0.0
+            };
+            triples.push(("gsd_tilt_deg", tilt_deg.into(), timestamp)); // TODO: again, frontend does not expect validity key
+
+            // TODO: frontend expects none of these, should it?
+            // airbrakes_enabled: true,
+            // airbrakes_calibrated: true,
+            // mpc_predicted_apogee_valid: true,
+            // mpc_predicted_apogee_agl: 4704,
+            // target_apogee_agl: 5028,
+            
+            triples.push(("gsd_shared_battery_v", p.shared_battery_v().unwrap_or_else(||0.0).into(), timestamp));
+            triples.push(("gsd_amp_online", p.amp_online().into(), timestamp));
+            triples.push(("gsd_amp_rebooted_in_last_5s", p.amp_rebooted_in_last_5s().into(), timestamp));
+
+            triples.push(("gsd_amp_out1", p.amp_out1() as i8 as f64, timestamp));
+            triples.push(("gsd_amp_out1_overwrote", p.amp_out1_overwrote().into(), timestamp));
+            triples.push(("gsd_amp_out2", p.amp_out2() as i8 as f64, timestamp));
+            triples.push(("gsd_amp_out2_overwrote", p.amp_out2_overwrote().into(), timestamp));
+            triples.push(("gsd_amp_out3", p.amp_out3() as i8 as f64, timestamp));
+            triples.push(("gsd_amp_out3_overwrote", p.amp_out3_overwrote().into(), timestamp));
+
+
+            // icarus_status_valid: false,
+            triples.push(("gsd_icarus_online", p.icarus_online().into(), timestamp));
+            triples.push(("gsd_icarus_rebooted_in_last_5s", p.icarus_rebooted_in_last_5s().into(), timestamp));
+            triples.push(("gsd_air_brakes_commanded_extension_percentage", p.air_brakes_commanded_extension_percentage().into(), timestamp));
+            let air_brakes_act = match p.air_brakes_actual_extension_percentage() {
+                Some(t) => t,
+                None => 0.0 // TODO: correct default?
+            };
+            let air_brake_temp = match p.air_brakes_servo_temp() {
+                Some(t) => t,
+                None => 0.0
+            };
+            triples.push(("gsd_air_brakes_actual_extension_percentage", air_brakes_act.into(), timestamp));
+            triples.push(("gsd_air_brakes_servo_temp", air_brake_temp.into(), timestamp));
+
+            triples.push(("gsd_ozys1_online", p.ozys_online().into(), timestamp));
+            triples.push(("gsd_ozys1_rebooted_in_last_5s", p.ozys_rebooted_in_last_5s().into(), timestamp));
+            //TODO: frontend expects OZYS2 as well, not provided here
+
+            
+            // TODO: again what is EPM?
+            // epm_batt_v: 61,
+            // epm_sys_3v3_ma: 4,
+            // epm_sys_5v_ma: 11,
+            // epm_per_3v3_ma: 2,
+            // epm_per_5v_ma: 24,
+            // epm_per_9v_ma: 30,
+            // epm_per_12v_ma: 31,
+
+            
+            // Frontend doesn't seem to want anything from here down
+            // payload_sdrm_online: false,
+            // payload_sdrm_rebooted_in_last_5s: false,
+            // payload_epm_alive: true,
+            // payload_sem_alive: true,
+            // payload_epm_rails_on: true,
+            // payload_exp1_active: false,
+            // payload_exp2_active: true,
+            // payload_exp3_active: false,
+            // payload_sdrm_sd_logging: true,
+            // payload_sem_sd_logging: false,
+            // payload_arm_seq_running: false,
+            // payload_arm_seq_complete: true,
+            // payload_arm_seq_fault: false,
+
+            // sem_actuator_1_steps: 0,
+            // sem_actuator_2_steps: 19,
+            // sem_actuator_3_steps: 540,
+            // sem_load_cell_1_n: 54,
+            // sem_load_cell_2_n: 131,
+            // sem_load_cell_3_n: 255,
+
+            // payload_exp1_fractured: true,
+            // payload_exp1_finished: true,
+            // payload_exp1_fault: false,
+            // payload_exp1_closure_confirmed: true,
+            // payload_exp1_monitoring: false,
+            // payload_exp2_fractured: false,
+            // payload_exp2_finished: false,
+            // payload_exp2_fault: false,
+            // payload_exp2_closure_confirmed: true,
+            // payload_exp2_monitoring: true,
+            // payload_exp3_fractured: false,
+            // payload_exp3_finished: false,
+            // payload_exp3_fault: true,
+            // payload_exp3_closure_confirmed: false,
+            // payload_exp3_monitoring: false,
+        },
+        VLPDownlinkPacket::LowPowerTelemetry(p) => {
+            triples.push(("gsd_packet_type", 2.0, timestamp)); // PacketType enum from NICK docs has LowPowerTelemetry as 2
+            triples.push(("gsd_num_of_fix_satellites", p.num_of_fix_satellites().into(), timestamp));
+            let (lat, lon) = match p.lat_lon() {
+                Some(t) => t,
+                None => (0.0,0.0) // TODO: what should defaults be in this case?
+            };
+            triples.push(("gsd_lat", lat, timestamp));
+            triples.push(("gsd_lon", lon, timestamp));
+            triples.push(("gsd_air_temperature", p.air_temperature().into(), timestamp));
+            triples.push(("gsd_vl_battery_v", p.vl_battery_v().into(), timestamp));
+            triples.push(("gsd_shared_battery_v", p.shared_battery_v().unwrap_or_else(||0.0).into(), timestamp)); // again here, what is the default?
+            triples.push(("gsd_amp_online", p.amp_online.into(), timestamp));
+            // "gps_fixed": p.gps_fixed(), this was not specified in NICK expected keys, but is present here
+            //TODO: what are these? are these an old version of EPS?
+            // "epm_batt_v": p.epm_batt_v().volts(),
+            // "epm_batt_below_range": p.epm_batt_v() == EpmBattV::BelowRange,
+        },
+        VLPDownlinkPacket::SelfTestResult(p) => {
+            triples.push(("gsd_packet_type", 4.0, timestamp));
+        },
+        VLPDownlinkPacket::LandedTelemetry(p) => {
+            triples.push(("gsd_packet_type", 3.0, timestamp));
+            let (lat, lon) = match p.lat_lon() {
+                Some(t) => t,
+                None => (0.0,0.0) // TODO: what should defaults be in this case?
+            };
+            triples.push(("gsd_lat", lat, timestamp));
+            triples.push(("gsd_lon", lon, timestamp));
+            triples.push(("gsd_num_of_fix_satellites", p.num_of_fix_satellites().into(), timestamp));
+            // lat_lon_valid: true,
+            // battery_v: 801, Is this vl_battery_v?
+            triples.push(("gsd_shared_battery_v", p.shared_battery_v().unwrap_or_else(||0.0).into(), timestamp));
+            triples.push(("gsd_amp_online", p.amp_online().into(), timestamp));
+            triples.push(("gsd_amp_rebooted_in_last_5s", p.amp_rebooted_in_last_5s().into(), timestamp));
+            // This enum casting relies on front and back end agreeing on the order of the enum, then again, so would literals
+            triples.push(("gsd_amp_out1", p.amp_out1() as i8 as f64, timestamp));
+            triples.push(("gsd_amp_out1_overwrote", p.amp_out1_overwrote().into(), timestamp));
+            triples.push(("gsd_amp_out2", p.amp_out2() as i8 as f64, timestamp));
+            triples.push(("gsd_amp_out2_overwrote", p.amp_out2_overwrote().into(), timestamp));
+            triples.push(("gsd_amp_out3", p.amp_out3() as i8 as f64, timestamp));
+            triples.push(("gsd_amp_out3_overwrote", p.amp_out3_overwrote().into(), timestamp));
+            // TODO: keys expects an amp4 but not provided here, is this a new addition?
+        },
+        VLPDownlinkPacket::Ack(_) => {
+
+        },
+        // json!({
+        //     "type": "ack_downlink", "rssi": status.rssi, "snr": status.snr,
+        // }),
+    };
+    triples
 }
